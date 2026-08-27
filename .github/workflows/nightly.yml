@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload test-gate diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # Diagnostics: a storage/quota failure here is an infrastructure
         # condition, not a verdict on the code. It must not redden a gate
         # whose checks passed (station#2218).
@@ -664,7 +664,7 @@ jobs:
       # the receipt reports retention separately from publication.
       - name: Archive signed nightly artifacts
         id: nightly_artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.android_signing.outputs.keystore_password != '' && env.ANDROID_UPLOAD_KEY_ALIAS != ''
         continue-on-error: true
         with:
@@ -826,7 +826,7 @@ jobs:
       - name: Retain this run's deploy ledger files
         if: ${{ always() && steps.decide.outputs.build == 'true' && (steps.android_signing.outputs.keystore_base64 != '' || steps.cli_npm_preflight.outputs.trusted_publisher == 'true') }}
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: deploy-ledger-nightly-${{ github.run_id }}
           path: |
