@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Work Board | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/work-board.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1>Work Board</h1>
+<p>Work Board is a personal Workspace Pane for arranging links to work you already</p>
+<p>own in Station. It stores a reference and layout only. Titles, gate state,</p>
+<p>receipts, and availability are always read from their owning feature.</p>
+<h2>Pin and arrange work</h2>
+<p>Open a Project, choose <strong>Add Pane</strong>, then choose <strong>Work Board</strong>. Enter the</p>
+<p>exact reference ID and any required owner scope. A Task's owner scope is the</p>
+<p>exact Station Project <strong>slug</strong> (not its UUID); a Flow run's scope is the exact</p>
+<p>Project ID. You can pin Projects, Tasks, Sessions, approval requests, gate or</p>
+<p>Flow runs, scheduled outcomes, receipts, artifacts, and Agents. Station keeps</p>
+<p>the typed identity you entered and never tries to repair a mismatched owner.</p>
+<p>Each card keeps its linked title separate from its <strong>Drag</strong> handle, so opening</p>
+<p>work never starts a move. Drag that handle to move a pin, and use the small</p>
+<p>corner grip to resize it. Arrow keys move the focused handle; Shift+Arrow</p>
+<p>resizes it. The ordered list is always available for keyboard use. In a narrow</p>
+<p>Pane or on a touch device, it comes first and the canvas stays hidden until you</p>
+<p>choose <strong>Open canvas</strong>; this avoids duplicate canvas controls in the compact</p>
+<p>focus path.</p>
+<p>Use the zoom controls to zoom in or out, or <strong>Reset</strong> to restore the default</p>
+<p>camera. Drag an empty part of the canvas to pan. Motion is not animated when</p>
+<p>your system requests reduced motion.</p>
+<h2>Name, clean up, and restore</h2>
+<p>Edit the Board title and choose <strong>Save title</strong>. <strong>Undo</strong> restores the prior</p>
+<p>Board snapshot. <strong>Remove missing</strong> appears only for references Station has</p>
+<p>confirmed are missing; it never removes work merely because a read was stale,</p>
+<p>ambiguous, unavailable, or unconfirmed.</p>
+<p>The title, camera, pin geometry, pin order, and current resolution state are</p>
+<p>re-read when you leave and return or reload. <strong>Refresh Board</strong> refreshes both</p>
+<p>the Board and those resolutions. A save uses the Board revision shown on</p>
+<p>screen. If somebody else changes the Board first, Station shows the new</p>
+<p>observation instead of silently overwriting it. If a response is lost, the</p>
+<p>result is unconfirmed until you inspect the Board again; Station does not guess</p>
+<p>whether the mutation happened or retry it automatically.</p>
+<h2>Linked work states</h2>
+<p><strong>Linked</strong> means the owner could resolve the exact reference. <strong>Not found</strong>,</p>
+<p><strong>Moved</strong>, <strong>Can’t load</strong>, <strong>Multiple matches</strong>, and <strong>Unconfirmed</strong> describe</p>
+<p>what the owner read now. <strong>Unconfirmed</strong> means an individual reference has not</p>
+<p>yet produced a resolution; it is different from the visible resolver loading</p>
+<p>or error notice. Use <strong>Retry resolution</strong> when that lookup fails. These states</p>
+<p>are not copied status stored on the Board, and a linked item is not evidence</p>
+<p>that a gate passed or work is complete.</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>

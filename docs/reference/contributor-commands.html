@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contributor commands | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/reference/contributor-commands.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <p>&lt;!-- station:contributor-commands:start --&gt;</p>
+<h1>Contributor commands</h1>
+<p>This reference is generated from the paired Unix and Windows recipe metadata in <code>justfile</code>. It is the exact convenience-command interface; the invoked npm scripts and verification coordinator remain the canonical implementation and completion-receipt authorities.</p>
+<h2><code>setup</code></h2>
+<p>Install the lockfile-pinned Node dependency tree.</p>
+<p>Run: <code>just setup</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+npm ci
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npm ci
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>doctor</code></h2>
+<p>Report Station readiness through the repository CLI.</p>
+<p>Run: <code>just doctor [arguments...]</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+./station doctor &quot;$@&quot;
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npx tsx scripts/station-cli.ts doctor %*
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>dev</code></h2>
+<p>Start a local Station instance.</p>
+<p>Run: <code>just dev [arguments...]</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+./station start &quot;$@&quot;
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npx tsx scripts/station-cli.ts start %*
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>check</code></h2>
+<p>Run Station's canonical static verification lane.</p>
+<p>Run: <code>just check</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+npm run verify:static
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npm run verify:static
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>test</code></h2>
+<p>Select changed tests or run explicit focused test files.</p>
+<p>Run: <code>just test [arguments...]</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+if [ &quot;$#&quot; -eq 0 ]; then npm run test:changed -- --base=origin/main; else npm run test:focused -- &quot;$@&quot;; fi
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@if not &quot;%~1&quot;==&quot;&quot; goto focused
+@call npm run test:changed -- &quot;--base=origin/main&quot;
+@exit /b %ERRORLEVEL%
+:focused
+@call npm run test:focused -- %*
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>full</code></h2>
+<p>Run the sole completion lane without adding a second receipt protocol.</p>
+<p>Run: <code>just full</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+npm run full:regression
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npm run full:regression
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>desktop</code></h2>
+<p>Launch the native desktop development shell.</p>
+<p>Run: <code>just desktop</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+npm run dev:desktop
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npm run dev:desktop
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>android</code></h2>
+<p>Build the Android debug APK through Station's existing native build command.</p>
+<p>Run: <code>just android</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+npm run build:android
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npm run build:android
+@exit /b %ERRORLEVEL%
+</code></pre>
+<h2><code>release-check</code></h2>
+<p>Run the existing release-static preflight; it does not publish a release.</p>
+<p>Run: <code>just release-check</code></p>
+<h3>macOS and Linux</h3>
+<pre><code>
+npm run release:static
+</code></pre>
+<h3>Windows Command Prompt</h3>
+<pre><code>
+@call npm run release:static
+@exit /b %ERRORLEVEL%
+</code></pre>
+<p>&lt;!-- station:contributor-commands:end --&gt;</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>

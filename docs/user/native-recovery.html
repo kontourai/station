@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recover a desktop start | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/native-recovery.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1>Recover a desktop start</h1>
+<p>This guide is for a packaged Station desktop app that stays hidden while it</p>
+<p>starts, shows <strong>Station is not ready</strong>, or opens but then cannot reach its</p>
+<p>local service. It describes the recovery behavior implemented in the desktop</p>
+<p>host; it is not evidence that every platform's packaged app has been exercised.</p>
+<p>Contributor and operator evidence procedures are maintained separately from</p>
+<p>this public guide.</p>
+<h2>What a normal packaged start does</h2>
+<p>Stable, Beta, and Nightly configure their main desktop window to start hidden.</p>
+<p>The window is revealed only after the desktop host has an exact sidecar</p>
+<p>generation, instance ID, boot ID, and local API base, and the renderer has</p>
+<p>checked that identity through the authenticated native transport. A renderer</p>
+<p>commit must match that exact ticket; an old ticket cannot reveal a newer</p>
+<p>sidecar.</p>
+<p>This avoids showing a usable-looking window before its protected local surface</p>
+<p>is ready. The native-startup work is tracked by <a href="https://github.com/kontourai/station/issues/3808">#3808</a>.</p>
+<h2>When the window does not appear</h2>
+<p>After a 30-second startup epoch, the native host shows one **Station is not</p>
+<p>ready<strong> dialog with </strong>Retry<strong> and </strong>Exit**.</p>
+<ul>
+<li><strong>Retry</strong> starts a new epoch. If Desktop owns the local sidecar, it asks the</li>
+</ul>
+<p>  bounded supervisor to restart that sidecar. If a durable service owns the</p>
+<p>  home, or no sidecar is owned, it requests the renderer's recovery surface</p>
+<p>  again; it does not start or restart the durable service.</p>
+<ul>
+<li><strong>Exit</strong> closes the desktop app. It does not reset data or remove a service.</li>
+<li>After an unexpected exit, the supervisor can respawn the sidecar four times,</li>
+</ul>
+<p>  after 1, 2, 4, and 8 seconds. The fifth counted exit is terminal and reports</p>
+<p>  failure. A user-requested retry starts a new supervised attempt; it is not</p>
+<p>  proof that the underlying cause is fixed. The cap and fail-closed</p>
+<p>  classification are covered by the linked native-startup work.</p>
+<p>If the dialog reappears, stop retrying blindly and collect the bounded</p>
+<p>diagnostics below. A data-home schema error containing</p>
+<p><code>STATION_HOME_RESET_REQUIRED</code> is deliberately fail-closed: restart attempts do</p>
+<p>not repair it. Follow the exact <code>station home reset</code> conditions only after you</p>
+<p>have a backup and have selected the intended home.</p>
+<h2>Check the local diagnosis</h2>
+<p>From the Station checkout or installed command, run:</p>
+<pre><code>
+station doctor
+station service status --json
+</code></pre>
+<p><code>station doctor</code> checks local prerequisites and readiness; it does not inspect</p>
+<p>a Tauri renderer or prove that a packaged window was shown. `station service</p>
+<p>status --json` checks an installed user service and its identity endpoints. It</p>
+<p>does not diagnose a Desktop-owned sidecar, and its failure does not by itself</p>
+<p>explain a hidden window.</p>
+<p>Keep shell and service logs separate:</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>What you need</th><th>macOS</th><th>Linux</th><th>Windows</th></tr></thead><tbody><tr><td>Desktop shell log</td><td>Use the installed app's Station log</td><td>Use the installed app's Station log</td><td>Use the installed app's Station log</td></tr>
+<tr><td>Installed service log</td><td><code>&lt;STATION_HOME&gt;/logs/&lt;instance&gt;-service.out.log</code> and <code>&lt;STATION_HOME&gt;/logs/&lt;instance&gt;-service.err.log</code></td><td><code>journalctl --user -u station-&lt;instance&gt;.service</code> (no service log file)</td><td><code>&lt;STATION_HOME&gt;/logs/&lt;instance&gt;-service.log</code></td></tr></tbody></table></div>
+<p>The desktop shell honors <code>STATION_DESKTOP_LOG_LEVEL</code> set before launch:</p>
+<p><code>trace</code>, <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code>, or <code>off</code>. Its file rotation is</p>
+<p>bounded to five 5 MB files. The server logging configuration is maintained with</p>
+<p>the installed app. Logs can contain local data or secrets; redact them before</p>
+<p>sharing.</p>
+<h2>Second launches and the tray</h2>
+<p>A second desktop launch, a reviewed deep link, and the macOS reopen event ask</p>
+<p>the existing app to activate its main window. While that app is still waiting</p>
+<p>for startup readiness, the request is deferred rather than directly revealing</p>
+<p>the window. Once ready, the same reveal authority focuses it.</p>
+<p>The tray is a different surface: it reports the currently selected local</p>
+<p>backend. For an installed service it can offer service actions; for a</p>
+<p>Desktop-owned sidecar it labels the built-in service and does not use service</p>
+<p>controls. Neither a tray click nor a second launch proves that startup readiness</p>
+<p>completed.</p>
+<h2>Evidence limits and open platform work</h2>
+<p>The source and focused tests cover state transitions and browser-renderer</p>
+<p>logic. The browser test for a hostile plugin is not an in-shell Tauri test;</p>
+<p>browser or E2E success must not be presented as evidence that a real WebView,</p>
+<p>native dialog, tray icon, or physical device behaved the same way.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Behavior</th><th>Current evidence</th><th>Status</th></tr></thead><tbody><tr><td>Hidden release window, exact ticket, timeout, retry, and activation deferral</td><td>Source configuration plus pure Rust/UI tests from the #3808 work</td><td><strong>NOT_VERIFIED</strong> on packaged macOS, Windows, and Linux shells</td></tr>
+<tr><td>Hostile plugin IPC denial in a real Tauri WebView</td><td>Browser Playwright test attempts the hostile calls, but no in-shell harness exists</td><td><strong>NOT_VERIFIED</strong>; tracked by <a href="https://github.com/kontourai/station/issues/2495">#2495</a></td></tr>
+<tr><td>Renderer/WebView death detection and bounded reload</td><td>No desktop implementation or kill-the-WebView test is present</td><td><strong>NOT_VERIFIED</strong>; tracked by <a href="https://github.com/kontourai/station/issues/2006">#2006</a></td></tr>
+<tr><td>EPIPE/closed-stdio handling</td><td>No desktop/server EPIPE recovery proof is present</td><td><strong>NOT_VERIFIED</strong>; tracked by <a href="https://github.com/kontourai/station/issues/2006">#2006</a></td></tr>
+<tr><td>macOS Finder/Dock Apple Event launch panic diagnosis</td><td>A reported abort has no recoverable panic payload or confirmed trigger</td><td><strong>NOT_VERIFIED</strong>; tracked by <a href="https://github.com/kontourai/station/issues/3496">#3496</a></td></tr>
+<tr><td>Tray rendering, tray activation, and second-launch behavior on release builds</td><td>Pure-state/static routing from <a href="https://github.com/kontourai/station/issues/3808">#3808</a></td><td><strong>NOT_VERIFIED</strong> on packaged macOS, Windows, and Linux</td></tr>
+<tr><td>Mobile startup and recovery</td><td>Desktop readiness code is desktop-only; no equivalent mobile recovery evidence is supplied here</td><td><strong>NOT_VERIFIED</strong> on Android and iOS; documentation scope tracked by <a href="https://github.com/kontourai/station/issues/3817">#3817</a></td></tr></tbody></table></div>
+<p>The related native-startup implementation work is <a href="https://github.com/kontourai/station/issues/3808">#3808</a>. Consult the linked issues for live status rather than treating this table as a release checklist.</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>

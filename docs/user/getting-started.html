@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Getting Started | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/getting-started.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1>Getting Started</h1>
+<p>Station is a local-first workspace for agent work. This guide covers a signed</p>
+<p>macOS/Linux install when its release ring is published, first launch, Provider</p>
+<p>setup, and routine lifecycle.</p>
+<h2>Before You Install</h2>
+<p>You need:</p>
+<ul>
+<li>Node.js 24.x</li>
+<li>npm 10 or newer</li>
+<li>git, curl, and tar</li>
+<li><a href="https://cli.github.com/">GitHub CLI</a> authenticated with <code>gh auth login</code></li>
+</ul>
+<p>Authentication is used for GitHub release metadata and attestation checks.</p>
+<p>There is no unsigned fallback.</p>
+<h2>Install Or Upgrade</h2>
+<pre><code>
+sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;); trap '\''rm -f &quot;$file&quot;'\'' EXIT HUP INT TERM; curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh &gt;&quot;$file&quot;; chmod 600 &quot;$file&quot;; GH_TOKEN=$(gh auth token) sh &quot;$file&quot;'
+</code></pre>
+<p>For an available signed release, the installer verifies its GitHub OIDC attestation and SHA-256</p>
+<p>receipt before it builds and starts Station. The stable channel installs under</p>
+<p><code>~/.station/installs/stable</code>, writes runtime data to</p>
+<p><code>~/.station/instances/stable</code>, and owns the</p>
+<p><code>station</code> launcher in <code>~/.local/bin</code>. Open <code>http://localhost:18000</code> after the</p>
+<p>command completes.</p>
+<p>When a signed beta ring is available, export <code>STATION_CHANNEL=beta</code> before running the same</p>
+<p>installer command. Preview is a release provenance name; the local runtime is</p>
+<p>the <strong>beta</strong> channel. It uses a separate <code>~/.station/installs/beta</code> install root,</p>
+<p><code>~/.station/instances/beta</code> runtime,</p>
+<p><code>station-beta</code> launcher, and <code>http://localhost:28000</code> UI. Do not use the</p>
+<p>retired <code>STATION_CHANNEL=preview</code>; the installer refuses it. The exact channel</p>
+<p>identity, launcher, and port mapping are verified by the release installer.</p>
+<h2>Choose A Provider</h2>
+<p>A Provider is anything that can power an agent: a local or hosted model service</p>
+<p>such as Ollama or Bedrock, or an agent app such as Claude Code or Codex.</p>
+<p>1. Open <strong>Connections</strong>.</p>
+<p>2. Choose a detected Provider or select <strong>Add Provider</strong>.</p>
+<p>3. Follow its setup action until it reports <strong>Ready</strong>.</p>
+<p>For a credential-free first path, install <a href="https://ollama.com">Ollama</a>, pull a</p>
+<p>model such as <code>llama3.1</code> or <code>qwen2.5</code>, and then return to Connections. Detection</p>
+<p>is read-only: Station does not create a connection or read credentials merely</p>
+<p>because it finds a Provider.</p>
+<p>Choose the simplest path for what you want to do:</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>You want to…</th><th>Start with…</th></tr></thead><tbody><tr><td>Keep inference on this machine</td><td>Ollama, a local Model, and a Station agent</td></tr>
+<tr><td>Use an existing coding agent app</td><td>Claude Code or Codex and its External agent</td></tr>
+<tr><td>Use a hosted model through Station</td><td>A hosted Model Provider and a Station agent</td></tr></tbody></table></div>
+<h2>Start Your First Task</h2>
+<p>When Home offers <strong>Start your first task</strong>, it appears only after the durable</p>
+<p>first-run decision is completed and Station has confirmed a real Project. The</p>
+<p>action opens that Project's ordinary Task form; it does not create a second</p>
+<p>onboarding task type. After creation, Station validates and correlates the</p>
+<p>exact existing Task and Project, then</p>
+<p>requests the ordinary Task dispatcher once. If the Agent is deferred or</p>
+<p>unavailable, Station creates no Task and shows the recoverable readiness reason;</p>
+<p>retrying reuses the same project-scoped launch identity. After a launch starts,</p>
+<p>a response loss or indeterminate dispatch is <strong>NOT_VERIFIED</strong> — Station never</p>
+<p>retries that effect automatically. Replaying the same identity returns the</p>
+<p>durable Task/outcome or an indeterminate fence instead of creating a second</p>
+<p>Task. The exact Task remains reopenable, and its Session, run, and receipt</p>
+<p>owners remain the source for progress rather than Task status. If correlation</p>
+<p>cannot be confirmed, the Task still opens with a retry link; retrying that link</p>
+<p>never creates another Task.</p>
+<p>1. Open a local project.</p>
+<p>2. Create a Task for durable work, or start a direct chat for an immediate</p>
+<p>   conversation.</p>
+<p>3. Choose the Station agent or External agent you want to use.</p>
+<p>4. Keep gate state, evidence, route-backs, and receipts with the work as it</p>
+<p>   progresses.</p>
+<p>If the workspace is not ready, Station keeps the relevant Connections action</p>
+<p>visible. Run <code>station doctor</code> for a local diagnosis.</p>
+<h2>Continue an Attached Session</h2>
+<p>An attached terminal Session stays read only. The first eligible **Continue in</p>
+<p>Station** action launches the bounded <code>continue-session</code> Starter: Station</p>
+<p>validates the exact source Session, reuses the orchestration adoption ledger</p>
+<p>with one stable operation identity, and opens the exact Station-owned child</p>
+<p>returned by that owner. Retrying an uncertain response reuses that identity</p>
+<p>rather than forking another child. Once the one-time starter is bound, later</p>
+<p>continuations use the ordinary owner action and do not overwrite its</p>
+<p>correlation. The adoption command receipt is inspectable, but it proves only</p>
+<p>that continuation was admitted; useful-work completion remains <code>NOT_VERIFIED</code></p>
+<p>until the Session's own evidence says otherwise.</p>
+<p>If Station cannot read the one-time correlation state, it starts no</p>
+<p>continuation; retry after that read recovers instead of guessing an owner path.</p>
+<h2>Arrange Work You Already Own</h2>
+<p>In a Project, use <strong>Add Pane</strong> and choose <strong>Work Board</strong> to arrange exact</p>
+<p>references to current work. It does not replace Home or create a new route.</p>
+<p>See <a href="#">Work Board</a> for pinning, keyboard controls, recovery, and</p>
+<p>the meaning of linked-work states.</p>
+<h2>Inspect Approval And Review Evidence</h2>
+<p>After first run, Home also offers owner-backed inspection cards when Station</p>
+<p>can identify a real approval notification or independent-review receipt. The</p>
+<p>approval action opens that exact Notifications row without approving or</p>
+<p>denying it. The review action opens the exact Project and receipt tuple in</p>
+<p>Review at <code>/review-queue</code>. Another Project's receipt with the same ID is</p>
+<p>never substituted.</p>
+<p>These are one-time Starter correlations, not completion checkboxes. Response</p>
+<p>loss reuses a deterministic operation identity, reopening a bound card keeps</p>
+<p>the original target, and every later observation reads Approval Inbox or</p>
+<p>ReviewEvidence again. Missing, stale, unavailable, and <code>NOT_VERIFIED</code> owner</p>
+<p>states remain visible. A reviewed receipt is evidence input only and does not</p>
+<p>by itself satisfy a gate.</p>
+<h2>Run A Scheduled Readiness Check</h2>
+<p>Home can create the canonical disabled <code>station-starter-check</code> job and run it</p>
+<p>once through the real Scheduler. The job stays disabled unless you explicitly</p>
+<p>enable its daily schedule. Station binds the exact Scheduler run before the</p>
+<p>Agent can be invoked, so a lost response or retry opens the same receipt and</p>
+<p>never starts another check. If Station restarts after binding but before the</p>
+<p>Agent begins, <strong>Resume exact check</strong> reuses the operation identity stored in</p>
+<p>that binding; it does not create a replacement run. Failed or indeterminate</p>
+<p>checks offer <strong>Inspect receipt</strong>, not automatic retry. A completed check proves</p>
+<p>execution only; read</p>
+<p>its findings and decide what to do rather than treating completion as a passed</p>
+<p>gate.</p>
+<p>For example, open the Station repository as a Project, create a Task named</p>
+<p>“Update the documentation,” and choose the Codex External agent. That work's</p>
+<p>first execution is a Session. Reopen the Task later to see its files, evidence,</p>
+<p>and receipts together. For a one-off question that does not need that durable</p>
+<p>history, use a direct chat instead.</p>
+<h2>Update, Stop, Or Uninstall</h2>
+<h2>Recovery boundaries</h2>
+<p>Use the recovery path that owns the thing you need to recover. The bundled</p>
+<p>client's <code>station triage</code> gathers bounded, read-only artifacts; it cannot run a</p>
+<p>local source doctor. Run <code>./station doctor</code> from a checkout (or portable</p>
+<p>release) for host diagnostics. Installer rollback concerns a released program</p>
+<p>candidate; <code>station home backup</code> and <code>station home restore</code> concern one inactive</p>
+<p>runtime home and retain the replaced home. They are not interchangeable.</p>
+<p>Run the installer again in the same channel to update safely in place. To stop</p>
+<p>and start the stable local Station manually:</p>
+<pre><code>
+station stop
+station start
+</code></pre>
+<p>To uninstall the stable program while preserving Projects, Providers, Tasks,</p>
+<p>and Sessions:</p>
+<pre><code>
+STATION_CHANNEL=stable &quot;${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh&quot; uninstall
+</code></pre>
+<p>Use</p>
+<p><code>STATION_CHANNEL=beta &quot;${STATION_ROOT:-$HOME/.station}/installs/beta/current/install.sh&quot; uninstall</code></p>
+<p>for beta. Add</p>
+<p><code>--purge-data</code> only when you also intend to delete that channel's home</p>
+<p>(<code>~/.station/instances/stable</code> or <code>~/.station/instances/beta</code>). The installer accepts purge only</p>
+<p>for a data root it created and marked; it preserves an unmarked pre-existing</p>
+<p>directory for manual review.</p>
+<h2>Next</h2>
+<ul>
+<li>Read <a href="#">Station concepts</a>.</li>
+<li>Customize <a href="../guides/keyboard-shortcuts.html">keyboard shortcuts</a>.</li>
+<li>Review the <a href="https://kontourai.io/privacy/station/">Station privacy policy</a>.</li>
+</ul>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>

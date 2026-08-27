@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Product-law authoring | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/guides/product-law-authoring.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1>Product-law authoring</h1>
+<p>Product laws are a small set of executable, user-observable invariants. Read</p>
+<p>the <a href="../reference/product-laws.html">generated product-law reference</a> for the</p>
+<p>current public projection; do not copy its law table into explanatory guides.</p>
+<h2>Choose a law deliberately</h2>
+<p>A law names a stable identity, an observable invariant, its owning module and</p>
+<p>interface, and the owner responsible for remediation. It must have an exact</p>
+<p>behavior observation and an exact fault observation. The contributor workflow</p>
+<p>validates both observations from structured test output.</p>
+<p>Affected-path disposition is explicit. A behavior change either matches a law</p>
+<p>that owns the changed area or is recorded as deliberately outside the current</p>
+<p>law set. Do not assign a nearby law by implication merely to make a review</p>
+<p>look complete.</p>
+<h2>Interpret the observation</h2>
+<ul>
+<li><strong>PASS</strong> means the exact behavior and fault observations both passed.</li>
+<li><strong>FAIL</strong> means an exact observation failed and the owning behavior needs</li>
+</ul>
+<p>  diagnosis.</p>
+<ul>
+<li><strong>NOT_VERIFIED</strong> means a trustworthy exact observation was unavailable. It is</li>
+</ul>
+<p>  not a pass and does not authorize completion.</p>
+<p>Product-law observations inform verification; they do not create a second</p>
+<p>completion receipt. Follow the repository contribution guide for the current</p>
+<p>authoring and verification workflow.</p>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>

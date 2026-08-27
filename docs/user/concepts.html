@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Station Concepts | Station Docs</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../../index.html">Station</a>
+      <nav aria-label="Primary">
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../docs/index.html">Docs</a>
+        <a href="https://github.com/kontourai/station">GitHub</a>
+      </nav>
+    </header>
+    <main>
+        <div class="docs-layout">
+          <aside class="docs-nav">
+            <a href="../../index.html">Home</a>
+            <a href="../../docs/index.html">Docs index</a>
+            <a href="https://github.com/kontourai/station/blob/main/docs/user/concepts.md">Edit on GitHub</a>
+          </aside>
+          <article class="docs-content">
+            <h1>Station Concepts</h1>
+<p>Station uses a small set of user-facing concepts. Transport names, process</p>
+<p>details, and internal record shapes stay out of the way unless setup or</p>
+<p>diagnosis requires them.</p>
+<h2>Station And Device</h2>
+<ul>
+<li>A <strong>Station</strong> is the host you connect to and work on.</li>
+<li>A <strong>device</strong> is what you connect from: a browser, phone, tablet, or laptop.</li>
+<li>Pairing grants a device scoped, revocable access to a Station.</li>
+</ul>
+<h2>Agents, Engines, Providers, And Models</h2>
+<ul>
+<li>An <strong>agent</strong> is the working identity you choose for a Task or Session.</li>
+<li>A <strong>Station agent</strong> is executed by Station's engine. Station owns its prompt,</li>
+</ul>
+<p>  skills, tools, commands, and Model choice.</p>
+<ul>
+<li>An <strong>External agent</strong> is executed by another engine such as Claude Code,</li>
+</ul>
+<p>  Codex, OpenCode, or Kiro. The agent app owns its behavior and tool loop.</p>
+<ul>
+<li>A <strong>Provider</strong> is the user-facing connection to a model service or agent app.</li>
+<li>A <strong>Model</strong> is the inference option selected within a Provider.</li>
+</ul>
+<p>Station names the concrete engine when that distinction matters. Protocols such</p>
+<p>as ACP are connection details, not agent types users need to choose.</p>
+<p>Concrete examples:</p>
+<ul>
+<li><strong>Local model:</strong> Ollama is the Provider, <code>qwen2.5</code> is the Model, and a Station</li>
+</ul>
+<p>  agent uses Station's engine to run it.</p>
+<ul>
+<li><strong>Coding agent app:</strong> Codex is the Provider and engine; the Agent is an</li>
+</ul>
+<p>  External agent because Codex owns its tool loop.</p>
+<ul>
+<li><strong>Hosted model:</strong> Bedrock is the Provider, a Claude model is the Model, and a</li>
+</ul>
+<p>  Station agent owns the prompt, skills, and tools around it.</p>
+<h2>Projects, Tasks, And Sessions</h2>
+<ul>
+<li>A <strong>Project</strong> supplies the working context and available agents.</li>
+<li>A <strong>Task</strong> is durable work that can be reopened with its workspace binding,</li>
+</ul>
+<p>  files, artifacts, receipts, and exact execution correlation.</p>
+<ul>
+<li>A <strong>Session</strong> is one bounded execution episode. A Task can have more than one</li>
+</ul>
+<p>  Session over time.</p>
+<ul>
+<li>A <strong>direct chat</strong> is an immediate conversation and does not silently create a</li>
+</ul>
+<p>  Task.</p>
+<p>Example: “Explain this function” can be a direct chat. “Refactor this module,</p>
+<p>run its gates, and preserve the evidence” should be a Task. Each attempt or</p>
+<p>continuation is a Session attached to that Task.</p>
+<h2>Gates, Evidence, And Receipts</h2>
+<ul>
+<li>A <strong>gate</strong> decides whether work may advance.</li>
+<li><strong>Evidence</strong> supports a claim made by the work.</li>
+<li>A <strong>route-back</strong> sends failed or incomplete work to a named earlier step.</li>
+<li><strong>Readiness</strong> explains whether repository or project requirements are met.</li>
+<li>A <strong>receipt</strong> records what ran, what passed or failed, and what remains</li>
+</ul>
+<p>  unverified.</p>
+<p>Station keeps these beside the work so a confident answer is not mistaken for</p>
+<p>a verified outcome.</p>
+<p>Example: a test result is evidence. The rule requiring that test is a gate. The</p>
+<p>record saying which command ran and whether it passed is the receipt. If the</p>
+<p>test fails, a route-back sends the work to the step that can fix it.</p>
+<h2>Local-First Data</h2>
+<p>Station stores its data under <code>~/.station</code> by default. A Provider receives data</p>
+<p>only when you configure it and use a feature that needs it. Observability data</p>
+<p>leaves the machine only when an operator configures an export endpoint.</p>
+<h2>Next</h2>
+<ul>
+<li>Follow <a href="#">Getting started</a>.</li>
+<li>Customize <a href="../guides/keyboard-shortcuts.html">keyboard shortcuts</a>.</li>
+<li>Review the <a href="https://kontourai.io/privacy/station/">Station privacy policy</a>.</li>
+</ul>
+          </article>
+        </div>
+      </main>
+    <footer>
+      <span>Station</span>
+      <a href="https://github.com/kontourai/station">GitHub</a>
+    </footer>
+  </body>
+</html>
