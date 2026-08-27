@@ -1,0 +1,11 @@
+{
+  "name": "builder-delivery-viewer",
+  "version": "1.0.0",
+  "displayName": "Builder Delivery Viewer",
+  "description": "Read-only project view of published Builder Kit session and delivery artifacts.",
+  "entrypoint": "src/index.tsx",
+  "serverModule": "./server/plugin.mjs",
+  "capabilities": ["navigation"],
+  "permissions": ["navigation.dock"],
+  "layout": { "slug": "builder-delivery", "source": "./layout.json" }
+}

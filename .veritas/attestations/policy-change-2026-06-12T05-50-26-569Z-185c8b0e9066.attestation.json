@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian.anderson1222@gmail.com",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-06-12T05:50:26.569Z",
+  "repoStandardsHash": "sha256:d90d1daf2216954572506cf102ea152112c7de8fb0585bc5717419139be8e20a",
+  "repoMapHash": "sha256:3961fa3922fb2dcfe2ab7b28bad5d5f1589a67cd4fb7c32527f0caad84aac0b2",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3",
+  "validUntilDays": 90,
+  "notes": "Add governance.flow work area covering tracked .flow/ Flow Definitions (committed in c66f2c2) so delivery-flow changes classify to a work area instead of unmatched-file advisories.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3",
+    "approvalRef": "roadmap-S1c-prerequisite-veritas-0.5-migration",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "surface": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "9ce18443452f09f6ede2324d09320c32a1d5eba3544b99fa09749ef7871e504e",
+        "validUntil": "2026-09-10T05:50:26.569Z"
+      },
+      "createdAt": "2026-06-12T05:50:26.569Z",
+      "updatedAt": "2026-06-12T05:50:26.569Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066",
+      "claimId": "veritas.attestation.policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Add governance.flow work area covering tracked .flow/ Flow Definitions (committed in c66f2c2) so delivery-flow changes classify to a work area instead of unmatched-file advisories.",
+      "observedAt": "2026-06-12T05:50:26.569Z",
+      "collectedBy": "brian.anderson1222@gmail.com",
+      "integrityRef": "9ce18443452f09f6ede2324d09320c32a1d5eba3544b99fa09749ef7871e504e",
+      "metadata": {
+        "actor": {
+          "id": "brian.anderson1222@gmail.com",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-06-12T05:50:26.569Z",
+        "validUntil": "2026-09-10T05:50:26.569Z",
+        "contentHash": "9ce18443452f09f6ede2324d09320c32a1d5eba3544b99fa09749ef7871e504e"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066.verified",
+      "claimId": "veritas.attestation.policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066",
+      "status": "verified",
+      "actor": "brian.anderson1222@gmail.com",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066"
+      ],
+      "createdAt": "2026-06-12T05:50:26.569Z",
+      "verifiedAt": "2026-06-12T05:50:26.569Z"
+    }
+  }
+}

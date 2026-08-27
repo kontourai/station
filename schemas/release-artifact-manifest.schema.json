@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://station.kontour.ai/schemas/release-artifact-manifest.schema.json",
+  "title": "Station release artifact inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "tag",
+    "version",
+    "sourceSha",
+    "channel",
+    "generatedAt",
+    "dependencyLifecycle",
+    "container",
+    "variants",
+    "assets",
+    "sboms"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "tag": {
+      "type": "string",
+      "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-preview\\.([1-9][0-9]*))?$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-preview\\.([1-9][0-9]*))?$"
+    },
+    "sourceSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "channel": { "enum": ["stable", "preview"] },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "dependencyLifecycle": { "$ref": "#/$defs/dependencyLifecycle" },
+    "container": { "$ref": "#/$defs/container" },
+    "variants": {
+      "type": "array",
+      "minItems": 7,
+      "items": { "$ref": "#/$defs/variant" }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 18,
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "sboms": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/sbom" }
+    }
+  },
+  "$defs": {
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "platform",
+        "architecture",
+        "packageType",
+        "distribution",
+        "platformSigning",
+        "updaterSigning"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+        "platform": {
+          "enum": ["portable", "macos", "windows", "linux", "android", "ios"]
+        },
+        "architecture": { "enum": ["universal", "aarch64", "x86_64"] },
+        "packageType": {
+          "enum": ["tar.gz", "dmg", "msi", "appimage", "apk", "aab", "ipa"]
+        },
+        "distribution": { "enum": ["distributable", "verification-only"] },
+        "platformSigning": { "$ref": "#/$defs/signing" },
+        "updaterSigning": { "$ref": "#/$defs/signing" }
+      }
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "proof"],
+      "properties": {
+        "state": { "enum": ["signed", "unsigned", "not-applicable"] },
+        "proof": {
+          "enum": [
+            "platform-signature",
+            "tauri-updater-signature",
+            "github-attestation",
+            "not-applicable"
+          ]
+        }
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "digest",
+        "sha",
+        "tag",
+        "createdAt",
+        "platforms",
+        "tags"
+      ],
+      "properties": {
+        "image": { "type": "string", "minLength": 1 },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tag": {
+          "type": "string",
+          "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-preview\\.([1-9][0-9]*))?$"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^linux\\/[a-z0-9][a-z0-9_-]*$"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "role"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^station-[A-Za-z0-9._-]+$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "variantId": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+        "role": {
+          "enum": [
+            "primary",
+            "updater",
+            "updater-signature",
+            "updater-public-key",
+            "portable-checksum",
+            "release-ring",
+            "container-descriptor",
+            "sbom-portable",
+            "sbom-desktop",
+            "sbom-mobile",
+            "sbom-container"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "enum": ["primary", "updater", "updater-signature"]
+              }
+            },
+            "required": ["role"]
+          },
+          "then": { "required": ["variantId"] },
+          "else": { "not": { "required": ["variantId"] } }
+        }
+      ]
+    },
+    "sbom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "asset",
+        "format",
+        "sha256",
+        "tag",
+        "version",
+        "sourceSha",
+        "generatedAt",
+        "dependencyLifecycle"
+      ],
+      "properties": {
+        "scope": { "enum": ["portable", "desktop", "mobile", "container"] },
+        "asset": {
+          "enum": [
+            "station-sbom-portable.cdx.json",
+            "station-sbom-desktop.cdx.json",
+            "station-sbom-mobile.cdx.json",
+            "station-sbom-container.spdx.json"
+          ]
+        },
+        "format": { "enum": ["CycloneDX", "SPDX"] },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "tag": { "$ref": "#/properties/tag" },
+        "version": { "$ref": "#/properties/version" },
+        "sourceSha": { "$ref": "#/properties/sourceSha" },
+        "generatedAt": { "$ref": "#/properties/generatedAt" },
+        "dependencyLifecycle": { "$ref": "#/$defs/lifecycleBinding" },
+        "subjects": { "type": "array", "minItems": 1 },
+        "container": { "type": "object" }
+      }
+    },
+    "lifecycleBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "purls"],
+      "properties": {
+        "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "purls": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^pkg:npm/.+@[^@/]+$" }
+        }
+      }
+    },
+    "dependencyLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "purlsByScope"],
+      "properties": {
+        "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "purlsByScope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["portable", "desktop", "mobile", "container"],
+          "properties": {
+            "portable": { "$ref": "#/$defs/lifecycleBinding/properties/purls" },
+            "desktop": { "$ref": "#/$defs/lifecycleBinding/properties/purls" },
+            "mobile": { "$ref": "#/$defs/lifecycleBinding/properties/purls" },
+            "container": { "$ref": "#/$defs/lifecycleBinding/properties/purls" }
+          }
+        }
+      }
+    }
+  }
+}

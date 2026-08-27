@@ -1,0 +1,125 @@
+/* Design tokens — typography, spacing, and radius.
+   Import this file first in index.css.
+   Color tokens stay in the themed :root blocks in index.css. */
+
+:root {
+  /* Font families */
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-mono:
+    "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* Font size scale */
+  --text-micro: 8px;
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
+  --text-15: 15px;
+  --text-xl: 16px;
+  --text-2xl: 18px;
+  --text-3xl: 20px;
+  --text-4xl: 22px;
+  --text-5xl: 24px;
+  --text-6xl: 32px;
+
+  /* Line heights */
+  --leading-tight: 1.2;
+  --leading-normal: 1.4;
+  --leading-relaxed: 1.55;
+
+  /* Font weights */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Spacing scale */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-8: 16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-16: 32px;
+  --space-20: 40px;
+
+  /* Responsive breakpoints (documentation/reference only).
+     NOTE: CSS @media queries cannot consume a custom property, so the literal
+     768px must be used in `@media (max-width: 768px)` directly. This token
+     documents THE mobile breakpoint and is mirrored by MOBILE_MEDIA_QUERY in
+     hooks/useIsMobile.ts — keep all three in sync. */
+  /* Documentation token only — CSS cannot read a custom property inside a
+     media query. The real condition is
+     `(max-width: 768px), (max-height: 540px) and (pointer: coarse)`; the second
+     clause catches a phone in landscape, which is wider than this width.
+     Keep it byte-identical to MOBILE_MEDIA_QUERY in hooks/useIsMobile.ts. */
+  --bp-mobile: 768px;
+
+  /* Border radius scale */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* Interactive layer ownership. Feature CSS consumes named roles instead of
+     inventing a new high z-index. Passive notices remain below active dialogs;
+     only an explicit system blocker may supersede one. */
+  --layer-sticky: 100;
+  --layer-popover: 1000;
+  --layer-notice: 9000;
+  --layer-dock: 9200;
+  --layer-floating-action: 9300;
+  --layer-navigation: 9350;
+  --layer-notification: 9400;
+  /* The command palette: transient command chrome. It must beat notices and
+     toasts so typing is never occluded, and lose to dialogs so a confirm
+     opened FROM the palette is reachable. Its own slot because it is neither
+     a popover (it owns the keyboard) nor a dialog (it must yield to one). */
+  --layer-palette: 9600;
+  --layer-dialog: 10000;
+  --layer-system: 20000;
+
+  /* Motion grammar — see docs/design/motion.md. Direct manipulation remains
+     1:1; never use `transition: all` or animate layout per frame. */
+  --motion-instant: 0ms;
+  --motion-fast: 0.15s;
+  --motion-base: 0.2s;
+  --motion-slow: 0.3s;
+  /* Repeating status motion is slower than interaction feedback. These are
+     shared so equivalent spinners and pulses feel related; the global reduce
+     contract still limits them to one near-instant iteration. */
+  --motion-status-spin: 0.8s;
+  --motion-status-pulse: 1.6s;
+  --motion-status-breathe: 2s;
+  --ease-linear: linear;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  /* Directional aliases remain for existing entrance/exit contracts. */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* Global reduced-motion: honor the OS "reduce motion" setting everywhere in one
+   place (previously respected in only 2 files). Near-instant transitions. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0.01ms;
+    --motion-base: 0.01ms;
+    --motion-slow: 0.01ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

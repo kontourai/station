@@ -1,0 +1,92 @@
+/* ═══ Route pending skeleton ═══
+ * Geometry for the placeholder body a suspended route holds (#3660). Only the
+ * split-pane shape needs rules of its own — the `region` shape is
+ * `SkeletonBlock` inside the frame's own padded body, and the `unshaped` one
+ * is `SkeletonList` exactly as before.
+ *
+ * This lives here rather than in `SplitPaneLayout.css` on purpose: that
+ * stylesheet reaches the bundle only through `SplitPaneLayout`'s side-effect
+ * import, and every importer of it is a lazy route chunk — which is precisely
+ * the chunk that has not arrived yet while this renders. A placeholder for a
+ * missing chunk cannot be styled by that chunk.
+ *
+ * No animation or transition is declared here; the shimmer belongs to the
+ * `Skeleton` primitive, which already respects the reduced-motion rule in
+ * `tokens.css`.
+ */
+
+.route-pending {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.route-pending__rail {
+  width: var(--route-pending-rail-width);
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+}
+
+.route-pending__detail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1rem 1.25rem;
+}
+
+/* `max-width`, not `width`: `@kontourai/ui`'s `.skeleton--line { width: 100% }`
+   is emitted AFTER every Station stylesheet in the built bundle (measured:
+   offset 82838 vs 9571), so a `width` here at equal specificity never applies.
+   Station's own `.skeleton-list__name`/`__sub` widths are silently losing the
+   same race today — recorded rather than changed here, because fixing them
+   restyles every skeleton list in the app and belongs with a run of the
+   screenshot bucket. */
+.route-pending__detail-title {
+  max-width: 40%;
+}
+
+/* The detail with no list beside it. Two routes arrive that way and neither
+   is a narrower split pane: a mobile route that opens an editor, and a desktop
+   route whose list pane is persisted collapsed. Which one applies is decided in
+   `route-pending-shape.ts` from the same reads the arriving view makes, not
+   here — a media query can see the viewport but not `localStorage`. */
+.route-pending--detail-sheet {
+  flex-direction: column;
+  padding: 1rem 1.25rem;
+}
+
+/* A region placeholder inside a `flush` frame. The frame drops its body inset
+   for a rail that runs to the edge; without a rail the inset is what keeps the
+   placeholder on the same x as the body that replaces it. Mirrors
+   `page-frame.css`'s own body padding, minus its bottom. */
+.route-pending--inset {
+  flex-direction: column;
+  padding: 0 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .route-pending--inset {
+    padding: 0 1rem;
+  }
+}
+
+/* The complement of `SplitPaneLayout.css`'s two-pane query. Below it a split
+   pane shows ONE side at a time; this rule covers the side it shows when the
+   route names no item, which is the list. The other case — the route names an
+   item, so the pane opens on its detail — is not a variant of this layout and
+   is the `detail-sheet` shape above. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .route-pending__rail {
+    width: 100%;
+    flex: 1 1 auto;
+    border-right: 0;
+  }
+
+  .route-pending--split-pane .route-pending__detail {
+    display: none;
+  }
+}

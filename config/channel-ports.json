@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "channels": {
+    "development": {
+      "uiPort": 40140,
+      "serverPort": 39140,
+      "consentPort": 39143,
+      "instanceDirectory": "dev"
+    },
+    "stable": {
+      "uiPort": 18000,
+      "serverPort": 18141,
+      "consentPort": 18144,
+      "instanceDirectory": "stable"
+    },
+    "beta": {
+      "uiPort": 28000,
+      "serverPort": 28141,
+      "consentPort": 28144,
+      "instanceDirectory": "beta"
+    },
+    "nightly": {
+      "uiPort": 38000,
+      "serverPort": 38141,
+      "consentPort": 38144,
+      "instanceDirectory": "nightly"
+    }
+  }
+}

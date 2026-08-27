@@ -1,0 +1,891 @@
+name: Stage Station release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: station-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      tag: ${{ steps.source.outputs.tag }}
+      version: ${{ steps.source.outputs.version }}
+      channel: ${{ steps.source.outputs.channel }}
+      beta_desktop_config: ${{ steps.source.outputs.beta_desktop_config }}
+      android_package: ${{ steps.source.outputs.android_package }}
+      android_product_name: ${{ steps.source.outputs.android_product_name }}
+      android_version_code: ${{ steps.source.outputs.android_version_code }}
+      ios_bundle_version: ${{ steps.source.outputs.ios_bundle_version }}
+      macos_bundle_version: ${{ steps.source.outputs.macos_bundle_version }}
+      created_at: ${{ steps.source.outputs.created_at }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.ref }}
+      - id: source
+        name: Bind tag, package version, and source commit
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
+          release_version="${RELEASE_TAG#v}"
+          if [[ "$RELEASE_TAG" == *-preview.* ]]; then
+            release_channel=preview
+            beta_desktop_config=src-desktop/tauri.beta.conf.json
+            android_package=io.kontourai.station.beta
+            android_product_name='Station Beta'
+          else
+            release_channel=stable
+            beta_desktop_config=
+            android_package=io.kontourai.station
+            android_product_name=Station
+          fi
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --check-package-json package.json
+          node scripts/product-version.mjs --check
+          store_identity=$(RELEASE_TAG="$RELEASE_TAG" node --input-type=module -e '
+            import { taggedStoreIdentity } from "./scripts/lib/native-release-config.mjs";
+            process.stdout.write(JSON.stringify(taggedStoreIdentity(process.env.RELEASE_TAG)));
+          ')
+          android_version_code=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).versionCode')
+          ios_bundle_version=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).bundleVersion')
+          macos_bundle_version=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).bundleVersion')
+          release_sha=$(git rev-list -n 1 "$RELEASE_TAG")
+          test "$release_sha" = "$(git rev-parse HEAD)"
+          created_at=$(node -e 'process.stdout.write(new Date(Number(process.argv[1]) * 1000).toISOString())' "$(git show -s --format=%ct "$release_sha")")
+          {
+            echo "sha=$release_sha"
+            echo "tag=$RELEASE_TAG"
+            echo "version=$release_version"
+            echo "channel=$release_channel"
+            echo "beta_desktop_config=$beta_desktop_config"
+            echo "android_package=$android_package"
+            echo "android_product_name=$android_product_name"
+            echo "android_version_code=$android_version_code"
+            echo "ios_bundle_version=$ios_bundle_version"
+            echo "macos_bundle_version=$macos_bundle_version"
+            echo "created_at=$created_at"
+          } >> "$GITHUB_OUTPUT"
+
+  desktop-macos:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            artifact: station-desktop-macos-aarch64
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            artifact: station-desktop-macos-x86_64
+    runs-on: ${{ matrix.runner }}
+    environment: native-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
+      MACOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.macos_bundle_version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: npm run dependencies:ci
+      - run: npm run build:sdk && npm run build:connect
+      - name: Fail closed and create tag-bound updater configuration
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_SIGNING_PUBLIC_KEY APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD APPLE_DEVELOPER_ID_SIGNING_IDENTITY APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY; do
+            test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
+          done
+          printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub"
+      - name: Import macOS Developer ID certificate
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          certificate="$RUNNER_TEMP/station-developer-id.p12"
+          keychain="$RUNNER_TEMP/station-developer-id.keychain-db"
+          printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          security create-keychain -p "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
+          security unlock-keychain -p "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
+          security list-keychains -d user -s "$keychain"
+      - name: Build an unsigned macOS staging candidate
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --no-sign --target ${{ matrix.target }} ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.release.conf.json
+      - name: Seal, notarize, and derive canonical macOS artifacts
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          umask 077
+          notary_key="$RUNNER_TEMP/station-notary-api-key.p8"
+          trap 'rm -f "$notary_key"' EXIT
+          app=$(find "src-desktop/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)
+          test -n "$app"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
+          chmod 600 "$notary_key"
+          bundle_id="${{ needs.preflight.outputs.beta_desktop_config && 'io.kontourai.station.beta' || 'io.kontourai.station' }}"
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag "$RELEASE_TAG" --architecture "${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}" --bundle-id "$bundle_id"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$RELEASE_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$MACOS_BUNDLE_VERSION"
+          grep -F 'app.package_info().version' src-desktop/src/tray.rs
+          codesign -d --verbose=4 "$app" 2>&1 | grep -F 'flags=0x10000(runtime)'
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: "${{ matrix.artifact }}", path: release-assets, if-no-files-found: error, retention-days: 14 }
+
+  desktop-windows:
+    needs: preflight
+    runs-on: windows-latest
+    environment: native-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: x86_64-pc-windows-msvc }
+      - run: npm run dependencies:ci
+      - run: npm run build:sdk && npm run build:connect
+      - name: Fail closed and create tag-bound updater configuration
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_SIGNING_PUBLIC_KEY WINDOWS_CERTIFICATE_BASE64 WINDOWS_CERTIFICATE_PASSWORD; do
+            test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
+          done
+          printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub"
+      - name: Import Windows Authenticode certificate
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP 'station-release.pfx'
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $imported = Import-PfxCertificate -FilePath $certificate -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          if (-not $imported.Thumbprint) { throw 'Windows signing certificate import failed' }
+          $config = @{ bundle = @{ windows = @{ certificateThumbprint = $imported.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Compress -Depth 5
+          $config | Set-Content -Path "$env:RUNNER_TEMP/tauri.windows.release.conf.json" -Encoding utf8
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --target x86_64-pc-windows-msvc ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.windows.release.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+      - name: Verify Windows Authenticode signature and versioned build output
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi'
+          if ($installers.Count -ne 1) { throw 'Expected exactly one MSI' }
+          if (-not $installers[0].Name.Contains($env:RELEASE_VERSION)) { throw 'MSI filename does not carry release version' }
+          $signature = Get-AuthenticodeSignature $installers[0].FullName
+          if ($signature.Status -ne 'Valid') { throw "Invalid Authenticode status: $($signature.Status)" }
+      - name: Stage canonical signed Windows artifacts
+        shell: bash
+        run: |
+          mkdir release-assets
+          cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi"
+          cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip"
+          cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip.sig"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/* }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: station-desktop-windows-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
+
+  desktop-linux:
+    needs: preflight
+    runs-on: ubuntu-22.04
+    environment: native-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: x86_64-unknown-linux-gnu }
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+      - run: npm run dependencies:ci
+      - run: npm run build:sdk && npm run build:connect
+      - name: Fail closed and create tag-bound updater configuration
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+        run: |
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_SIGNING_PUBLIC_KEY; do
+            test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
+          done
+          printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub"
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        with:
+          args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.version.conf.json
+      - name: Build signed AppImage with the contained runtime overlay
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --target x86_64-unknown-linux-gnu --bundles appimage ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+      - name: Verify emitted Linux package metadata
+        run: |
+          find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.AppImage" | grep -q .
+          find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/deb -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.deb" | grep -q .
+          find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/rpm -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.rpm" | grep -q .
+      - name: Stage canonical signed Linux artifacts
+        run: |
+          mkdir release-assets
+          cp src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage "release-assets/station-${RELEASE_TAG}-linux-x86_64.AppImage"
+          cp src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz "release-assets/station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz"
+          cp src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig "release-assets/station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz.sig"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/* }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: station-desktop-linux-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
+
+  portable:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - run: scripts/package-portable-release.sh --output-dir release-assets --ref "${{ needs.preflight.outputs.tag }}" --sha "${{ needs.preflight.outputs.sha }}" --created-at "${{ needs.preflight.outputs.created_at }}"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/* }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: station-portable, path: release-assets, if-no-files-found: error, retention-days: 14 }
+
+  android:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: native-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
+      ANDROID_PACKAGE_NAME: ${{ needs.preflight.outputs.android_package }}
+      ANDROID_PRODUCT_NAME: ${{ needs.preflight.outputs.android_product_name }}
+      ANDROID_VERSION_CODE: ${{ needs.preflight.outputs.android_version_code }}
+      BETA_DESKTOP_CONFIG: ${{ needs.preflight.outputs.beta_desktop_config }}
+      # Optional secret-free HTTPS origin compiled into native mobile only.
+      # Repository/environment variables keep host identity out of source;
+      # Rust rejects non-origin, credential-bearing, and non-HTTPS values.
+      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ needs.preflight.outputs.channel == 'preview' && vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA || vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
+      # Secret-free keyless identity. The Google provider independently
+      # restricts this service account to this repository's Release workflow
+      # on immutable version tags.
+      GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
+      ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+      VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ vars.NATIVE_APP_UPDATE_CHANNEL }}
+      VITE_NATIVE_APP_VERSION: ${{ needs.preflight.outputs.version }}
+      NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - run: sdkmanager "ndk;27.0.12077973"
+      - name: Resolve native update feed contract
+        id: update_feed
+        run: |
+          # Store tracks are the update mechanism for shipped builds: Play
+          # internal/TestFlight upload later in this job, and both auto-update
+          # (#2211). A custom feed is therefore optional, and this step is
+          # optional in exactly the way Play OIDC publication already is.
+          #
+          # Configured: the full contract is still enforced fail-closed, byte
+          # for byte, exactly as before.
+          # Absent: the build continues to the store upload instead of dying
+          # eleven steps before reaching it. Nothing downstream lies about it —
+          # an unconfigured client renders no update state at all (#2217), so
+          # there is no user-visible claim left for this gate to protect.
+          missing=""
+          for name in VITE_NATIVE_APP_UPDATE_FEED_URL VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION NATIVE_APP_UPDATE_ACTION_URL NATIVE_APP_UPDATE_ACTION_KIND NATIVE_APP_UPDATE_ACTION_ORIGINS; do
+            test -n "${!name}" || missing="$missing $name"
+          done
+          if [ -z "$missing" ]; then
+            node scripts/native-update-feed.mjs validate-config
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Native update feed not configured (missing:$missing); skipping feed publish. Store-track upload is the update path for this build."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm run dependencies:ci && npm run build:native-client
+      - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json"
+      - name: Initialize Android with the channel overlay before the tag overlay
+        working-directory: src-desktop
+        run: |
+          beta_config=()
+          if [ -n "$BETA_DESKTOP_CONFIG" ]; then
+            beta_config=(--config "$GITHUB_WORKSPACE/$BETA_DESKTOP_CONFIG")
+            node ../scripts/reset-android-generated-project.mjs
+          fi
+          npx tauri android init --ci --skip-targets-install "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
+      - name: Apply release signing to the generated channel project
+        run: node scripts/apply-android-release-signing.mjs
+      - name: Apply the channel launcher icon to every Android source set
+        run: |
+          icon_channel=stable
+          if [ -n "$BETA_DESKTOP_CONFIG" ]; then
+            icon_channel=beta
+          fi
+          node scripts/apply-android-channel-icons.mjs "$icon_channel"
+      - name: Apply native credential bootstrap to the channel namespace
+        run: node scripts/apply-android-native-bootstrap.mjs
+      # Must run AFTER init (which generates gen/android) and BEFORE the build
+      # that packages its assets — the same stamp the desktop bundle has
+      # carried since #1085, so a released APK on a device can name its commit
+      # (station#3592). A tag checkout is detached, so `rev-parse --abbrev-ref
+      # HEAD` would record the literal string `HEAD`; STATION_BUILD_BRANCH is
+      # the documented way to name the verified source ref instead, and the tag
+      # is what a released APK should say it came from. The sha is the
+      # load-bearing field either way.
+      - name: Stage Android build provenance
+        run: STATION_BUILD_BRANCH="$RELEASE_TAG" node scripts/write-android-build-manifest.mjs
+      - name: Authenticate to Google Cloud with GitHub OIDC
+        id: google_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - name: Fetch Android upload signing material
+        id: android_signing
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3
+        with:
+          secrets: |-
+            keystore_base64:kontourai-station-release/station-android-upload-keystore-base64
+            keystore_password:kontourai-station-release/station-android-upload-keystore-password
+      - name: Reclaim disk for four Android Rust targets
+        run: bash scripts/reclaim-android-runner-disk.sh
+      - name: Report disk headroom before Android build
+        run: df -h /
+      - name: Build signed universal APK and AAB
+        working-directory: src-desktop
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ steps.android_signing.outputs.keystore_base64 }}
+          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
+          TAURI_ANDROID_KEY_ALIAS: ${{ env.ANDROID_UPLOAD_KEY_ALIAS }}
+          TAURI_ANDROID_KEY_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
+          NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 TAURI_ANDROID_KEYSTORE_PASSWORD TAURI_ANDROID_KEY_ALIAS TAURI_ANDROID_KEY_PASSWORD; do
+            test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
+          done
+          keystore="$RUNNER_TEMP/station-release.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          export TAURI_ANDROID_KEYSTORE_PATH="$keystore"
+          beta_config=()
+          if [ -n "$BETA_DESKTOP_CONFIG" ]; then
+            beta_config=(--config "$GITHUB_WORKSPACE/$BETA_DESKTOP_CONFIG")
+          fi
+          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --apk --aab "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
+      # Observational only: runs even when the build failed so the hosted log
+      # reveals post-build/failure headroom. It never affects job outcome.
+      - name: Report disk headroom after Android build
+        if: always()
+        continue-on-error: true
+        run: df -h /
+      - name: Verify Android native library 16 KB ELF and APK alignment
+        run: |
+          apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          node scripts/check-android-16kb-alignment.mjs "$apk"
+      # Read the stamp back out of the artefact: staging it can succeed and
+      # still not reach the APK, and a released build that cannot name its
+      # commit is exactly the hole station#3592 closes.
+      - name: Verify the APK carries its build provenance
+        run: |
+          apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          node scripts/read-android-build-provenance.mjs "$apk"
+      - name: Verify Android package version and platform signatures
+        run: |
+          apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          aapt dump badging "$apk" | grep -F "versionName='$RELEASE_VERSION'"
+          aapt dump badging "$apk" | grep -F "versionCode='$ANDROID_VERSION_CODE'"
+          aapt dump badging "$apk" | grep -F "package: name='$ANDROID_PACKAGE_NAME'"
+          aapt dump badging "$apk" | grep -F "application-label:'$ANDROID_PRODUCT_NAME'"
+          apksigner verify --verbose --print-certs "$apk"
+          jarsigner -verify -strict -verbose src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
+      - name: Audit packaged Android capabilities
+        run: |
+          apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          aab=$(find src-desktop/gen/android/app/build/outputs/bundle/universalRelease -name '*.aab' -print -quit)
+          apkanalyzer manifest print "$apk" > "$RUNNER_TEMP/station-apk-manifest.xml"
+          apkanalyzer manifest print "$aab" > "$RUNNER_TEMP/station-aab-manifest.xml"
+          STATION_REQUIRE_PACKAGED_PERMISSION_AUDIT=1 STATION_ANDROID_PACKAGE_MANIFEST="$RUNNER_TEMP/station-apk-manifest.xml" npm run mobile:permissions:gate
+          STATION_REQUIRE_PACKAGED_PERMISSION_AUDIT=1 STATION_ANDROID_PACKAGE_MANIFEST="$RUNNER_TEMP/station-aab-manifest.xml" npm run mobile:permissions:gate
+      - name: Stage canonical Android artifacts
+        run: |
+          mkdir release-assets
+          cp src-desktop/gen/android/app/build/outputs/apk/universal/release/*.apk "release-assets/station-${RELEASE_TAG}-android-universal.apk"
+          cp src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab "release-assets/station-${RELEASE_TAG}-android-universal.aab"
+          if [ "${{ steps.update_feed.outputs.configured }}" = 'true' ]; then
+            feed="release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json"
+            node scripts/native-update-feed.mjs publish "$feed"
+          fi
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/* }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: station-android, path: release-assets, if-no-files-found: error, retention-days: 14 }
+      - name: Upload to Play internal testing track
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJson: ${{ steps.google_auth.outputs.credentials_file_path }}
+          packageName: ${{ needs.preflight.outputs.android_package }}
+          releaseFiles: release-assets/station-${{ env.RELEASE_TAG }}-android-universal.aab
+          track: internal
+          status: completed
+  ios-simulator:
+    needs: preflight
+    if: needs.preflight.outputs.channel == 'stable'
+    runs-on: macos-15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      IOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.ios_bundle_version }}
+      STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-apple-ios-sim }
+      - run: brew install xcodegen libimobiledevice cocoapods
+      - run: npm run dependencies:ci && npm run build:native-client
+      - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/tauri.release.conf.json"
+      - working-directory: src-desktop
+        run: npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"
+      - working-directory: src-desktop
+        run: rm -rf gen/apple/build && npx tauri ios build --target aarch64-sim --no-sign --ci --config "$RUNNER_TEMP/tauri.release.conf.json"
+      - name: Verify and package simulator artifact
+        run: |
+          simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
+          test -n "$simulator_app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$simulator_app/Info.plist")" = "$RELEASE_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$simulator_app/Info.plist")" = "$IOS_BUNDLE_VERSION"
+          mkdir release-assets
+          tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-${RELEASE_TAG}-ios-simulator.app.tar.gz" "$(basename "$simulator_app")"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/* }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: station-ios-simulator-verification, path: release-assets, if-no-files-found: error, retention-days: 14 }
+
+  ios-device:
+    # Preview/Beta iOS is NOT_VERIFIED: Station has no separately signed Beta
+    # iOS identity, so this stable-only lane must not imply channel parity.
+    needs: preflight
+    if: needs.preflight.outputs.channel == 'stable'
+    runs-on: macos-15
+    environment: native-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      IOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.ios_bundle_version }}
+      STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
+      # Store-upload credentials. Deliberately optional: their absence must
+      # never fail this job, only skip the TestFlight upload step below.
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+      VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ vars.NATIVE_APP_UPDATE_CHANNEL }}
+      VITE_NATIVE_APP_VERSION: ${{ needs.preflight.outputs.version }}
+      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
+      NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-apple-ios }
+      - run: brew install xcodegen libimobiledevice cocoapods
+      - name: Resolve native update feed contract
+        id: update_feed
+        run: |
+          # Store tracks are the update mechanism for shipped builds: Play
+          # internal/TestFlight upload later in this job, and both auto-update
+          # (#2211). A custom feed is therefore optional, and this step is
+          # optional in exactly the way store publication already is.
+          #
+          # Configured: the full contract is still enforced fail-closed, byte
+          # for byte, exactly as before.
+          # Absent: the build continues to the store upload instead of dying
+          # eleven steps before reaching it. Nothing downstream lies about it —
+          # an unconfigured client renders no update state at all (#2217), so
+          # there is no user-visible claim left for this gate to protect.
+          missing=""
+          for name in VITE_NATIVE_APP_UPDATE_FEED_URL VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION NATIVE_APP_UPDATE_ACTION_URL NATIVE_APP_UPDATE_ACTION_KIND NATIVE_APP_UPDATE_ACTION_ORIGINS; do
+            test -n "${!name}" || missing="$missing $name"
+          done
+          if [ -z "$missing" ]; then
+            node scripts/native-update-feed.mjs validate-config
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Native update feed not configured (missing:$missing); skipping feed publish. Store-track upload is the update path for this build."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm run dependencies:ci && npm run build:native-client
+      - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/tauri.release.conf.json"
+      - name: Import protected Apple signing material
+        env:
+          APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          for name in APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64; do
+            test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
+          done
+          certificate="$RUNNER_TEMP/station.p12"
+          profile="$RUNNER_TEMP/station.mobileprovision"
+          keychain="$RUNNER_TEMP/station.keychain-db"
+          printf '%s' "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
+          node scripts/check-ios-store-profile.mjs --profile "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64
+          node scripts/ios-store-signing-config.mjs --profile "$profile" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --bundle-id io.kontourai.station --template src-desktop/gen/apple/project.yml --template-output "$RUNNER_TEMP/station-ios-distribution-project.yml" --overlay-output "$RUNNER_TEMP/station-ios-distribution-overlay.json"
+          security create-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
+          security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/station.mobileprovision"
+      - name: Build signed iOS package
+        working-directory: src-desktop
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
+        run: |
+          IOS_MOBILE_PROVISION="$(base64 < "$RUNNER_TEMP/station.mobileprovision" | tr -d '\n')"
+          export IOS_MOBILE_PROVISION
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json" --config "$RUNNER_TEMP/station-ios-distribution-overlay.json"
+          rm -rf gen/apple/build
+          npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.release.conf.json" --config "$RUNNER_TEMP/station-ios-distribution-overlay.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
+      - name: Verify iOS version, profile, and signature
+        run: |
+          ipa=$(find src-desktop/gen/apple/build -type f -name '*.ipa' -print)
+          test "$(printf '%s\n' "$ipa" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          verification_dir="$RUNNER_TEMP/station-ios-signature"
+          unzip -q "$ipa" -d "$verification_dir"
+          app=$(find "$verification_dir/Payload" -maxdepth 1 -type d -name '*.app' -print)
+          test "$(printf '%s\n' "$app" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = "$RELEASE_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = "$IOS_BUNDLE_VERSION"
+          test -s "$app/embedded.mobileprovision"
+          node scripts/check-ios-store-profile.mjs --profile "$app/embedded.mobileprovision" --label 'exported IPA embedded.mobileprovision'
+          codesign --verify --deep --strict --verbose=2 "$app"
+          node scripts/check-mobile-package.mjs ios --root "$verification_dir/Payload"
+          mkdir release-assets
+          cp "$ipa" "release-assets/station-${RELEASE_TAG}-ios-device.ipa"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/* }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: station-ios-device, path: release-assets, if-no-files-found: error, retention-days: 14 }
+      - name: Upload to TestFlight
+        if: ${{ env.APPLE_API_KEY_ID != '' }}
+        uses: apple-actions/upload-testflight-build@5e75ff58276689011512ba87a381d93dc67dbcf8 # v5.3.0
+        with:
+          app-path: release-assets/station-${{ env.RELEASE_TAG }}-ios-device.ipa
+          app-type: ios
+          issuer-id: ${{ env.APPLE_API_ISSUER_ID }}
+          api-key-id: ${{ env.APPLE_API_KEY_ID }}
+          api-private-key: ${{ env.APPLE_API_PRIVATE_KEY }}
+      - name: Note skipped TestFlight upload
+        if: ${{ env.APPLE_API_KEY_ID == '' }}
+        run: echo "::notice::APPLE_API_KEY_ID is not configured; skipping the TestFlight upload. The signed IPA is still attached to the GitHub release. See docs/guides/mobile-release.md to configure store upload."
+
+  container:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+      RELEASE_CREATED_AT: ${{ needs.preflight.outputs.created_at }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - id: metadata
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          metadata=$(node scripts/lib/container-release-metadata.mjs --tag="$RELEASE_TAG" --sha="$RELEASE_SHA" --created-at="$RELEASE_CREATED_AT" --repository="$GITHUB_REPOSITORY")
+          # shellcheck disable=SC2016
+          METADATA="$metadata" node -e '
+            const fs = require("node:fs");
+            const metadata = JSON.parse(process.env.METADATA);
+            const labels = Object.entries(metadata.labels).map(([key, value]) => `${key}=${value}`).join("\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `staging_tag=${metadata.image}:sha-${metadata.sha}\nlabels<<EOF\n${labels}\nEOF\n`);
+          '
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - name: Authenticate to GHCR with the ephemeral workflow token
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Refuse to overwrite immutable source image staging
+        run: |
+          if docker buildx imagetools inspect "${{ steps.metadata.outputs.staging_tag }}" >/dev/null 2>&1; then
+            echo "Immutable image already exists: ${{ steps.metadata.outputs.staging_tag }}" >&2
+            exit 1
+          fi
+      - id: image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.metadata.outputs.staging_tag }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            STATION_RELEASE_SHA=${{ env.RELEASE_SHA }}
+            STATION_RELEASE_REF=${{ env.RELEASE_TAG }}
+            STATION_RELEASE_CREATED_AT=${{ env.RELEASE_CREATED_AT }}
+            STATION_IMAGE_REPOSITORY=${{ github.repository }}
+          provenance: mode=max
+          sbom: true
+      - name: Create immutable container release descriptor
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir release-assets
+          node scripts/lib/container-release-metadata.mjs --tag="$RELEASE_TAG" --sha="$RELEASE_SHA" --created-at="$RELEASE_CREATED_AT" --repository="$GITHUB_REPOSITORY" --digest="${{ steps.image.outputs.digest }}" --container-descriptor=release-assets/station-container-release.json
+      - name: Resolve exact immutable platform digests from the manifest list
+        id: platforms
+        run: |
+          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}@${{ steps.image.outputs.digest }}" --raw > "$RUNNER_TEMP/station-container-manifest.json"
+          node scripts/release-container-platform-digests.mjs "$RUNNER_TEMP/station-container-manifest.json" "${{ steps.image.outputs.digest }}"
+      - name: Scan immutable linux/amd64 image digest with pinned Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.amd64 }}
+          format: cyclonedx-json
+          output-file: ${{ runner.temp }}/station-container-syft-amd64.cdx.json
+          syft-version: 1.51.0
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Scan immutable linux/arm64 image digest with pinned Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.arm64 }}
+          format: cyclonedx-json
+          output-file: ${{ runner.temp }}/station-container-syft-arm64.cdx.json
+          syft-version: 1.51.0
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Bind the scanner inventory to the immutable release descriptor
+        run: |
+          node scripts/release-container-sbom-source.mjs --input-amd64 "$RUNNER_TEMP/station-container-syft-amd64.cdx.json" --amd64-digest "${{ steps.platforms.outputs.amd64 }}" --input-arm64 "$RUNNER_TEMP/station-container-syft-arm64.cdx.json" --arm64-digest "${{ steps.platforms.outputs.arm64 }}" --container-descriptor release-assets/station-container-release.json --source-sha "$RELEASE_SHA" --output "$RUNNER_TEMP/station-container-sbom-source/station-container-source.json"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/station-container-release.json }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: station-container-release, path: release-assets, if-no-files-found: error, retention-days: 14 }
+      - name: Transfer scanner inventory through scratch only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: station-container-sbom-source
+          path: ${{ runner.temp }}/station-container-sbom-source
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble-draft:
+    needs: [preflight, desktop-macos, desktop-windows, desktop-linux, portable, android, ios-simulator, ios-device, container]
+    if: >-
+      ${{
+        always() &&
+        needs.preflight.result == 'success' &&
+        needs.desktop-macos.result == 'success' &&
+        needs.desktop-windows.result == 'success' &&
+        needs.desktop-linux.result == 'success' &&
+        needs.portable.result == 'success' &&
+        needs.android.result == 'success' &&
+        needs.container.result == 'success' &&
+        ((needs.preflight.outputs.channel == 'preview' && needs.ios-simulator.result == 'skipped' && needs.ios-device.result == 'skipped') ||
+         (needs.preflight.outputs.channel == 'stable' && needs.ios-simulator.result == 'success' && needs.ios-device.result == 'success'))
+      }}
+    runs-on: ubuntu-latest
+    environment: native-release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+      RELEASE_CREATED_AT: ${{ needs.preflight.outputs.created_at }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - run: npm run dependencies:ci
+      - name: Install pinned Rust SBOM generator
+        run: cargo install cargo-cyclonedx --version 0.5.9 --locked
+      - name: Download producing release assets into scratch
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: ${{ runner.temp }}/station-release-producer-artifacts
+      - name: Admit only producer release assets, never scanner scratch
+        run: |
+          mkdir release-assets
+          find "$RUNNER_TEMP/station-release-producer-artifacts" -type f -path '*/release-assets/*' -exec cp {} release-assets/ \;
+          test ! -e release-assets/station-container-source.json
+      - name: Download the descriptor-bound scanner inventory into scratch
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: station-container-sbom-source
+          path: ${{ runner.temp }}/station-container-sbom-source
+      - name: Generate canonical SBOM fragments and assets
+        run: |
+          fragment_root="$RUNNER_TEMP/station-release-sbom-fragments"
+          mkdir -p "$fragment_root"
+          # The checked-in workspace graph currently has an npm peer-layout
+          # diagnostic (flow-agents' historical conduit range).  CycloneDX 6.0.1
+          # still produces the lockfile graph; do not let that diagnostic turn
+          # a fresh producer run into an empty SBOM.
+          npx --no-install cyclonedx-npm --package-lock-only --omit dev --ignore-npm-errors --output-file "$fragment_root/npm.cyclonedx.json"
+          (cd src-desktop && cargo cyclonedx --format json --spec-version 1.5 --target all --override-filename station.cdx)
+          test -s src-desktop/station.cdx.json
+          cp src-desktop/station.cdx.json "$fragment_root/rust.cyclonedx.json"
+          node scripts/release-sbom-fragments.mjs --output-dir "$fragment_root" --npm-cyclonedx "$fragment_root/npm.cyclonedx.json" --rust-cyclonedx "$fragment_root/rust.cyclonedx.json" --container-source "$RUNNER_TEMP/station-container-sbom-source/station-container-source.json" --container-descriptor release-assets/station-container-release.json --source-sha "$RELEASE_SHA"
+          node scripts/release-sbom-context.mjs --assets-dir release-assets --tag "$RELEASE_TAG" --sha "$RELEASE_SHA" --generated-at "$RELEASE_CREATED_AT" --output "$fragment_root/context.json"
+          node scripts/generate-release-sboms.mjs --assets-dir release-assets --fragments-dir "$fragment_root" --context "$fragment_root/context.json" --npm-fragment "$fragment_root/npm.fragment.json" --rust-fragment "$fragment_root/rust.fragment.json" --container-fragment "$fragment_root/container.fragment.json"
+          node scripts/release-sbom-predicates.mjs --assets-dir release-assets
+      - name: Assemble and validate one deterministic inventory
+        env:
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+        run: |
+          test -n "$TAURI_SIGNING_PUBLIC_KEY"
+          printf '%s\n' "$TAURI_SIGNING_PUBLIC_KEY" > release-assets/station-updater-public-key.txt
+          node scripts/release-artifacts.mjs assemble --assets-dir release-assets --output release-assets/station-release-inventory.json --tag "$RELEASE_TAG" --sha "$RELEASE_SHA" --generated-at "$RELEASE_CREATED_AT" --sbom-context "$RUNNER_TEMP/station-release-sbom-fragments/context.json" --container-descriptor release-assets/station-container-release.json --updater-public-key release-assets/station-updater-public-key.txt
+          node scripts/release-artifacts.mjs validate --assets-dir release-assets --inventory release-assets/station-release-inventory.json --container-descriptor release-assets/station-container-release.json --updater-public-key release-assets/station-updater-public-key.txt
+          node scripts/release-sbom-predicates.mjs --assets-dir release-assets
+      - name: Attest the inventory and checksum protocol roots
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/station-release-inventory.json
+            release-assets/station-release-checksums.txt
+            release-assets/station-sbom-portable.cdx.json
+            release-assets/station-sbom-desktop.cdx.json
+            release-assets/station-sbom-mobile.cdx.json
+            release-assets/station-sbom-container.spdx.json
+            release-assets/station-updater-public-key.txt
+      - name: Create exactly one draft and upload validated assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Refusing to replace assets under existing release $RELEASE_TAG" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes "Validated release inventory; publish through the protected Publish Station release workflow."
+          gh release upload "$RELEASE_TAG" release-assets/*

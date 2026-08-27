@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-07-26T21-45-31-043Z-09f5901f9543",
+  "kind": "policy-change",
+  "actor": {
+    "id": "claude-code:2003820a-Kontour",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-07-26T21:45:31.043Z",
+  "repoStandardsHash": "sha256:4064246a9e27908811dcf7ebab706339350ebe988abd5f39d236b92232521773",
+  "repoMapHash": "sha256:5932d4fb241ca88bba168b930cf122adea50a1b82ff347bc8ba65eacdc04c3c5",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891",
+  "validUntilDays": 90,
+  "notes": "Formatter-only normalization of veritas.claims.json (biome format under ci:fast repo-wide scope; zero semantic change to claims — whitespace/array layout only). Required to restore ci:fast green on main per the e2e-main-green arc.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891",
+    "approvalRef": "session_01UugzxyrrVXGE6mTpPVkAJs/arc-a-ci-green",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-07-26T21-45-31-043Z-09f5901f9543",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "3ec235b0bf947e6b0b368c588b698bcbf1c285e5a7ebfee65a2311d40fa61a3d",
+        "validUntil": "2026-10-24T21:45:31.043Z"
+      },
+      "createdAt": "2026-07-26T21:45:31.043Z",
+      "updatedAt": "2026-07-26T21:45:31.043Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-07-26T21-45-31-043Z-09f5901f9543",
+      "claimId": "veritas.attestation.policy-change-2026-07-26T21-45-31-043Z-09f5901f9543",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Formatter-only normalization of veritas.claims.json (biome format under ci:fast repo-wide scope; zero semantic change to claims — whitespace/array layout only). Required to restore ci:fast green on main per the e2e-main-green arc.",
+      "observedAt": "2026-07-26T21:45:31.043Z",
+      "collectedBy": "claude-code:2003820a-Kontour",
+      "integrityRef": "3ec235b0bf947e6b0b368c588b698bcbf1c285e5a7ebfee65a2311d40fa61a3d",
+      "metadata": {
+        "actor": {
+          "id": "claude-code:2003820a-Kontour",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-07-26T21:45:31.043Z",
+        "validUntil": "2026-10-24T21:45:31.043Z",
+        "contentHash": "3ec235b0bf947e6b0b368c588b698bcbf1c285e5a7ebfee65a2311d40fa61a3d"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-07-26T21-45-31-043Z-09f5901f9543.verified",
+      "claimId": "veritas.attestation.policy-change-2026-07-26T21-45-31-043Z-09f5901f9543",
+      "status": "verified",
+      "actor": "claude-code:2003820a-Kontour",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-07-26T21-45-31-043Z-09f5901f9543"
+      ],
+      "createdAt": "2026-07-26T21:45:31.043Z",
+      "verifiedAt": "2026-07-26T21:45:31.043Z"
+    }
+  }
+}

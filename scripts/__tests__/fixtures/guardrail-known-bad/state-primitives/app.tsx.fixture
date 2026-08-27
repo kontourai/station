@@ -1,0 +1,11 @@
+// Stand-in for src-ui/src/App.tsx.
+//
+// It carries no violation. It exists because both gates that scan
+// `src-ui/src` pin App.tsx and main.tsx in their PINNED_SCOPE_INVENTORY
+// (station#1559): if the enumeration stops seeing root-level files the gate
+// throws SCOPE DRIFT instead of reporting clean. Leaving these two out of the
+// scratch tree would make every case below fail for that reason rather than
+// for the violation it plants — a red for the wrong reason.
+export function App() {
+  return <main className="app">{null}</main>;
+}

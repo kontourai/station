@@ -1,0 +1,116 @@
+/* GlobalVoiceButton — floating mic FAB (mobile) / inline button (desktop) */
+
+/* Component-level tokens */
+.gvb {
+  --gvb-active-bg: var(--health-error, #ef4444);
+  --gvb-active-color: #fff;
+  --gvb-active-outline: rgba(239, 68, 68, 0.4);
+  --gvb-idle-bg: var(--bg-tertiary);
+  --gvb-error-color: var(--health-error, #ef4444);
+  --gvb-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--gvb-idle-bg);
+  color: var(--text-muted);
+  touch-action: none;
+  user-select: none;
+  transition:
+    background 0.15s,
+    outline 0.15s;
+  outline: 2px solid transparent;
+}
+
+/* The FAB sits at z-index 9999, above the ~2000 modal layer — hide it whenever a
+   dialog/overlay is open so it never floats over modal content (e.g. a modal's
+   Cancel/Create buttons). `:has()` is supported on the mobile browsers this
+   targets; desktop is unaffected (the desktop variant is display:none anyway). */
+body:has([role="dialog"]) .gvb,
+body:has([class*="__overlay"]) .gvb {
+  display: none;
+}
+
+/* Mobile FAB: fixed bottom-right */
+.gvb--mobile {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: var(--layer-floating-action);
+  width: 56px;
+  height: 56px;
+  box-shadow: var(--gvb-shadow);
+}
+
+/* Desktop: small inline button */
+.gvb--desktop {
+  display: none;
+  position: fixed;
+  bottom: 70px;
+  right: 16px;
+  z-index: var(--layer-floating-action);
+  width: 32px;
+  height: 32px;
+}
+
+/* States */
+.gvb--listening {
+  background: var(--gvb-active-bg);
+  color: var(--gvb-active-color);
+  outline-color: var(--gvb-active-outline);
+}
+
+.gvb--error {
+  color: var(--gvb-error-color);
+}
+
+/* Pulse ring (only on mobile while listening) */
+.gvb__pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--gvb-active-bg);
+  animation: gvb-pulse 1s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes gvb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* ── Mobile responsive: safe area ── */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Move the FAB to bottom-LEFT and raise it above the Chat Dock so it never
+     overlaps the dock's right-aligned send/up-arrow action. The dock is fixed
+     full-width at the bottom; its send button lives on the right edge, so a
+     left-anchored FAB clears it entirely while both stay fully tappable. */
+  .gvb--mobile {
+    right: auto;
+    left: 16px;
+    /* --dock-slot-size is 0 when the dock is collapsed, so the raise would
+       collapse to 16px and the FAB would land on the collapsed dock's "Chat
+       Dock" label. Clamp to a 49px floor so it always clears the collapsed bar;
+       when the dock expands, the larger var raises it further. */
+    bottom: calc(
+      max(49px, var(--dock-slot-size, 0px)) +
+      16px +
+      var(--safe-bottom, 0px)
+    );
+  }
+
+  .gvb--desktop {
+    bottom: calc(70px + var(--safe-bottom, 0px));
+  }
+}

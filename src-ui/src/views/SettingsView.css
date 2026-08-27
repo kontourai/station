@@ -1,0 +1,1421 @@
+/* ═══ Settings View ═══ */
+
+/* ── Page Header ── */
+.settings__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+.settings__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.settings__header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.settings__save-btn {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.settings__save-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.settings__save-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.settings__secondary-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+.settings__secondary-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+/* ── Error Banner ── */
+.settings__error {
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
+}
+
+/* ── Environment Status Strip ── */
+.settings__env {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--success-text);
+}
+.settings__env--warn {
+  border-left-color: var(--warning-text);
+}
+.settings__env--error {
+  border-left-color: var(--error-text);
+}
+.settings__env-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.settings__env-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.settings__env-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.settings__env-toggle {
+  font-size: 0.75rem;
+  color: var(--accent-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+.settings__env-toggle:hover {
+  text-decoration: underline;
+}
+
+/* ── Environment Expanded Panel ── */
+.settings__env-panel {
+  margin-top: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+}
+.settings__env-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+}
+.settings__env-item--clickable {
+  cursor: pointer;
+}
+.settings__env-item + .settings__env-item {
+  border-top: 1px solid var(--border-primary);
+}
+.settings__env-status {
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.settings__env-status--installed {
+  color: var(--success-text);
+}
+.settings__env-status--error {
+  color: var(--warning-text);
+}
+.settings__env-status--missing {
+  color: var(--error-text);
+}
+.settings__env-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.settings__env-desc {
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+}
+.settings__env-category {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  margin-top: 0.75rem;
+}
+.settings__env-category:first-child {
+  margin-top: 0;
+}
+.settings__env-source {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.35rem 0;
+  margin-top: 0.5rem;
+  border-bottom: 1px solid var(--border-primary);
+  margin-bottom: 0.25rem;
+}
+.settings__env-source:first-child {
+  margin-top: 0;
+}
+.settings__env-optional {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.settings__env-guide {
+  margin: 0.4rem 0 0 1.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.settings__env-guide ol {
+  margin: 0;
+  padding-left: 1rem;
+}
+.settings__env-guide-cmds {
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-primary);
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+/* ── Host runtime (de-emphasized host diagnostics) ── */
+.host-runtime__alert {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--error-border);
+  border-left: 3px solid var(--error-text);
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+}
+.host-runtime__alert-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+.host-runtime__disclosure {
+  font-size: 0.8rem;
+}
+.host-runtime__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.4rem 0;
+  list-style: revert;
+  user-select: none;
+}
+.host-runtime__summary-status {
+  font-size: 0.9rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.host-runtime__summary-status--ok {
+  color: var(--success-text);
+}
+.host-runtime__summary-status--warn {
+  color: var(--warning-text);
+}
+.host-runtime__summary-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.host-runtime__panel {
+  margin-top: 0.5rem;
+}
+
+/* ── Agent defaults (de-emphasized fallback values) ── */
+.agent-defaults__intro {
+  margin-bottom: 0.75rem;
+}
+.agent-defaults__disclosure {
+  font-size: 0.8rem;
+}
+.agent-defaults__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.4rem 0;
+  list-style: revert;
+  user-select: none;
+}
+.agent-defaults__summary-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.agent-defaults__panel {
+  margin-top: 0.75rem;
+}
+
+/* ── Core Update Status ── */
+.settings__update-text--success {
+  color: var(--success-text);
+}
+.settings__update-text--warning {
+  color: var(--warning-text);
+}
+.settings__update-text--muted {
+  color: var(--text-muted);
+}
+.settings__update-msg--warning {
+  color: var(--warning-text);
+}
+.settings__update-msg--success {
+  color: var(--success-text);
+}
+.settings__update-msg--error {
+  color: var(--error-text);
+}
+
+/* ── Connection ── */
+.settings__conn-custom-warning {
+  color: var(--warning-text);
+}
+
+/* ── Character Counter ── */
+.settings__char-count {
+  text-align: right;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+/* ── Validation Warning ── */
+.settings__field-warning {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--warning-text);
+}
+
+/* ── Theme Row ── */
+.settings__theme-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* ── Export/Import ── */
+.settings__export-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.settings__import-label {
+  cursor: pointer;
+}
+.settings__diagnostics-download {
+  white-space: nowrap;
+}
+.settings__diagnostics-status {
+  margin-top: 1rem;
+}
+
+/* ── Loading Skeleton ── */
+/* The placeholder blocks themselves are the shared <Skeleton variant="block" />;
+   this just stacks them. */
+.settings__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ── Section Nav ── */
+.settings__search {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+  font-family: inherit;
+}
+
+.settings-overview {
+  display: grid;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+}
+
+.settings-overview__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--accent-primary) 14%, transparent),
+      transparent 46%
+    ),
+    var(--bg-secondary);
+}
+
+.settings-overview__eyebrow,
+.settings-overview__card > span,
+.settings-overview__stat > span {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-overview__hero h2 {
+  margin: var(--space-2) 0 var(--space-4);
+  color: var(--text-primary);
+  font-size: var(--text-4xl);
+}
+
+.settings-overview__hero p,
+.settings-overview__card p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+.settings-overview__health {
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-6);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.settings-overview__health--ready {
+  color: var(--status-success, #48c78e);
+}
+
+.settings-overview__health--attention {
+  color: var(--status-warning, #e0a84b);
+}
+
+.settings-overview__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+
+.settings-overview__stat {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-8);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+}
+
+.settings-overview__stat strong,
+.settings-overview__card strong {
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+}
+
+.settings-overview__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+}
+
+.settings-overview__card {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-8);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.settings-overview__card:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+  transform: translateY(-1px);
+}
+
+.settings-overview__card:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.settings-overview__card em {
+  margin-top: var(--space-2);
+  color: var(--accent-primary);
+  font-size: var(--text-sm);
+  font-style: normal;
+  font-weight: var(--weight-semibold);
+}
+
+@media (max-width: 768px) {
+  .settings-overview__hero {
+    display: grid;
+  }
+
+  .settings-overview__stats,
+  .settings-overview__cards {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-overview__card {
+    min-height: 44px;
+  }
+}
+.settings__search::placeholder {
+  color: var(--text-muted);
+}
+.settings__search:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+/* ── Accent Color Picker ── */
+.settings__accent-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.settings__accent-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.settings__accent-swatch:hover {
+  border-color: var(--text-secondary);
+}
+.settings__accent-swatch--active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+.settings__accent-custom {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+.settings__accent-reset {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.settings__accent-reset:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.settings__section-nav {
+  margin-bottom: 1.25rem;
+}
+
+/* station#4463 slice 2: the scope-grouped nav (Station / Defaults / This
+   device) used to wrap each group in its own `.settings__nav-group` flex row
+   with an all-caps `.settings__nav-group-title` label sharing the tab row —
+   the shell audit's named bug. `SectionNav`'s `dividerAfter` now draws a real
+   presentational separator element between groups instead — see
+   `.section-nav__divider` in `page-layout.css` — with no group label and no
+   wrapper div. The scroll/scrollbar affordance below moved to the shared
+   `.section-nav` rule in `page-layout.css` (review MED-4: this per-host copy
+   could be silently outranked by a higher-specificity hide rule); only the
+   host-specific margin above stays here. */
+
+.settings__scope-group {
+  margin-bottom: 0.5rem;
+}
+
+.settings__scope-caption {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* The dock is reserved once, by the shell's route outlet (station#3902).
+   This is the page's own bottom gutter and nothing else. */
+.settings.page {
+  padding-bottom: 2rem;
+}
+
+/* ── Mobile: stack template-variable rows so the key field isn't clipped ── */
+/* ── Section Cards ── */
+.settings__section {
+  margin-bottom: 1.5rem;
+}
+.settings__section-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+.settings__section-body {
+  padding: 1.25rem;
+}
+
+/* ── Field Rows ── */
+.settings__field {
+  margin-bottom: 1.25rem;
+}
+.settings__field:last-child {
+  margin-bottom: 0;
+}
+.settings__field-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.settings__field-hint {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+.settings__field input[type="text"],
+.settings__field input[type="number"],
+.settings__field textarea,
+.settings__field select,
+.voice-provider-section__select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+.settings__field input:focus,
+.settings__field textarea:focus,
+.settings__field select:focus,
+.voice-provider-section__select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+.settings__field textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.settings__field input::placeholder,
+.settings__field textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+/* ── Range Slider ── */
+/* #3314: stacked per-section sidebar toggles in one Appearance row. */
+.settings__toggle-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings__toggle-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.settings__range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.settings__range-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent-primary);
+}
+.settings__range-value {
+  min-width: 2.5rem;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* ── Toggle Row ── */
+.settings__toggle-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.settings__toggle-row:hover {
+  border-color: var(--accent-primary);
+}
+.settings__toggle-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.settings__toggle-desc {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+/* ── Voice Provider ── */
+.voice-provider-section {
+  margin-bottom: 1rem;
+}
+/* Field label, same role as .settings__field-label above — which has always
+   said --text-secondary. The two only agreed by accident while the token was
+   an alias of --text-primary. */
+.voice-provider-section__label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary);
+}
+.voice-provider-section__hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+/* ── Context Provider Toggles ── */
+.context-provider-section {
+  margin-bottom: 1rem;
+}
+/* Group label over the toggle list — subordinate to the toggles' own names,
+   which keep --text-primary below. */
+.context-provider-section__label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+.context-provider-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+/* ── Notification Thresholds ── */
+.settings__thresholds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.settings__threshold {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.settings__threshold--active {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+.settings__threshold input {
+  width: 0.85rem;
+  height: 0.85rem;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+/* ── Template Variables ── */
+.settings__vars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.settings__var-row {
+  display: grid;
+  grid-template-columns: 1fr 7rem 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+.settings__var-row input,
+.settings__var-row select {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.25rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+.settings__var-row select {
+  font-family: inherit;
+}
+.settings__var-remove {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: transparent;
+  color: var(--error-text);
+  border: 1px solid color-mix(in srgb, var(--error-text) 25%, transparent);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.settings__var-remove:hover {
+  background: color-mix(in srgb, var(--error-text) 10%, transparent);
+}
+.settings__var-add {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-primary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  margin-top: 0.25rem;
+  align-self: flex-start;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+.settings__var-add:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* ── Built-in Variables Reference ── */
+.settings__var-ref {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.settings__var-ref strong {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+.settings__var-ref ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+  list-style: none;
+}
+.settings__var-ref li {
+  margin-bottom: 0.15rem;
+}
+.settings__var-ref li::before {
+  content: "·";
+  margin-right: 0.4rem;
+  color: var(--text-muted);
+}
+.settings__var-ref code {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  background: var(--bg-secondary);
+  border-radius: 0.2rem;
+  color: var(--accent-primary);
+}
+
+/* ── Connection Test ── */
+.settings__conn-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+.settings__conn-row input {
+  flex: 1;
+}
+.settings__conn-reset {
+  padding: 0.5rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.settings__conn-reset:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+.settings__conn-test {
+  margin-top: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.settings__conn-test:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+.settings__conn-test:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings__conn-test--ok {
+  color: var(--success-text);
+  border-color: var(--success-text);
+}
+.settings__conn-test--fail {
+  color: var(--error-text);
+  border-color: var(--error-text);
+}
+
+/* ── Core Update ── */
+.settings__update-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.settings__update-btn {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  border: 1px solid;
+  transition: opacity 0.15s;
+}
+.settings__update-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.settings__update-btn--check {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-primary);
+}
+.settings__update-btn--check:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+.settings__update-btn--apply {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
+}
+.settings__update-btn--apply:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.settings__update-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+.settings__update-meta span {
+  white-space: nowrap;
+}
+.settings__update-msg {
+  font-size: 0.7rem;
+  margin-top: 0.3rem;
+}
+
+/* ── Danger Zone ── */
+.settings__danger {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-primary);
+}
+.settings__danger-btn {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: transparent;
+  color: var(--error-text);
+  border: 1px solid color-mix(in srgb, var(--error-text) 30%, transparent);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.settings__danger-btn:hover {
+  background: color-mix(in srgb, var(--error-text) 8%, transparent);
+}
+
+/* ── Floating Save Pill ── */
+.settings__save-pill {
+  position: fixed;
+  /* station#1831: the pill must clear the chat dock at ANY dock height — the
+     dock is resizable, so a fixed offset cannot work. `--dock-slot-size` is
+     the live dock footprint (kept current by useChatDockState, including
+     per-frame during a drag; 0px when the dock is a desktop side panel), so
+     anchoring above it tracks every dock state. The named floating-action
+     layer sits above .chat-dock (index.css) as a belt for transient states
+     before the CSS var is first written — Save must never render behind the
+     dock. Guarded by settings-save-pill-occlusion.test.ts. */
+  bottom: calc(1.5rem + var(--safe-bottom, 0px) + var(--dock-slot-size, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 2rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  z-index: var(--layer-floating-action);
+  animation: settings-pill-in 0.2s ease-out;
+}
+@keyframes settings-pill-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+.settings__save-pill-text {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.settings__save-pill-discard {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  border-radius: 1rem;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.settings__save-pill-discard:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+.settings__save-pill-btn {
+  padding: 0.35rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 1rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.settings__save-pill-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.settings__save-pill-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* ── Approval Guardian ── */
+/* The instructions textarea holds a prompt (station#1831). Shared form-control
+   styling comes from editor-textarea; this class only owns prompt geometry. */
+.settings__guardian-instructions {
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  min-height: 120px;
+}
+
+/* ── Deployed Build Provenance ── */
+.settings__provenance-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings__provenance-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+.settings__provenance-list > div {
+  min-width: 0;
+}
+.settings__provenance-list dt {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+.settings__provenance-list dd {
+  margin: 0.125rem 0 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.settings__provenance-list code {
+  font-family: var(--font-mono);
+}
+
+/* ── Feature Toggle fix: override .form-group global styles ── */
+.settings__feature-toggle {
+  display: flex !important;
+  width: 100%;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-primary);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  margin-bottom: 0;
+}
+.settings__feature-toggle input[type="checkbox"] {
+  width: auto !important;
+  margin-top: 0.1875rem;
+  flex-shrink: 0;
+}
+
+/* ── Toggle text ── */
+.settings__toggle-name {
+  font-weight: 500;
+  margin-bottom: 0.125rem;
+}
+.settings__toggle-detail {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.settings__toggle-privacy {
+  font-size: 0.6875rem;
+  color: var(--warning-text);
+  margin-top: 0.1875rem;
+}
+
+/* ── Mobile Pairing ── */
+.settings__pairing-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.settings__pairing-detecting {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.settings__pairing-warning {
+  font-size: 0.75rem;
+  color: var(--warning-text);
+  max-width: 20rem;
+}
+
+/* ── Notification Subscribe ── */
+.settings__notif-subscribe {
+  margin-top: 0.5rem;
+}
+.settings__notif-subscribed {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.settings__notif-status {
+  font-size: 0.75rem;
+  color: var(--success-text, #22c55e);
+}
+.settings__notif-error {
+  font-size: 0.75rem;
+  color: var(--error-text, #ef4444);
+  margin-top: 0.25rem;
+}
+
+/* ── Notification sounds ── */
+.settings__notification-sounds {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+}
+.settings__notification-sounds legend {
+  padding: 0 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.settings__notification-sounds-help {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.settings__notification-sounds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.5rem;
+}
+.settings__notification-sound {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.settings__notification-sound select {
+  min-width: 5.5rem;
+}
+
+/* ── Form help block ── */
+.settings__form-help-block {
+  margin-top: 0.5rem;
+  display: block;
+}
+
+/* ── Error banner with retry ── */
+.settings__error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
+}
+.settings__error-banner-msg {
+  flex: 1;
+}
+.settings__error-banner-retry {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--error-text);
+  border: 1px solid var(--error-border);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.settings__error-banner-retry:hover {
+  background: color-mix(in srgb, var(--error-text) 8%, transparent);
+}
+
+/* ── Validation errors ── */
+.settings__field-error {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--error-text);
+}
+.settings__field input.settings__field--invalid,
+.settings__field textarea.settings__field--invalid {
+  border-color: var(--error-text);
+}
+
+.settings__connections-link {
+  padding: 12px;
+  /* --border-subtle until station#1254 (re-seeded here by station#1359) — a
+     token that does not exist, so these cards had no outline.
+     --border-primary is the subtle line. */
+  border: 1px solid var(--border-primary);
+  border-radius: 9px;
+  background: var(--bg-secondary);
+}
+
+.settings__connections-link strong,
+.settings__connections-link span {
+  display: block;
+}
+
+.settings__connections-link span {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.settings__connections-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+/* ── Mobile touch targets ── */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Single column: key, type, value, and remove each get the full row width so
+     the key input no longer truncates (e.g. "AGENT_NAM" → "AGENT_NAME"). */
+  .settings__var-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .settings__var-row input,
+  .settings__var-row select {
+    width: 100%;
+    min-height: 44px;
+  }
+  .settings__var-remove {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .settings__connections-link {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .settings__provenance-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings__save-pill-discard,
+  .settings__save-pill-btn,
+  .settings__conn-test,
+  .settings__conn-reset,
+  .settings__secondary-btn,
+  .settings__import-label,
+  .settings__update-btn,
+  .settings__danger-btn,
+  .settings__var-remove,
+  .settings__var-add,
+  .settings__env-toggle {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* The Hide/Details toggle is a text link inside the env strip; give it
+     horizontal padding so the 44px tap area is comfortable, not cramped. */
+  .settings__env-toggle {
+    padding: 0 0.5rem;
+  }
+
+  /* Floating save pill: keep it inside narrow viewports (<=390px) instead of
+     letting the "Unsaved changes" label + two buttons overflow past the screen
+     edges. Span (almost) the full width and let the label flex/truncate while
+     the action buttons stay tappable. */
+  .settings__save-pill {
+    left: 0.75rem;
+    right: 0.75rem;
+    transform: none;
+    max-width: none;
+    box-sizing: border-box;
+    justify-content: flex-end;
+    /* The shared entrance keyframe slides in via translateX(-50%); that conflicts
+       with the full-width left/right anchoring used on mobile, so drop the
+       animation here and let the pill simply appear in place. */
+    animation: none;
+  }
+  .settings__save-pill-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .settings__save-pill-discard,
+  .settings__save-pill-btn {
+    flex-shrink: 0;
+  }
+}
+.settings__highlight-pulse {
+  animation: settings-highlight-pulse var(--motion-status-pulse) var(--ease-out);
+  border-radius: var(--radius-md);
+}
+
+@keyframes settings-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--accent-primary) 55%, transparent);
+  }
+  45% {
+    box-shadow: 0 0 0 6px
+      color-mix(in srgb, var(--accent-primary) 25%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+/* Not a duration: the motion primitive already reduces the pulse to 0.01ms.
+   What is left is the SUBSTITUTE affordance — a static outline stands in for
+   the animation, so the highlighted section is still findable without it. */
+@media (prefers-reduced-motion: reduce) {
+  .settings__highlight-pulse {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 3px;
+  }
+}

@@ -1,0 +1,139 @@
+.demo-shell,
+.demo-notes {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 2rem;
+  color: var(--text-primary);
+}
+
+.demo-shell {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.demo-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  letter-spacing: 0;
+}
+
+.demo-intro,
+.demo-card-copy {
+  color: var(--text-secondary);
+}
+
+.demo-intro {
+  margin: 0 0 2rem;
+}
+
+.demo-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.demo-card,
+.demo-next-steps,
+.demo-notes-input {
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.demo-card {
+  padding: 1rem;
+}
+
+.demo-card-label {
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.demo-card-value {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.demo-card-copy {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.demo-card-copy--flush {
+  margin-bottom: 0;
+}
+
+.demo-agent-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+}
+
+.demo-action-row {
+  margin-top: 2rem;
+}
+
+.demo-primary {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.6rem 1.2rem;
+  background: var(--accent-primary);
+  color: var(--accent-contrast, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.demo-primary:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.demo-next-steps {
+  margin-top: 2rem;
+  padding: 1rem;
+  font-size: 0.85rem;
+}
+
+.demo-next-steps ol {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.demo-notes {
+  display: flex;
+  flex-direction: column;
+}
+
+.demo-notes h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+  letter-spacing: 0;
+}
+
+.demo-notes-input {
+  flex: 1;
+  width: 100%;
+  min-height: 14rem;
+  box-sizing: border-box;
+  padding: 1rem;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  resize: none;
+}
+
+@media (max-width: 640px) {
+  .demo-shell,
+  .demo-notes {
+    padding: 1rem;
+  }
+
+  .demo-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

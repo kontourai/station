@@ -1,0 +1,51 @@
+.engine-capability-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+}
+
+.engine-capability-summary__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.engine-capability-summary__label {
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.engine-capability-summary__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+
+.engine-capability-summary__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.engine-capability-summary__chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.engine-capability-summary__tools {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

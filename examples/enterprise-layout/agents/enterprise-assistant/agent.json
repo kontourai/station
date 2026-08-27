@@ -1,0 +1,37 @@
+{
+  "name": "Enterprise Assistant",
+  "prompt": "You are a versatile work assistant helping {{user_name}} ({{user_alias}}) with calendar management and CRM operations. You can view calendar events, manage meetings, query CRM accounts and opportunities, and provide a unified view across both systems.\n\nALWAYS:\n- Provide clear, actionable information.\n- Suggest relevant follow-ups as numbered lists.\n- Default to the user's own context first.",
+  "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "guardrails": {
+    "maxTokens": 4096,
+    "temperature": 0.7
+  },
+  "tools": {
+    "mcpServers": [
+      "crm-mcp",
+      "calendar-mcp",
+      {
+        "id": "notes-vault",
+        "kind": "mcp",
+        "displayName": "Notes Vault",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "notes-mcp-server"],
+        "requiredEnv": ["NOTES_VAULT_PATH"]
+      }
+    ],
+    "available": ["calendar-mcp_*", "crm-mcp_*", "notes-vault_*"],
+    "autoApprove": [
+      "calendar-mcp_calendar_view",
+      "calendar-mcp_calendar_search",
+      "calendar-mcp_email_read",
+      "calendar-mcp_email_inbox",
+      "calendar-mcp_email_search",
+      "crm-mcp_search_accounts",
+      "crm-mcp_fetch_account_details",
+      "crm-mcp_search_opportunities",
+      "crm-mcp_search_contacts",
+      "crm-mcp_search_tasks"
+    ]
+  }
+}

@@ -1,0 +1,231 @@
+/* ═══ PageFrame ═══
+ * The single page shell every route with a header renders inside.
+ *
+ * The header markup itself is `page-layout.css`'s `.page__header` family
+ * verbatim — Schedule's treatment, which the audit named as the canonical
+ * instance (eyebrow · 28px title · subtitle · right-aligned primary). Nothing
+ * about the header is redeclared here; this file only positions the frame,
+ * so there is exactly one place that decides a title's size and one that
+ * decides its origin.
+ *
+ * Origin (all routes, 1440×900): title x = 264px = 240px sidebar + the 1.5rem
+ * frame inset. Top padding = 2rem. Those two numbers are the contract; the
+ * audit measured nine x-positions and two top paddings before it existed.
+ */
+
+.page-frame {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  /* Same entrance `.page` has always applied, so a route that moved into the
+     frame keeps the motion it had — and the split-pane routes, which were
+     never `.page` descendants, finally get it (SHELL-05). */
+  animation: page-fade-in var(--motion-slow) var(--ease-out);
+}
+
+/* Portal target for a framed mobile detail sheet. It stays in the DOM as a
+   route-keyed sibling of the page but has no layout box of its own. */
+.page-frame__mobile-detail-slot {
+  display: contents;
+}
+
+/* A `flow` page grows and `.content-view` scrolls it; `flex: 0 0 auto` is
+   what keeps a tall page (Settings is ~8,000px) from being shrunk to the
+   viewport by the flex container and clipped instead of scrolled. */
+.page-frame--flow {
+  flex: 0 0 auto;
+}
+
+/* A `fill` page takes the remaining height and scrolls inside itself. */
+.page-frame--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Narrow changes the measure, not the origin: `max-width` on a stretched
+   flex item caps the right edge and leaves the left where it was. */
+.page-frame--narrow {
+  max-width: 960px;
+}
+
+.page-frame__header {
+  padding: 2rem 1.5rem 0;
+}
+
+/* ── The canonical page header ──
+ * Moved here from `page-layout.css` (station UX audit lane C1): these rules
+ * belong to the component that renders them, and `PageFrame` is loaded by
+ * the shell rather than by a route chunk. Importing all of page-layout.css
+ * eagerly for six selectors cost 1.6kB gzip of entry CSS; this is the same
+ * declarations, in the only file that now writes the markup.
+ */
+.page__header {
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page__header-text {
+  flex: 1;
+}
+
+.page__label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-primary);
+  margin-bottom: 0.5rem;
+}
+
+.page__title {
+  font-family: var(--font-sans);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.page__subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0.35rem 0 0;
+  font-weight: 400;
+}
+
+.page__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Mobile: the header stacks and the title steps down one size. Declared
+   after the base rules above (media queries add no specificity, so source
+   order decides). */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .page__header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .page__title {
+    font-size: 1.35rem;
+  }
+}
+
+.page-frame__body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 1.5rem 2rem;
+}
+
+.page-frame--fill > .page-frame__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Content that is edge-to-edge chrome of its own (a split pane's list rail,
+   a board's columns) drops the body inset — but never the header's, so the
+   title stays on the same x as every other route. */
+.page-frame--flush > .page-frame__body {
+  padding: 0;
+}
+
+@media (max-width: 640px) {
+  .page-frame__header {
+    padding: 1.5rem 1rem 0;
+  }
+
+  .page-frame__body {
+    padding: 0 1rem 1.5rem;
+  }
+
+  .page-frame--flush > .page-frame__body {
+    padding: 0;
+  }
+}
+
+/* A view that hosts a full-height child (a split pane, a board, a log
+   stream) inside a `fill` frame and has siblings of its own (modals,
+   banners). It is the height half of what `.page--full` used to provide,
+   without the padding half — the frame owns padding now. */
+.pane-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Eyebrow trail links (`PageEyebrowTrail`). The eyebrow itself is
+   `.page__label` from page-layout.css; these only make one segment of it
+   operable. */
+.page__label-link {
+  cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+.page__label-link:hover {
+  opacity: 0.7;
+  text-decoration: underline;
+}
+
+.page__label-sep {
+  color: var(--text-muted);
+}
+
+/* ── Header action buttons ──
+ * Moved here from `page-layout.css` with the header itself: these are what a
+ * view puts in the frame's action cell, and a portal renders them into a
+ * component the view's own CSS import cannot be assumed to accompany. Living
+ * in the always-loaded frame stylesheet is what makes "put your primary
+ * action in the header" work from any route, styled the same way, rather than
+ * depending on which chunk happened to import page-layout.css first
+ * (station#3306's failure mode). Declarations are unchanged.
+ */
+.page__btn-primary {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 1.25rem;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.page__btn-primary:hover {
+  opacity: 0.85;
+}
+
+.page__btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page__btn-secondary {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 0.9rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    background var(--motion-base) var(--ease-standard);
+}
+
+.page__btn-secondary:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}

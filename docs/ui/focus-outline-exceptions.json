@@ -1,0 +1,235 @@
+{
+  "policy": "Legacy outline suppressions remain keyboard-visible through the global :focus-visible floor. New suppressions require explicit review and inventory.",
+  "exceptions": [
+    {
+      "path": "packages/connect/src/react/ConnectionManagerModal.css",
+      "selector": ".station-connect-input",
+      "reason": "Custom focus border remains supplemented by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/CommandPalette.css",
+      "selector": ".command-palette__input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/SplitPaneLayout.css",
+      "selector": ".split-pane__collapse:hover, .split-pane__collapse:focus-visible",
+      "reason": "Custom grip affordance remains visible for keyboard focus."
+    },
+    {
+      "path": "src-ui/src/components/SplitPaneLayout.css",
+      "selector": ".split-pane__divider:hover, .split-pane__divider:focus-visible",
+      "reason": "Custom divider affordance remains visible for keyboard focus."
+    },
+    {
+      "path": "src-ui/src/components/SplitPaneLayout.css",
+      "selector": ".split-pane__reopen:hover, .split-pane__reopen:focus-visible",
+      "reason": "Custom reopen affordance remains visible for keyboard focus."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".list-filter-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor; the rule moved to the global sheet as the shared list-filter field (its component-scoped home only loaded with a lazy chunk)."
+    },
+    {
+      "path": "src-ui/src/components/chat/QueuedMessages.css",
+      "selector": ".queued-message__edit-input",
+      "reason": "The edit field restores a token-aligned focus-visible ring after its normal-state outline suppression."
+    },
+    {
+      "path": "src-ui/src/components/chat/chat.css",
+      "selector": ".message__rating-reason",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/chat/chat.css",
+      "selector": ".workspace-modal__search:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/chat/share-target-picker.css",
+      "selector": ".share-target-picker__search:focus",
+      "reason": "Search field draws its own focus border; the global keyboard-focus floor still supplies the keyboard outline."
+    },
+    {
+      "path": "src-ui/src/components/coding-layout/CodingLayout.css",
+      "selector": ".coding-layout__new-terminal-filter",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/coding-layout/CodingLayout.css",
+      "selector": ".coding-layout__terminal-tab-rename",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/coding-layout/FileTreePanel.css",
+      "selector": ".file-tree-panel__search-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/editor-controls.css",
+      "selector": ".editor-input, .editor-textarea, .editor-select",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/modals/ImportSkillsModal.css",
+      "selector": ".import-modal__desc-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/modals/ImportSkillsModal.css",
+      "selector": ".import-modal__name-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/components/modals/PromptModal.css",
+      "selector": ".prompt-modal__input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".attachment-menu__thumbnail",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".chat-dock__context-actions button:hover, .chat-dock__context-actions button:focus-visible, .chat-dock__context-actions button.is-active",
+      "reason": "Custom context-action state remains visible for keyboard focus."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".chat-dock__resize-handle:hover, .chat-dock__resize-handle:focus-visible",
+      "reason": "Custom resize grip remains visible for keyboard focus."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".chat-input textarea:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".form-group input:focus, .form-group textarea:focus, .form-group select:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".image-preview-modal",
+      "reason": "Programmatic modal container focus is not a visible control."
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "selector": ".new-chat-modal__dropdown-search",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/PluginManagementView.css",
+      "selector": ".plugins__filter-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/PluginManagementView.css",
+      "selector": ".plugins__install-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/PluginManagementView.css",
+      "selector": ".plugins__setting-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ProjectPage.css",
+      "selector": ".project-page__dir-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ProjectPage.css",
+      "selector": ".project-page__ns-config-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ProjectPage.css",
+      "selector": ".project-page__rules-textarea",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ProjectPage.css",
+      "selector": ".project-page__scan-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ProjectPage.css",
+      "selector": ".project-page__task-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ScheduleView.css",
+      "selector": ".cron-editor__input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ScheduleView.css",
+      "selector": ".schedule__field input, .schedule__field textarea, .schedule__field select",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/ScheduleView.css",
+      "selector": ".schedule__filter-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/SettingsView.css",
+      "selector": ".settings__field input:focus, .settings__field textarea:focus, .settings__field select:focus, .voice-provider-section__select:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/SettingsView.css",
+      "selector": ".settings__search:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/SortableTable.css",
+      "selector": ".sortable-table__filter-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/editor-layout.css",
+      "selector": ".editor input:focus, .editor select:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/editor-layout.css",
+      "selector": ".editor textarea:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/editor-layout.css",
+      "selector": ".integration__raw-editor:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/editor-layout.css",
+      "selector": ".prompt-editor__content:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/editor-layout.css",
+      "selector": ".prompt-editor__description:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/editor-layout.css",
+      "selector": ".prompt-editor__input:focus",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    },
+    {
+      "path": "src-ui/src/views/page-layout.css",
+      "selector": ".page-section:focus",
+      "reason": "Programmatic section focus is not a visible control."
+    },
+    {
+      "path": "src-ui/src/views/page-layout.css",
+      "selector": ".page__search-input",
+      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+.prompt-modal__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.prompt-modal__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+  background: var(--bg-input, var(--bg-secondary));
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  outline: none;
+}
+
+.prompt-modal__input:focus {
+  border-color: var(--accent-primary, var(--border-focus));
+}
+
+.prompt-modal__error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--error-text);
+}

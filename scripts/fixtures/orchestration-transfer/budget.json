@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": 1,
+  "policy": {
+    "initialEventWindow": {
+      "wireBytes": 64000,
+      "decodedBytes": 64000,
+      "frames": 0
+    },
+    "snapshot": { "wireBytes": 64000, "decodedBytes": 64000, "frames": 2 },
+    "live": { "wireBytes": 1200000, "decodedBytes": 1150000, "frames": 44 },
+    "shortReplay": { "wireBytes": 96000, "decodedBytes": 96000, "frames": 5 },
+    "fallback": { "wireBytes": 64000, "decodedBytes": 64000, "frames": 2 }
+  }
+}

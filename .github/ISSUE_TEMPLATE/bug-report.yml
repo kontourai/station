@@ -1,0 +1,81 @@
+name: Bug Report
+description: Report a user-visible defect or regression in Station.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, access tokens, private URLs, customer data, or unredacted logs. Redact diagnostic excerpts before submitting.
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User impact
+      description: What could the affected person not do, or what result did they receive?
+    validations:
+      required: true
+  - type: textarea
+    id: observed-behavior
+    attributes:
+      label: Observed behavior and steps
+      description: What happened, and what are the smallest safe steps to observe it?
+    validations:
+      required: true
+  - type: input
+    id: build-identity
+    attributes:
+      label: Release or build identity
+      description: Include the Station version, commit, or build identifier you used.
+      placeholder: "for example: 0.1.0, commit abc1234, or a release tag"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform-install
+    attributes:
+      label: Platform and install or deployment type
+      description: Select the closest environment; add useful context in the observed-behavior field.
+      options:
+        - macOS desktop install
+        - Windows desktop install
+        - Linux desktop install
+        - Android install
+        - iOS install
+        - Local source checkout
+        - Self-hosted deployment
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - Every time
+        - Often
+        - Intermittently
+        - Once
+        - Not yet known
+    validations:
+      required: true
+  - type: textarea
+    id: recent-change
+    attributes:
+      label: Recent change
+      description: What changed just before this started, or write "none known"?
+    validations:
+      required: true
+  - type: textarea
+    id: redacted-diagnostic
+    attributes:
+      label: Redacted diagnostic ID or excerpt
+      description: Provide a redacted error ID or minimal redacted excerpt. Never include secrets, private URLs, customer data, or full logs.
+    validations:
+      required: true
+  - type: input
+    id: prior-issue
+    attributes:
+      label: Nearest prior issue
+      description: Link the closest existing issue, or write "none found" after searching.
+    validations:
+      required: true

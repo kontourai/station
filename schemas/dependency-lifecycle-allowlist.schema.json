@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Station dependency lifecycle allowlist",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "entries"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "lock",
+        "path",
+        "name",
+        "version",
+        "integrity",
+        "hooks",
+        "decision",
+        "reviewedAt",
+        "expiresAt",
+        "recheck",
+        "owner",
+        "reason",
+        "platform",
+        "artifact",
+        "purl",
+        "triggers"
+      ],
+      "properties": {
+        "scope": { "enum": ["root", "sdk", "shared"] },
+        "lock": {
+          "enum": [
+            "package-lock.json",
+            "packages/sdk/package-lock.json",
+            "packages/shared/package-lock.json"
+          ]
+        },
+        "path": { "type": "string", "pattern": "^node_modules/" },
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "integrity": { "type": "string", "pattern": "^sha512-" },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "command"],
+            "properties": {
+              "name": { "enum": ["preinstall", "install", "postinstall"] },
+              "command": { "type": "string", "minLength": 1, "maxLength": 399 }
+            }
+          }
+        },
+        "reviewedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "recheck": { "type": "string", "minLength": 16 },
+        "decision": { "enum": ["execute", "deny"] },
+        "owner": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "reason": { "type": "string", "minLength": 12, "maxLength": 600 },
+        "platform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["os", "cpu"],
+          "properties": {
+            "os": {
+              "type": "array",
+              "items": { "type": "string", "maxLength": 32 }
+            },
+            "cpu": {
+              "type": "array",
+              "items": { "type": "string", "maxLength": 32 }
+            }
+          }
+        },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "proof"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "capability": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "proof": {
+              "enum": [
+                "esbuild-version",
+                "node-pty-smoke",
+                "fsevents-watch",
+                "no-build-fallback"
+              ]
+            },
+            "platforms": {
+              "type": "object",
+              "patternProperties": {
+                "^(darwin|linux|win32)/(arm64|x64)$": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 12,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "purl": { "type": "string", "pattern": "^pkg:npm/" },
+        "triggers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,64 @@
+# station-local secret-scan config, auto-loaded by the suite-wide gate
+# (kontourai/.github secret-scan workflow runs `gitleaks git .`).
+#
+# Extends the gitleaks defaults and allowlists one confirmed false positive:
+# the `generic-api-key` rule matches `key: '<id>'` entries in the FEATURE_META
+# settings array (short feature identifiers, entropy ~3.6 — not credentials).
+# Scoped to that single UI file so real secrets elsewhere are still caught.
+
+title = "station secret-scan config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+# Path-only allowlisting would hide ANY future secret committed into this file;
+# the AND condition keeps the exemption to the feature-toggle identifier shape
+# the FEATURE_META entries actually use (mirrors the Bedrock sentinel below).
+description = "FEATURE_META feature-identifier keys in the voice settings view (not secrets)"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^[a-z][A-Za-z0-9]{2,40}Enabled$''']
+paths = ['''(^|/)src-ui/src/views/settings/VoiceFeaturesSection\.tsx$''']
+
+[[allowlists]]
+description = "Self-signed logical.test TLS private key used only by the plugin dev transport test fixture"
+paths = ['''(^|/)packages/cli/src/__tests__/fixtures/logical\.test-key\.pem$''']
+
+[[allowlists]]
+description = "Synthetic Bedrock API key sentinel used by auth-routing tests"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^bedrock-key-123$''']
+paths = [
+  '''(^|/)src-server/runtime/plugins/__tests__/runtime-provider-resolution\.test\.ts$''',
+  '''(^|/)src-server/providers/llm/__tests__/bedrock-llm-provider\.test\.ts$''',
+  '''(^|/)src-server/providers/llm/__tests__/bedrock-credentials\.test\.ts$''',
+]
+
+[[allowlists]]
+description = "Synthetic lock-screen redaction sentinel used by native notification tests"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^sk-live-SECRET$''']
+paths = [
+  '''(^|/)src-ui/src/__tests__/blockingAlert\.test\.ts$''',
+  '''(^|/)src-ui/src/__tests__/useApprovalOsAlerts\.test\.tsx$''',
+]
+
+[[allowlists]]
+description = "Synthetic station-control bearer tokens used by ACP transport tests"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^tok_(?:live_abcdef0123456789|acp_gate_0123456789)$''']
+paths = [
+  '''(^|/)src-server/providers/__tests__/acp-adapter\.test\.ts$''',
+  '''(^|/)src-server/providers/__tests__/acp-mcp-passthrough\.test\.ts$''',
+]
+
+[[allowlists]]
+description = "Synthetic legacy answer-share token digest fixture"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^9c1185a5c5e9fc54612808977ee8f548b2258d31ddadef4a5d3f0d9a4d61d0da$''']
+paths = ['''(^|/)packages/contracts/src/__tests__/fixtures/answer-share-channel/share-record-without-binding\.legacy\.json$''']

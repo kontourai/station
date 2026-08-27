@@ -1,0 +1,226 @@
+name: Interactive Workspace Performance
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: interactive-workspace-performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reference-performance:
+    name: Reference hardware performance contract
+    if: github.event_name != 'pull_request'
+    # This is the named Windows reference machine, not a generic Linux host.
+    # host-id identifies desktop-win for capacity only. These live runner labels
+    # select the native Windows reference worker.
+    runs-on: [self-hosted, Windows, X64, kontour-windows, native]
+    # The reconnect fixture builds one real 10k SQLite corpus, then exercises
+    # 105 independently checkpointed retained/fallback clients. This remains
+    # deliberately shorter than one hour, so #3697 cannot be mislabeled
+    # verified by this lane.
+    # Includes checkout, dependency/browser installation, builds, and the
+    # fixture's own bounded 55-minute Playwright deadline.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: 'E:\kontour-runner-capacity'
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - run: npm run dependencies:ci
+
+      - name: Build production Station bundles for the attached browser target
+        shell: pwsh
+        run: |
+          npm run build:server
+          $env:VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE = '1'
+          npm exec -- vite build
+
+      - name: Install Chromium for the real Station adapter
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright install chromium
+
+      - name: Provision isolated Station and execute reference benchmark
+        env:
+          STATION_PERFORMANCE_REPORT_OUTPUT: .kontourai/performance/interactive-workspace.json
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright test tests/interactive-workspace-performance-bridge.spec.ts --workers=1 --retries=0 --reporter=line
+
+      - name: Publish bounded performance receipt
+        if: always()
+        run: node scripts/print-interactive-workspace-performance-receipts.mjs .kontourai/performance
+
+      - name: Upload performance report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        continue-on-error: true
+        with:
+          name: interactive-workspace-performance-${{ github.run_id }}
+          path: .kontourai/performance/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  one-hour-collaboration-reference:
+    name: One-hour collaboration growth reference
+    needs: reference-performance
+    if: always() && !cancelled() && github.event_name != 'pull_request'
+    # This is intentionally a separate acceptance lane from reference-performance:
+    # its real, unscaled hour must never be inferred from the shorter fixture job.
+    runs-on: [self-hosted, Windows, X64, kontour-windows, native]
+    timeout-minutes: 125
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      # This is a host-manifest-wide absolute lease deadline, not a per-job
+      # heartbeat. Keep it identical for every desktop-win capacity caller;
+      # 7,800 seconds covers this 125-minute job plus its 300-second margin.
+      - name: Reserve physical host capacity for the observed hour
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: 'E:\kontour-runner-capacity'
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - run: npm run dependencies:ci
+
+      - name: Build production Station bundles for the one-hour target
+        shell: pwsh
+        run: |
+          npm run build:server
+          $env:VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE = '1'
+          npm exec -- vite build
+
+      - name: Install Chromium for the one-hour Station adapter
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright install chromium
+
+      - name: Observe a real one-hour Task-room collaboration session
+        env:
+          STATION_PERFORMANCE_REPORT_OUTPUT: .kontourai/performance/one-hour-collaboration-reference.json
+          STATION_PERFORMANCE_ONE_HOUR_REFERENCE: '1'
+          STATION_PERFORMANCE_E2E_FIXTURES: long-session-bounded-growth
+          STATION_PERFORMANCE_E2E_SAMPLES: '100'
+          STATION_PERFORMANCE_E2E_WARMUPS: '5'
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright test tests/interactive-workspace-performance-bridge.spec.ts --workers=1 --retries=0 --reporter=line
+
+      - name: Publish bounded performance receipt
+        if: always()
+        run: node scripts/print-interactive-workspace-performance-receipts.mjs .kontourai/performance
+
+      - name: Upload one-hour performance report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        continue-on-error: true
+        with:
+          name: interactive-workspace-one-hour-${{ github.run_id }}
+          path: .kontourai/performance/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  one-hour-work-board-reference:
+    name: One-hour Work Board growth reference
+    needs: reference-performance
+    if: always() && !cancelled() && github.event_name != 'pull_request'
+    # A short smoke is useful only for wiring. It can never satisfy this
+    # lane: the pane bridge must attest a real unscaled observed hour.
+    runs-on: [self-hosted, Windows, X64, kontour-windows, native]
+    # Persistent-runner policy admits physical-host jobs through the 125-minute
+    # contract. The
+    # in-test chain reserves 60 observed minutes, five minutes for the child
+    # report/settlement, and a separate 15-minute outer margin for Station and
+    # fixture provisioning plus report persistence. Dependency/build setup
+    # owns the remaining job margin and fails the job honestly if exhausted.
+    timeout-minutes: 125
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity for the observed board hour
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: 'E:\kontour-runner-capacity'
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - run: npm run dependencies:ci
+
+      - name: Build production Station bundles for the Work Board hour
+        shell: pwsh
+        run: |
+          npm run build:server
+          $env:VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE = '1'
+          npm exec -- vite build
+
+      - name: Install Chromium for the Work Board adapter
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright install chromium
+
+      - name: Observe one unscaled Work Board hour or emit NOT_VERIFIED
+        env:
+          STATION_PERFORMANCE_REPORT_OUTPUT: .kontourai/performance/one-hour-work-board-reference.json
+          STATION_PERFORMANCE_WORK_BOARD_REFERENCE: '1'
+          STATION_PERFORMANCE_E2E_FIXTURES: work-board-one-hour-v1
+          STATION_PERFORMANCE_E2E_SAMPLES: '100'
+          STATION_PERFORMANCE_E2E_WARMUPS: '5'
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright test tests/interactive-workspace-performance-bridge.spec.ts --workers=1 --retries=0 --reporter=line
+
+      - name: Publish bounded performance receipt
+        if: always()
+        run: node scripts/print-interactive-workspace-performance-receipts.mjs .kontourai/performance
+
+      - name: Upload Work Board one-hour performance report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        continue-on-error: true
+        with:
+          name: interactive-workspace-work-board-one-hour-${{ github.run_id }}
+          path: .kontourai/performance/
+          if-no-files-found: ignore
+          retention-days: 30

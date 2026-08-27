@@ -1,0 +1,107 @@
+[package]
+name = "station"
+version = "0.1.2"
+description = "Station — local-first AI agent system"
+authors = ["you"]
+edition = "2021"
+
+[package.metadata.release-sbom-tools]
+# This is a release-tool pin rather than a runtime dependency. The next release
+# staging tranche invokes it to produce the Rust fragment consumed by the
+# deterministic SBOM generator.
+cargo-cyclonedx = "0.5.9"
+
+[lib]
+name = "station_ai_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "=2.11.5", features = ["devtools", "tray-icon", "image-png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# rustls, because the notification watch polls the Station over HTTPS — a
+# Tailscale-served host is the normal remote case. Without a TLS backend every
+# such poll fails with "TLS required, but transport is unsecured".
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+dunce = "1"
+# OS-level notifications from the running app. Must sit in the shared
+# dependency table, not the desktop-only one below: web push cannot reach the
+# native shell (Android WebView has no PushManager), so mobile is the whole
+# reason this is here (#910).
+tauri-plugin-notification = "=2.3.3"
+# Mobile haptic feedback (station#1954). Official Tauri plugin — listed in the
+# shared table so capability ACL generation can resolve `haptics:*` permissions
+# on every target; `lib.rs` only `.plugin()`-inits it under `cfg(mobile)`.
+tauri-plugin-haptics = "=2.3.2"
+tauri-plugin-deep-link = "=2.4.9"
+# `log` is the standard facade; the desktop shell has never emitted through it
+# before (#1899). Commodity crate, so a loose version like the other
+# non-Tauri-plugin dependencies above.
+log = "0.4"
+# Tauri-idiomatic logging: file target under the platform app-log dir (durable
+# for a double-clicked .app with no terminal), stdout preserved for terminal
+# launches, and mobile support (android/ios "full" per its own platform
+# metadata) so this stays in the shared table rather than a desktop-only one.
+tauri-plugin-log = "=2.9.0"
+# Mirrors tauri's own (desktop-target) app_log_dir() resolution — home_dir()/
+# data_local_dir() — so the log-directory writability pre-check in run() can
+# run before an AppHandle exists (already resolved transitively by tauri
+# itself at this exact version; declared directly since we call it too).
+dirs = "6"
+# Shared application API; platform-specific native stores are selected below.
+keyring-core = "=1.0.0"
+tauri-plugin-dialog = "=2.7.2"
+
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-opener = "=2.5.4"
+# One desktop app per identifier, enforced at the OS layer (station#2904). A
+# second launch never becomes a second process contending for the home-scoped
+# sidecar claim — its argv is forwarded to the primary and it exits before any
+# plugin or setup side effect runs. The `deep-link` feature is the reason this
+# matters beyond tidiness: on Windows/Linux a pairing deep link launches a NEW
+# process, and without this forwarding the URL lands in a doomed secondary
+# instead of the running app (the claim guards the sidecar slot, not the app).
+tauri-plugin-single-instance = { version = "=2.4.3", features = ["deep-link"] }
+
+# The maintained Keyring 4 ecosystem moved its application API into
+# `keyring-core`; the `keyring` crate itself is now a sample/CLI crate and
+# explicitly advises applications not to depend on it.  Desktop targets select
+# their platform-native store below. Linux uses the maintained Secret Service
+# store; a locked/unavailable collection remains an actionable error, never a
+# plaintext fallback.
+[target."cfg(target_os = \"macos\")".dependencies]
+apple-native-keyring-store = { version = "=1.0.2", features = ["keychain"] }
+# Direct pin: Station inspects Security.framework's typed OSStatus for the
+# narrow stale-item ACL recovery path. Do not infer it from localized Display
+# text supplied by the transitive keyring adapter.
+security-framework = "=3.7.0"
+
+[target."cfg(target_os = \"windows\")".dependencies]
+windows-native-keyring-store = "=1.0.0"
+
+[target."cfg(target_os = \"linux\")".dependencies]
+zbus-secret-service-keyring-store = { version = "=1.0.0", features = ["crypto-rust"] }
+
+[target."cfg(any(target_os = \"android\", target_os = \"ios\"))".dependencies]
+# Device-bound native credential authority. The Rust API is used directly;
+# no guest-JavaScript permissions are granted, so bearer values cannot cross
+# into the WebView. iOS writes are configured ThisDeviceOnly in `run()`.
+tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
+
+[target."cfg(unix)".dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[patch.crates-io]
+# Audited Station patch over android-native-keyring-store 1.0.0. Upstream's
+# SharedPreferences wrapper returned `Ok(false)` from Editor.commit(), while
+# credential callers discarded the bool and acknowledged a non-durable write.
+# Keep this path pin until an upstream release propagates `false` as an error.
+android-native-keyring-store = { path = "../patches/android-native-keyring-store" }

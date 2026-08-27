@@ -1,0 +1,147 @@
+/* Per-answer provenance card (station#1410, redesigned station#1802).
+   Kontour-facing trust surface, so it uses Console Kit --k-* tokens like the
+   trust/readiness/gate-verdict surfaces — see the token-scoping rule at the
+   top of src-ui/src/index.css. */
+
+.turn-provenance {
+  font-size: var(--k-text-sm);
+}
+
+/* Quiet text-weight disclosure (station#2652 redesign): the pill chrome
+   (border + panel fill) made this compete with the answer above it. The
+   collapsed line keeps its earned-facts content and semantics; only its
+   visual weight recedes. */
+.turn-provenance__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: 2px var(--k-space-1);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+
+.turn-provenance__summary:hover {
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+
+/* The collapsed line IS the takeaway (station#1802): engine, model, cost —
+   the earned facts, in the reader's normal text colour, not muted like a
+   gap count used to be. */
+.turn-provenance__headline {
+  color: var(--k-text);
+}
+
+/* Per-answer standing (station#1802) — only a finding that can differ
+   between two answers from the same engine ever reaches this badge (see
+   turnFindings). Muted, not cautionary: it should draw the eye without
+   marking a normal healthy turn as a problem. */
+.turn-provenance__badge {
+  color: var(--k-text-muted);
+  font-weight: 600;
+}
+
+.turn-provenance__detail {
+  margin: var(--k-space-2) 0 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+}
+
+.turn-provenance__facts {
+  margin: 0;
+}
+
+.turn-provenance__row {
+  display: flex;
+  gap: var(--k-space-3);
+  padding: 2px 0;
+}
+
+.turn-provenance__label {
+  flex: 0 0 11rem;
+  color: var(--k-text-muted);
+}
+
+.turn-provenance__value {
+  margin: 0;
+  color: var(--k-text);
+  word-break: break-word;
+}
+
+/* Kind 1: earned claims — observed facts about THIS turn. Full-weight text;
+   this is the product's whole point and should read as the most confident
+   row on the card. */
+.turn-provenance__value--earned {
+  color: var(--k-text);
+}
+
+/* Kind 2: meaningful absences — a real property of the engine ("Tools: not
+   reported by this engine"), not a defect and not Station's fault. Muted and
+   italic marks it as "no value here" without the roadmap styling below,
+   which is a DIFFERENT claim (station#1802: these two must not look alike). */
+.turn-provenance__value--absence {
+  color: var(--k-text-muted);
+  font-style: italic;
+}
+
+/* Kind 3: Station's own backlog ("not captured by Station yet"). Deliberately
+   smaller than an absence row (not lower-contrast — review fix, station#1802
+   L-2: stacking `opacity` on top of the already-muted `--k-text-muted`
+   measured below WCAG AA 4.5:1 in three of the four shipped themes), and
+   lives under its own "Not yet captured by Station" heading rather than
+   mixed into the checkable facts — the reader should not have to sort our
+   roadmap out of what this answer actually established. The heading plus
+   the smaller type plus the un-italicized, differently-worded value is
+   enough separation from an absence row without compounding opacity. */
+.turn-provenance__value--not-captured {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.turn-provenance__section-label {
+  margin: var(--k-space-3) 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.turn-provenance__facts--metadata {
+  margin-bottom: 0;
+}
+
+/* Kind 4: correlation ids — debugging metadata, not a claim. Lives behind the
+   disclosure in its own Metadata block with a copy control (station#1802): a
+   turn UUID exists to be pasted into a bug report. */
+.turn-provenance__value--id {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  font-family: var(--font-mono);
+}
+
+.turn-provenance__copy {
+  flex: 0 0 auto;
+  padding: 1px var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  cursor: pointer;
+}
+
+.turn-provenance__copy:hover {
+  border-color: var(--k-line-strong);
+  color: var(--k-text);
+}
+
+.turn-provenance__unreadable {
+  margin: 0;
+  color: var(--k-text-muted);
+}

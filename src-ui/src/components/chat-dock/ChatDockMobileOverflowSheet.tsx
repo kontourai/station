@@ -1,0 +1,181 @@
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../ResponsiveDialogSurface';
+import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
+
+/**
+ * The mobile header's overflow sheet.
+ *
+ * Split out of `ChatDockMobileHeader` and lazy-loaded purely so it stays out of
+ * the entry chunk: it only renders behind a tap, and `origin/main` was already
+ * within ~200 gzip bytes of the budget in `scripts/ui-bundle-budget.mjs`. Same
+ * reasoning as App.tsx's lazy overlays.
+ */
+export function ChatDockMobileOverflowSheet({
+  overflow,
+  projectScope,
+  onClose,
+}: {
+  overflow: ChatDockMobileOverflowActions;
+  /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
+  projectScope?: { name: string; onClear: () => void };
+  onClose: () => void;
+}) {
+  const run = (action: () => void) => {
+    onClose();
+    action();
+  };
+
+  return (
+    <ResponsiveDialogSurface
+      ariaLabel="Chat actions"
+      onClose={onClose}
+      historyMode="entry"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--end"
+      panelClassName="composer-popover-panel chat-dock__mobile-overflow-panel"
+    >
+      <ResponsiveDialogHeader
+        title="Actions"
+        closeLabel="Close actions menu"
+        onClose={onClose}
+      />
+      <div
+        className="composer-actions-menu__list"
+        role="menu"
+        aria-label="Chat actions"
+      >
+        {/* #3309: "New chat" left this sheet for a pinned header icon — a
+            primary action should not live behind an overflow tap. */}
+        <button
+          type="button"
+          role="menuitem"
+          className="composer-actions-menu__item"
+          onClick={() => run(overflow.onOpenConversation)}
+        >
+          Open conversation
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="composer-actions-menu__item"
+          onClick={() => run(overflow.onToggleHistory)}
+        >
+          Conversation history
+        </button>
+        {overflow.onOpenProject && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() =>
+              run(
+                overflow.onOpenProject as NonNullable<
+                  typeof overflow.onOpenProject
+                >,
+              )
+            }
+          >
+            Open project
+            {overflow.openProjectName && (
+              /* NOT aria-hidden, unlike the Clear-project-scope hint below:
+                 that item has an explicit `aria-label` this would fight, while
+                 this one takes its accessible name from its text, so the
+                 project reaches a screen reader and the eye through the same
+                 node. This is the channel the phone bar's narrow-width label
+                 drop points at (station#3309). */
+              <span className="composer-actions-menu__item-hint">
+                {overflow.openProjectName}
+              </span>
+            )}
+          </button>
+        )}
+        {/* One named entry point per snap state the drag gesture can reach
+            (collapsed / half / full), so the pointer gesture is never the only
+            way to change dock height. */}
+        {overflow.dockControls !== false && overflow.isDockMaximized ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(overflow.onRestoreDock)}
+          >
+            Restore chat
+            <span
+              className="composer-actions-menu__item-hint"
+              aria-hidden="true"
+            >
+              Or drag this bar down
+            </span>
+          </button>
+        ) : overflow.dockControls !== false ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(overflow.onExpandDock)}
+          >
+            Expand chat
+            <span
+              className="composer-actions-menu__item-hint"
+              aria-hidden="true"
+            >
+              Or drag this bar up
+            </span>
+          </button>
+        ) : null}
+        {overflow.dockControls !== false && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(overflow.onCollapseDock)}
+          >
+            Collapse chat
+          </button>
+        )}
+        {projectScope && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            aria-label="Clear project chat scope"
+            onClick={() => run(projectScope.onClear)}
+          >
+            Clear project scope
+            <span
+              className="composer-actions-menu__item-hint"
+              aria-hidden="true"
+            >
+              {projectScope.name}
+            </span>
+          </button>
+        )}
+        <button
+          type="button"
+          role="menuitem"
+          className="composer-actions-menu__item"
+          onClick={() => run(overflow.onOpenChatSettings)}
+        >
+          Chat settings
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="composer-actions-menu__item"
+          onClick={() => run(overflow.onOpenProfile)}
+        >
+          Profile
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="composer-actions-menu__item"
+          onClick={() => run(overflow.onOpenAppSettings)}
+        >
+          Settings
+        </button>
+      </div>
+    </ResponsiveDialogSurface>
+  );
+}

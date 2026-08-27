@@ -1,0 +1,335 @@
+/* BranchToolbar — in-app git branch switcher, commit, and push controls for the
+   coding layout. Sits in the workspace header above the diff/file surface. */
+
+.branch-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  flex-wrap: wrap;
+}
+
+.branch-toolbar--no-repo {
+  color: var(--text-secondary);
+}
+
+.branch-toolbar__no-repo-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* ── Repo switcher ─────────────────────────────────────────────────────── */
+
+.branch-toolbar__repo {
+  position: relative;
+}
+
+.branch-toolbar__repo-trigger,
+.branch-toolbar__repo-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.branch-toolbar__repo-trigger {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+}
+
+.branch-toolbar__repo-trigger:hover {
+  background: var(--bg-hover);
+}
+
+.branch-toolbar__repo-label {
+  background: none;
+  border: 1px solid transparent;
+}
+
+.branch-toolbar__repo-icon {
+  color: var(--text-secondary);
+}
+
+.branch-toolbar__repo-name {
+  font-weight: 600;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-toolbar__repo-pin {
+  font-size: 10px;
+}
+
+.branch-toolbar__repo-menu {
+  min-width: 300px;
+}
+
+.branch-toolbar__repo-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.branch-toolbar__repo-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.branch-toolbar__repo-item-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-toolbar__repo-item-branch {
+  flex-shrink: 0;
+}
+
+.branch-toolbar__menu-item--follow .branch-toolbar__menu-item-name {
+  color: var(--text-secondary);
+}
+
+.branch-toolbar__menu-item--follow:disabled {
+  cursor: default;
+}
+
+/* ── Branch switcher ───────────────────────────────────────────────────── */
+
+.branch-toolbar__switcher {
+  position: relative;
+}
+
+.branch-toolbar__branch-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+}
+
+.branch-toolbar__branch-trigger:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.branch-toolbar__branch-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.branch-toolbar__branch-icon {
+  color: var(--text-secondary);
+}
+
+.branch-toolbar__branch-name {
+  font-weight: 600;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-toolbar__caret {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.branch-toolbar__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 20;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.2));
+  padding: 4px;
+}
+
+.branch-toolbar__menu-status {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.branch-toolbar__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  text-align: left;
+}
+
+.branch-toolbar__menu-item--active,
+.branch-toolbar__menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.branch-toolbar__menu-item-check {
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--accent-primary, var(--text-secondary));
+}
+
+.branch-toolbar__menu-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-toolbar__menu-item--new .branch-toolbar__menu-item-name {
+  color: var(--text-secondary);
+}
+
+.branch-toolbar__menu-divider {
+  height: 1px;
+  background: var(--border-primary);
+  margin: 4px 0;
+}
+
+.branch-toolbar__new-branch {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.branch-toolbar__new-branch-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.branch-toolbar__new-branch-create {
+  padding: 4px 10px;
+  background: var(--accent-primary, var(--bg-tertiary));
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.branch-toolbar__new-branch-create:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Commit ────────────────────────────────────────────────────────────── */
+
+.branch-toolbar__commit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.branch-toolbar__commit-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.branch-toolbar__commit-input:disabled {
+  opacity: 0.6;
+}
+
+.branch-toolbar__commit-btn,
+.branch-toolbar__push-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+
+.branch-toolbar__commit-btn:hover:not(:disabled),
+.branch-toolbar__push-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.branch-toolbar__commit-btn:disabled,
+.branch-toolbar__push-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.branch-toolbar__sync {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.branch-toolbar__error {
+  color: var(--color-danger, #d33);
+  font-size: var(--text-sm);
+  flex-basis: 100%;
+}
+
+/* ── Mobile (tap targets + compact 2-row layout) ───────────────────────── */
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .branch-toolbar {
+    gap: 6px;
+    padding: 6px 10px;
+  }
+
+  /* Row 1: repo + branch. Row 2: commit field + Commit + Push.
+     A wide min-width forces the commit block to wrap to its own line, while
+     leaving just enough room on that line for the Push button to sit beside it. */
+  .branch-toolbar__commit {
+    flex: 1 1 60%;
+    min-width: 60%;
+  }
+
+  .branch-toolbar__repo-trigger,
+  .branch-toolbar__repo-label,
+  .branch-toolbar__branch-trigger,
+  .branch-toolbar__commit-input,
+  .branch-toolbar__commit-btn,
+  .branch-toolbar__push-btn {
+    min-height: 44px;
+  }
+}

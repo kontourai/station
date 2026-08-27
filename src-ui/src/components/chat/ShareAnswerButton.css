@@ -1,0 +1,54 @@
+/* Share-answer affordance (station#1423). Sits beside the provenance card,
+   so it takes the same Console Kit --k-* trust-surface tokens — see the
+   token-scoping rule at the top of src-ui/src/index.css. */
+
+.share-answer {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  font-size: var(--k-text-sm);
+}
+
+/* Quiet text-weight control (station#2652 redesign) — sits in the turn
+   footer beside the provenance disclosure at the same visual weight. */
+.share-answer__button {
+  align-self: flex-start;
+  padding: 2px var(--k-space-1);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+
+.share-answer__button:hover:not(:disabled) {
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+
+.share-answer__button:disabled {
+  cursor: progress;
+}
+
+.share-answer__permalink {
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  font-family: var(--font-mono);
+  word-break: break-all;
+  user-select: all;
+}
+
+.share-answer__status {
+  color: var(--k-text-muted);
+}
+
+/* The pairing path (station#1423 N-4), shown only after a 401. */
+.share-answer__pairing {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  max-width: 42rem;
+}

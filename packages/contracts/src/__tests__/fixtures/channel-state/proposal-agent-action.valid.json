@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "station.channel-proposal/v1",
+  "proposalId": "prop-0003",
+  "channelId": "chan-design",
+  "author": {
+    "memberId": "member-alex",
+    "deviceId": "device-station",
+    "keyId": "key-triage-bot"
+  },
+  "kind": "agent-action",
+  "baseEpoch": 3,
+  "happenedAt": "2026-08-02T09:00:00.000Z",
+  "body": {
+    "action": "labelled the thread"
+  },
+  "onBehalfOf": {
+    "ownerMemberId": "member-alex",
+    "authorizationId": "auth-triage-bot-1"
+  }
+}

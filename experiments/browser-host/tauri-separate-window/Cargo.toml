@@ -1,0 +1,11 @@
+[package]
+name = "station-browser-host-separate-window-experiment"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3" }
+
+[dependencies]
+tauri = { version = "=2.11.5", features = ["devtools"] }

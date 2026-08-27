@@ -1,0 +1,201 @@
+name: Portable Install Smoke
+
+on:
+  pull_request_target:
+    paths:
+      - 'install.sh'
+      - '.gitattributes'
+      - 'scripts/package-portable-release.sh'
+      - 'packages/cli/src/commands/lifecycle.ts'
+      - '.github/workflows/install-smoke.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-without-clone:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        channel: [stable, preview]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ matrix.channel == 'preview' && 'v0.0.0-preview.1' || 'v0.0.0' }}
+      RELEASE_CHANNEL: ${{ matrix.channel }}
+      RUNTIME_CHANNEL: ${{ matrix.channel == 'preview' && 'beta' || 'stable' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Package portable release
+        run: |
+          scripts/package-portable-release.sh \
+            --output-dir "$RUNNER_TEMP/release" \
+            --ref "$RELEASE_TAG"
+
+      - name: Install, diagnose, and serve without a clone
+        env:
+          SMOKE_HOME: ${{ runner.temp }}/station-home
+          RELEASE_DIR: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          runtime_channel="$RUNTIME_CHANNEL"
+          release_channel="$RELEASE_CHANNEL"
+          launcher_name=station
+          if [ "$runtime_channel" = beta ]; then launcher_name=station-beta; fi
+          launcher="$SMOKE_HOME/.local/bin/$launcher_name"
+          install_root="$SMOKE_HOME/.local/share/station-$runtime_channel"
+          station_home="$SMOKE_HOME/.station-$runtime_channel"
+          mkdir -p "$SMOKE_HOME/fake-bin"
+          cat >"$SMOKE_HOME/fake-bin/codex" <<'EOF'
+          #!/bin/sh
+          echo 'codex-cli 1.0.0-smoke'
+          EOF
+          cat >"$SMOKE_HOME/fake-bin/claude" <<'EOF'
+          #!/bin/sh
+          echo 'claude 1.0.0-smoke'
+          EOF
+          cat >"$SMOKE_HOME/fake-bin/kiro-cli" <<'EOF'
+          #!/bin/sh
+          echo 'kiro-cli 1.0.0-smoke'
+          EOF
+          cat >"$SMOKE_HOME/fake-bin/rustc" <<'EOF'
+          #!/bin/sh
+          echo 'rustc 1.90.0-smoke'
+          EOF
+          cat >"$SMOKE_HOME/fake-bin/gh" <<'EOF'
+          #!/bin/sh
+          if [ "$1" = auth ] || [ "$1" = attestation ]; then exit 0; fi
+          if [ "$1" = api ]; then
+            artifact_dir="${STATION_SMOKE_RELEASE_DIR:-$RELEASE_DIR}"
+            case "$*" in
+              *releases/assets/manifest*) cat "$artifact_dir/station-release-ring-$RELEASE_CHANNEL.json"; exit 0 ;;
+              *releases/assets/checksum*) cat "$artifact_dir/station-portable.tar.gz.sha256"; exit 0 ;;
+              *releases/assets/archive*) cat "$artifact_dir/station-portable.tar.gz"; exit 0 ;;
+            esac
+            case "$2" in
+              *releases?*)
+                prerelease=false
+                [ "$RELEASE_CHANNEL" = preview ] && prerelease=true
+                printf '[{"tag_name":"%s","target_commitish":"main","draft":false,"prerelease":%s,"assets":[{"name":"station-release-ring-%s.json","url":"https://api.github.com/repos/kontourai/station/releases/assets/manifest"},{"name":"station-portable.tar.gz.sha256","url":"https://api.github.com/repos/kontourai/station/releases/assets/checksum"},{"name":"station-portable.tar.gz","url":"https://api.github.com/repos/kontourai/station/releases/assets/archive"}]}]' "$RELEASE_TAG" "$prerelease" "$RELEASE_CHANNEL"
+                ;;
+              *git/ref/tags/*) printf '{"object":{"type":"commit","sha":"%s"}}' "$GITHUB_SHA" ;;
+              *) exit 1 ;;
+            esac
+            exit 0
+          fi
+          exit 1
+          EOF
+          chmod +x "$SMOKE_HOME/fake-bin/"*
+
+          node -e '
+            require("node:http").createServer((request, response) => {
+              response.setHeader("content-type", "application/json");
+              response.end(JSON.stringify({ models: [] }));
+            }).listen(11434, "127.0.0.1");
+          ' &
+          ollama_pid=$!
+          python3 -m http.server 8765 --bind 127.0.0.1 \
+            --directory "$RELEASE_DIR" >/tmp/station-release-server.log 2>&1 &
+          release_pid=$!
+          cleanup() {
+            "$launcher" stop --base="$station_home" >/dev/null 2>&1 || true
+            kill "$ollama_pid" "$release_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
+            HOME="$SMOKE_HOME" \
+            PATH="$SMOKE_HOME/fake-bin:$PATH" \
+            STATION_CHANNEL="$RUNTIME_CHANNEL" \
+            STATION_INSTALL_ASSET_URL="http://127.0.0.1:8765/station-portable.tar.gz" \
+            STATION_INSTALL_CHECKSUM_URL="http://127.0.0.1:8765/station-portable.tar.gz.sha256" \
+            STATION_INSTALL_MANIFEST_URL="http://127.0.0.1:8765/station-release-ring-$RELEASE_CHANNEL.json" \
+            STATION_INSTALL_SERVER_PORT=3341 \
+            STATION_INSTALL_UI_PORT=3200 \
+            sh
+
+          previous_current=$(readlink "$install_root/current")
+          HOME="$SMOKE_HOME" \
+            PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
+            STATION_INSTALL_SERVER_PORT=3341 \
+            STATION_INSTALL_UI_PORT=3200 \
+            "$launcher" upgrade
+          node -e '
+            const fs = require("node:fs");
+            const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (state.channel !== process.argv[2]) process.exit(1);
+          ' "$install_root/.station-release-state.json" "$RUNTIME_CHANNEL"
+
+          bad_release="$RUNNER_TEMP/release-fails-start"
+          bad_work="$RUNNER_TEMP/release-fails-start-work"
+          mkdir -p "$bad_release" "$bad_work"
+          tar -xzf "$RELEASE_DIR/station-portable.tar.gz" -C "$bad_work"
+          mv "$bad_work/station/station" "$bad_work/station/station.real"
+          cat >"$bad_work/station/station" <<'EOF'
+          #!/bin/bash
+          if [ "${1:-}" = start ]; then exit 97; fi
+          exec "$(dirname "$0")/station.real" "$@"
+          EOF
+          chmod +x "$bad_work/station/station"
+          tar -czf "$bad_release/station-portable.tar.gz" -C "$bad_work" station
+          node -e '
+            const fs = require("node:fs");
+            const crypto = require("node:crypto");
+            const [archive, checksum, sourceManifest, targetManifest] = process.argv.slice(1);
+            const digest = (path) => crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
+            fs.writeFileSync(checksum, `${digest(archive)}  station-portable.tar.gz\n`);
+            const manifest = JSON.parse(fs.readFileSync(sourceManifest, "utf8"));
+            manifest.archive.sha256 = digest(archive);
+            manifest.checksum.sha256 = digest(checksum);
+            fs.writeFileSync(targetManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+          ' \
+            "$bad_release/station-portable.tar.gz" \
+            "$bad_release/station-portable.tar.gz.sha256" \
+            "$RELEASE_DIR/station-release-ring-$RELEASE_CHANNEL.json" \
+            "$bad_release/station-release-ring-$RELEASE_CHANNEL.json"
+          if HOME="$SMOKE_HOME" \
+            PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
+            STATION_SMOKE_RELEASE_DIR="$bad_release" \
+            STATION_INSTALL_SERVER_PORT=3341 \
+            STATION_INSTALL_UI_PORT=3200 \
+            "$launcher" upgrade
+          then
+            echo "Expected failed candidate start" >&2
+            exit 1
+          fi
+          test "$(readlink "$install_root/current")" = "$previous_current"
+          node -e '
+            const fs = require("node:fs");
+            const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (state.channel !== process.argv[2]) process.exit(1);
+          ' "$install_root/.station-release-state.json" "$RUNTIME_CHANNEL"
+
+          test ! -e "$install_root/current/.git"
+          HOME="$SMOKE_HOME" \
+            PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
+            "$launcher" doctor --json >"$RUNNER_TEMP/doctor.json"
+          jq -e '.exitReady == {chatReady:true,runtimeReady:true}' \
+            "$RUNNER_TEMP/doctor.json"
+          curl -fsS --retry 10 --retry-connrefused --retry-delay 1 \
+            -o "$RUNNER_TEMP/station-ui.html" http://127.0.0.1:3200/
+          grep -q '<div id="root"' "$RUNNER_TEMP/station-ui.html"
+          curl -fsS http://127.0.0.1:3200/__station/identity \
+            | jq -e --arg sha "$GITHUB_SHA" '.sha == $sha and (.bootId | length > 0)'
+
+          curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
+            HOME="$SMOKE_HOME" \
+            STATION_CHANNEL="$RUNTIME_CHANNEL" \
+            sh -s uninstall
+          test ! -e "$install_root"
+          test -d "$station_home"

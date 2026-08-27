@@ -1,0 +1,209 @@
+name: Android Tests
+
+on:
+  workflow_run:
+    workflows: [Build Android verification artifact]
+    types: [completed]
+  # checkov:skip=CKV_GHA_7:Manual test runs require an exact prior Android build run ID
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Successful Build Android verification artifact run ID'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-build:
+    name: Resolve exact build revision
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    timeout-minutes: 90
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      run_id: ${{ steps.resolve.outputs.run_id }}
+      conclusion: ${{ steps.resolve.outputs.conclusion }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "1"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Resolve triggering build
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.run_id }}
+        run: node scripts/resolve-android-build-run.mjs
+
+  mobile-playwright:
+    name: Mobile Playwright (Android viewport)
+    if: github.event_name != 'pull_request'
+    needs: resolve-build
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve-build.outputs.head_sha }}
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+
+      # The public Android suite owns its isolated Station instance, build,
+      # ports, reports, and cleanup. Do not replace it with direct Vite or
+      # Playwright commands here.
+      - name: Install Playwright browsers
+        timeout-minutes: 5
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
+
+      - name: Run Android viewport tests
+        env:
+          PW_REPORTER: line,html
+        run: npm run test:android
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: android-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  emulator-smoke:
+    name: Emulator Smoke Test
+    if: github.event_name != 'pull_request'
+    needs: resolve-build
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, android-kvm]
+    timeout-minutes: 90
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve-build.outputs.head_sha }}
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "9"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+
+      - name: Download APK from triggering build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: station-android-debug
+          run-id: ${{ needs.resolve-build.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: apk/
+
+      - name: List APK
+        run: ls -lh apk/ && find apk/ -name "*.apk"
+
+      - name: Verify provisioned KVM access
+        run: |
+          test -r /dev/kvm -a -w /dev/kvm || {
+            echo "::error::android-kvm runner cannot read and write /dev/kvm"
+            exit 1
+          }
+
+      - name: Write smoke test script
+        run: |
+          cat > smoke.sh << 'SCRIPT'
+          #!/bin/bash
+          set -e
+          APK=$(find apk/ -name "*.apk" | head -1)
+          echo "APK: $APK"
+          adb install "$APK"
+          adb shell am start -n io.kontourai.station/.MainActivity
+          sleep 5
+          adb shell pidof io.kontourai.station | grep -q "[0-9]" && echo "App process running" || (echo "App not running" && exit 1)
+          adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime" > crash.log || true
+          if [ -s crash.log ]; then cat crash.log && exit 1; fi
+          adb shell screencap -p /sdcard/smoke.png && adb pull /sdcard/smoke.png smoke-test.png
+          echo "Smoke test passed"
+          SCRIPT
+          chmod +x smoke.sh
+
+      - name: Run emulator smoke test
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash smoke.sh
+
+      - name: Upload emulator screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: android-smoke-screenshot
+          path: smoke-test.png
+          retention-days: 14

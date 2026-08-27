@@ -1,0 +1,341 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/@voltagent/cli/node_modules/esbuild",
+      "name": "esbuild",
+      "version": "0.25.12",
+      "integrity": "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg==",
+      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "Bundler binary is required by the VoltAgent CLI dependency and is verified by its executable artifact.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "purl": "pkg:npm/esbuild@0.25.12",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "esbuild advisory",
+        "VoltAgent removal"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/cpu-features",
+      "name": "cpu-features",
+      "version": "0.0.10",
+      "integrity": "sha512-9IkYqtX3YHPCzoVg1Py+o9057a3i0fp7S530UWokCSaFVTc7CwXPRiOjRjBQQ18ZCNafx78YfnG+HALxtVmOGA==",
+      "hooks": [
+        {
+          "name": "install",
+          "command": "node buildcheck.js > buildcheck.gypi && node-gyp rebuild"
+        }
+      ],
+      "decision": "deny",
+      "owner": "station-security",
+      "reason": "Optional CPU probe is not required for Station; SSH2's supported JavaScript capability is probed without its native acceleration.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "lib/index.js",
+        "capability": "ssh2",
+        "proof": "no-build-fallback"
+      },
+      "purl": "pkg:npm/cpu-features@0.0.10",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "cpu-features advisory",
+        "consumer requires probe"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/esbuild",
+      "name": "esbuild",
+      "version": "0.28.1",
+      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
+      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "Station server and UI builds require the reviewed esbuild binary and verify its executable artifact.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "purl": "pkg:npm/esbuild@0.28.1",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "esbuild advisory",
+        "build tool replacement"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/fsevents",
+      "name": "fsevents",
+      "version": "2.3.3",
+      "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
+      "hooks": [],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "Darwin file watching needs fsevents; npm marks it native but this package ships a prebuilt binding without a manifest lifecycle hook, so the real watch proof is mandatory.",
+      "platform": { "os": ["darwin"], "cpu": [] },
+      "artifact": { "path": "fsevents.node", "proof": "fsevents-watch" },
+      "purl": "pkg:npm/fsevents@2.3.3",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "fsevents advisory",
+        "Darwin watcher change"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/libxmljs2",
+      "name": "libxmljs2",
+      "version": "0.37.0",
+      "integrity": "sha512-Xb78V8GZouoZFrq8cCwx7+G3WYOcJG0xb3YUbweSyE4z2EIrQCZMr3Ye/dHn4mESs6YxUMeQeUZm5IXg+iLHog==",
+      "hooks": [
+        { "name": "install", "command": "prebuild-install || node-gyp rebuild" }
+      ],
+      "decision": "deny",
+      "owner": "station-security",
+      "reason": "Optional XML native binding is not a Station runtime requirement; the CycloneDX caller is probed without that optional capability.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "index.js",
+        "capability": "@cyclonedx/cyclonedx-npm",
+        "proof": "no-build-fallback"
+      },
+      "purl": "pkg:npm/libxmljs2@0.37.0",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "libxmljs2 advisory",
+        "XML feature adoption"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/node-pty",
+      "name": "node-pty",
+      "version": "1.1.0",
+      "integrity": "sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==",
+      "hooks": [
+        {
+          "name": "install",
+          "command": "node scripts/prebuild.js || node-gyp rebuild"
+        },
+        { "name": "postinstall", "command": "node scripts/post-install.js" }
+      ],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "Terminal integration needs node-pty and the exact native artifact arrays are loaded and PTY-spawned on each supported platform.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "prebuilds/{platform}-{arch}/pty.node",
+        "platforms": {
+          "darwin/arm64": [
+            "prebuilds/darwin-arm64/pty.node",
+            "prebuilds/darwin-arm64/spawn-helper"
+          ],
+          "darwin/x64": [
+            "prebuilds/darwin-x64/pty.node",
+            "prebuilds/darwin-x64/spawn-helper"
+          ],
+          "linux/x64": ["build/Release/pty.node"],
+          "linux/arm64": ["build/Release/pty.node"],
+          "win32/x64": [
+            "prebuilds/win32-x64/pty.node",
+            "prebuilds/win32-x64/conpty.node",
+            "prebuilds/win32-x64/conpty_console_list.node",
+            "prebuilds/win32-x64/conpty/conpty.dll",
+            "prebuilds/win32-x64/conpty/OpenConsole.exe",
+            "prebuilds/win32-x64/winpty.dll",
+            "prebuilds/win32-x64/winpty-agent.exe"
+          ],
+          "win32/arm64": [
+            "prebuilds/win32-arm64/pty.node",
+            "prebuilds/win32-arm64/conpty.node",
+            "prebuilds/win32-arm64/conpty_console_list.node",
+            "prebuilds/win32-arm64/conpty/conpty.dll",
+            "prebuilds/win32-arm64/conpty/OpenConsole.exe",
+            "prebuilds/win32-arm64/winpty.dll",
+            "prebuilds/win32-arm64/winpty-agent.exe"
+          ]
+        },
+        "proof": "node-pty-smoke"
+      },
+      "purl": "pkg:npm/node-pty@1.1.0",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "node-pty advisory",
+        "terminal transport change"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/playwright/node_modules/fsevents",
+      "name": "fsevents",
+      "version": "2.3.2",
+      "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==",
+      "hooks": [],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "Playwright carries the Darwin-only prebuilt watcher binding; the package exposes no install command, so the nested real watch proof is mandatory.",
+      "platform": { "os": ["darwin"], "cpu": [] },
+      "artifact": { "path": "fsevents.node", "proof": "fsevents-watch" },
+      "purl": "pkg:npm/fsevents@2.3.2",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "fsevents advisory",
+        "Playwright upgrade"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/protobufjs",
+      "name": "protobufjs",
+      "version": "7.6.5",
+      "integrity": "sha512-/FPD0nUc9jH6rfFjji9IBqOz4pcSE3CsT1m7Ep6Mdb0LxSUMj8hgl6GomOvZzpNpAqqGaXA0P3VSrZLFzIhQrw==",
+      "hooks": [
+        { "name": "postinstall", "command": "node scripts/postinstall" }
+      ],
+      "decision": "deny",
+      "owner": "station-security",
+      "reason": "Protobufjs code generation is not required at install time; its JavaScript runtime capability is imported without build scripts.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "minimal.js",
+        "capability": "protobufjs",
+        "proof": "no-build-fallback"
+      },
+      "purl": "pkg:npm/protobufjs@7.6.5",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "protobufjs advisory",
+        "generated API adoption"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/ssh2",
+      "name": "ssh2",
+      "version": "1.17.0",
+      "integrity": "sha512-wPldCk3asibAjQ/kziWQQt1Wh3PgDFpC0XpwclzKcdT1vql6KeYxf5LIt4nlFkUeR8WuphYMKqUA56X4rjbfgQ==",
+      "hooks": [{ "name": "install", "command": "node install.js" }],
+      "decision": "deny",
+      "owner": "station-security",
+      "reason": "SSH2 optional crypto acceleration is not needed for supported Station paths; its JavaScript capability is imported without build execution.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "lib/index.js",
+        "capability": "ssh2",
+        "proof": "no-build-fallback"
+      },
+      "purl": "pkg:npm/ssh2@1.17.0",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "ssh2 advisory",
+        "SSH accelerator requirement"
+      ]
+    },
+    {
+      "scope": "sdk",
+      "lock": "packages/sdk/package-lock.json",
+      "path": "node_modules/esbuild",
+      "name": "esbuild",
+      "version": "0.28.1",
+      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
+      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "SDK package build uses the reviewed esbuild binary and verifies it after the explicit lifecycle phase.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "purl": "pkg:npm/esbuild@0.28.1",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": ["dependency refresh", "esbuild advisory", "SDK build change"]
+    },
+    {
+      "scope": "sdk",
+      "lock": "packages/sdk/package-lock.json",
+      "path": "node_modules/fsevents",
+      "name": "fsevents",
+      "version": "2.3.3",
+      "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
+      "hooks": [],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "SDK tooling retains the Darwin prebuilt watcher binding; no manifest lifecycle command exists and the real watch proof remains mandatory.",
+      "platform": { "os": ["darwin"], "cpu": [] },
+      "artifact": { "path": "fsevents.node", "proof": "fsevents-watch" },
+      "purl": "pkg:npm/fsevents@2.3.3",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "fsevents advisory",
+        "SDK watcher change"
+      ]
+    },
+    {
+      "scope": "shared",
+      "lock": "packages/shared/package-lock.json",
+      "path": "node_modules/esbuild",
+      "name": "esbuild",
+      "version": "0.28.1",
+      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
+      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "Shared package build uses the reviewed esbuild binary and verifies its explicit executable artifact.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "purl": "pkg:npm/esbuild@0.28.1",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "esbuild advisory",
+        "shared build change"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+/* ConsoleBoardPane — thin host wrapper around @kontourai/console-ui's
+ * BoardView (roadmap #586, part of epic #580, S6; extracted to
+ * @kontourai/station-board-pane in epic station#4142 M4a). BoardView's own
+ * board.css owns all Kanban/card styling; this file only positions the
+ * page-level header above it, reusing the shared page-layout.css tokens. */
+
+/* The frame owns the page's padding and its header. This view used to
+   declare both here and lose the padding to `.page--full`'s `padding: 0`
+   (4-HOME-016: content flush against the sidebar, receipt clipped by the
+   viewport edge). */
+.console-board-view {
+  gap: 1rem;
+}

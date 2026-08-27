@@ -1,0 +1,1326 @@
+/* ═══ Schedule View ═══ */
+
+.schedule__title {
+  margin: 0 0 1.5rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: linear-gradient(
+    135deg,
+    var(--text-primary) 0%,
+    var(--accent-primary) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+
+.schedule__loading {
+  padding: 4rem;
+  text-align: center;
+  color: var(--text-secondary);
+  position: relative;
+}
+
+.schedule__loading::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border: 3px solid var(--bg-tertiary);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: loading-spin var(--motion-status-spin) var(--ease-linear) infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Stat Cards ── */
+.schedule__stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  padding: 1rem 1.25rem;
+  min-width: 140px;
+  flex: 1;
+  background: linear-gradient(
+    135deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 100%
+  );
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  border-left: 4px solid var(--border-primary);
+  transition:
+    background var(--motion-slow) var(--ease-standard),
+    transform var(--motion-slow) var(--ease-standard),
+    box-shadow var(--motion-slow) var(--ease-standard);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+}
+
+.stat-card:hover {
+  background: linear-gradient(
+    135deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 100%
+  );
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.stat-card--success {
+  border-left-color: var(--success-text);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--success-text) 5%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 100%
+  );
+}
+
+.stat-card--error {
+  border-left-color: var(--error-text);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--error-text) 5%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 100%
+  );
+}
+
+.stat-card--warning {
+  border-left-color: var(--warning-text);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--warning-text) 5%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 100%
+  );
+}
+
+.stat-card--accent {
+  border-left-color: var(--accent-primary);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-primary) 8%, var(--bg-secondary)) 0%,
+    var(--bg-secondary) 100%
+  );
+}
+
+.stat-card__label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.stat-card__value {
+  font-family: var(--font-sans);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Table Container ── */
+.schedule__table-wrap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.06),
+    0 1px 4px rgba(0, 0, 0, 0.04);
+  position: relative;
+}
+
+.schedule__table-wrap::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+}
+
+.schedule__filter {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-primary);
+  background: linear-gradient(
+    135deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 100%
+  );
+}
+
+.schedule__filter-input {
+  font-family: var(--font-sans);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+  max-width: 240px;
+  transition: border-color var(--motion-base) var(--ease-standard);
+}
+
+.schedule__filter-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.schedule__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-secondary);
+}
+
+.schedule__th {
+  font-family: var(--font-mono);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: linear-gradient(
+    135deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 100%
+  );
+  border-bottom: 2px solid var(--border-primary);
+}
+
+.schedule__th--sortable {
+  cursor: pointer;
+  user-select: none;
+  transition:
+    color var(--motion-base) var(--ease-standard),
+    background var(--motion-base) var(--ease-standard);
+  position: relative;
+}
+
+.schedule__th--sortable:hover {
+  color: var(--text-primary);
+  background: linear-gradient(
+    135deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 100%
+  );
+}
+
+.schedule__th--sortable::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 4px solid var(--text-muted);
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.schedule__th--sortable:hover::after {
+  opacity: 0.6;
+}
+
+/* ── Job Rows ── */
+.schedule__row {
+  border-bottom: 1px solid var(--border-primary);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.schedule__row:hover {
+  background: var(--bg-tertiary);
+}
+.schedule__row--expanded {
+  background: var(--bg-tertiary);
+}
+
+.schedule__td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.schedule__td--name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.schedule__td--schedule {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+.schedule__td--muted {
+  color: var(--text-secondary);
+}
+.schedule__td--actions {
+  width: 140px;
+}
+
+/* ── Chevron ── */
+.schedule__chevron {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: middle;
+  transition: transform var(--motion-base) var(--ease-standard);
+  color: var(--text-muted);
+}
+.schedule__chevron--open {
+  transform: rotate(90deg);
+}
+
+/* ── Status Indicator ── */
+.schedule__status {
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.schedule__status--clickable {
+  cursor: pointer;
+}
+.schedule__status--clickable:hover {
+  opacity: 0.7;
+}
+.schedule__cron-human-inline {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.schedule__status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.schedule__status-dot--on {
+  background: var(--success-text);
+}
+.schedule__status-dot--off {
+  border: 1px solid var(--error-text);
+  background: transparent;
+}
+.schedule__status-dot--running {
+  background: var(--success-text);
+  animation: sched-pulse var(--motion-status-pulse) var(--ease-standard)
+    infinite;
+}
+.schedule__status-dot--warn {
+  background: var(--warning-text);
+}
+
+@keyframes sched-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Success Rate Bar ── */
+.schedule__rate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.schedule__rate-bar {
+  width: 48px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.schedule__rate-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width var(--motion-slow) var(--ease-standard);
+}
+.schedule__rate-fill--high {
+  background: var(--success-text);
+}
+.schedule__rate-fill--mid {
+  background: var(--warning-text);
+}
+.schedule__rate-fill--low {
+  background: var(--error-text);
+}
+
+/* ── Action Buttons ── */
+.schedule__actions {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.schedule__action-btn {
+  background: none;
+  border: 1px solid var(--border-primary);
+  padding: 4px 6px;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+.schedule__action-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-hover);
+}
+.schedule__action-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.schedule__action-btn--danger {
+  border-color: color-mix(in srgb, var(--error-text) 40%, transparent);
+  color: var(--error-text);
+}
+.schedule__action-btn--danger:hover:not(:disabled) {
+  border-color: var(--error-text);
+  background: color-mix(in srgb, var(--error-text) 10%, transparent);
+  color: var(--error-text);
+}
+
+.schedule__action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Inline Detail Expansion ── */
+.schedule__detail-row td {
+  padding: 0;
+}
+.schedule__detail {
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+}
+.schedule__detail-header {
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.schedule__detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.schedule__detail-meta {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  background: var(--bg-tertiary);
+}
+.schedule__detail-desc {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.schedule__detail-field {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+.schedule__detail-label {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 5rem;
+}
+.schedule__detail-value {
+  color: var(--text-primary);
+}
+.schedule__detail-code {
+  padding: 0.1rem 0.4rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+/* ── Detail Sub-table ── */
+.schedule__logs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.schedule__logs th {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.schedule__logs td {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+.schedule__logs tr {
+  border-bottom: 1px solid var(--border-primary);
+}
+.schedule__logs tr:last-child {
+  border-bottom: none;
+}
+.schedule__log--focused:focus {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+/* The run-output overlay and panel are gone with the hand-rolled dialog they
+   framed (see JobDetail.tsx); only the <pre> body's own type treatment is
+   still this surface's own. */
+.schedule__output-modal-body {
+  margin: 0;
+  padding: 1.25rem;
+  flex: 1;
+  overflow: auto;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  background: var(--bg-secondary);
+  border-radius: 0;
+}
+
+/* ── Failure State ── */
+/* Keeps the centered, bounded column the scheduler banner has always used;
+   the banner itself is the shared ErrorState primitive. */
+.schedule__failure {
+  padding: 3rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* ── Starter Templates ── */
+.schedule__starters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.schedule__starter-btn {
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  text-align: left;
+  min-width: 180px;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.schedule__starter-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+.schedule__starter-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.schedule__starter-label {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.schedule__starter-meta {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+.schedule__starter-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.75rem;
+}
+
+/* ── Title Row ── */
+.schedule__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+.schedule__title-row .schedule__title {
+  margin-bottom: 0;
+}
+.schedule__add-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+.schedule__add-btn:hover {
+  opacity: 0.85;
+}
+
+/* ── Job Form Modal ──
+   The overlay, panel, header, footer and the two bespoke button treatments
+   are gone: the dialog is `components/Dialog` now (SHELL-02), which owns all
+   of that once for every dialog in the app. What remains is the body's own
+   field stack, which is genuinely this form's layout. */
+.schedule__modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Form Fields ── */
+.schedule__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+/* SHELL-02: these were UPPERCASE (`NAME`/`AGENT`/`INSTRUCTIONS`) while the
+   New Project dialog beside them used sentence case ("Working Directory
+   optional"). Two dialogs, two label systems, one app. Matched to
+   `.editor-label`, which is the treatment the reference dialog uses. */
+.schedule__field-label {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.schedule__field-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.schedule__field-error {
+  font-size: 0.7rem;
+  color: var(--error-text);
+  margin-top: 0.25rem;
+}
+.schedule__field input,
+.schedule__field textarea,
+.schedule__field select {
+  padding: 0.625rem 0.75rem;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.5rem;
+  outline: none;
+  resize: vertical;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.schedule__field input:focus,
+.schedule__field textarea:focus,
+.schedule__field select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.12);
+}
+.schedule__field input::placeholder,
+.schedule__field textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* ── Friendly schedule modes ── */
+.schedule-mode-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.schedule-mode-editor__tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.625rem;
+  background: var(--bg-secondary);
+  margin: 0;
+  min-width: 0;
+}
+
+.schedule-mode-editor__tab {
+  min-height: 38px;
+  border: 0;
+  border-radius: 0.4375rem;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 600 0.8rem var(--font-sans);
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.schedule-mode-editor__tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.schedule-mode-editor__tab[aria-pressed="true"] {
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-primary));
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--accent-primary) 30%, transparent);
+}
+
+.schedule-mode-editor__tab:focus-visible,
+.schedule-mode-editor__day:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.schedule-mode-editor__row,
+.schedule-mode-editor__time-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+.schedule-mode-editor__sentence,
+.schedule-mode-editor__time-row > span:first-child {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.schedule-mode-editor__number {
+  width: 5.5rem;
+}
+
+.schedule-mode-editor__weekly {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.schedule-mode-editor__days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border: 0;
+}
+
+.schedule-mode-editor__day {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: 600 0.75rem var(--font-sans);
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.schedule-mode-editor__day:hover {
+  color: var(--text-primary);
+  border-color: var(--border-secondary);
+  transform: translateY(-1px);
+}
+
+.schedule-mode-editor__day[aria-pressed="true"] {
+  color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 60%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--accent-primary) 14%,
+    var(--bg-secondary)
+  );
+}
+
+.schedule-mode-editor__local-label,
+.schedule-mode-editor__note {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.schedule-mode-editor__note {
+  line-height: 1.45;
+}
+
+/* ── Divider between form sections ── */
+.schedule__form-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 0.25rem 0;
+}
+
+/* ── Cron Preview ── */
+/* ── Cron Editor ── */
+.cron-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+.cron-editor__fields {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.375rem;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  font-family: var(--font-mono);
+  transition: border-color var(--motion-base) var(--ease-standard);
+}
+.cron-editor__fields:focus-within {
+  border-color: rgba(74, 158, 255, 0.3);
+}
+.cron-editor__fields--error {
+  border-color: rgba(239, 68, 68, 0.5);
+}
+.cron-editor__input {
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 1.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: center;
+  color: var(--text-primary);
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+  width: 100%;
+  min-width: 0;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.cron-editor__input:focus {
+  border-bottom-color: var(--accent-primary);
+  color: #fff;
+}
+.cron-editor__input--error {
+  color: var(--error-text);
+}
+.cron-editor__labels {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.375rem;
+  font-size: 0.7rem;
+  padding: 0 1.25rem;
+}
+.cron-editor__label {
+  padding: 0.2rem 0;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+.cron-editor__label:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+}
+.cron-editor__label--active {
+  color: var(--text-primary);
+}
+.cron-editor__label--focused {
+  background: rgba(74, 158, 255, 0.15);
+  color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.2);
+}
+.cron-editor__label--error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--error-text);
+}
+.cron-editor__help {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  animation: cron-help-in var(--motion-fast) var(--ease-standard);
+}
+.cron-editor__error {
+  font-size: 0.75rem;
+  color: var(--error-text);
+  font-weight: 500;
+  text-align: center;
+  animation: cron-help-in var(--motion-fast) var(--ease-standard);
+}
+.cron-editor__errors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.cron-editor__error-line {
+  font-size: 0.7rem;
+  color: var(--error-text);
+  text-align: center;
+}
+@keyframes cron-help-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cron-editor__syntax {
+  margin: 0 auto;
+  border-collapse: collapse;
+}
+.cron-editor__syntax td {
+  padding: 0.2rem 0.625rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.cron-editor__sym {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.cron-editor__syntax--error td {
+  color: var(--error-text);
+}
+.cron-editor__syntax--error .cron-editor__sym {
+  color: var(--error-text);
+}
+
+.schedule__cron-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.375rem;
+}
+.schedule__cron-preview--error {
+  color: var(--error-text);
+}
+.schedule__cron-human {
+  width: 100%;
+  font-size: 0.85rem;
+  color: var(--accent-primary);
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+.schedule__cron-human--muted {
+  color: var(--text-muted);
+}
+.schedule__cron-label {
+  font-weight: 500;
+}
+.schedule__cron-time {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ── Mobile responsive ── */
+.cron-editor__tz-note {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .schedule__stats {
+    flex-direction: column;
+  }
+
+  .stat-card {
+    min-width: 0;
+  }
+
+  .schedule__title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .schedule__starters {
+    flex-direction: column;
+  }
+
+  .schedule__starter-btn {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .cron-editor__fields,
+  .cron-editor__labels {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.25rem;
+  }
+
+  .cron-editor__input {
+    font-size: 1.25rem;
+  }
+
+  .schedule__table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .schedule-mode-editor__tab,
+  .schedule-mode-editor__day {
+    min-height: 44px;
+  }
+
+  .schedule__action-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Stack expanded detail fields so long values don't overflow 390px */
+  .schedule__detail-field {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .schedule__detail-label {
+    min-width: 0;
+  }
+
+  .schedule__detail-value,
+  .schedule__detail-desc {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .schedule__detail-code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Long lines wrap on mobile; the sheet geometry itself is the shared
+     dialog's (`.responsive-surface-panel`), not this surface's. */
+  .schedule__output-modal-body {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Filter input spans the available width on mobile */
+  .schedule__filter-input {
+    max-width: 100%;
+  }
+
+  /* Run-history sub-table can scroll horizontally rather than overflow */
+  .schedule__detail-logs-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Agent picker is a primary form control — meet the 44px tap target */
+  .agent-picker__trigger {
+    min-height: 44px;
+  }
+
+  .agent-picker__option {
+    min-height: 44px;
+  }
+}
+
+/* ── Agent Picker ── */
+.agent-picker__trigger {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  background: var(--bg-input);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  min-height: 2.25rem;
+  font: inherit;
+  text-align: left;
+}
+
+.agent-picker__trigger-name {
+  flex: 1;
+}
+
+.agent-picker__trigger-model {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.agent-picker__trigger-caret {
+  font-size: 0.7rem;
+  opacity: 0.5;
+}
+
+.agent-picker__dropdown {
+  position: fixed;
+  z-index: calc(var(--layer-dialog) + 1);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.375rem;
+  max-height: 280px;
+  overflow: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.agent-picker__filter-wrap {
+  padding: 0.375rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.agent-picker__filter {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.25rem;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  box-sizing: border-box;
+}
+
+.agent-picker__option {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-picker__option--selected {
+  background: var(--bg-highlight);
+}
+
+.agent-picker__option:hover:not(.agent-picker__option--selected) {
+  background: var(--bg-hover);
+}
+
+.agent-picker__option-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-picker__option-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.agent-picker__option-slug {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-left: 6px;
+  font-weight: 400;
+}
+
+.agent-picker__option-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.agent-picker__check {
+  color: var(--accent-primary);
+  font-size: 0.8rem;
+}
+
+/* ── Wave 2 additions ── */
+.schedule__detail-logs-wrap {
+  padding: 0.5rem 0.75rem;
+}
+.schedule__table-scroll {
+  overflow-x: auto;
+}
+.schedule__mobile-hint {
+  display: none;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: right;
+  padding: 0.25rem 0.5rem;
+}
+@media (max-width: 640px) {
+  /* Hide less-critical columns on small phones */
+  .schedule__table th:nth-child(5),
+  .schedule__table td:nth-child(5),
+  .schedule__table th:nth-child(6),
+  .schedule__table td:nth-child(6) {
+    display: none;
+  }
+
+  .schedule__action-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .schedule__td--name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .schedule__mobile-hint {
+    display: block;
+  }
+}
+.schedule__detail-artifact-btn {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.75rem;
+}
+.schedule__log-status--ok {
+  color: var(--success-text);
+}
+.schedule__log-status--fail {
+  color: var(--error-text);
+}
+/* In flight (queued/starting/running): neutral, not a verdict yet. */
+.schedule__log-status--pending {
+  color: var(--text-secondary);
+}
+/* Waiting on this user specifically (waiting_for_approval): actionable,
+   distinct from both "still running" and "failed". */
+.schedule__log-status--attention {
+  color: var(--warning-text);
+}
+.schedule__status-pill {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 0.25rem;
+  line-height: 1;
+  padding: 0.25rem 0.45rem;
+}
+.schedule__status-pill svg {
+  height: 0.8rem;
+  width: 0.8rem;
+}
+.schedule__failure-reason {
+  color: var(--text-secondary);
+  display: block;
+  margin-top: 0.3rem;
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+}
+.stat-card__value--success {
+  color: var(--success-text);
+}
+.stat-card__value--error {
+  color: var(--error-text);
+}
+.stat-card__value--warning {
+  color: var(--warning-text);
+}
+.stat-card__hint {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+.schedule__missed-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--warning-text);
+  background: var(--warning-bg, rgba(255, 170, 0, 0.1));
+  border-radius: 4px;
+}
+.schedule__rate-value--high {
+  color: var(--success-text);
+}
+.schedule__rate-value--mid {
+  color: var(--warning-text);
+}
+.schedule__rate-value--low {
+  color: var(--error-text);
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL command-line toolchain",
+          "organization": "GitHub",
+          "semanticVersion": "2.0.0",
+          "rules": [
+            {
+              "id": "js/path-injection",
+              "name": "js/path-injection",
+              "defaultConfiguration": { "level": "error" },
+              "properties": { "security-severity": "8.1" }
+            }
+          ]
+        }
+      },
+      "invocations": [
+        {
+          "executionSuccessful": false,
+          "toolExecutionNotifications": [{ "level": "error", "message": { "text": "query failed" } }]
+        }
+      ],
+      "results": []
+    }
+  ]
+}

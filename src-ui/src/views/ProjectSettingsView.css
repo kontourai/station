@@ -1,0 +1,463 @@
+.knowledge-section {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.knowledge-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.knowledge-section__title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.knowledge-section__stat {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.knowledge-section__card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.knowledge-section__card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.knowledge-section__card-label {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.knowledge-section__action-btn {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.knowledge-section__action-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.knowledge-section__action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.knowledge-section__source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.knowledge-section__source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+}
+
+.knowledge-section__source-icon {
+  font-size: var(--text-xl);
+  flex-shrink: 0;
+}
+
+.knowledge-section__source-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.knowledge-section__source-name {
+  display: block;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.knowledge-section__source-path {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-settings__body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.5rem;
+  /* This view owns its own scroller, so the ancestor's dock reservation
+     shortened the PANEL instead of letting content scroll clear of the dock —
+     the page visibly compressed as the dock grew. Cancel that reservation and
+     take the allowance as scroll padding here: the panel keeps full height and
+     you can simply scroll the last section out from behind the dock, which is
+     all the dock should ever do to the content behind it.
+     Both halves read the shell's own `--dock-bottom-clearance` (index.css,
+     station#3902) rather than re-deriving it: this trade only works while the
+     amount cancelled and the amount re-added are the SAME number the shell
+     reserved, and `var(--dock-slot-size)` alone was not it. */
+  margin-bottom: calc(-1 * var(--dock-bottom-clearance));
+  padding-bottom: calc(1.5rem + var(--dock-bottom-clearance));
+}
+
+/* The body is a vertical flex scroller. Without an explicit non-shrinking
+   basis, every section compresses until only its header remains visible. */
+.project-settings__body > .page-section {
+  flex: 0 0 auto;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.project-settings__section-nav {
+  margin: 0.75rem 1.25rem 0;
+  flex-shrink: 0;
+}
+.page-section.knowledge-section {
+  padding: 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+.project-settings__section--hero {
+  background:
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--accent-primary) 14%, transparent),
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bg-secondary) 92%, white 8%),
+      var(--bg-secondary)
+    );
+}
+.project-settings__hero-grid {
+  display: block;
+}
+.project-settings__field--featured {
+  margin-bottom: 0;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+.project-settings__working-dir-input {
+  min-height: 3.1rem;
+  padding: 0.95rem 1rem;
+  font-size: 0.98rem;
+  border-radius: 12px;
+}
+.project-settings__path-pills {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.project-settings__path-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-secondary) 86%, white 14%);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+.project-settings__path-pill code {
+  color: var(--text-primary);
+}
+.project-settings__identity-preview {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.project-settings__identity-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-primary) 82%, white 18%);
+  font-size: 1.3rem;
+}
+.project-settings__identity-name {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 650;
+}
+.project-settings__identity-card-name {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.project-settings__identity-path {
+  margin-top: 0.3rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.project-settings__identity-card {
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-primary) 82%, white 18%);
+}
+.project-settings__identity-card-label {
+  margin-bottom: 0.6rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.project-settings__identity-card-name {
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+.project-settings__identity-card-copy {
+  margin-top: 0.55rem;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.project-settings__identity-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr);
+  gap: 0.25rem;
+}
+.project-settings__name-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.project-settings__icon-input {
+  width: 48px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.project-settings__name-input {
+  flex: 1;
+}
+.project-settings__actions {
+  margin-top: 16px;
+  text-align: right;
+}
+.project-settings__modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-settings__modal-description {
+  margin: 8px 0 16px;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+
+@media (max-width: 640px) {
+  .project-settings__body {
+    padding: 0.75rem;
+  }
+  /* station#4463 slice 2 review MED-4: the scrollbar affordance that used to
+     live here moved to the shared `.section-nav` rule in page-layout.css, so
+     a higher-specificity hide can never silently outrank it again. Only this
+     host's own inset/scroll-padding stays local. */
+  .project-settings__section-nav {
+    margin-inline: 0.75rem;
+    padding-bottom: 0.4rem;
+    scroll-padding-inline: 0.5rem;
+  }
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Stop the identity preview / path strings from forcing horizontal scroll */
+  .project-settings__identity-preview,
+  .project-settings__identity-card,
+  .project-settings__field--featured {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .project-settings__identity-path,
+  .project-settings__identity-card-name {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Keep primary action buttons tappable */
+  .project-settings__working-dir-input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+.knowledge-section__dropzone {
+  display: block;
+  width: 100%;
+  background: transparent;
+  font: inherit;
+}
+
+/* station#1502 slice 4 — resolution states (§3.6) in project settings. */
+.resources-section__row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/*
+ * station#1503 slice 5 — several resources render as several rows, so they need
+ * a separator; a single-repo project renders one row and no tally, and its
+ * spacing is unchanged.
+ */
+.resources-section__row + .resources-section__row {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle, var(--border, transparent));
+}
+
+.resources-section__tally {
+  margin: 0 0 4px;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.resources-section__headline {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.resources-section__row--ready .resources-section__headline {
+  color: var(--status-success, var(--text-primary));
+}
+
+.resources-section__row--repairable .resources-section__headline {
+  color: var(--status-warning, var(--text-primary));
+}
+
+.resources-section__body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The three slots are visually distinct as well as textually distinct: an
+ * answer, an observation, and a declaration are three different claims, and a
+ * reader who skims labels should still not mistake one for another.
+ */
+.resources-section__slot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary, transparent);
+}
+
+.resources-section__slot--answer {
+  border-left: 3px solid var(--status-success, var(--border-primary));
+}
+
+/*
+ * An OBSERVATION: a directory is really there, and whose it is was not
+ * confirmed. Solid, because something was seen.
+ */
+.resources-section__slot--observation {
+  border-left: 3px solid var(--status-warning, var(--border-primary));
+}
+
+/*
+ * A DECLARATION whose path does NOT exist. Dashed and muted, because nothing
+ * was observed at all — this is a string a record states, not a place. Sharing
+ * `--observation`'s rule made the comment above ("the three slots are visually
+ * distinct") false, which is the kind of unpinned claim that is worse than no
+ * claim. The slot-treatment test pins all three apart.
+ */
+.resources-section__slot--declared {
+  border-left: 3px dashed var(--status-error, var(--border-primary));
+  opacity: 0.85;
+}
+
+.resources-section__slot-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.resources-section__slot-value {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.resources-section__repair {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.resources-section__repair-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.resources-section__repair-input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/*
+ * The binding WAS recorded and the follow-up re-read failed. Deliberately not
+ * styled as an error: the write is durable, and the only unknown is what this
+ * Station can now say about it.
+ */
+.resources-section__gap {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.resources-section__reverify {
+  align-self: flex-start;
+}

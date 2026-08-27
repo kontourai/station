@@ -1,0 +1,375 @@
+/* ═══ Full-Screen Loading & Error States ═══ */
+
+/* ── Shared base ── */
+
+.fs-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh; /* fallback */
+  /* biome-ignore lint/suspicious/noDuplicateProperties: 100vh fallback for browsers without dvh */
+  height: 100dvh;
+  width: 100%;
+  background: var(--bg-primary, #0a0a0a);
+  color: var(--text-secondary, #999);
+  font-family: "DM Sans", system-ui, sans-serif;
+  position: relative;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Atmospheric background — subtle radial gradients */
+.fs-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 80% 50% at 50% 30%,
+      rgba(74, 158, 255, 0.04),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 75% 65%,
+      rgba(167, 139, 250, 0.025),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 40% 30% at 20% 70%,
+      rgba(74, 158, 255, 0.02),
+      transparent 50%
+    );
+  pointer-events: none;
+  animation: fs-bg-drift 20s ease-in-out infinite alternate;
+}
+
+@keyframes fs-bg-drift {
+  0% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Noise texture overlay for depth */
+.fs-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+  pointer-events: none;
+}
+
+.fs-screen__inner {
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  animation: fs-fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 420px;
+  padding: 0 1.5rem;
+}
+
+@keyframes fs-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Logo treatment ── */
+
+.fs-logo-wrap {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 2.5rem;
+}
+
+.fs-logo {
+  width: 52px;
+  height: 52px;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 24px rgba(74, 158, 255, 0.12));
+}
+
+.fs-logo-ring {
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  border-top-color: var(--accent-primary, #4a9eff);
+  animation: fs-spin 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes fs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fs-logo-glow {
+  position: absolute;
+  inset: -24px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(74, 158, 255, 0.1) 0%,
+    transparent 70%
+  );
+  animation: fs-glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes fs-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+/* ── Loading: cycling messages ── */
+
+.fs-messages {
+  position: relative;
+  min-height: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.fs-message-primary {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-primary, #e0e0e0);
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  transition:
+    opacity 0.4s ease,
+    transform 0.4s ease;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.fs-message-primary[data-fading="true"] {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.fs-message-tip {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #666);
+  margin-top: 0.75rem;
+  transition:
+    opacity 0.4s ease,
+    transform 0.4s ease;
+  opacity: 1;
+  transform: translateY(0);
+  max-width: 320px;
+}
+
+.fs-message-tip[data-fading="true"] {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+/* ── Loading: progress track ── */
+
+.fs-progress-track {
+  width: 120px;
+  height: 2px;
+  background: var(--border-primary, #333);
+  border-radius: 1px;
+  margin: 2rem auto 0;
+  overflow: hidden;
+  opacity: 0.6;
+}
+
+.fs-progress-bar {
+  height: 100%;
+  width: 40%;
+  background: var(--accent-primary, #4a9eff);
+  border-radius: 1px;
+  animation: fs-progress-slide 1.8s ease-in-out infinite;
+}
+
+/*
+ * station#1876: a determinate bar sets its own width, so the indeterminate
+ * slide has to stop — otherwise the animation's transform drags the bar
+ * across the track and the width carries no readable meaning.
+ */
+.fs-progress-bar[data-determinate="true"] {
+  animation: none;
+  transform: none;
+  transition: width 240ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-progress-bar[data-determinate="true"] {
+    transition: none;
+  }
+}
+
+@keyframes fs-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(200%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+/*
+ * station#1876: the approval-wait hint under the progress bar. Sits in the
+ * loader's existing action slot, so it inherits that slot's aria-live and is
+ * announced when the wait first appears.
+ */
+.fs-approval-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #9aa0a6);
+  text-align: center;
+}
+
+/* ── Loading: label ── */
+
+.fs-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted, #666);
+  margin-bottom: 1.25rem;
+  opacity: 0.7;
+}
+
+/* ── Error screen ── */
+
+.fs-screen--error .fs-logo-ring {
+  border-top-color: var(--error-text, #ff6b6b);
+  animation: fs-spin 3s linear infinite;
+}
+
+.fs-screen--error .fs-logo-glow {
+  background: radial-gradient(
+    circle,
+    rgba(255, 107, 107, 0.08) 0%,
+    transparent 70%
+  );
+}
+
+.fs-screen--error .fs-logo {
+  filter: drop-shadow(0 0 24px rgba(255, 107, 107, 0.1));
+}
+
+.fs-error-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.fs-error-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted, #999);
+  line-height: 1.5;
+  margin: 0 0 1.5rem;
+}
+
+.fs-error-desc code {
+  padding: 2px 6px;
+  background: var(--bg-tertiary, #252525);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8em;
+}
+
+/* Shared button-row layout. Kept separate from the error/loader modifiers so
+   an error-specific rule (a red accent, say) cannot silently leak into the
+   loading screen, which now renders actions too. */
+.fs-actions,
+.fs-error-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* The loader's row only needs separating from the progress bar above it. */
+.fs-loader-actions {
+  margin-top: 1.25rem;
+}
+
+.fs-btn {
+  padding: 0.55rem 1.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-family: "DM Sans", system-ui, sans-serif;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: -0.01em;
+}
+
+.fs-btn--primary {
+  background: var(--accent-primary, #4a9eff);
+  color: var(--text-on-accent);
+}
+
+/* station#3392: was a hardcoded blue, so hovering an accent-filled button left
+   the accent entirely and paired an on-accent foreground with a fill the accent
+   never chose. Same defect as `.schedule__modal-submit:hover`'s #5aa8ff. */
+.fs-btn--primary:hover {
+  background: var(--accent-hover-fill);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.25);
+}
+
+.fs-btn--secondary {
+  background: var(--bg-secondary, #1a1a1a);
+  color: var(--text-secondary, #d0d0d0);
+  border: 1px solid var(--border-primary, #333);
+}
+
+.fs-btn--secondary:hover {
+  border-color: var(--border-secondary, #444);
+  background: var(--bg-tertiary, #2a2a2a);
+}
+
+/* ── Error: friendly message ── */
+
+.fs-error-quip {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.65rem;
+  color: var(--text-muted, #666);
+  margin-top: 1.5rem;
+  opacity: 0.6;
+  letter-spacing: 0.02em;
+}
+
+/* ── Mobile touch targets ── */
+@media (max-width: 768px) {
+  .fs-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

@@ -1,0 +1,266 @@
+.auto-select-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.auto-select-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+
+.auto-select-modal__header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.auto-select-modal__title {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.auto-select-modal__search {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.auto-select-modal__content {
+  overflow-y: auto;
+  max-height: 400px;
+  flex: 1;
+}
+
+/* Non-verbal loading treatment (SHELL-13): skeleton rows mirroring the item
+   list's shape — icon + two lines — so the panel holds its geometry while the
+   read is in flight instead of printing a wait sentence. */
+.auto-select-modal__loading {
+  padding: 8px 0;
+}
+
+/* The modal's status region: the no-results line for a search with no
+   matches. Not an Empty-family state (the shared Empty is unreachable from
+   packages/sdk) — a one-line status inside the search interaction. */
+.auto-select-modal__status {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.auto-select-modal__skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+}
+
+.auto-select-modal__skeleton-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border-primary);
+  animation: auto-select-modal__pulse 1.2s ease-in-out infinite;
+}
+
+.auto-select-modal__skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.auto-select-modal__skeleton-line {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--border-primary);
+  animation: auto-select-modal__pulse 1.2s ease-in-out infinite;
+}
+
+.auto-select-modal__skeleton-line--short {
+  width: 55%;
+}
+
+@keyframes auto-select-modal__pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.auto-select-modal__item {
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  border-bottom: 1px solid var(--border-primary);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auto-select-modal__item:last-child {
+  border-bottom: none;
+}
+
+.auto-select-modal__item--selected {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.auto-select-modal__icon {
+  flex-shrink: 0;
+}
+
+.auto-select-modal__item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.auto-select-modal__item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 4px;
+}
+
+.auto-select-modal__item-title {
+  font-weight: 600;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auto-select-modal__active-indicator {
+  font-size: 10px;
+  color: var(--accent-primary, #0066cc);
+}
+
+/* Inherits the selected row's accent fill, so it takes the same partner. The
+   ratchet cannot see this one — it declares no background of its own — which
+   is why the rule above is not the whole fix (station#3392 review C-2). */
+.auto-select-modal__item--selected .auto-select-modal__active-indicator {
+  color: var(--text-on-accent);
+}
+
+.auto-select-modal__badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-weight: 500;
+}
+
+.auto-select-modal__item--selected .auto-select-modal__badge {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.auto-select-modal__timestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.auto-select-modal__item--selected .auto-select-modal__timestamp {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.auto-select-modal__subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.auto-select-modal__item--selected .auto-select-modal__subtitle {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.auto-select-modal__description {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.auto-select-modal__item--selected .auto-select-modal__description {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.auto-select-modal__footer {
+  padding: 16px;
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auto-select-modal__cancel {
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* ── Mobile touch targets ── */
+@media (max-width: 768px) {
+  .auto-select-modal-overlay {
+    top: var(--responsive-visual-viewport-top, 0px);
+    bottom: auto;
+    height: var(--responsive-visual-viewport-height, 100dvh);
+    box-sizing: border-box;
+    padding: max(8px, var(--safe-top, env(safe-area-inset-top, 0px)))
+      max(8px, var(--safe-right, env(safe-area-inset-right, 0px)))
+      max(8px, var(--safe-bottom, env(safe-area-inset-bottom, 0px)))
+      max(8px, var(--safe-left, env(safe-area-inset-left, 0px)));
+    overflow: hidden;
+  }
+
+  .auto-select-modal {
+    width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+
+  .auto-select-modal__item {
+    min-height: 44px;
+  }
+
+  .auto-select-modal__cancel {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-select-modal-overlay,
+  .auto-select-modal,
+  .auto-select-modal__item {
+    animation: none !important;
+    transition: none !important;
+  }
+}

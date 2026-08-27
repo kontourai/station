@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-07-31T21:13:13.740Z",
+  "repoStandardsHash": "sha256:4064246a9e27908811dcf7ebab706339350ebe988abd5f39d236b92232521773",
+  "repoMapHash": "sha256:419e12c53a7a3cbf4478c7b52e1df427a65d6d544cd039035519068be68d112c",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-07-26T21-45-31-043Z-09f5901f9543",
+  "validUntilDays": 90,
+  "notes": "Add default-only executable verification-policy readiness check for selector-first feedback and coordinated ci:fast guidance; no required-family promotion.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-07-26T21-45-31-043Z-09f5901f9543",
+    "approvalRef": "kontourai/station#1363",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "76fea84057d5280ca0cea1fc581f21bf77a7f6347b89f988ab2ce5f1d3c5a044",
+        "validUntil": "2026-10-29T21:13:13.740Z"
+      },
+      "createdAt": "2026-07-31T21:13:13.740Z",
+      "updatedAt": "2026-07-31T21:13:13.740Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6",
+      "claimId": "veritas.attestation.policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Add default-only executable verification-policy readiness check for selector-first feedback and coordinated ci:fast guidance; no required-family promotion.",
+      "observedAt": "2026-07-31T21:13:13.740Z",
+      "collectedBy": "brian",
+      "integrityRef": "76fea84057d5280ca0cea1fc581f21bf77a7f6347b89f988ab2ce5f1d3c5a044",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-07-31T21:13:13.740Z",
+        "validUntil": "2026-10-29T21:13:13.740Z",
+        "contentHash": "76fea84057d5280ca0cea1fc581f21bf77a7f6347b89f988ab2ce5f1d3c5a044"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6.verified",
+      "claimId": "veritas.attestation.policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6"
+      ],
+      "createdAt": "2026-07-31T21:13:13.740Z",
+      "verifiedAt": "2026-07-31T21:13:13.740Z"
+    }
+  }
+}

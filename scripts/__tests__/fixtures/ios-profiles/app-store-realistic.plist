@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AppIDName</key>
+	<string>Station</string>
+	<key>ApplicationIdentifierPrefix</key>
+	<array>
+	<string>ABCDE12345</string>
+	</array>
+	<key>CreationDate</key>
+	<date>2026-08-01T10:00:00Z</date>
+	<key>Platform</key>
+	<array>
+		<string>iOS</string>
+	</array>
+	<key>IsXcodeManaged</key>
+	<false/>
+	<key>DeveloperCertificates</key>
+	<array>
+		<data>MIIDKTCCAhGgAwIBAgIUQ78bk0ySUM3ZWqJmwoQ6fUwLMVYwDQYJKoZIhvcNAQELBQAwJDEiMCAGA1UEAwwZU3RhdGlvbiBUZXN0IERpc3RyaWJ1dGlvbjAeFw0yNjA4MjYwMzU0NTlaFw0yNzA4MjYwMzU0NTlaMCQxIjAgBgNVBAMMGVN0YXRpb24gVGVzdCBEaXN0cmlidXRpb24wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCuGKe5WiTZqTKNfaITQmm04KFu2K9ZQDvAPO/v7cGQLzj73KipnQR5AaD6xiQ3OgWbCF5Wm+ZWsKO8nD422tNLLXXv6ZMptGbMrKJRU08wEbdX8gmaF1RpQ+o1j2pRbR3jH2tgxxkaI0CH6XgS9qoEQXu7Cf9zyaUNj2dR7z0Bnng3WPQrCcKOxG4E/SXUd3mAnewVR8vcQc3T+cjzuNuHLozm/cwv8JkMv/Vz4Wp4yPcUf2td56OKgtYNlG02cSkl2hpwPskPX0Rmn/oJ6TM7QSh6QALG5BfO+bpbkSA5bN8dGMxKjowUZHcU/7xyTbg+yAGZDfjzwFCberJ+tLnPAgMBAAGjUzBRMB0GA1UdDgQWBBSja6X40fO+7jVoruVy9q2IiRo+ATAfBgNVHSMEGDAWgBSja6X40fO+7jVoruVy9q2IiRo+ATAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAL6nOluRmgk4/eV59tSVwZyGcSfZ/mpSoiq+GBsMAMrgXWYN5OQyhKy8LLv79t0B1XudKj1nFoy56ubIaMykUxhgVseVx5FsqM/OLAQhVLrRErGQrZa11/c5qtBC4lNKeK0HJtrLPmUi5MZQ2/U7xPZGK6NQsPImY3iQV+OWh9OpZj/iPjuy8OJYAMpvcVIf6bKqG2qGgIesPZauY2SyALd04wO4Pwf/wxJLPGwU0pfABambBcRo6jKwMbCUkG2A5G4nQLn945Pbcw5PN1M0rauVC7Tpamz59Haq+7uf+B7EpTEXFoTPeW2jK1BmKlpx6BvdQJUcCQv68AWpkVg5fh</data>
+	</array>
+	<key>DER-Encoded-Profile</key>
+	<data>MIIN2wYJKoZIhvcNAQcCoIINzDCCDcgCAQExDzANBglg</data>
+	<key>Entitlements</key>
+	<dict>
+		<key>application-identifier</key>
+		<string>ABCDE12345.ai.kontour.station</string>
+		<key>keychain-access-groups</key>
+		<array>
+			<string>ABCDE12345.*</string>
+		</array>
+		<key>get-task-allow</key>
+		<false/>
+		<key>com.apple.developer.team-identifier</key>
+		<string>ABCDE12345</string>
+		<key>aps-environment</key>
+		<string>production</string>
+	</dict>
+	<key>ExpirationDate</key>
+	<date>2027-08-01T10:00:00Z</date>
+	<key>Name</key>
+	<string>Station App Store Distribution</string>
+	<key>TeamIdentifier</key>
+	<array>
+		<string>ABCDE12345</string>
+	</array>
+	<key>TeamName</key>
+	<string>Kontour</string>
+	<key>TimeToLive</key>
+	<integer>365</integer>
+	<key>UUID</key>
+	<string>1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d</string>
+	<key>Version</key>
+	<integer>1</integer>
+</dict>
+</plist>

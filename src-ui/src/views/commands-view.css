@@ -1,0 +1,56 @@
+.commands-view__list {
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.commands-view__status {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.commands-view__source {
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.commands-view__available {
+  color: var(--success-text);
+}
+
+.commands-view__unavailable {
+  color: var(--text-muted);
+  max-width: 19rem;
+}
+
+.commands-view__note {
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Commands is a Guidance tab, and Guidance's frame body is flush for the
+   split panes its other two tabs render. This list is not a split pane, so
+   it takes the page inset the frame would otherwise have given it. */
+.commands-view {
+  padding: 0 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .commands-view {
+    padding: 0 1rem;
+  }
+}
+
+.commands-view__intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}

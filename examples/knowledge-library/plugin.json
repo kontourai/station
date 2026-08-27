@@ -1,0 +1,13 @@
+{
+  "name": "knowledge-library",
+  "version": "1.0.0",
+  "displayName": "Knowledge Library",
+  "description": "Browse registered Knowledge Kit roots as a read-only, provenance-bearing record graph.",
+  "entrypoint": "src/index.tsx",
+  "capabilities": ["navigation", "knowledge"],
+  "permissions": ["navigation.dock"],
+  "layout": {
+    "slug": "knowledge-library",
+    "source": "./layout.json"
+  }
+}

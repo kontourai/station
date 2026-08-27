@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://station.kontour.ai/schemas/daily-driver-ui-observation.schema.json",
+  "title": "Station daily-driver UI observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "producer",
+    "testId",
+    "sourceRevision",
+    "observations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "producer": { "const": "station-cross-runtime-chat-switching" },
+    "testId": { "const": "daily-driver-ui-exact-confirmation" },
+    "sourceRevision": {
+      "oneOf": [
+        { "const": "unverified" },
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      ]
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/observation" }
+    }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "assistantMessageCount",
+        "terminal",
+        "workingCleared",
+        "workingStable",
+        "commandBinding",
+        "identityBinding",
+        "projectBinding",
+        "classification",
+        "digest"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "exact-confirmation" },
+        "capability": { "const": "exact-confirmation" },
+        "repetition": { "const": 1 },
+        "assistantMessageCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "terminal": { "type": "boolean" },
+        "workingCleared": { "type": "boolean" },
+        "workingStable": { "type": "boolean" },
+        "commandBinding": { "type": "boolean" },
+        "identityBinding": { "type": "boolean" },
+        "projectBinding": { "type": "boolean" },
+        "classification": { "enum": ["exact_match", "rejected"] },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

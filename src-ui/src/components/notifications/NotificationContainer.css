@@ -1,0 +1,441 @@
+.notification-container {
+  position: fixed;
+  /* Notifications are transient and actionable, so they remain reachable
+     above the chat dock while dialogs and system blockers still supersede
+     both surfaces. */
+  z-index: var(--layer-notification);
+  top: calc(var(--app-toolbar-height, 46px) + var(--safe-top, 0px) + 8px);
+  right: var(--toast-right-offset, 20px);
+  display: flex;
+  width: min(400px, calc(100vw - 40px));
+  max-height: calc(
+    100dvh -
+    var(--app-toolbar-height, 46px) -
+    var(--safe-top, 0px) -
+    24px
+  );
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.notification-approval-queue {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: auto;
+}
+
+.notification-approval-queue__trigger {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid
+    color-mix(in srgb, var(--accent-primary) 55%, var(--border-primary));
+  border-radius: 999px;
+  background: var(--bg-primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.notification-approval-queue__trigger:focus-visible,
+.toast-card button:focus-visible,
+.notification-container__dismiss-all:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.notification-approval-queue__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+
+.notification-approval-queue__count {
+  display: grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.notification-approval-queue__panel {
+  display: none;
+  width: 100%;
+  max-height: min(60dvh, 560px);
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.notification-approval-queue__panel.is-open {
+  display: flex;
+}
+
+.toast-card {
+  width: 100%;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  color: var(--text-primary);
+  pointer-events: auto;
+}
+
+.toast-card--approval {
+  box-shadow: none;
+}
+
+.toast-card__header,
+.toast-card__meta,
+.toast-card__conversation,
+.toast-card__actions {
+  display: flex;
+}
+
+.toast-card__header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.toast-card__content {
+  min-width: 0;
+  flex: 1;
+  padding-right: 10px;
+}
+
+.toast-card__meta {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.toast-card__eyebrow {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.toast-card__time {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.toast-card__message {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.toast-card__detail {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.toast-card__conversation {
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.toast-card__link {
+  /* station#3513: a third control in this file outside the reach of
+     index.css's global mobile touch-target net — it sits inside
+     `.toast-card__conversation`, not `.toast-card__actions`. Its rendered
+     width already clears the 44px floor (the conversation title text pads
+     it well past 44px), so only height needed raising; no WCAG inline-text
+     width exemption applies (or is needed) here. Below the floor at every
+     viewport, not just mobile ones, so this is unconditional rather than
+     gated behind a breakpoint — same reasoning as
+     `.notification-container__dismiss-all`. */
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 550;
+  text-decoration: underline;
+}
+
+.toast-card__shortcut {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.toast-card__dismiss {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.toast-card__dismiss:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.toast-card__actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.toast-card__action {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.toast-card__action--primary {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.toast-card__action--secondary {
+  border-color: var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.toast-card__action--danger {
+  /* --error is defined nowhere, so this only ever rendered its literal
+     fallback. --error-fill is the theme-aware white-carrying danger fill. */
+  background: var(--error-fill);
+  color: white;
+}
+
+.notification-container__dismiss-all {
+  align-self: flex-end;
+  /* station#3513: a direct child of `.notification-container`, not of any
+     `__actions`/`__footer`/`__toolbar` wrapper, so `index.css`'s global
+     mobile touch-target net (a descendant selector) never reaches it. Below
+     the 44px WCAG 2.5.5 floor at every viewport, not just mobile ones, so
+     this is unconditional rather than gated behind a breakpoint. */
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 7px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 550;
+  pointer-events: auto;
+}
+
+/* ── Toast stack (station#1960) ── */
+
+.toast-stack {
+  position: relative;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0;
+  pointer-events: none;
+}
+
+.toast-stack__item {
+  position: relative;
+  width: 100%;
+  z-index: var(--toast-stack-z, 1);
+  pointer-events: auto;
+  transform-origin: top center;
+}
+
+.toast-card--clickable {
+  cursor: pointer;
+}
+
+.toast-card--clickable:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/*
+ * Collapsed: front card full; behind peeks with scale. Expanded on hover,
+ * keyboard focus-within, or the coarse-pointer tap state (`data-expanded`,
+ * set by NotificationContainer) so the whole stack is actionable on devices
+ * that cannot hover.
+ */
+.toast-stack:not(:hover):not(:focus-within):not([data-expanded="true"])
+.toast-stack__item:not([data-front="true"]) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  transform: translateY(var(--toast-stack-offset-y, 0))
+    scale(var(--toast-stack-scale, 1));
+  pointer-events: none;
+}
+
+.toast-stack:not(:hover):not(:focus-within):not([data-expanded="true"])
+  .toast-stack__item:not([data-front="true"])
+  .toast-card--collapsed-hidden
+  .toast-card__content,
+.toast-stack:not(:hover):not(:focus-within):not([data-expanded="true"])
+  .toast-stack__item:not([data-front="true"])
+  .toast-card--collapsed-hidden
+  .toast-card__actions {
+  opacity: 0;
+}
+
+.toast-stack:is(:hover, :focus-within, [data-expanded="true"]) {
+  gap: 8px;
+}
+
+.toast-stack:is(:hover, :focus-within, [data-expanded="true"])
+  .toast-stack__item {
+  position: relative;
+  top: auto;
+  transform: none;
+  pointer-events: auto;
+}
+
+.toast-stack:is(:hover, :focus-within, [data-expanded="true"])
+  .toast-card--collapsed-hidden
+  .toast-card__content,
+.toast-stack:is(:hover, :focus-within, [data-expanded="true"])
+  .toast-card--collapsed-hidden
+  .toast-card__actions {
+  opacity: 1;
+}
+
+/* Declared unconditionally: the reduced-motion decision is made ONCE, in the
+   motion primitive (`tokens.css`), whose global reset forces every duration to
+   0.01ms with `!important`. A `prefers-reduced-motion: no-preference` wrapper
+   around a transition only restates that preference in a second place. */
+.toast-stack__item {
+  transition:
+    transform var(--motion-base) var(--ease-emphasized),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.toast-card {
+  animation: toast-stack-enter var(--motion-base) var(--ease-emphasized);
+}
+
+@keyframes toast-stack-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .notification-container {
+    right: max(10px, var(--safe-right, 0px));
+    left: max(10px, var(--safe-left, 0px));
+    width: auto;
+    max-height: calc(
+      100dvh -
+      var(--app-toolbar-height, 46px) -
+      var(--safe-top, 0px) -
+      16px
+    );
+  }
+
+  .notification-approval-queue__panel {
+    max-height: min(56dvh, 460px);
+  }
+
+  .toast-card {
+    padding: 12px;
+  }
+
+  .toast-card__action {
+    /* station#3513 fix round: `min-height: 44px` here used to duplicate a
+       floor `index.css`'s global mobile touch-target net already wins at
+       (0,2,0) vs this rule's (0,1,0) specificity — `.toast-card__action` is
+       a child of `.toast-card__actions`, which the net's `[class*="__actions"]`
+       selector reaches at 768px, so this line was dead weight rather than a
+       second live regime. `flex: 1 1 120px` is NOT dead (it changes the
+       button's wrap width at this breakpoint, measured) and stays. */
+    flex: 1 1 120px;
+  }
+}
+
+/* station#3513: `.toast-card__dismiss` sits inside `.toast-card__header`, not
+   `.toast-card__actions`, so it is outside the reach of `index.css`'s global
+   mobile touch-target net (a descendant selector scoped to `__actions`/
+   `__footer`/`__toolbar` wrappers) the same way `.notification-container__
+   dismiss-all` above is. Its own override used to live in the `640px` block
+   above — a different breakpoint from the shell net's `768px`/coarse-pointer
+   query, which left a 641-768px (and coarse-pointer landscape) gap where
+   neither rule applied and the base 32x32 declaration won. Matching the
+   shell's exact query here — rather than picking a single width number —
+   keeps this control's floor in the same regime as everything the net
+   already protects. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .toast-card__dismiss {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Declared unconditionally: the reduced-motion decision is made ONCE, in the
+   motion primitive (`tokens.css`), whose global reset forces every duration to
+   0.01ms with `!important`. A `prefers-reduced-motion: no-preference` wrapper
+   around a transition only restates that preference in a second place. */
+/* The hover treatment below was inside that wrapper too, so a reduced-motion
+   user got NO hover feedback on this control at all — the wrapper was refusing
+   the border and shadow, not just their tween. Unconditional here, tweened to
+   0.01ms by the primitive when motion is refused. */
+.notification-approval-queue__trigger {
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.notification-approval-queue__trigger:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.24);
+}

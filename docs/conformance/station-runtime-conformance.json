@@ -1,0 +1,282 @@
+{
+  "schemaVersion": "2",
+  "adapters": [
+    {
+      "evidenceScope": "host-bound",
+      "adapterId": "station-strands",
+      "adapterVersion": "0.6.0",
+      "hostId": "station-strands",
+      "hostVersion": "1.11.2",
+      "capabilities": {
+        "lifecycle": {
+          "session-start": "unavailable",
+          "before-model": "unavailable",
+          "before-tool": "native",
+          "after-tool": "native",
+          "stop": "approximated"
+        },
+        "influence": {
+          "session-start": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "before-model": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "before-tool": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "after-tool": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "stop": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          }
+        },
+        "install": {
+          "skill": "unavailable",
+          "agent": "unavailable",
+          "hook": "unavailable",
+          "prompt": "unavailable",
+          "command": "unavailable",
+          "context": "unavailable"
+        }
+      },
+      "limitations": [
+        "IAgentHooks does not expose session-start or before-model",
+        "capability.influence.after-tool.contextInjection=unavailable",
+        "capability.influence.before-model.contextInjection=unavailable",
+        "capability.influence.before-tool.contextInjection=unavailable",
+        "capability.influence.session-start.contextInjection=unavailable",
+        "capability.influence.stop.contextInjection=unavailable",
+        "capability.install.agent=unavailable",
+        "capability.install.command=unavailable",
+        "capability.install.context=unavailable",
+        "capability.install.hook=unavailable",
+        "capability.install.prompt=unavailable",
+        "capability.install.skill=unavailable",
+        "capability.lifecycle.before-model=unavailable",
+        "capability.lifecycle.session-start=unavailable",
+        "capability.lifecycle.stop=approximated",
+        "message persistence is synchronized after invocation",
+        "stop is projected from AfterInvocationEvent"
+      ],
+      "results": [
+        {
+          "check": "capability-completeness",
+          "status": "pass"
+        },
+        {
+          "check": "context-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "context-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "context-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "context-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "context-stop",
+          "status": "pass"
+        },
+        {
+          "check": "decision-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "decision-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "decision-stop",
+          "status": "pass"
+        },
+        {
+          "check": "install-fidelity",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-stop",
+          "status": "pass"
+        },
+        {
+          "check": "secret-free-install-receipt",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "evidenceScope": "host-bound",
+      "adapterId": "station-voltagent",
+      "adapterVersion": "0.6.0",
+      "hostId": "station-voltagent",
+      "hostVersion": "2.9.2",
+      "capabilities": {
+        "lifecycle": {
+          "session-start": "unavailable",
+          "before-model": "unavailable",
+          "before-tool": "native",
+          "after-tool": "native",
+          "stop": "approximated"
+        },
+        "influence": {
+          "session-start": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "before-model": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "before-tool": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "after-tool": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          },
+          "stop": {
+            "decision": "native",
+            "contextInjection": "unavailable"
+          }
+        },
+        "install": {
+          "skill": "unavailable",
+          "agent": "unavailable",
+          "hook": "unavailable",
+          "prompt": "unavailable",
+          "command": "unavailable",
+          "context": "unavailable"
+        }
+      },
+      "limitations": [
+        "IAgentHooks does not expose session-start or before-model",
+        "capability.influence.after-tool.contextInjection=unavailable",
+        "capability.influence.before-model.contextInjection=unavailable",
+        "capability.influence.before-tool.contextInjection=unavailable",
+        "capability.influence.session-start.contextInjection=unavailable",
+        "capability.influence.stop.contextInjection=unavailable",
+        "capability.install.agent=unavailable",
+        "capability.install.command=unavailable",
+        "capability.install.context=unavailable",
+        "capability.install.hook=unavailable",
+        "capability.install.prompt=unavailable",
+        "capability.install.skill=unavailable",
+        "capability.lifecycle.before-model=unavailable",
+        "capability.lifecycle.session-start=unavailable",
+        "capability.lifecycle.stop=approximated",
+        "stop is projected from the existing onEnd hook"
+      ],
+      "results": [
+        {
+          "check": "capability-completeness",
+          "status": "pass"
+        },
+        {
+          "check": "context-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "context-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "context-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "context-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "context-stop",
+          "status": "pass"
+        },
+        {
+          "check": "decision-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "decision-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "decision-stop",
+          "status": "pass"
+        },
+        {
+          "check": "install-fidelity",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "lifecycle-stop",
+          "status": "pass"
+        },
+        {
+          "check": "secret-free-install-receipt",
+          "status": "pass"
+        }
+      ]
+    }
+  ]
+}

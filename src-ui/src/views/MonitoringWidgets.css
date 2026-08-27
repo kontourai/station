@@ -1,0 +1,1758 @@
+/* Monitoring widget internals for the canonical page-layout dashboard shell.
+
+   station#1254: ten declarations here read --success and --warning, which are
+   defined nowhere — in several rules directly beside a sibling reading
+   --error-text, which is. So the failing half of each pair was coloured and
+   the passing half was not: a health check that passed rendered in body copy
+   next to a failed one in red, the running-agent card had no left border and
+   no pulse tint, and the tool badge had neither border nor colour. The
+   --success-text / --warning-text foregrounds are the tokens the --error-text
+   beside them belongs to. */
+
+.monitoring-page {
+  height: 100%;
+  padding: 0;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--health-success);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+.status-dot-connecting {
+  background: var(--health-warning);
+}
+.status-dot-error {
+  background: var(--health-error);
+  animation: none;
+}
+.status-dot-disconnected {
+  background: var(--text-tertiary);
+  animation: none;
+}
+
+@keyframes statusPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+}
+
+.monitoring-summary {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.stat-label {
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.monitoring-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* ── Time filter ── */
+
+.time-filter-wrapper {
+  position: relative;
+}
+
+.time-filter-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+.time-filter-button:hover {
+  background: var(--bg-hover);
+}
+
+.time-filter-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.time-range-sublabel {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+
+.time-controls-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: var(--layer-popover);
+  min-width: 250px;
+}
+
+.time-mode-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.time-mode-tabs button {
+  flex: 1;
+  padding: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard);
+}
+
+.time-mode-tabs button.active {
+  color: var(--accent-primary);
+  border-bottom: 2px solid var(--accent-primary);
+}
+
+.relative-time-options {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+}
+
+.relative-time-options button {
+  padding: 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
+}
+
+.relative-time-options button .option-label {
+  font-weight: 600;
+}
+
+.relative-time-options button .option-time {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.relative-time-options button:hover {
+  background: var(--bg-tertiary);
+}
+
+.relative-time-options button.active {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.absolute-time-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.absolute-time-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.absolute-time-inputs input {
+  padding: 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.time-end-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.time-end-input-disabled {
+  flex: 1;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.time-now-button {
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.time-now-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.apply-button {
+  padding: 0.5rem 1rem;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: 4px;
+  color: var(--text-on-accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.apply-button:hover {
+  opacity: 0.9;
+}
+
+/* ── Filters ── */
+
+.active-filters {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.filter-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.filter-badge button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.25rem;
+}
+
+.filter-badge button:hover {
+  opacity: 0.8;
+}
+
+.active-filters-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filter-badge-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.filter-badge-inline button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  margin-left: 0.25rem;
+}
+
+.filter-badge-inline button:hover {
+  color: var(--text-primary);
+}
+
+/* ── Sidebar ── */
+
+.monitoring-page__content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.monitoring-sidebar {
+  width: 280px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.sidebar-header h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.agent-count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.agent-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+  user-select: none;
+}
+
+.agent-card {
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  border-left: 3px solid var(--border-primary);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.agent-card:hover {
+  background: var(--bg-hover);
+}
+
+.agent-card.selected {
+  border-color: var(--accent-primary);
+  border-left-color: var(--accent-primary);
+  background: var(--bg-hover);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.agent-card.status-idle {
+  border-left-color: var(--text-tertiary);
+}
+
+.agent-card.status-active {
+  border-left-color: var(--accent-primary);
+}
+
+.agent-card.status-running {
+  border-left-color: var(--success-text);
+  animation: pulseBackground 2s ease-in-out infinite;
+}
+
+.agent-card.historical {
+  opacity: 0.7;
+}
+
+@keyframes pulseBackground {
+  0%,
+  100% {
+    background: var(--bg-tertiary);
+  }
+  50% {
+    background: color-mix(in srgb, var(--success-text) 15%, var(--bg-tertiary));
+  }
+}
+
+.agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.agent-name {
+  font-weight: 500;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.health-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+}
+
+.health-dot.healthy {
+  background: var(--health-success);
+}
+.health-dot.unhealthy {
+  background: var(--health-error);
+}
+.health-dot.unknown {
+  background: var(--health-warning);
+}
+
+.agent-status {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.agent-status.idle {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+.agent-status.active {
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+}
+.agent-status.running {
+  background: var(--bg-tertiary);
+  color: var(--success-text);
+  animation: pulse 2s ease-in-out infinite;
+}
+.agent-status.historical-status {
+  background: var(--text-tertiary);
+  color: var(--bg-secondary);
+}
+
+.agent-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.agent-historical-header {
+  padding: 0.75rem 0.5rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-top: 1px solid var(--border-primary);
+  margin-top: 0.5rem;
+}
+
+.running-conversations {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-primary);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 200px;
+  }
+}
+
+.conversations-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.5px;
+}
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  margin-bottom: 0.25rem;
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--border-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard);
+}
+
+.conversation-item:hover {
+  background: var(--bg-hover);
+  transform: translateX(2px);
+}
+
+.conversation-id {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-primary);
+}
+
+.conversation-pill {
+  font-size: 0.65rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  color: white;
+  font-weight: 500;
+}
+
+.meta-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.meta-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.meta-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ── Log controls ── */
+
+.monitoring-page__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.log-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.log-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.log-controls-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.event-filters {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.event-filter {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
+}
+
+.event-filter.active {
+  color: white;
+}
+.event-filter[data-type="agent"].active {
+  background: var(--event-agent-start);
+  border-color: var(--event-agent-start);
+}
+.event-filter[data-type="tool"].active {
+  background: var(--event-tool-call);
+  border-color: var(--event-tool-call);
+}
+.event-filter[data-type="planning"].active {
+  background: var(--event-planning);
+  border-color: var(--event-planning);
+}
+.event-filter[data-type="reasoning"].active {
+  background: var(--event-reasoning);
+  border-color: var(--event-reasoning);
+}
+.event-filter[data-type="health"].active {
+  background: var(--event-agent-health);
+  border-color: var(--event-agent-health);
+}
+
+.search-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.search-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-clear:hover {
+  color: var(--text-primary);
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: var(--layer-popover);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.autocomplete-item {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.autocomplete-item:hover {
+  background: var(--bg-secondary);
+}
+.autocomplete-item.selected {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+.autocomplete-item.selected .autocomplete-type {
+  background: rgba(255, 255, 255, 0.3);
+}
+.autocomplete-item.empty {
+  cursor: default;
+  opacity: 0.7;
+  /* Console Kit's react/styles.css ships a bare `.empty` rule (padding, color,
+     font-size). Re-assert this item's own values at higher specificity so the
+     global primitive class can't restyle it regardless of bundle order. */
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.autocomplete-item.empty:hover {
+  background: var(--bg-tertiary);
+}
+
+.autocomplete-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.autocomplete-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.autocomplete-type {
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+}
+
+.autocomplete-item[data-type="agent"] .autocomplete-type {
+  background: var(--event-agent-start);
+}
+.autocomplete-item[data-type="conversation"] .autocomplete-type {
+  background: var(--event-agent-start);
+}
+.autocomplete-item[data-type="tool"] .autocomplete-type {
+  background: var(--event-tool-call);
+}
+
+.btn-toggle {
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
+}
+
+.btn-toggle.active {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
+}
+
+.monitoring-active-filter-bar {
+  padding: 0 1rem 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.live-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
+}
+
+.live-mode-toggle:hover {
+  background: var(--bg-hover);
+}
+.live-mode-toggle.active {
+  background: var(--health-success);
+  color: white;
+  border-color: var(--health-success);
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.live-mode-toggle.active .live-dot {
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+.btn-secondary {
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Log stream ── */
+
+.log-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  position: relative;
+}
+
+.scroll-to-bottom {
+  position: sticky;
+  bottom: 1rem;
+  right: 1rem;
+  float: right;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition:
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+  z-index: 10;
+}
+
+.scroll-to-bottom:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.monitoring-log-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 220px;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.log-entry {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-secondary);
+  border-left: 4px solid var(--border-primary);
+  border-radius: 4px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.log-trace {
+  display: flex;
+  align-items: center;
+}
+
+.trace-pill {
+  padding: 0.125rem 0.375rem;
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.trace-pill:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+.trace-pill.selected {
+  border-width: 1.5px;
+  font-weight: 700;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 120px 140px 180px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.log-timestamp-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.log-timestamp {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.timestamp-ms {
+  font-size: 0.7em;
+  opacity: 0.6;
+  margin-left: 0.25rem;
+}
+
+.log-entry.new-event {
+  animation: slideInFade 5s ease-out;
+}
+
+@keyframes slideInFade {
+  0% {
+    transform: translateX(-10px);
+    opacity: 0;
+  }
+  5% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.log-entry.event-tool-call,
+.log-entry.event-tool-result {
+  border-left-color: var(--event-tool-call);
+  background: color-mix(
+    in srgb,
+    var(--event-tool-call) 5%,
+    var(--bg-secondary)
+  );
+}
+
+.log-entry.event-agent-start,
+.log-entry.event-agent-complete {
+  border-left-color: var(--event-agent-start);
+  background: color-mix(
+    in srgb,
+    var(--event-agent-start) 5%,
+    var(--bg-secondary)
+  );
+}
+
+.log-entry.event-agent-health {
+  border-left-color: var(--event-agent-health);
+  background: color-mix(
+    in srgb,
+    var(--event-agent-health) 5%,
+    var(--bg-secondary)
+  );
+}
+
+.log-entry.event-text-delta,
+.log-entry.event-planning {
+  border-left-color: var(--event-planning);
+  background: color-mix(in srgb, var(--event-planning) 5%, var(--bg-secondary));
+}
+
+.log-entry.event-reasoning {
+  border-left-color: var(--event-reasoning);
+  background: color-mix(
+    in srgb,
+    var(--event-reasoning) 5%,
+    var(--bg-secondary)
+  );
+}
+
+.log-type {
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.event-agent-start .log-type,
+.event-agent-complete .log-type {
+  background: var(--event-agent-start);
+  color: white;
+}
+
+.event-tool-call .log-type,
+.event-tool-result .log-type {
+  background: var(--event-tool-call);
+  color: white;
+}
+
+.event-agent-health .log-type {
+  background: var(--event-agent-health);
+  color: white;
+}
+
+.event-text-delta .log-type,
+.event-planning .log-type {
+  background: var(--event-planning);
+  color: white;
+}
+
+.event-reasoning .log-type {
+  background: var(--event-reasoning);
+  color: white;
+}
+
+.log-agent {
+  color: var(--accent-primary);
+  font-weight: 500;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.log-data {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-secondary);
+}
+
+.log-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.max-steps-note {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* ── Log details / collapsible sections ── */
+
+.log-details {
+  grid-column: 1 / -1;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.log-details summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--accent-primary);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.log-details-char-count {
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.log-details pre {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow-x: auto;
+}
+
+.log-details-pre-scroll {
+  white-space: pre-wrap;
+  max-height: 400px;
+  overflow: auto;
+}
+
+.export-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0.25rem;
+  opacity: 0.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: opacity 0.2s;
+}
+
+.export-btn:hover {
+  opacity: 1;
+}
+
+/* ── Health checks ── */
+
+.health-checks-list {
+  padding: 0.5rem 0;
+}
+
+.health-check-item {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.health-check-label {
+  color: var(--text-secondary);
+}
+
+.health-check-value-pass {
+  color: var(--success-text);
+}
+
+.health-check-value-fail {
+  color: var(--error-text);
+}
+
+.health-integrations-section {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.health-integrations-label {
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.health-integration-item {
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.health-integration-name {
+  font-weight: 500;
+}
+
+.health-integration-status-ok {
+  color: var(--success-text);
+  margin-left: 0.5rem;
+}
+
+.health-integration-status-err {
+  color: var(--error-text);
+  margin-left: 0.5rem;
+}
+
+.health-integration-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+/* ── Usage stats ── */
+
+.usage-stats-grid {
+  padding: 0.5rem 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  font-size: 0.9em;
+}
+
+.usage-stat-label {
+  color: var(--text-secondary);
+}
+
+.usage-stat-value {
+  font-family: var(--font-mono);
+}
+
+.usage-stat-label-bold {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.usage-stat-value-bold {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.usage-stat-spaced {
+  margin-top: 0.5rem;
+}
+
+/* ── Artifacts ── */
+
+.artifacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.artifact-item {
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  border-left: 3px solid var(--accent-primary);
+}
+
+.artifact-header {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.artifact-type {
+  padding: 0.125rem 0.5rem;
+  background: var(--bg-primary);
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.artifact-name {
+  color: var(--warning-text);
+  font-weight: 500;
+}
+
+.artifact-item pre {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+/* ── Pills & badges ── */
+
+.pill-button {
+  padding: 0.125rem 0.5rem;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    opacity var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.pill-button:hover {
+  opacity: 0.8;
+  transform: translateY(-1px);
+}
+.pill-button.selected {
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 4px currentColor;
+}
+
+.pill-badge {
+  padding: 0.125rem 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.tool-badge {
+  background: var(--bg-tertiary);
+  border-color: var(--warning-text);
+  color: var(--warning-text);
+}
+.health-ok {
+  background: var(--bg-tertiary);
+  border-color: var(--success-text);
+  color: var(--success-text);
+}
+.health-error {
+  background: var(--bg-tertiary);
+  border-color: var(--error-text);
+  color: var(--error-text);
+}
+
+/* ── Tool result details ── */
+
+.tool-result-list {
+  padding: 0.5rem 0;
+}
+
+.tool-result-item {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.tool-result-item:not(:last-child) {
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.tool-result-name {
+  font-weight: 500;
+  color: var(--event-tool-call);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .monitoring-page > .detail-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+  }
+
+  .monitoring-page > .detail-header .detail-header__left,
+  .monitoring-page > .detail-header .detail-header__actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .monitoring-page > .detail-header .detail-header__left {
+    align-items: flex-start;
+  }
+
+  .monitoring-page > .detail-header .detail-header__left > div {
+    min-width: 0;
+  }
+
+  .monitoring-page > .detail-header .detail-header__actions {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+  }
+
+  /* Stack the agents sidebar above the log feed. Without an explicit
+     `min-height: 0` the flex column refuses to shrink its children, so the
+     uncapped agents list pushed the feed off-screen (down to a sliver above
+     the chat dock). Constrain the column and hand the spare height to the
+     feed so it becomes the primary scroll area. */
+  .monitoring-page__content {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* Cap the agents-status list to a scrollable region (~32vh) instead of
+     letting it consume the whole viewport. flex-shrink keeps it from being
+     squeezed away, but it never grows past its cap. */
+  .monitoring-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-primary);
+    max-height: 32vh;
+    flex: 0 0 auto;
+    overflow-y: auto;
+  }
+
+  /* The log feed column is the primary scrollable area: let it take the rest
+     of the viewport and scroll internally. min-height:0 is required so the
+     inner .log-stream (flex:1) can actually shrink-to-scroll. */
+  .monitoring-page__main {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Guarantee the feed a usable height even when controls + metrics are tall,
+     and keep it the dominant scroll region. */
+  .log-stream {
+    min-height: 40vh;
+  }
+
+  /* The metrics panel is a secondary readout — don't let it steal the feed's
+     vertical space. Keep it compact and scrollable on mobile. */
+  .metrics-panel {
+    flex: 0 0 auto;
+    max-height: 28vh;
+    overflow-y: auto;
+  }
+
+  .monitoring-summary {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .monitoring-header-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Stack the log controls (event filters / search / actions) so the search
+     input and action buttons don't cramp or overflow 390px. */
+  .log-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .log-controls-actions {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .search-wrapper {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .event-filters {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .event-filter {
+    font-size: var(--text-sm);
+    padding: 4px 8px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .live-mode-toggle {
+    min-height: 44px;
+  }
+
+  /* Keep the time-filter trigger and its action siblings tap-friendly. */
+  .time-filter-button {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .time-now-button,
+  .apply-button {
+    min-height: 44px;
+  }
+
+  /* The header time controls live in .monitoring-header-actions; let them wrap and
+     fill the row width so nothing overflows on a narrow viewport. */
+  .time-filter-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .monitoring-header-actions .live-mode-toggle,
+  .monitoring-header-actions .btn-secondary {
+    flex: 1 1 8rem;
+  }
+
+  .trace-pill {
+    min-height: 44px;
+    padding: 0.125rem 0.75rem;
+  }
+
+  /* Interactive conversation / tool-call pills inside a log entry are primary
+     filter controls — make them tap-friendly. */
+  .pill-button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+  }
+
+  /* Let log meta inline groups wrap so pills never push past 390px. */
+  .log-data,
+  .log-inline {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .btn-secondary {
+    min-height: 44px;
+  }
+
+  .log-entry {
+    padding: 8px 10px;
+    font-size: var(--text-base);
+  }
+
+  .log-entry .log-meta {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .log-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .log-timestamp-col {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .time-controls-dropdown {
+    min-width: unset;
+    width: calc(100vw - 2rem);
+    max-width: 300px;
+  }
+}
+
+/* ── Pill button variants ── */
+
+.pill-button-conversation {
+  background-color: var(--event-agent-start);
+  border-color: var(--event-agent-start);
+}
+
+.pill-button-tool {
+  background: var(--event-tool-call);
+  border-color: var(--event-tool-call);
+  color: white;
+}
+
+/* ── Metrics panel ── */
+
+.metrics-panel {
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+}
+
+.metrics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.metrics-header h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.metrics-range-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.metrics-range-tabs button {
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.metrics-range-tabs button.active {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
+}
+
+.metrics-summary {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.metrics-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.metrics-stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.metrics-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metrics-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.metrics-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.75rem;
+}
+
+.metrics-agent-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 100px;
+}
+
+.metrics-agent-stat {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+/* FleetRoutingReceipts shipped with twelve class names and no stylesheet at
+   all (station#3157), so it rendered as raw <section>/<h3>/<ol>/<li> —
+   default heading sizes, list bullets, no surface — inside this dashboard,
+   where MonitoringView mounts it unconditionally.
+   Its rules live here, in the view's own stylesheet, and reuse the
+   .metrics-panel / .metrics-header idioms above rather than restating them. */
+.fleet-routing {
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fleet-routing h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.fleet-routing__list,
+.fleet-routing__chain,
+.fleet-routing__exclusions {
+  /* <ol>/<ul>: drop the browser marker and indent. */
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fleet-routing__receipt {
+  padding: 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Digests and ids are read character-by-character; wrap rather than overflow. */
+.fleet-routing__digest,
+.fleet-routing__exclusion-code,
+.fleet-routing__exclusion-target {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.fleet-routing__evidence {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.fleet-routing__failure {
+  font-size: 0.8125rem;
+  color: var(--color-danger, #c0392b);
+}

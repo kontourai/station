@@ -1,0 +1,86 @@
+/* KnowledgeStoreSection — global Settings "My knowledge store" section (K4,
+ * s202-knowledge-onboarding Wave 2). Follows the same CSS-variable palette
+ * as SettingsView.css's sibling sections (`--text-secondary`,
+ * `--text-muted`, `--border-primary`, `--bg-primary`, `--accent-primary`) so
+ * this section reads as native to Settings, not a new design language. */
+
+.knowledge-store-section__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.knowledge-store-section__intro {
+  margin: 0 0 1rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.knowledge-store-section__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.knowledge-store-section__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.knowledge-store-section__status {
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.knowledge-store-section__path {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  background: var(--bg-secondary, var(--bg-primary));
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.knowledge-store-section__create-error {
+  margin-top: 0.75rem;
+}
+
+.knowledge-store-section__obsidian {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.knowledge-store-section__obsidian-toggle {
+  margin-top: 1rem;
+}
+
+.knowledge-store-section__obsidian-input {
+  width: 100%;
+}
+
+.knowledge-store-section__obsidian-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.knowledge-store-section__obsidian-error {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .knowledge-store-section__obsidian-toggle,
+  .knowledge-store-section__obsidian-actions .button {
+    min-height: 44px;
+  }
+
+  .knowledge-store-section__obsidian-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+}

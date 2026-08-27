@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: Station
+    folder: Station
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

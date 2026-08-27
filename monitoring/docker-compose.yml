@@ -1,0 +1,56 @@
+# Station Monitoring Stack
+# Usage: docker compose up -d
+#
+# Services:
+#   Collector  :4318  — OTLP receiver (HTTP)
+#   Prometheus :9090  — metrics storage
+#   Grafana    :3333  — dashboards (admin/station)
+#   Jaeger     :16686 — distributed traces
+
+services:
+  collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: station-collector
+    ports:
+      - "4318:4318"
+    volumes:
+      - ./runtime/collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: station-jaeger
+    ports:
+      - "16686:16686"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: station-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./runtime/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    depends_on:
+      - collector
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: station-grafana
+    ports:
+      - "3333:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=station
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./runtime/grafana-provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,100 @@
+{
+  "schema_version": "0.1",
+  "run_id": "dogfood-001-readiness-gate-wiring",
+  "definition_id": "station-delivery",
+  "definition_version": "1",
+  "subject": "readiness-gate-wiring",
+  "status": "completed",
+  "summary": "station-delivery / readiness-gate-wiring",
+  "current_step": "readiness",
+  "next_action": "run complete; no further action required",
+  "continuation": "resume from readiness, not chat memory",
+  "open_gates": ["readiness-gate"],
+  "accepted_exceptions": [],
+  "gate_summaries": [
+    {
+      "gate_id": "implement-gate",
+      "status": "pass",
+      "summary": "verify:static (biome + e2e manifest + tsc + unit tests) passes for the change. satisfied",
+      "evidence_refs": ["ev.1781244850210.1"],
+      "missing": [],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "static-gates-green",
+          "evidence_id": "ev.1781244850210.1"
+        }
+      ],
+      "transition_validation": {
+        "valid": true,
+        "status": "allowed",
+        "diagnostics": [],
+        "transition": {
+          "type": "step",
+          "from_step": "implement",
+          "to_step": "verify",
+          "status": "allowed",
+          "gate_id": "implement-gate",
+          "reason": "required evidence present",
+          "at": "2026-06-12T06:14:10.393Z"
+        }
+      }
+    },
+    {
+      "gate_id": "verify-gate",
+      "status": "pass",
+      "summary": "Behavioral verification recorded for the change: focused Playwright lane, smoke run against a live instance, or equivalent observed-behavior evidence — not just unit tests. satisfied",
+      "evidence_refs": ["ev.1781244859616.2"],
+      "missing": [],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "verification-verdict",
+          "evidence_id": "ev.1781244859616.2"
+        }
+      ],
+      "transition_validation": {
+        "valid": true,
+        "status": "allowed",
+        "diagnostics": [],
+        "transition": {
+          "type": "step",
+          "from_step": "verify",
+          "to_step": "readiness",
+          "status": "allowed",
+          "gate_id": "verify-gate",
+          "reason": "required evidence present",
+          "at": "2026-06-12T06:14:19.791Z"
+        }
+      }
+    },
+    {
+      "gate_id": "readiness-gate",
+      "status": "pass",
+      "summary": "Veritas merge-readiness evidence record for the working tree, attached as a Station-asserted surface.claim over the record file (claimType path; Flow's trustArtifact normalization rejects both the record and its trust.bundle — verified S1c, see docs/strategy/kontour-integration-surface.md). satisfied",
+      "evidence_refs": ["ev.1781244875598.3"],
+      "missing": [],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "merge-readiness",
+          "evidence_id": "ev.1781244875598.3"
+        }
+      ],
+      "transition_validation": {
+        "valid": true,
+        "status": "allowed",
+        "diagnostics": [],
+        "transition": {
+          "type": "step",
+          "from_step": "readiness",
+          "to_step": null,
+          "status": "allowed",
+          "gate_id": "readiness-gate",
+          "reason": "required evidence present",
+          "at": "2026-06-12T06:14:51.086Z"
+        }
+      }
+    }
+  ]
+}

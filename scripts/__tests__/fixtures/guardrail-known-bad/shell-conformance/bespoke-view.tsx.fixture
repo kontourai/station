@@ -1,0 +1,13 @@
+// KNOWN-BAD: a route view that renders a page header of its own — the thing
+// `components/page-frame` exists to be the only writer of.
+//
+// This is the regression `shell-conformance:ratchet` exists to prevent: the
+// app declares one page-header contract, and a view quietly ships a second.
+export function __COMPONENT__() {
+  return (
+    <div className="page__header">
+      <div className="page__label">scratch</div>
+      <h1 className="page__title">Title</h1>
+    </div>
+  );
+}

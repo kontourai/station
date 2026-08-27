@@ -1,0 +1,82 @@
+.layout-switcher {
+  position: relative;
+  display: inline-flex;
+}
+
+.layout-switcher__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.layout-switcher__trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+}
+
+.layout-switcher__chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.layout-switcher__icon {
+  font-size: var(--text-md);
+}
+
+/* Full-viewport click-away. Force a transparent background so the global
+   `button {}` rule can't paint a gray sheet over the app. */
+.layout-switcher__scrim {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: var(--layer-popover) !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  cursor: default;
+}
+
+.layout-switcher__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: calc(var(--layer-popover) + 1);
+  min-width: 180px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.layout-switcher__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.layout-switcher__item:hover {
+  background: var(--bg-hover);
+}
+
+.layout-switcher__item--active {
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  color: var(--accent-primary);
+}

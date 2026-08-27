@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "station.channel-proposal/v1",
+  "proposalId": "prop-0004",
+  "channelId": "chan-design",
+  "author": {
+    "memberId": "member-alex",
+    "deviceId": "device-laptop",
+    "keyId": "key-laptop-1"
+  },
+  "kind": "message",
+  "baseEpoch": 3,
+  "happenedAt": "2026-08-02T09:00:00.000Z",
+  "bodyRef": {
+    "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "mediaType": "image/png",
+    "byteLength": 20481
+  }
+}

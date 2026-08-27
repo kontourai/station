@@ -1,0 +1,267 @@
+/* TrustPanel — Surface trust bundles in the coding layout side panel.
+   Console Kit adoption (S2 item 4): panel chrome, badges, and the empty state
+   come from @kontourai/ui/react/styles.css (`.panel`, `.panel-head`,
+   `.badge`/`.tone-*`, `.empty`, `.eyebrow`); the rules here are Station-side
+   layout glue and detail styling, written against the `--k-*` token contract
+   only. Tone mapping for claim statuses lives in
+   components/kontour/station-tones.ts. */
+
+.trust-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-height: 0;
+  border-radius: var(--k-radius-md);
+}
+
+.trust-panel__header {
+  align-items: flex-start;
+}
+
+.trust-panel__eyebrow {
+  letter-spacing: 0.08em;
+}
+
+.trust-panel__title {
+  margin: var(--k-space-1) 0 0;
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+}
+
+.trust-panel__toggle {
+  padding: var(--k-space-1) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-family: var(--k-font-ui);
+  cursor: pointer;
+  transition: border-color var(--k-dur) var(--k-ease);
+}
+
+.trust-panel__toggle:hover {
+  border-color: var(--k-brand);
+  color: var(--k-text);
+}
+
+.trust-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-height: 0;
+}
+
+.trust-panel__generated {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+/* Held-previous-selection state (station#3092): the chips/claims below
+   still belong to the OUTGOING project or bundle while the new one loads.
+   Dim the body so it reads as provisional, and surface the notice
+   unconditionally — dimming alone is not enough for a screen-reader user. */
+.trust-panel--stale .trust-panel__chips,
+.trust-panel--stale .trust-panel__claims,
+.trust-panel--stale .trust-panel__gaps,
+.trust-panel--stale .trust-panel__generated {
+  opacity: 0.55;
+}
+
+/* Declared unconditionally: the reduced-motion decision is made ONCE, in the
+   motion primitive (`tokens.css`), whose global reset forces every duration to
+   0.01ms with `!important`. A `prefers-reduced-motion: no-preference` wrapper
+   around a transition only restates that preference in a second place. */
+.trust-panel__chips,
+.trust-panel__claims,
+.trust-panel__gaps,
+.trust-panel__generated {
+  transition: opacity var(--k-dur) var(--k-ease);
+}
+
+.trust-panel__stale-notice {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.trust-panel__error {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-negative);
+}
+
+.trust-panel__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.trust-panel__empty-title.empty {
+  padding: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+}
+
+.trust-panel__empty-desc {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+.trust-panel__selector {
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  font-size: var(--k-text-xs);
+  max-width: 100%;
+}
+
+.trust-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.trust-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.trust-panel__claims {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.trust-panel__claim {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  padding: var(--k-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.trust-panel__claim-row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.trust-panel__claim-status {
+  white-space: nowrap;
+}
+
+.trust-panel__claim-type {
+  flex: 1;
+  font-size: var(--k-text-sm);
+  color: var(--k-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trust-panel__claim-toggle {
+  border: none;
+  background: none;
+  color: var(--k-brand);
+  font-size: var(--k-text-xs);
+  cursor: pointer;
+  padding: 0;
+}
+
+.trust-panel__claim-subject {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  font-family: var(--k-font-mono);
+  color: var(--k-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trust-panel__claim-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  border-top: 1px solid var(--k-line);
+  padding-top: var(--k-space-2);
+}
+
+.trust-panel__detail-empty {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+.trust-panel__evidence-list,
+.trust-panel__claim-gaps,
+.trust-panel__gaps-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.trust-panel__evidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.trust-panel__evidence-summary {
+  font-size: var(--k-text-xs);
+  color: var(--k-text);
+}
+
+.trust-panel__evidence-meta {
+  font-size: var(--k-text-xs);
+  font-family: var(--k-font-mono);
+  color: var(--k-text-faint);
+}
+
+.trust-panel__gaps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.trust-panel__gaps-title {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  color: var(--k-caution);
+}
+
+.trust-panel__gap {
+  display: flex;
+  gap: var(--k-space-2);
+  font-size: var(--k-text-xs);
+}
+
+.trust-panel__gap-type {
+  color: var(--k-caution);
+  font-family: var(--k-font-mono);
+  white-space: nowrap;
+}
+
+.trust-panel__gap-message {
+  color: var(--k-text-muted);
+}

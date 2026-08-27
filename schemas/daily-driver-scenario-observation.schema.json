@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://station.kontour.ai/schemas/daily-driver-scenario-observation.schema.json",
+  "title": "Station daily-driver UI scenario observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "producer",
+    "testId",
+    "sourceRevision",
+    "observations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "producer": { "const": "station-daily-driver-scenarios" },
+    "testId": { "const": "daily-driver-ui-scenarios" },
+    "sourceRevision": {
+      "oneOf": [
+        { "const": "unverified" },
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      ]
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/livenessSettlementObservation" },
+          { "$ref": "#/$defs/conversationAgreementObservation" },
+          { "$ref": "#/$defs/agentEngineHandoffObservation" },
+          { "$ref": "#/$defs/transcriptStabilityObservation" },
+          { "$ref": "#/$defs/performanceStressObservation" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "renderCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+    "samplesMs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "livenessSettlementObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "answerRenderings",
+        "liveRowsAfterResume",
+        "failureRenderings",
+        "failureBanners",
+        "classification",
+        "expectationMet",
+        "digest"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "liveness-settlement" },
+        "capability": { "const": "liveness-settlement" },
+        "repetition": { "const": 1 },
+        "answerRenderings": { "$ref": "#/$defs/renderCount" },
+        "liveRowsAfterResume": { "$ref": "#/$defs/renderCount" },
+        "failureRenderings": { "$ref": "#/$defs/renderCount" },
+        "failureBanners": { "$ref": "#/$defs/renderCount" },
+        "classification": {
+          "enum": ["settled_once", "flashed_or_duplicated"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "conversationAgreementObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "completedTurns",
+        "conversationStable",
+        "carryOverBound",
+        "continuationRouteUsed",
+        "distinctSessionCount",
+        "terminalPredecessorCount",
+        "terminalReuseRefused",
+        "persistedLineage",
+        "reloadExactlyOnce",
+        "settled",
+        "classification",
+        "expectationMet",
+        "digest"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "conversation-agreement" },
+        "capability": { "const": "conversation-agreement" },
+        "repetition": { "const": 1 },
+        "completedTurns": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "conversationStable": { "type": "boolean" },
+        "carryOverBound": { "type": "boolean" },
+        "continuationRouteUsed": { "type": "boolean" },
+        "distinctSessionCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "terminalPredecessorCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "terminalReuseRefused": { "type": "boolean" },
+        "persistedLineage": { "type": "boolean" },
+        "reloadExactlyOnce": { "type": "boolean" },
+        "settled": { "type": "boolean" },
+        "classification": {
+          "enum": ["context_carryover", "context_missing"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "agentEngineHandoffObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "targetProfile",
+        "explicitRouteUsed",
+        "conversationStable",
+        "targetSessionDistinct",
+        "disclosureComplete",
+        "targetAgentApplied",
+        "persistedMarker",
+        "markerExactlyOnce",
+        "classification",
+        "expectationMet",
+        "digest"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "agent-engine-handoff" },
+        "capability": { "const": "agent-engine-handoff" },
+        "repetition": { "const": 1 },
+        "targetProfile": { "$ref": "#/$defs/identifier" },
+        "explicitRouteUsed": { "type": "boolean" },
+        "conversationStable": { "type": "boolean" },
+        "targetSessionDistinct": { "type": "boolean" },
+        "disclosureComplete": { "type": "boolean" },
+        "targetAgentApplied": { "type": "boolean" },
+        "persistedMarker": { "type": "boolean" },
+        "markerExactlyOnce": { "type": "boolean" },
+        "classification": { "enum": ["handoff_visible", "handoff_failed"] },
+        "expectationMet": { "type": "boolean" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "transcriptStabilityObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "fixtureTurnCount",
+        "mountedRowCap",
+        "maxMountedRows",
+        "loadedRows",
+        "orderStable",
+        "tailBound",
+        "restoreSamplesMs",
+        "classification",
+        "expectationMet",
+        "digest"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "transcript-stability" },
+        "capability": { "const": "transcript-stability" },
+        "repetition": { "const": 1 },
+        "fixtureTurnCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "mountedRowCap": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "maxMountedRows": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "loadedRows": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "orderStable": { "type": "boolean" },
+        "tailBound": { "type": "boolean" },
+        "restoreSamplesMs": { "$ref": "#/$defs/samplesMs" },
+        "classification": {
+          "enum": ["structurally_bounded", "unbounded"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "performanceStressObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "scrollHeldDuringStream",
+        "taskSwitchStable",
+        "queueDrained",
+        "mountedRowsDuringStream",
+        "loadedRows",
+        "mountedRowCap",
+        "settled",
+        "deltaPaintSamplesMs",
+        "classification",
+        "expectationMet",
+        "digest"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "performance-stress" },
+        "capability": { "const": "performance-stress" },
+        "repetition": { "const": 1 },
+        "scrollHeldDuringStream": { "type": "boolean" },
+        "taskSwitchStable": { "type": "boolean" },
+        "queueDrained": { "type": "boolean" },
+        "mountedRowsDuringStream": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "loadedRows": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "mountedRowCap": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "settled": { "type": "boolean" },
+        "deltaPaintSamplesMs": { "$ref": "#/$defs/samplesMs" },
+        "classification": {
+          "enum": ["stress_bounded", "stress_failed"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

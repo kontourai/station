@@ -1,0 +1,25 @@
+{
+  "numTotalTestSuites": 1,
+  "numPassedTestSuites": 0,
+  "numFailedTestSuites": 1,
+  "numTotalTests": 3,
+  "numPassedTests": 2,
+  "numFailedTests": 1,
+  "testResults": [
+    {
+      "name": "/repo/src-server/example/__tests__/example.test.ts",
+      "status": "failed",
+      "assertionResults": [
+        {
+          "ancestorTitles": ["example contract"],
+          "title": "preserves the failed identity",
+          "fullName": "example contract preserves the failed identity",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: expected Authorization: Bearer fixture-super-secret-token to be redacted"
+          ]
+        }
+      ]
+    }
+  ]
+}

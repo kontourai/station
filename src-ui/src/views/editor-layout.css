@@ -1,0 +1,2208 @@
+/* ═══ Editor Layout - Industrial Refined ═══
+ * Production-grade editor stylesheet for WorkspaceEditorView and AgentEditorView
+ * Design: Industrial-refined, dark theme native, premium developer tool aesthetic
+ */
+
+/* Renamed off `page-fade-in`: this sheet and `page-layout.css` both declared
+   a global keyframe under that one name with DIFFERENT frames (this one fades,
+   that one did not), so load order decided which every `.page` in the app
+   used. */
+@keyframes editor-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Main Container ── */
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-primary);
+  font-family: var(--font-sans);
+  animation: editor-enter var(--motion-slow) var(--ease-emphasized);
+}
+
+.agent-editor__state-icon {
+  font-size: 2.5rem;
+  opacity: 0.5;
+}
+
+.agent-editor__state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/* ── Header ── */
+.editor__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(
+    135deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 100%
+  );
+  border-bottom: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+
+.editor__header::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-primary),
+    transparent
+  );
+}
+
+.editor__header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.editor__header-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.editor__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.editor__close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-3xl);
+  font-weight: 300;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard);
+}
+
+.editor__close-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  transform: scale(1.05);
+}
+
+/* ── Content Area ── */
+.editor__content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── Sections ── */
+.editor__section {
+  padding: 32px 24px;
+  border-bottom: 1px solid var(--border-primary);
+  position: relative;
+}
+
+.editor__section:last-child {
+  border-bottom: none;
+}
+
+.editor__section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.editor__section-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.editor__section-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+/* ── Layout Utilities ── */
+.editor__row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.editor__row--between {
+  justify-content: space-between;
+}
+
+.editor__col {
+  flex: 1;
+}
+
+/* ── Tags ── */
+.editor__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.editor__tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+  box-shadow: var(--shadow-sm);
+}
+
+.editor__tag:hover {
+  background: var(--bg-secondary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.editor__tag-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: var(--text-base);
+  line-height: 1;
+  transition:
+    color var(--motion-base) var(--ease-standard),
+    background-color var(--motion-base) var(--ease-standard);
+  border-radius: 2px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor__tag-remove:hover {
+  color: var(--error-text);
+  background: rgba(255, 59, 48, 0.1);
+}
+
+/* ── Footer ── */
+.editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-lg);
+  position: sticky;
+  bottom: 0;
+}
+
+/* ── Expandable Sections ── */
+.editor__expandable {
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard);
+}
+
+.editor__expandable:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.editor__expandable-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard);
+  position: relative;
+}
+
+.editor__expandable-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.editor__expandable-header::after {
+  content: "›";
+  font-size: var(--text-xl);
+  color: var(--text-muted);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.editor__expandable[open] .editor__expandable-header::after {
+  transform: rotate(90deg);
+}
+
+.editor__expandable-content {
+  padding: 20px;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  animation: slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Step Count Badge ── */
+.editor__step-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-left: 8px;
+  border: 1px solid var(--border-primary);
+}
+
+/* ── Step Indicator ── */
+.step-indicator {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 8px 0;
+  border-bottom: 2px solid transparent;
+  transition:
+    color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard);
+}
+
+.step-indicator.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* ── Form Input Overrides ── */
+.editor input[type="text"],
+.editor input[type="email"],
+.editor input[type="password"],
+.editor input[type="url"],
+.editor select {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  padding: 12px 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard);
+  box-shadow: var(--shadow-sm);
+}
+
+.editor input:focus,
+.editor select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.1);
+  transform: translateY(-1px);
+}
+
+.editor textarea {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  padding: 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  resize: vertical;
+  min-height: 120px;
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+  box-shadow: var(--shadow-sm);
+}
+
+.editor textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.1);
+}
+
+/* ── Button Variants ── */
+.editor__btn-save {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+  box-shadow: var(--shadow-md);
+}
+
+.editor__btn-save:hover {
+  background: var(--accent-hover-fill);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+
+.editor__btn-delete {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  padding: 12px 24px;
+  border: 1px solid var(--error-text);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--error-text);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.editor__btn-delete:hover {
+  background: var(--error-fill);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.editor__btn-add {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  padding: 12px 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor__btn-add::before {
+  content: "+";
+  font-size: var(--text-xl);
+  font-weight: 300;
+}
+
+.editor__btn-add:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  transform: translateY(-1px);
+}
+/* ── Plugin Badge ── */
+.editor__plugin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-yellow) 15%, transparent);
+  color: var(--accent-yellow);
+  border: 1px solid color-mix(in srgb, var(--accent-yellow) 30%, transparent);
+  margin-left: 0.75rem;
+}
+
+.editor__plugin-badge::before {
+  content: "🔌";
+  font-size: 0.7rem;
+}
+
+/* ── Locked State ── */
+.editor--locked .editor__content {
+  pointer-events: none;
+  opacity: 0.6;
+  filter: grayscale(0.3);
+}
+
+.editor__lock-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: color-mix(in srgb, var(--accent-yellow) 8%, var(--bg-secondary));
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--accent-yellow) 25%, transparent);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.editor__lock-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.editor__lock-banner-icon {
+  font-size: 1rem;
+}
+
+.editor__unlock-btn {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--accent-yellow);
+  background: transparent;
+  color: var(--accent-yellow);
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard);
+  white-space: nowrap;
+}
+
+.editor__unlock-btn:hover {
+  background: color-mix(in srgb, var(--accent-yellow) 15%, transparent);
+}
+
+/* Plugin badge on cards */
+.page__card-plugin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
+  color: var(--accent-yellow);
+  border: 1px solid color-mix(in srgb, var(--accent-yellow) 25%, transparent);
+}
+
+.page__card-plugin-badge::before {
+  content: "🔒";
+  font-size: 0.6rem;
+}
+
+/* ── Agent Inline Editor (Split-Pane) ── */
+.agent-inline-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.agent-inline-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.agent-inline-editor__header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-inline-editor__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.agent-inline-editor__dirty-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
+.agent-inline-editor__body {
+  flex: 1;
+  overflow-y: auto;
+  /* The shared contract, not a page-local guess: `DetailHeader.css` owns the
+     dock clearance AND its own sticky action bar's height (station#3738). */
+  padding-bottom: var(--detail-body-bottom-clearance);
+}
+
+.editor-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.editor-link:hover {
+  opacity: 0.8;
+}
+
+.agent-runtime-card {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.agent-runtime-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.agent-runtime-card__name {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.agent-runtime-card__status {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.agent-runtime-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-runtime-card__badge {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.agent-runtime-card__badge--ok {
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  color: var(--accent-primary);
+}
+
+.agent-runtime-card__badge--warn {
+  background: color-mix(
+    in srgb,
+    var(--warning-color, #f59e0b) 15%,
+    transparent
+  );
+  color: var(--warning-color, #f59e0b);
+}
+
+.agent-runtime-card__badge--muted {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.agent-runtime-card__desc {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.agent-runtime-card__link {
+  display: inline-block;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.agent-runtime-card__link:hover {
+  text-decoration: underline;
+}
+
+.agent-editor__section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+  transition: color 0.15s;
+}
+
+.agent-editor__section-toggle:hover {
+  color: var(--text-primary);
+}
+
+.agent-editor__chevron {
+  font-size: var(--text-2xl);
+  color: var(--text-muted);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  line-height: 1;
+}
+
+.agent-editor__chevron--open {
+  transform: rotate(90deg);
+}
+
+.agent-editor__advanced-content {
+  margin-top: 20px;
+  animation: slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.agent-editor__prompt {
+  min-height: 200px;
+  resize: vertical;
+}
+
+/* ══════════════════════════════════════════════════════
+   Workspace Editor (split-pane inline editor)
+   ══════════════════════════════════════════════════════ */
+
+.workspace-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+.workspace-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.workspace-editor__label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.workspace-editor__title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-editor__dirty {
+  color: var(--accent-primary);
+  font-size: var(--text-xs);
+}
+
+.workspace-editor__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workspace-editor__error {
+  margin: 12px 24px;
+  padding: 10px 14px;
+  background: var(--error-bg, rgba(255, 59, 48, 0.08));
+  border: 1px solid var(--error-border, rgba(255, 59, 48, 0.3));
+  border-radius: 6px;
+  color: var(--error-text);
+  font-size: var(--text-md);
+}
+
+.workspace-editor__body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.workspace-editor__section {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.workspace-editor__section:last-child {
+  border-bottom: none;
+}
+
+.workspace-editor__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.workspace-editor__section-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.workspace-editor__section-row {
+  margin-bottom: 14px;
+}
+
+.workspace-editor__section-row:last-child {
+  margin-bottom: 0;
+}
+
+.workspace-editor__label-text {
+  display: block;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+
+.workspace-editor__hint {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.workspace-editor__icon-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workspace-editor__icon-row input {
+  flex: 1;
+}
+
+.workspace-editor__add-btn {
+  font-size: var(--text-base);
+  padding: 5px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.workspace-editor__add-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* List of expandable items (tabs, prompts) */
+.workspace-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspace-editor__item {
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.workspace-editor__item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.workspace-editor__item-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.workspace-editor__item-name {
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.workspace-editor__item-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.workspace-editor__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-editor__item-actions button {
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-md);
+  border-radius: 3px;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.workspace-editor__item-actions button:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.workspace-editor__item-actions button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.workspace-editor__remove-btn {
+  color: var(--error-text) !important;
+  font-size: var(--text-xl) !important;
+}
+
+.workspace-editor__chevron {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.workspace-editor__item-body {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workspace-editor__tab-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.workspace-editor__prompt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Advanced toggle */
+.workspace-editor__section--advanced {
+  padding: 0;
+}
+
+.workspace-editor__advanced-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.workspace-editor__advanced-toggle:hover {
+  background: var(--bg-secondary);
+}
+
+.workspace-editor__advanced-body {
+  padding: 0 24px 20px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.workspace-editor__empty-hint {
+  padding: 16px;
+  border: 1px dashed var(--border-primary);
+  border-radius: 6px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+/* ── Prompt Editor ── */
+.prompt-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.prompt-editor__input {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  padding: 10px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.prompt-editor__input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.prompt-editor__content {
+  width: 100%;
+  min-height: 300px;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.6;
+  padding: 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.prompt-editor__content:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.2),
+    0 0 0 2px color-mix(in srgb, var(--accent-primary) 15%, transparent);
+}
+
+.prompt-editor__description {
+  width: 100%;
+  min-height: 80px;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  padding: 10px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.prompt-editor__description:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.prompt-editor__unsaved {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--accent-yellow, #f5a623);
+  opacity: 0.8;
+}
+
+.prompt-editor__timestamps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.prompt-editor__tag-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.prompt-editor__tag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  opacity: 0.5;
+}
+
+/* ── Template Picker ── */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text-primary);
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.template-card:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.template-card__icon {
+  font-size: 1.5rem;
+}
+
+.template-card__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.template-card__desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.template-blank {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.template-blank:hover {
+  color: var(--accent-primary);
+}
+
+.template-card__source {
+  font-size: 0.65rem;
+  color: var(--accent-primary);
+  opacity: 0.7;
+}
+
+/* ═══ Agent Editor — Lock Banner ═══ */
+.editor__lock-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 24px;
+  background: color-mix(in srgb, var(--warning-text) 10%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--warning-text) 25%, transparent);
+  font-size: 0.8rem;
+  color: var(--warning-text);
+}
+.editor__lock-btn {
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--warning-text);
+  border: 1px solid color-mix(in srgb, var(--warning-text) 40%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.editor__lock-btn:hover {
+  background: color-mix(in srgb, var(--warning-text) 15%, transparent);
+}
+
+/* ACP info banner variant */
+.editor__lock-banner--info {
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--accent-primary) 20%,
+    transparent
+  );
+  color: var(--text-secondary);
+}
+
+/* ═══ Agent Editor — Guardrails Grid ═══ */
+.editor__guardrails-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.editor__guardrails-item .editor-label {
+  margin-bottom: 4px;
+}
+
+/* ═══ Agent Editor — Tools Grouped ═══ */
+.editor__tools-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+.editor__tools-note {
+  margin: 12px 0 0;
+  color: var(--text-muted, #8a8a8a);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.editor__tools-note code {
+  overflow-wrap: anywhere;
+}
+
+.editor__tools-link {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+.editor__tools-grouped {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.editor__tools-server {
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.editor__tools-server-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.editor__tools-server-count {
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.editor__tools-list {
+  display: flex;
+  flex-direction: column;
+}
+.editor__tool-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border: none;
+  border-bottom: 1px solid var(--border-primary);
+  background: none;
+  color: var(--text-primary);
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  transition: background 0.1s;
+}
+.editor__tool-item:last-child {
+  border-bottom: none;
+}
+.editor__tool-item:hover {
+  background: var(--bg-secondary);
+}
+.editor__tool-item--active {
+  background: color-mix(in srgb, var(--accent-primary) 5%, transparent);
+}
+.editor__tool-info {
+  flex: 1;
+  min-width: 0;
+}
+.editor__tool-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.editor__tool-desc {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor__tool-badge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.editor__tool-badge--auto {
+  background: color-mix(in srgb, var(--success-text) 15%, transparent);
+  color: var(--success-text);
+}
+
+.editor__tools-server--disabled {
+  opacity: 0.5;
+}
+.editor__tools-server--disabled .editor__tools-server-header {
+  background: var(--bg-primary);
+}
+
+/* ── Agents Empty State ── */
+.agents-empty-wrapper {
+  overflow: auto;
+  flex: 1;
+}
+
+.agents-empty-wrapper .split-pane__empty {
+  flex: none;
+  padding: 2rem 1.5rem;
+}
+
+.agents-onboard {
+  padding: 2rem;
+}
+
+.agents-onboard__title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.agents-onboard__desc {
+  margin: 0 0 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.agents-acp-section {
+  padding: 0 1.5rem 1.5rem;
+}
+
+/* ── Integration Form/Raw Toggle ── */
+.integration__mode-tabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.integration__mode-tab {
+  padding: 5px 14px;
+  font-size: var(--text-base);
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.integration__mode-tab:not(:last-child) {
+  border-right: 1px solid var(--border-primary);
+}
+
+.integration__mode-tab--active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.integration__mode-tab:hover:not(.integration__mode-tab--active) {
+  color: var(--text-secondary);
+}
+
+.integration__raw-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.integration__raw-hint {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.integration__raw-hint code {
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: var(--text-sm);
+}
+
+.integration__raw-editor {
+  width: 100%;
+  min-height: 280px;
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.integration__raw-editor:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.integration__raw-editor::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.integration__raw-error {
+  font-size: var(--text-base);
+  color: var(--error-text, #ef4444);
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 4px;
+  border-left: 2px solid var(--error-text, #ef4444);
+}
+
+/* ── Status dot (integration list items) ── */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot--connected {
+  background: var(--success-text, #22c55e);
+}
+.status-dot--disconnected {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+/* ── Integration server name in agent editor ── */
+.editor__tools-server-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Mobile responsive ── */
+/* ── Credential profile recovery ─────────────────────────────────────────
+ * The registry contains opaque refs and management-only labels. It never
+ * renders a credential, an account identity, or the profile's filesystem
+ * address. Keep the compact rows usable in the editor's narrow detail pane.
+ */
+.credential-recovery {
+  display: grid;
+  gap: 12px;
+}
+
+.credential-recovery__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.credential-recovery__status-value {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.credential-recovery__profile-list {
+  display: grid;
+  gap: 8px;
+}
+
+.credential-recovery__profile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.credential-recovery__profile-copy {
+  min-width: 0;
+}
+
+.credential-recovery__profile-name {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.credential-recovery__profile-ref {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.credential-enrolment {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.credential-enrolment__checking,
+.credential-enrolment__state,
+.credential-enrolment__detail {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.credential-enrolment__checking,
+.credential-enrolment__detail {
+  color: var(--text-muted);
+}
+
+.credential-enrolment__state {
+  font-weight: 600;
+}
+
+.credential-enrolment__state--authenticated {
+  color: var(--success-text, #18794e);
+}
+
+.credential-enrolment__state--unauthenticated {
+  color: var(--warning-text, #9a6700);
+}
+
+.credential-enrolment__state--unknown {
+  color: var(--text-muted, #667085);
+}
+
+.credential-enrolment__command {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.credential-enrolment__command summary {
+  cursor: pointer;
+}
+
+.credential-enrolment__command dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 8px;
+  margin: 8px 0 0;
+}
+
+.credential-enrolment__command dt {
+  color: var(--text-muted);
+}
+
+.credential-enrolment__command dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.credential-enrolment__command code {
+  font-family: var(--font-mono);
+}
+
+.credential-recovery__profile-actions,
+.credential-recovery__add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.credential-recovery__add-row .editor-input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.credential-recovery__outcome {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.credential-recovery__outcome--failure {
+  color: var(--error-text);
+}
+
+.credential-recovery__errors {
+  display: grid;
+  gap: 6px;
+}
+
+.credential-recovery__notice {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* ═══ Agent Editor — Label Row Actions ═══ */
+.editor-label-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ═══ Agent Editor — Add Modal ═══
+   Overlay, panel, header and footer are the shared `Dialog`'s now (SHELL-02).
+   What is left is this list's own body/search layout. */
+.editor-add-modal__body {
+  display: flex;
+  flex-direction: column;
+}
+.editor-add-modal__search {
+  margin-bottom: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+/* ═══ Agent Editor — Expandable Integration Tools ═══ */
+.editor__tools-server-header .agent-editor__chevron {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+  margin-left: 4px;
+}
+
+/* ═══ Agent Editor — Additional Classes ═══ */
+
+.agent-editor__acp-section {
+  padding: 24px;
+}
+
+.agent-editor__error-banner {
+  margin: 0 24px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--error-border);
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-size: var(--text-lg);
+}
+
+.agent-editor__validation-summary {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+}
+
+.agent-editor__validation-summary li {
+  margin: 0.15rem 0;
+}
+
+/* Station#975 (unification slice 5) §5: authored content an engine can't
+   deliver — persistent, surface-scoped, read-only, never silently hidden
+   or silently dropped. */
+.agent-editor__capability-banner {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning-text) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warning-text) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.agent-editor__template-picker {
+  padding: 2rem;
+}
+
+.agent-editor__template-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.agent-editor__template-desc {
+  margin: 0 0 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.agent-editor__locked-field {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.agent-editor__save-btn {
+  position: relative;
+}
+
+.editor__tool-badge--btn {
+  cursor: pointer;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 600;
+}
+
+.editor__tool-badge--add {
+  background: rgba(74, 158, 255, 0.1);
+  color: var(--accent-primary);
+}
+
+.editor__tool-badge--disabled {
+  opacity: 0.35;
+  cursor: default;
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 2px 6px;
+}
+
+/* Agent editor extracted inline styles */
+.editor-icon-preview {
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.editor__tools-server-header--clickable {
+  cursor: pointer;
+}
+.editor-required {
+  color: var(--color-danger, #e53935);
+  margin-left: 2px;
+}
+.agents-list__acp-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+.agents-list__acp-emoji {
+  font-size: var(--text-lg);
+}
+
+/* ── Key-value editor rows (env vars) ── */
+.editor-kv-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+.editor-input--half {
+  flex: 1;
+  min-width: 0;
+}
+.editor-btn--icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xl);
+}
+.editor-btn--icon:hover {
+  color: var(--color-danger, #e53935);
+  border-color: var(--color-danger, #e53935);
+}
+.editor-btn--ghost {
+  background: transparent;
+  border: 1px dashed var(--border-primary);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--text-md);
+  width: 100%;
+  margin-top: 4px;
+}
+.editor-btn--ghost:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* Mobile touch targets — 44px minimum */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .workspace-editor__tab-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-editor__prompt-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .editor__guardrails-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .editor__footer {
+    bottom: var(--safe-bottom, 0px);
+  }
+
+  .workspace-editor__item-actions {
+    gap: 8px;
+  }
+
+  .workspace-editor__item-actions button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .editor__close-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .editor__tag-remove {
+    padding: 15px;
+    margin: -15px;
+  }
+
+  /* station#3783: `.editor-btn`/`--small` take their 44px floor from the
+     primitive (`components/editor-controls.css`), which the app shell loads —
+     these route-local copies were why Home had no floor at all. */
+  .agent-editor__section-toggle {
+    min-height: 44px;
+  }
+
+  .editor-enrich-btn {
+    min-height: 44px;
+  }
+
+  .editor-icon-preview {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .credential-recovery__profile {
+    grid-template-columns: 1fr;
+  }
+
+  .credential-recovery__profile-actions,
+  .credential-recovery__add-row {
+    align-items: stretch;
+  }
+
+  .credential-recovery__profile-actions .editor-btn,
+  .credential-recovery__add-row .editor-btn {
+    flex: 1 1 auto;
+  }
+
+  /* station#3783: the `.editor-btn` family's floor moved to the primitive;
+     only the roomier mobile padding is a page-layout concern. */
+  .editor-btn {
+    padding: 10px 16px;
+  }
+  .editor-enrich-btn {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: var(--text-md);
+  }
+  .editor-input,
+  .editor-select {
+    min-height: 44px;
+  }
+  .editor-textarea--tall {
+    min-height: 120px;
+  }
+
+  /*
+   * Mobile. These rules used to live in `agent-editor/agent-editor-mobile.css`,
+   * scoped to `.agent-inline-editor` — a page-local media query over classes
+   * this stylesheet owns, which is exactly the fork the DRY rule forbids. They
+   * are declared here, beside the desktop rules for the same classes, and
+   * therefore apply to every editor that uses them rather than one page.
+   */
+
+  .editor-field {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .agent-engine-choice,
+  .agent-editor__copy-row {
+    flex-wrap: wrap;
+  }
+
+  .agent-engine-choices--nested {
+    margin-left: var(--space-4);
+    padding-left: var(--space-4);
+  }
+
+  .editor-label-row {
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+
+  .editor-label-row__actions {
+    flex-wrap: wrap;
+  }
+
+  .editor__tools-server-header {
+    flex-wrap: wrap;
+    row-gap: var(--space-3);
+  }
+
+  .editor__tools-server-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .editor__tool-info {
+    min-width: 0;
+  }
+
+  .editor__tool-desc {
+    white-space: normal;
+  }
+
+  .editor__tool-badge--btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .template-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /*
+   * Inline repair and section actions are the ONE action their state offers
+   * (DESIGN.md §2/§3.2); at 17-23px tall they were the smallest targets on
+   * the editor. Measured at 390x844.
+   */
+  .agent-editor__capability-banner-action,
+  .editor__tools-link,
+  /* §7: the readiness row's ONE action is a real touch target. Declared in
+     this stylesheet's existing mobile block rather than in the component's
+     own file, so the lane adds no new page-local at-rule. */
+  .agent-readiness__action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* Capability-banner CTA + the denial catalog's disclosure (owner dogfood:
+   the banner was a dead end and ten read-only denial rows dominated the
+   creation form). */
+.agent-editor__capability-banner-action {
+  margin-left: 6px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+.agent-editor__denials-disclosure > summary {
+  cursor: pointer;
+  list-style: revert;
+}
+.agent-editor__denials-disclosure > summary > .agent-editor__section-title {
+  display: inline;
+}
+
+/* The `/command` a skill answers to, beside its name in an agent's skill list. */
+.editor__tool-command {
+  margin-left: 0.5rem;
+  padding: 0 0.35rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* ═══ Agent editor — engine choice cards (DESIGN.md §3.2) ═══ */
+.agent-engine-choices {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.agent-engine-choices--nested {
+  margin-left: var(--space-8);
+  padding-left: var(--space-8);
+  border-left: 1px solid var(--border-primary);
+}
+
+.agent-engine-choice {
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-start;
+  padding: var(--space-6);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  /* §7: the whole card is the tap target, not the 13px radio inside it. */
+  min-height: 44px;
+}
+
+.agent-engine-choice:hover {
+  border-color: var(--accent-primary);
+}
+
+.agent-engine-choice > span {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.agent-engine-choice strong {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.agent-engine-choice small {
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+/* ═══ Agent editor — "Copy an existing agent" source list (§4) ═══ */
+.agent-editor__copy-list {
+  list-style: none;
+  margin: 0 0 var(--space-8);
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.agent-editor__copy-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-4) var(--space-6);
+}
+
+.agent-editor__copy-pick {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 44px;
+  min-width: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+}
+
+.agent-editor__copy-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-editor__copy-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: 0 0 auto;
+}
+
+/* station#4521 item 3: the "Agent actions" (Duplicate/Delete) popover used
+   `ResponsiveDialogSurface` with no overlay/panel classes, so it inherited
+   neither the composer's anchored-popover geometry nor `Dialog`'s centered
+   one — `.responsive-surface-overlay` alone (index.css) sets no `position`
+   at all, so the panel rendered wherever the DOM placed it, detached from
+   its "More actions" trigger (screenshot evidence). The trigger sits in the
+   sticky DetailHeader, at the TOP of the page, not a bottom bar — this
+   mirrors `.composer-popover-overlay` (chat.css) but opens DOWNWARD from the
+   anchor's BOTTOM edge, the same fix #1303 made for the top-anchored
+   Background tasks panel (`background-tasks-sheet-overlay`,
+   BackgroundTasksSheet.css) after that same bottom-anchored geometry shipped
+   on a top-anchored trigger there. */
+.agent-actions-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 12px;
+}
+
+.agent-actions-panel {
+  --agent-actions-panel-width: 240px;
+  width: min(var(--agent-actions-panel-width), calc(100vw - 24px));
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* `--responsive-anchor-bottom` (ResponsiveDialogSurface) is the trigger's
+   own bottom edge measured from the viewport top, so this opens flush under
+   the "More actions" button regardless of that button's height — no magic
+   offset to drift out of sync with it. */
+.agent-actions-overlay[data-anchored] .agent-actions-panel {
+  position: fixed;
+  top: calc(var(--responsive-anchor-bottom, 0px) + 8px);
+  right: clamp(
+    12px,
+    var(--responsive-anchor-right, 12px),
+    calc(100vw - var(--agent-actions-panel-width) - 12px)
+  );
+  max-height: max(
+    120px,
+    calc(100dvh - var(--responsive-anchor-bottom, 0px) - 24px)
+  );
+  overflow-y: auto;
+}

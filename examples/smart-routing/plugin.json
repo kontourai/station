@@ -1,0 +1,9 @@
+{
+  "name": "smart-routing",
+  "version": "1.0.0",
+  "displayName": "Smart Routing",
+  "description": "Deterministic model-tier routing decisions for cheap, strong, and fallback/default paths.",
+  "serverModule": "plugin.mjs",
+  "capabilities": ["routing"],
+  "permissions": []
+}

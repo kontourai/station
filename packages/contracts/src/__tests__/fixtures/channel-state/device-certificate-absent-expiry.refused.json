@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "station.channel-device-certificate/v1",
+  "memberId": "member-alex",
+  "deviceId": "device-laptop",
+  "deviceKeyId": "key-laptop-1",
+  "devicePublicKey": "ZGV2aWNlLXB1YmxpYy1rZXk=",
+  "algorithm": "ed25519",
+  "issuerKeyId": "key-alex-identity",
+  "issuedAt": "2026-07-02T00:00:00.000Z"
+}

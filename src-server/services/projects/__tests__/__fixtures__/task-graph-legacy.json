@@ -1,0 +1,95 @@
+{
+  "tasks": [
+    {
+      "id": "task-legacy-todo",
+      "projectId": "project-alpha",
+      "title": "Untouched todo task",
+      "description": "",
+      "priority": "normal",
+      "status": "todo",
+      "createdBy": "user",
+      "createdAt": "2026-04-01T00:00:00.000Z",
+      "updatedAt": "2026-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "task-legacy-queued",
+      "projectId": "project-alpha",
+      "title": "Legacy queued task",
+      "description": "",
+      "priority": "high",
+      "status": "queued",
+      "createdBy": "user",
+      "createdAt": "2026-04-02T00:00:00.000Z",
+      "updatedAt": "2026-04-02T00:00:00.000Z"
+    },
+    {
+      "id": "task-legacy-running",
+      "projectId": "project-alpha",
+      "title": "Legacy running task",
+      "description": "",
+      "priority": "urgent",
+      "status": "running",
+      "createdBy": "user",
+      "createdAt": "2026-04-03T00:00:00.000Z",
+      "updatedAt": "2026-04-03T00:00:00.000Z",
+      "sessionId": "task-task-legacy-running-1"
+    },
+    {
+      "id": "task-legacy-blocked",
+      "projectId": "project-alpha",
+      "title": "Untouched blocked task",
+      "description": "",
+      "priority": "low",
+      "status": "blocked",
+      "createdBy": "user",
+      "createdAt": "2026-04-04T00:00:00.000Z",
+      "updatedAt": "2026-04-04T00:00:00.000Z"
+    },
+    {
+      "id": "task-legacy-done",
+      "projectId": "project-alpha",
+      "title": "Untouched done task",
+      "description": "",
+      "priority": "normal",
+      "status": "done",
+      "createdBy": "user",
+      "createdAt": "2026-04-05T00:00:00.000Z",
+      "updatedAt": "2026-04-05T00:00:00.000Z"
+    },
+    {
+      "id": "task-legacy-canceled",
+      "projectId": "project-alpha",
+      "title": "Untouched canceled task",
+      "description": "",
+      "priority": "normal",
+      "status": "canceled",
+      "createdBy": "user",
+      "createdAt": "2026-04-06T00:00:00.000Z",
+      "updatedAt": "2026-04-06T00:00:00.000Z"
+    }
+  ],
+  "links": [
+    {
+      "id": "link-legacy-1",
+      "sourceType": "task",
+      "sourceId": "task-legacy-running",
+      "targetType": "session",
+      "targetId": "task-task-legacy-running-1",
+      "relationType": "spawned_session",
+      "confidence": 1,
+      "createdAt": "2026-04-03T00:00:00.000Z",
+      "source": "dispatch"
+    }
+  ],
+  "dispatches": [
+    {
+      "id": "dispatch-legacy-1",
+      "taskId": "task-legacy-running",
+      "sessionId": "task-task-legacy-running-1",
+      "provider": "task-dispatch",
+      "outcome": "seeded",
+      "createdAt": "2026-04-03T00:00:00.000Z",
+      "sourceSurface": "test"
+    }
+  ]
+}

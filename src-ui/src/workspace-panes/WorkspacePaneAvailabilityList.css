@@ -1,0 +1,249 @@
+/*
+ * station#1868: this stylesheet did not exist — the catalog rendered with
+ * browser-default list chrome. A test asserts every class the component emits
+ * has a rule here; keep that contract when adding classes.
+ *
+ * station#3318: the flat status-row list became a visual card grid. Visual
+ * language is still borrowed from `views/ProjectPage.css`'s `project-page__*`
+ * cards, because both render sites (`ProjectWorkspacePaneCatalog.tsx` and
+ * `WorkspacePaneRouteView.tsx`) sit in project-page contexts.
+ */
+
+.workspace-pane-availability-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.workspace-pane-availability-list__card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  background: var(--bg-secondary, #151515);
+  overflow: hidden;
+}
+
+/*
+ * State is carried by the top border rather than by colour alone, so the
+ * distinction survives a monochrome or high-contrast render. The state is also
+ * always present as text inside the card, so this is decoration, never the
+ * only signal.
+ */
+.workspace-pane-availability-list__card--available {
+  border-top: 3px solid var(--accent-primary, #4a9eff);
+}
+
+.workspace-pane-availability-list__card--coming-soon,
+.workspace-pane-availability-list__card--not-configured,
+.workspace-pane-availability-list__card--unsupported,
+.workspace-pane-availability-list__card--permission-required,
+.workspace-pane-availability-list__card--temporarily-unavailable {
+  border-top: 3px solid var(--border-primary, #333);
+}
+
+/*
+ * The generated placeholder: pane icon or initial on an accent field. The
+ * accent is a deterministic per-descriptor-id token (`panePreviewAccent`), so
+ * a pane keeps its color across renders and orderings. Unavailable cards mute
+ * the field, never remove it — identity survives, state stays textual.
+ */
+.workspace-pane-availability-list__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 64px;
+  background: color-mix(
+    in srgb,
+    var(--pane-preview-accent, var(--accent-primary, #4a9eff)) 16%,
+    var(--bg-tertiary, #1d1d1d)
+  );
+  color: var(--pane-preview-accent, var(--accent-primary, #4a9eff));
+}
+
+.workspace-pane-availability-list__card--coming-soon
+  .workspace-pane-availability-list__preview,
+.workspace-pane-availability-list__card--not-configured
+  .workspace-pane-availability-list__preview,
+.workspace-pane-availability-list__card--unsupported
+  .workspace-pane-availability-list__preview,
+.workspace-pane-availability-list__card--permission-required
+  .workspace-pane-availability-list__preview,
+.workspace-pane-availability-list__card--temporarily-unavailable
+  .workspace-pane-availability-list__preview {
+  opacity: 0.55;
+}
+
+.workspace-pane-availability-list__preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.workspace-pane-availability-list__preview-glyph {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.workspace-pane-availability-list__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+}
+
+.workspace-pane-availability-list__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workspace-pane-availability-list__name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary, #e0e0e0);
+}
+
+/*
+ * The separator is real text in the DOM (see the component's comment): it is
+ * what keeps the card's textContent from collapsing to "CodingAvailable" for
+ * text selection, find-in-page, and any CSS-less render. Sighted users get the
+ * separation from the flex layout above, so it is clipped rather than shown —
+ * the same technique as `.background-tasks-banner__sr-status` in `index.css`.
+ *
+ * Do NOT switch this to `display: none` or `visibility: hidden`: both remove
+ * it from any name-from-content derivation and from the visible-text fix.
+ */
+.workspace-pane-availability-list__separator {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.workspace-pane-availability-list__state {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted, #999);
+  white-space: nowrap;
+}
+
+.workspace-pane-availability-list__card--available
+  .workspace-pane-availability-list__state {
+  color: var(--accent-primary, #4a9eff);
+}
+
+/*
+ * The state badge doubles as the diagnostics disclosure on unavailable cards.
+ * It reads as a badge (bordered pill), and `aria-expanded` plus the chrome
+ * below distinguish it from the available card's plain state text.
+ */
+.workspace-pane-availability-list__state-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 999px;
+  padding: 1px 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.workspace-pane-availability-list__state-toggle:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/*
+ * Explicit focus ring. `scripts/focus-visible-ratchet.mjs` gates new
+ * interactive surfaces that suppress `outline` without an inventory entry in
+ * `docs/ui/focus-outline-exceptions.json`; these stay visible rather than
+ * taking an exception (same choice as the guardian textarea, aba6b41b).
+ */
+.workspace-pane-availability-list__state-toggle:focus-visible,
+.workspace-pane-availability-list__open:focus-visible,
+.workspace-pane-availability-list__remedy:focus-visible {
+  outline: 2px solid var(--accent-primary, #4a9eff);
+  outline-offset: 2px;
+}
+
+.workspace-pane-availability-list__summary {
+  display: block;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted, #999);
+}
+
+.workspace-pane-availability-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.workspace-pane-availability-list__open,
+.workspace-pane-availability-list__remedy {
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.workspace-pane-availability-list__open {
+  background: var(--accent-primary, #4a9eff);
+  border: 1px solid var(--accent-primary, #4a9eff);
+  color: var(--text-on-accent);
+  font-weight: 500;
+}
+
+.workspace-pane-availability-list__remedy {
+  background: none;
+  border: 1px solid var(--border-primary, #333);
+  color: var(--text-secondary, #9aa0a6);
+}
+
+.workspace-pane-availability-list__open:disabled,
+.workspace-pane-availability-list__remedy:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.workspace-pane-availability-list__explanation {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-primary, #333);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #9aa0a6);
+}
+
+/* station#3348: the card's second tap target. The Open and remediation buttons
+   sit in `__actions` and take index.css's shared mobile floor from it; this one
+   is the state badge, which belongs beside the name in `__heading` and cannot
+   move into that row without ceasing to be a badge — so it declares the floor
+   itself. In flow rather than as an overlaid pseudo-element: an invisible 44px
+   box centred on an ~18px badge reaches 13px below it, and a card with no
+   description puts the remediation button 8px under the heading, so the overlay
+   would have covered the top of a DIFFERENT control. Growing the heading has no
+   such failure mode, and taller rows on touch is what #3331 settled on for the
+   sidebar. Available cards render the state as a plain span, so their heading
+   is untouched. */
+@media (pointer: coarse) {
+  .workspace-pane-availability-list__heading {
+    align-items: center;
+  }
+
+  .workspace-pane-availability-list__state-toggle {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+  }
+}

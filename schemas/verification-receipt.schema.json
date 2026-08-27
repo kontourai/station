@@ -1,0 +1,450 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://station.kontour.ai/schemas/verification-receipt.schema.json",
+  "title": "Station verification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "request",
+    "disposition",
+    "terminal",
+    "counts",
+    "artifacts",
+    "cleanup",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 3
+    },
+    "request": {
+      "$ref": "#/$defs/request"
+    },
+    "disposition": {
+      "enum": ["executed", "joined", "reused", "forced"]
+    },
+    "terminal": {
+      "$ref": "#/$defs/terminal"
+    },
+    "counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "cleanup": {
+      "$ref": "#/$defs/cleanup"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "reusableOutputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reusableOutput"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "repositoryId",
+        "worktree",
+        "headSha",
+        "workspaceDigest",
+        "environmentDigest",
+        "laneId",
+        "command",
+        "manifestDigest",
+        "dependencyDigest",
+        "nodeVersion",
+        "toolchain",
+        "toolchainIdentity",
+        "platform",
+        "arch"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/digest"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/digest"
+        },
+        "worktree": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headSha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "workspaceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "environmentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "laneId": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dependencyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nodeVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolchain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toolchainIdentity": {
+          "$ref": "#/$defs/digest"
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arch": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "exitCode", "passed"],
+      "properties": {
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "infrastructure_error",
+            "canceled",
+            "timed_out",
+            "rejected",
+            "parser_error",
+            "provisional"
+          ]
+        },
+        "exitCode": {
+          "type": ["integer", "null"]
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "indeterminate": {
+          "description": "Present and true only when `passed` is false but nothing in status/exitCode/counts supports it — e.g. a joiner adopting an owner that never reached a valid terminal state. Tells a caller to re-run rather than diagnose; never present on a genuine failure or a pass.",
+          "const": true
+        },
+        "recoveredFailures": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "name"],
+            "properties": {
+              "file": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 512
+              }
+            }
+          }
+        },
+        "reconcileNote": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "passed": {
+                "const": true
+              }
+            },
+            "required": ["passed"]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              },
+              "exitCode": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "description": "A non-completed terminal status can never be a pass.",
+          "if": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "enum": [
+                  "failed",
+                  "infrastructure_error",
+                  "canceled",
+                  "timed_out",
+                  "rejected",
+                  "parser_error",
+                  "provisional"
+                ]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "passed": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "description": "indeterminate is only ever set on a completed, zero-exit, non-passing terminal — a false verdict backed by no failure signal in status/exitCode.",
+          "if": {
+            "type": "object",
+            "properties": {
+              "indeterminate": {
+                "const": true
+              }
+            },
+            "required": ["indeterminate"]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              },
+              "exitCode": {
+                "const": 0
+              },
+              "passed": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executed", "passed", "failed", "infrastructureErrors"],
+      "properties": {
+        "executed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "infrastructureErrors": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\.kontourai/(?:[A-Za-z0-9._@+-]+/)*[A-Za-z0-9._@+-]+$",
+          "not": {
+            "pattern": "(?:^|/)\\.\\.(?:/|$)"
+          }
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "survivingOwnedChildren"],
+      "properties": {
+        "status": {
+          "enum": ["passed", "failed", "not_required"]
+        },
+        "survivingOwnedChildren": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stable", "before", "after"],
+      "properties": {
+        "stable": {
+          "type": "boolean"
+        },
+        "before": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "after": {
+          "type": "object",
+          "minProperties": 1
+        }
+      }
+    },
+    "reusableOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "runId", "manifestDigest", "payloadDigest"],
+      "properties": {
+        "path": {
+          "const": ".kontourai/e2e-latest/"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "manifestDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "payloadDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "laneId": {
+                "const": "verify-e2e-full"
+              }
+            },
+            "required": ["laneId"]
+          },
+          "terminal": {
+            "type": "object",
+            "properties": {
+              "passed": {
+                "const": true
+              }
+            },
+            "required": ["passed"]
+          }
+        },
+        "required": ["request", "terminal"]
+      },
+      "then": {
+        "required": ["reusableOutputs"],
+        "properties": {
+          "reusableOutputs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "terminal": {
+            "type": "object",
+            "properties": {
+              "passed": {
+                "const": true
+              }
+            },
+            "required": ["passed"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "stable": {
+                "const": true
+              }
+            },
+            "required": ["stable"]
+          },
+          "cleanup": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "enum": ["passed", "not_required"]
+              },
+              "survivingOwnedChildren": {
+                "const": 0
+              }
+            },
+            "required": ["status", "survivingOwnedChildren"]
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "passed": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "failed": {
+                "const": 0
+              },
+              "infrastructureErrors": {
+                "const": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

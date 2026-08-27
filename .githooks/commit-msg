@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Station repo commit-msg hook. Rides the same arming as pre-push:
+#
+#   git config core.hooksPath .githooks
+#
+# set by scripts/install-git-hooks.mjs (npm run hooks:install, and the
+# dependency lifecycle runner behind npm run dependencies:ci), so this check
+# travels with the branch and every worktree behaves the same.
+#
+# Refuses a commit whose subject does not match the conventional grammar at
+# write time, with a message that teaches the format. Forward-only: validates
+# the message being written now, never history. Escape hatch for a deliberate
+# exception: git commit --no-verify.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+exec node scripts/commit-message-gate.mjs --file "$1"

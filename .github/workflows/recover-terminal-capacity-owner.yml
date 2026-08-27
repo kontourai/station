@@ -1,0 +1,73 @@
+name: Recover terminal physical-host capacity owner
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner side that can access the shared coordination root
+        required: true
+        type: choice
+        options:
+          - linux
+          - windows
+      coordination-root:
+        description: OS-local path to the shared capacity root
+        required: true
+        type: string
+      recover:
+        description: Exact lease:<uuid> or ticket:<uuid> target
+        required: true
+        type: string
+      owner-run-id:
+        description: Exact recorded GitHub run ID
+        required: true
+        type: string
+      owner-run-attempt:
+        description: Exact recorded GitHub run attempt
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: terminal-capacity-owner-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover-linux:
+    if: github.event_name != 'pull_request' && inputs.runner == 'linux'
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    timeout-minutes: 5
+    steps:
+      - name: Recover one exact terminal owner
+        uses: kontourai/.github/actions/recover-terminal-capacity-owner@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: ${{ inputs.coordination-root }}
+          host-id: desktop-win
+          capacity-units: "10"
+          owner-lifetime-seconds: "7800"
+          recover: ${{ inputs.recover }}
+          owner-repository: ${{ github.repository }}
+          owner-run-id: ${{ inputs.owner-run-id }}
+          owner-run-attempt: ${{ inputs.owner-run-attempt }}
+          github-token: ${{ github.token }}
+
+  recover-windows:
+    if: github.event_name != 'pull_request' && inputs.runner == 'windows'
+    runs-on: [self-hosted, Windows, X64, kontour-windows, native]
+    timeout-minutes: 5
+    steps:
+      - name: Recover one exact terminal owner
+        uses: kontourai/.github/actions/recover-terminal-capacity-owner@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: ${{ inputs.coordination-root }}
+          host-id: desktop-win
+          capacity-units: "10"
+          owner-lifetime-seconds: "7800"
+          recover: ${{ inputs.recover }}
+          owner-repository: ${{ github.repository }}
+          owner-run-id: ${{ inputs.owner-run-id }}
+          owner-run-attempt: ${{ inputs.owner-run-attempt }}
+          github-token: ${{ github.token }}

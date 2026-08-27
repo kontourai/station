@@ -1,0 +1,74 @@
+/*
+ * Computers section. Deliberately small: the row geometry, its responsive
+ * behaviour and its tap targets all come from `.page-row` in page-layout.css
+ * (the shared primitive), so nothing here is a layout or a media query — only
+ * the section's own chip/state/note tokens.
+ */
+
+.connections-computers {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mirrors the engine chip's token pair (see EngineChip.css for the contrast
+   measurement that chose them) rather than inventing a second pill scale. */
+.connections-computers__chip {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.connections-computers__state {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.connections-computers__state--ready {
+  color: var(--success-text);
+}
+
+.connections-computers__state--warn {
+  color: var(--warning-text);
+}
+
+.connections-computers__state--error {
+  color: var(--error-text);
+}
+
+.connections-computers__note {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+.connections-computers__alert {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--error-text);
+}
+
+/* A link-weight control inside the row body, deliberately subordinate to the
+   row's single action-cell control. It carries the shared `.tap-target`
+   primitive for its 44px touch floor rather than a media query of its own. */
+.connections-computers__remove {
+  align-self: flex-start;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.connections-computers__remove:hover {
+  color: var(--text-primary);
+}

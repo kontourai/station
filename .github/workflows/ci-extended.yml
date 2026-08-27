@@ -1,0 +1,149 @@
+name: CI Extended
+
+on:
+  # Free-tier hygiene: the extended lane (coverage + full e2e) is expensive, so
+  # it is manual-only. The daily cron and per-merge push triggers were removed
+  # to stop recurring Actions-minute burn; run it on demand when minutes allow.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-extended-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    needs: playwright-full
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' }}
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      # Coverage and full Playwright each saturate the same physical machine.
+      # Acquire its cross-runner lease before setup/install work so the two
+      # nominally parallel jobs cannot contend outside Station's coordinator.
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+
+      # `ci:extended` is intentionally not used here: it reruns ci:fast.
+      # Coverage follows Playwright even when Playwright fails, so both remain
+      # truthful without racing for one physical host or timing out admission.
+      - name: Run coordinated coverage lane
+        run: npm run test:coverage
+
+      - name: Upload coverage verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: coverage-verification-${{ github.run_id }}
+          path: |
+            .kontourai/verification-receipts/
+            .kontourai/verification-output/
+            coverage/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  playwright-full:
+    name: Full Playwright Coverage
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+
+      # Bound + retry the browser install: it occasionally wedges on the CDN /
+      # apt deps, and with no timeout it ran toward the 6h job default. Each
+      # attempt is capped so a hang dies fast and self-heals on retry.
+      #
+      # Installed to `$HOME/.cache/ms-playwright`, exported job-wide via
+      # `$GITHUB_ENV` — same convention as `browser-smoke` and
+      # `full-regression`'s Chromium install in ci.yml (station#3517,
+      # station#3555). `$HOME` survives `npm run dependencies:ci` above (which only touches
+      # `node_modules`), so a browser downloaded on one dispatch survives to
+      # the next without any GitHub Actions cache step. `npm run install:playwright:ci`
+      # hardcodes an in-`node_modules` browsers path as a package.json
+      # prefix, which would override the exported path, so this calls
+      # `playwright install --with-deps` directly instead. `verify:e2e:full`
+      # below (via `scripts/run-e2e-suite.mjs`) honors any already-set
+      # `PLAYWRIGHT_BROWSERS_PATH` rather than forcing `0`, so it resolves
+      # the same path this step installs to.
+      - name: Install Playwright browsers
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium --with-deps; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
+
+      - name: Run coordinated full Playwright coverage
+        run: npm run verify:e2e:full
+
+      - name: Upload Playwright verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: playwright-full-verification-${{ github.run_id }}
+          path: |
+            .kontourai/verification-receipts/
+            .kontourai/verification-output/
+            playwright-report/
+            test-results/
+            gallery/
+            .kontourai/e2e-latest/
+          if-no-files-found: ignore
+          retention-days: 14

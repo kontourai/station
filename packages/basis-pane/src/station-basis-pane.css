@@ -1,0 +1,98 @@
+.station-basis-pane {
+  container-type: inline-size;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  color: var(--k-text, #17201b);
+}
+.station-basis-pane__status,
+.station-basis-pane__gap,
+.station-basis-pane__section,
+.station-basis-pane__process,
+.station-basis-pane__gate-evaluation {
+  border: 1px solid var(--k-line, #c8d0ca);
+  border-radius: 10px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.station-basis-pane__process,
+.station-basis-pane__gate-evaluation {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.station-basis-pane__gate-evaluation bdi,
+.station-basis-pane__facts bdi {
+  unicode-bidi: isolate;
+}
+.station-basis-pane__gate-evaluation button {
+  min-height: 44px;
+}
+.station-basis-pane__summary {
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.station-basis-pane__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  overflow-wrap: anywhere;
+}
+.station-basis-pane__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.station-basis-pane__answers button {
+  min-height: 44px;
+  text-align: left;
+  width: 100%;
+}
+.station-basis-pane__execution-actions {
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block-start: 8px;
+  margin-inline: 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+.station-basis-pane__execution-actions button,
+.station-basis-pane__kept-result button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.station-basis-pane__inspector {
+  max-width: min(42rem, calc(100vw - 24px));
+}
+.station-basis-pane__inspector-body {
+  min-width: 0;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.station-basis-pane__inspector-body pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.station-basis-affordance {
+  min-height: 44px;
+}
+@container (max-width: 420px) {
+  .station-basis-pane {
+    gap: 8px;
+  }
+  .station-basis-pane__facts {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .station-basis-pane *,
+  .station-basis-pane *::before,
+  .station-basis-pane *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

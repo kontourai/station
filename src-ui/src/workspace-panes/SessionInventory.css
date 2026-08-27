@@ -1,0 +1,68 @@
+.session-inventory {
+  display: grid;
+  gap: 1rem;
+}
+.session-inventory__header,
+.session-inventory__layout {
+  display: grid;
+  gap: 1rem;
+}
+.session-inventory__scope {
+  min-width: 0;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+.session-inventory__scope-id {
+  unicode-bidi: isolate;
+  overflow-wrap: anywhere;
+}
+.session-inventory__index {
+  display: grid;
+  gap: 0.25rem;
+  align-content: start;
+}
+.session-inventory__index button,
+.session-inventory__items button {
+  min-height: 44px;
+}
+.session-inventory__index button {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  text-align: start;
+}
+.session-inventory__items {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.session-inventory__item {
+  padding: 0.75rem;
+  border-inline-start: 3px solid currentColor;
+}
+.session-inventory__item--kept {
+  border-inline-start-style: double;
+}
+.session-inventory__label {
+  display: block;
+  overflow-wrap: anywhere;
+  unicode-bidi: isolate;
+}
+.session-output-inspector__text {
+  max-inline-size: 100%;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.session-output-inspector__image {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: min(70dvh, 48rem);
+  object-fit: contain;
+}
+@media (min-width: 768px) {
+  .session-inventory__layout {
+    grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  }
+}

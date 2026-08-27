@@ -1,0 +1,133 @@
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { describe, expect, test } from 'vitest';
+import {
+  SessionTranscriptReads,
+  USAGE_COVERAGE_EVIDENCE_CAP,
+} from '../session-transcript-reads.js';
+
+const authority = sessionReadAuthorityFromRequest(
+  'usage-reader',
+  undefined,
+  undefined,
+);
+const request = { from: '2026-08-01', to: '2026-08-07' };
+
+function event(input: {
+  id: string;
+  provider: string;
+  method: 'turn.completed' | 'token-usage.updated';
+  turnId: string;
+  createdAt: string;
+  observedAt?: string;
+}) {
+  return {
+    id: input.id,
+    provider: input.provider,
+    threadId: `${input.provider}-thread`,
+    turnId: input.turnId,
+    createdAt: input.createdAt,
+    observedAt: input.observedAt ?? '2026-08-07T12:00:00.000Z',
+    sequence: 1,
+    globalSequence: 1,
+    method: input.method,
+    payload: { method: input.method },
+  } as any;
+}
+
+function reads(coverageEvents: any[]) {
+  return new SessionTranscriptReads({
+    canReadSession: () => true,
+    isEphemeralSession: () => false,
+    sessionAttributionFor: () => null,
+    listEventPayloads: () => [],
+    listUsageEventRecords: () => [],
+    listUsageReceiptEvents: () => [],
+    listUsageCoverageEvents: () => coverageEvents,
+    searchConversationMessages: () => [],
+    readSessionThreadIds: () => [],
+    requireTenantExecutionContext: () => false,
+  });
+}
+
+describe('SessionTranscriptReads usage coverage (station#4135)', () => {
+  test('treats the 1001st coverage observation as an evidence-cap sentinel, never complete usage', () => {
+    const coverageEvents = Array.from(
+      { length: USAGE_COVERAGE_EVIDENCE_CAP + 1 },
+      (_, index) =>
+        event({
+          id: `reported-${index}`,
+          provider: 'claude',
+          method: 'token-usage.updated',
+          turnId: `turn-${index}`,
+          createdAt: '2026-08-07T23:00:00.000Z',
+        }),
+    );
+    const result = reads(coverageEvents).listUsageReceipts(
+      authority,
+      'local',
+      request,
+    );
+    expect(result.coverage).toMatchObject({
+      state: 'partial',
+      reason: expect.stringContaining('coverage evidence cap reached'),
+    });
+    expect(result.coverage.providers?.[0]).toMatchObject({
+      state: 'partial',
+      reason: expect.stringContaining('coverage evidence cap reached'),
+    });
+  });
+
+  test('keeps fresh and stale provider clocks distinct and makes their source partial', () => {
+    const coverageEvents = [
+      event({
+        id: 'fresh-terminal',
+        provider: 'fresh-provider',
+        method: 'turn.completed',
+        turnId: 'fresh-turn',
+        createdAt: '2026-08-07T23:30:00.000Z',
+      }),
+      event({
+        id: 'fresh-usage',
+        provider: 'fresh-provider',
+        method: 'token-usage.updated',
+        turnId: 'fresh-turn',
+        createdAt: '2026-08-07T23:30:01.000Z',
+      }),
+      event({
+        id: 'stale-terminal',
+        provider: 'stale-provider',
+        method: 'turn.completed',
+        turnId: 'stale-turn',
+        createdAt: '2026-08-01T00:00:00.000Z',
+      }),
+      event({
+        id: 'stale-usage',
+        provider: 'stale-provider',
+        method: 'token-usage.updated',
+        turnId: 'stale-turn',
+        createdAt: '2026-08-01T00:00:01.000Z',
+      }),
+    ];
+    const result = reads(coverageEvents).listUsageReceipts(
+      authority,
+      'local',
+      request,
+    );
+    expect(result.coverage).toMatchObject({
+      state: 'partial',
+      freshness: 'stale',
+    });
+    expect(result.coverage.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'fresh-provider',
+          freshness: 'fresh',
+        }),
+        expect.objectContaining({
+          provider: 'stale-provider',
+          freshness: 'stale',
+        }),
+      ]),
+    );
+  });
+});

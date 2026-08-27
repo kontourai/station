@@ -1,0 +1,5 @@
+{
+  "gapCeiling": 0,
+  "recordedAt": "2026-08-13T00:00:00Z",
+  "recordedBy": "station#2623 — real SshEnvironmentsSection phase fixtures close starting, verifying, prompt, agent, and error across statusView and unlocksLine after station#2622 closed KnownEnvironmentsSection relationshipLine paired. Verified via `node scripts/claim-fixture-ratchet.mjs --record`."
+}

@@ -1,0 +1,94 @@
+.guided-connect {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  z-index: 40;
+}
+
+.guided-connect__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 360px;
+}
+
+.guided-connect__logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+}
+
+.guided-connect__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.guided-connect__description {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.guided-connect__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.guided-connect__action {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: inherit;
+  font-size: 15px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.guided-connect__action:hover {
+  background: var(--bg-hover, var(--bg-tertiary));
+}
+
+.guided-connect__action--primary {
+  border-color: transparent;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+/* station#3372: the only one of this change's accent-filled controls with a
+   hover FILL. `brightness(1.05)` moved the fill without consulting the
+   foreground — for an accent whose contrast partner is white (a dark accent),
+   brightening the fill walks the pair TOWARD each other, which is the wrong
+   direction and exactly what `--accent-hover-fill` is derived to avoid: it
+   shifts away from whatever partner `--text-on-accent` resolved to. The
+   `background: var(--accent-primary)` it also declared was a no-op restatement
+   of the rest state. Same shape as `.button--primary:hover` and
+   `.chat-input__send-btn--active:hover`. */
+.guided-connect__action--primary:hover {
+  background: var(--accent-hover-fill);
+}
+
+.guided-connect__footer {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-tertiary, var(--text-secondary));
+}

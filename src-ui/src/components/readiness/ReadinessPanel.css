@@ -1,0 +1,299 @@
+/* ReadinessPanel — Veritas merge readiness in the coding layout side panel.
+   Console Kit adoption (S2 item 4): panel chrome, badges, and the verdict come
+   from @kontourai/ui/react/styles.css (`.panel`, `.panel-head`,
+   `.badge`/`.status`/`.tone-*`, `.eyebrow`); the rules here are Station-side
+   layout glue and detail styling, written against the `--k-*` token contract
+   only. Tone mapping for the seven readiness statuses lives in
+   components/kontour/station-tones.ts. */
+
+.readiness-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-height: 0;
+  border-radius: var(--k-radius-md);
+}
+
+.readiness-panel__header {
+  align-items: flex-start;
+}
+
+.readiness-panel__eyebrow {
+  letter-spacing: 0.08em;
+}
+
+.readiness-panel__title {
+  margin: var(--k-space-1) 0 0;
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+}
+
+.readiness-panel__refresh {
+  padding: var(--k-space-1) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-family: var(--k-font-ui);
+  cursor: pointer;
+  transition: border-color var(--k-dur) var(--k-ease);
+}
+
+.readiness-panel__refresh:hover:not(:disabled) {
+  border-color: var(--k-brand);
+  color: var(--k-text);
+}
+
+.readiness-panel__refresh:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.readiness-panel__generated {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+/* Held-previous-project state (station#3092): the content below still
+   belongs to the OUTGOING project while the new one loads. Dim the body so
+   it reads as provisional, and surface the notice unconditionally — the
+   dimming alone is not enough for a screen-reader user. */
+.readiness-panel--stale .readiness-panel__overall,
+.readiness-panel--stale .readiness-panel__chips,
+.readiness-panel--stale .readiness-panel__requirements,
+.readiness-panel--stale .readiness-panel__generated {
+  opacity: 0.55;
+}
+
+/* Declared unconditionally: the reduced-motion decision is made ONCE, in the
+   motion primitive (`tokens.css`), whose global reset forces every duration to
+   0.01ms with `!important`. A `prefers-reduced-motion: no-preference` wrapper
+   around a transition only restates that preference in a second place. */
+.readiness-panel__overall,
+.readiness-panel__chips,
+.readiness-panel__requirements,
+.readiness-panel__generated {
+  transition: opacity var(--k-dur) var(--k-ease);
+}
+
+.readiness-panel__stale-notice {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.readiness-panel__error {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-negative);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-negative-soft);
+  color: var(--k-negative);
+  font-size: var(--k-text-xs);
+  overflow-wrap: anywhere;
+}
+
+/* Empty / not-configured state */
+.readiness-panel__empty {
+  padding: var(--k-space-3);
+  border: 1px dashed var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+}
+
+.readiness-panel__empty-title {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.readiness-panel__empty-desc {
+  margin: var(--k-space-2) 0 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+/* Overall verdict — Console Kit StatusBadge, sized for the side panel */
+.readiness-panel__overall {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.readiness-panel__verdict {
+  align-self: flex-start;
+}
+
+.readiness-panel__message {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+
+/* Status chips — Console Kit badge contract plus a count slot */
+.readiness-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.readiness-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.readiness-panel__status {
+  white-space: nowrap;
+}
+
+/* Requirement list */
+.readiness-panel__requirements {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.readiness-panel__requirement {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  padding: var(--k-space-2) var(--k-space-3);
+}
+
+.readiness-panel__requirement-row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  flex-wrap: wrap;
+}
+
+.readiness-panel__requirement-label {
+  /* Keep a readable width floor so the label never collapses to ~1ch and wraps
+     a token vertically. The row is `flex-wrap: wrap`, so this floor pushes the
+     long "Why is this allowed to merge?" button onto its own line in the narrow
+     320px inspector rail instead of stealing the label's width. */
+  flex: 1 1 12ch;
+  min-width: 12ch;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  font-family: var(--k-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.readiness-panel__why {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--k-brand);
+  font-size: var(--k-text-xs);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Expanded "why" detail */
+.readiness-panel__detail {
+  margin-top: var(--k-space-2);
+  padding-top: var(--k-space-2);
+  border-top: 1px solid var(--k-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.readiness-panel__detail-summary,
+.readiness-panel__detail-empty {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+
+.readiness-panel__claim {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.readiness-panel__claim-header {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.readiness-panel__claim-type {
+  font-size: var(--k-text-xs);
+  font-family: var(--k-font-mono);
+  color: var(--k-text-muted);
+}
+
+.readiness-panel__claim-status {
+  white-space: nowrap;
+}
+
+.readiness-panel__claim-subject {
+  margin: 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+  font-family: var(--k-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.readiness-panel__evidence-list {
+  margin: 0;
+  padding-left: var(--k-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.readiness-panel__evidence {
+  font-size: var(--k-text-xs);
+}
+
+.readiness-panel__evidence-summary {
+  display: block;
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.readiness-panel__evidence-meta {
+  display: block;
+  color: var(--k-text-faint);
+  font-family: var(--k-font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Transparency gaps */
+.readiness-panel__gaps-title {
+  margin: 0 0 var(--k-space-1);
+  font-size: var(--k-text-xs);
+  color: var(--k-caution);
+}
+
+.readiness-panel__gaps-list {
+  margin: 0;
+  padding-left: var(--k-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.readiness-panel__gap {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+
+.readiness-panel__gap-type {
+  font-family: var(--k-font-mono);
+  color: var(--k-caution);
+  margin-right: var(--k-space-2);
+}

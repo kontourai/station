@@ -1,0 +1,14 @@
+{
+  "name": "fieldwork-review",
+  "version": "0.1.0",
+  "displayName": "Fieldwork Review",
+  "description": "Run a project-local Fieldwork task and review its protected Fieldwork surface from Station.",
+  "entrypoint": "src/index.tsx",
+  "serverModule": "./server/plugin.mjs",
+  "capabilities": ["navigation"],
+  "permissions": ["navigation.dock", "plugin.server"],
+  "layout": {
+    "slug": "fieldwork-review",
+    "source": "./layout.json"
+  }
+}

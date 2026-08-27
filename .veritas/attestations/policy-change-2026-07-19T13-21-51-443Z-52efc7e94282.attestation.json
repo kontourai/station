@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-07-19T13-21-51-443Z-52efc7e94282",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian.anderson1222@gmail.com",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-07-19T13:21:51.443Z",
+  "repoStandardsHash": "sha256:4064246a9e27908811dcf7ebab706339350ebe988abd5f39d236b92232521773",
+  "repoMapHash": "sha256:188bd77fd6ee81a77998b05981ea7a27513ca92baa4af78db20120bbc37d26a4",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b",
+  "validUntilDays": 90,
+  "notes": "Station issue #426 owner-authorized migration to Veritas 1.5: generated artifacts move to .kontourai/veritas, authored claims emit facet, and requirement semantics remain unchanged. No governance requirement or enforcement level is weakened.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b",
+    "approvalRef": "github:issue/kontourai/station#426-owner-authorized",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-07-19T13-21-51-443Z-52efc7e94282",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "92c178ab6b85c9378356e3c14c6b4a1be4a1e962d67a152b85117da480b710aa",
+        "validUntil": "2026-10-17T13:21:51.443Z"
+      },
+      "createdAt": "2026-07-19T13:21:51.443Z",
+      "updatedAt": "2026-07-19T13:21:51.443Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-07-19T13-21-51-443Z-52efc7e94282",
+      "claimId": "veritas.attestation.policy-change-2026-07-19T13-21-51-443Z-52efc7e94282",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Station issue #426 owner-authorized migration to Veritas 1.5: generated artifacts move to .kontourai/veritas, authored claims emit facet, and requirement semantics remain unchanged. No governance requirement or enforcement level is weakened.",
+      "observedAt": "2026-07-19T13:21:51.443Z",
+      "collectedBy": "brian.anderson1222@gmail.com",
+      "integrityRef": "92c178ab6b85c9378356e3c14c6b4a1be4a1e962d67a152b85117da480b710aa",
+      "metadata": {
+        "actor": {
+          "id": "brian.anderson1222@gmail.com",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-07-19T13:21:51.443Z",
+        "validUntil": "2026-10-17T13:21:51.443Z",
+        "contentHash": "92c178ab6b85c9378356e3c14c6b4a1be4a1e962d67a152b85117da480b710aa"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-07-19T13-21-51-443Z-52efc7e94282.verified",
+      "claimId": "veritas.attestation.policy-change-2026-07-19T13-21-51-443Z-52efc7e94282",
+      "status": "verified",
+      "actor": "brian.anderson1222@gmail.com",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-07-19T13-21-51-443Z-52efc7e94282"
+      ],
+      "createdAt": "2026-07-19T13:21:51.443Z",
+      "verifiedAt": "2026-07-19T13:21:51.443Z"
+    }
+  }
+}

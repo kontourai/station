@@ -1,0 +1,412 @@
+/* ═══ Profile Page ═══ */
+
+.profile-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+/* ── Card base ── */
+
+.profile-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  padding: 2rem;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s ease;
+}
+
+.profile-card:hover {
+  border-color: var(--accent-primary);
+}
+
+/* Top hero card gets the accent treatment */
+.profile-container > .profile-card:first-child {
+  padding: 2.5rem;
+  background: linear-gradient(
+    135deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 100%
+  );
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.25);
+}
+
+.profile-container > .profile-card:first-child::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-primary);
+  opacity: 0.8;
+}
+
+.profile-card__edit-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+}
+
+/* ── Hero section ── */
+
+.profile-hero-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.profile-card__avatar {
+  font-size: 3rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  box-shadow:
+    0 0 0 3px var(--bg-secondary),
+    0 0 0 5px color-mix(in srgb, var(--accent-primary) 25%, transparent),
+    0 8px 24px rgba(0, 0, 0, 0.2);
+  transition:
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.4s ease;
+}
+
+.profile-card:hover .profile-card__avatar {
+  transform: scale(1.06);
+  box-shadow:
+    0 0 0 3px var(--bg-secondary),
+    0 0 0 5px color-mix(in srgb, var(--accent-primary) 35%, transparent),
+    0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.profile-hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-hero-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.profile-hero-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Card details ── */
+
+.profile-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-card__name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-card__name {
+  margin: 0;
+}
+
+.profile-card__alias {
+  font-size: var(--text-lg);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.profile-card__alias-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: inherit;
+  font-family: var(--font-mono);
+  padding: 0;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--border-primary);
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.profile-card__alias-btn:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.profile-card__copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: inherit;
+  padding: 0;
+  transition: opacity 0.15s;
+}
+
+.profile-card__copy-btn:hover {
+  opacity: 0.7;
+}
+
+.profile-card__title {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.profile-card__detail {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.profile-card__detail--muted {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.profile-card__section-title {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+/* ── Badges ── */
+
+.profile-hero-badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.profile-usage-graph {
+  margin-top: 0.5rem;
+  padding: 1rem 1rem 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--border-primary) 92%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-primary) 35%, transparent);
+}
+
+.profile-usage-graph__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.profile-usage-graph__caption {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.profile-usage-graph__bars {
+  display: flex;
+  align-items: end;
+  gap: 0.6rem;
+  min-height: 118px;
+  margin-top: 0.75rem;
+}
+
+.profile-usage-graph__column {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 118px;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.profile-usage-graph__bar {
+  width: 100%;
+  min-height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-primary) 100%, white 8%) 0%,
+    color-mix(in srgb, var(--accent-primary) 70%, var(--bg-tertiary)) 100%
+  );
+  box-shadow: 0 10px 24px -14px
+    color-mix(in srgb, var(--accent-primary) 70%, transparent);
+}
+
+.profile-usage-graph__label {
+  max-width: 100%;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-usage-graph__usage-bars {
+  display: flex;
+  align-items: end;
+  gap: 0.45rem;
+  height: 56px;
+}
+
+.profile-usage-graph__usage-bars span {
+  display: block;
+  width: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+
+.profile-usage-graph__usage-bars span:nth-child(1) {
+  height: 18px;
+}
+
+.profile-usage-graph__usage-bars span:nth-child(2) {
+  height: 34px;
+}
+
+.profile-usage-graph__usage-bars span:nth-child(3) {
+  height: 26px;
+}
+
+.profile-usage-graph__usage-bars span:nth-child(4) {
+  height: 44px;
+}
+
+.profile-badge {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.35rem 0.85rem;
+  border-radius: 8px;
+  letter-spacing: 0.01em;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.profile-badge:hover {
+  transform: translateY(-1px);
+}
+
+.profile-badge-primary {
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: var(--accent-primary);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 15%, transparent);
+}
+
+.profile-badge-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+/* ── Stats grid ── */
+
+.profile-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.profile-stats-grid > .profile-card {
+  padding: 0;
+  background: var(--bg-secondary);
+  transition:
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.profile-stats-grid > .profile-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Timeline ── */
+
+.profile-timeline {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  padding: 2rem;
+  position: relative;
+  transition: border-color 0.3s ease;
+}
+
+.profile-timeline:hover {
+  border-color: var(--accent-primary);
+}
+
+.profile-timeline-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 700px) {
+  .profile-hero-content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .profile-card__name-row {
+    justify-content: center;
+  }
+
+  .profile-hero-badges {
+    justify-content: center;
+  }
+
+  .profile-usage-graph__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .profile-usage-graph__bars {
+    gap: 0.45rem;
+  }
+
+  .profile-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-container > .profile-card:first-child {
+    padding: 2rem 1.5rem;
+  }
+}

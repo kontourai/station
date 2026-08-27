@@ -1,0 +1,21 @@
+{
+  "signedBundlePaths": ["Station.app"],
+  "machOPaths": ["Station.app/Station"],
+  "embeddedRpathTargets": [],
+  "privacyManifestPaths": [
+    "Station.app/PrivacyInfo.xcprivacy",
+    "Station.app/Resources/PrivacyInfo.xcprivacy"
+  ],
+  "privacyKeys": [
+    "NSPrivacyTracking",
+    "NSPrivacyTrackingDomains",
+    "NSPrivacyCollectedDataTypes",
+    "NSPrivacyCollectedDataType",
+    "NSPrivacyCollectedDataTypeLinked",
+    "NSPrivacyCollectedDataTypeTracking",
+    "NSPrivacyCollectedDataTypePurposes",
+    "NSPrivacyAccessedAPITypes",
+    "NSPrivacyAccessedAPIType",
+    "NSPrivacyAccessedAPITypeReasons"
+  ]
+}

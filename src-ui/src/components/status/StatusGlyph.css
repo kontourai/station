@@ -1,0 +1,31 @@
+.status-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.status-glyph--muted {
+  color: var(--text-muted);
+}
+
+.status-glyph--active {
+  color: var(--accent-primary);
+}
+
+.status-glyph--attention,
+.status-glyph--warning {
+  color: var(--color-warning);
+}
+
+.status-glyph--success {
+  color: var(--color-success);
+}
+
+.status-glyph--danger {
+  color: var(--color-error);
+}

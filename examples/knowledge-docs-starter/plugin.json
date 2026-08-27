@@ -1,0 +1,23 @@
+{
+  "name": "knowledge-docs-starter",
+  "version": "1.0.0",
+  "displayName": "Knowledge Docs Starter",
+  "description": "Knowledge and documentation starter layout for document intake, source review, and question answering.",
+  "entrypoint": "src/index.tsx",
+  "capabilities": ["chat", "navigation", "knowledge"],
+  "permissions": ["navigation.dock"],
+  "layout": {
+    "slug": "knowledge-docs",
+    "source": "./layout.json"
+  },
+  "knowledge": {
+    "namespaces": [
+      {
+        "id": "starter-docs",
+        "label": "Starter Documents",
+        "behavior": "rag",
+        "description": "Documents uploaded or synced for this starter workspace."
+      }
+    ]
+  }
+}

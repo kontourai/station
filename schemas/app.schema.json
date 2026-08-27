@@ -1,0 +1,352 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://station.kontourai.io/schemas/app.schema.json",
+  "title": "App Configuration",
+  "description": "Global application configuration for Station",
+  "type": "object",
+  "required": ["defaultModel", "invokeModel", "structureModel"],
+  "properties": {
+    "region": {
+      "type": "string",
+      "description": "AWS region for Bedrock (e.g., us-east-1)",
+      "pattern": "^[a-z]{2}-[a-z]+-[0-9]{1}$"
+    },
+    "defaultModel": {
+      "type": "string",
+      "description": "Default Bedrock model ID",
+      "examples": [
+        "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        "anthropic.claude-3-haiku-20240307-v1:0"
+      ]
+    },
+    "invokeModel": {
+      "type": "string",
+      "description": "Model for /invoke endpoint tool calling",
+      "examples": ["us.amazon.nova-2-lite-v1:0"]
+    },
+    "structureModel": {
+      "type": "string",
+      "description": "Model for /invoke endpoint structured output",
+      "examples": ["us.amazon.nova-micro-v1:0"]
+    },
+    "defaultMaxTurns": {
+      "type": "number",
+      "description": "Default maximum turns for agent conversations",
+      "minimum": 1,
+      "default": 200
+    },
+    "defaultMaxOutputTokens": {
+      "type": "number",
+      "description": "Default maximum output tokens for model responses",
+      "minimum": 1,
+      "default": 16384
+    },
+    "systemPrompt": {
+      "type": "string",
+      "description": "Global system prompt prepended to all agent instructions"
+    },
+    "templateVariables": {
+      "type": "array",
+      "description": "Custom template variables for prompt replacement",
+      "items": {
+        "type": "object",
+        "required": ["key", "type"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Variable name (used as {{key}})"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["static", "date", "time", "datetime", "custom"],
+            "description": "Variable type"
+          },
+          "value": {
+            "type": "string",
+            "description": "Static value or custom value"
+          },
+          "format": {
+            "type": "string",
+            "description": "JSON format options for date/time types"
+          }
+        }
+      }
+    },
+    "defaultChatFontSize": {
+      "type": "number",
+      "description": "Default font size for chat messages in pixels",
+      "default": 14,
+      "minimum": 10,
+      "maximum": 24
+    },
+    "gitRemote": {
+      "type": "string",
+      "description": "Git remote URL resolved on first build, used for update checks"
+    },
+    "runtime": {
+      "type": "string",
+      "enum": ["voltagent", "strands"],
+      "description": "Agent framework runtime. Default: voltagent",
+      "default": "voltagent"
+    },
+    "approvalGuardian": {
+      "type": "object",
+      "description": "Optional AI review layer for approval-bound tool calls",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable guardian review before human approval"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["review", "enforce"],
+          "description": "Review mode defers denials to a human; enforce mode can hard-deny"
+        },
+        "model": {
+          "type": "string",
+          "description": "Optional model override for guardian review"
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Optional custom guardian system prompt"
+        }
+      }
+    },
+    "distributionProfile": {
+      "description": "Built-in profile name or an inline organization distribution profile",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["standard", "minimal"]
+        },
+        {
+          "type": "object",
+          "required": ["id", "registrySources"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+            },
+            "registrySources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "kind"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": ["builtin", "local", "remote"]
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "itemPolicies": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "visible": {
+                    "type": "boolean"
+                  },
+                  "preinstalled": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": ["trace", "debug", "info", "warn", "error"],
+      "description": "Minimum severity Station writes to its server logs."
+    },
+    "telemetryEnabled": {
+      "type": "boolean",
+      "description": "Allow documented anonymous product usage telemetry when an endpoint is configured."
+    },
+    "registryUrl": {
+      "type": "string",
+      "description": "Source URL for the agents/skills/plugins registry catalog."
+    },
+    "defaultLLMProvider": {
+      "type": "string",
+      "description": "Default connected provider used to resolve LLM model options."
+    },
+    "defaultEmbeddingProvider": {
+      "type": "string",
+      "description": "Default connected provider used for embeddings."
+    },
+    "defaultEmbeddingModel": {
+      "type": "string",
+      "description": "Default embedding model id used for knowledge indexing."
+    },
+    "defaultVectorDbProvider": {
+      "type": "string",
+      "description": "Default connected provider used for vector storage."
+    },
+    "terminalShell": {
+      "type": "string",
+      "description": "Shell used when Station spawns a terminal session."
+    },
+    "disableDefaultSkillRegistries": {
+      "type": "boolean",
+      "description": "Stop Station from loading its built-in skill registries."
+    },
+    "mcpUiHost": {
+      "type": "boolean",
+      "description": "Render resolved MCP tool UIs in a sandboxed iframe (MCP Apps host). Default on."
+    },
+    "surfaceTrustFromVeritasEvidence": {
+      "type": "boolean",
+      "description": "Surface the trust bundle embedded in the latest Veritas evidence record as a project Trust bundle. Default on."
+    },
+    "knowledgeStores": {
+      "type": "boolean",
+      "description": "Register the K2 KnowledgeStoreProvider seam alongside the namespace-based knowledge path. Default off."
+    },
+    "workspaceCheckpoints": {
+      "type": "boolean",
+      "description": "Capture git snapshots of the session project's working directory at turn boundaries, stored as hidden refs pinned for 90 days. Default off; applies after a restart."
+    },
+    "agentConnections": {
+      "type": "object",
+      "description": "Per-agent connection overrides keyed by agent slug.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "config": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "builtinAgentEngineConnectionId": {
+      "type": ["string", "null"],
+      "description": "Engine connection the built-in default agents are bound to (station#1194). Absent: re-derived each boot. null: explicitly Station, sticky. A connection id: explicitly that engine, sticky."
+    },
+    "fleetContribution": {
+      "type": "object",
+      "description": "Which local model connections this Station offers to your inference fleet (station#1398). Default off: absent, disabled, or an empty allowlist all contribute nothing.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Master opt-in. Must be exactly true; anything else is off."
+        },
+        "connectionIds": {
+          "type": "array",
+          "description": "Ids of the local model connections offered to the fleet. Explicit allowlist — never 'all local connections'.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "contribution": {
+      "type": "object",
+      "description": "What this Station offers per space (station#1500), keyed by scope key (\"project:<projectId>\"). Default off: absent, disabled, or empty allowlists all offer nothing. The \"fleet\" scope is NOT configured here — its one writable home is the fleetContribution setting. Key shape is deliberately NOT constrained here: this schema is validated on the config LOAD path (src-server/domain/config-loader-app.ts), so a pattern would turn a key written by a NEWER Station (a future \"channel:...\" scope) into an unloadable config after a downgrade — converting the graceful degradation parseContributionScopeKey exists to provide into a hard failure. PUT /config/app refuses an unusable key at the write, where the operator is present.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Master opt-in for this scope. Must be exactly true; anything else is off."
+          },
+          "execution": {
+            "type": "object",
+            "description": "Repo resource ids this Station offers to run work in. Explicit allowlist — never 'every repo I have checked out'.",
+            "properties": {
+              "repoIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "agents": {
+            "type": "object",
+            "description": "Agent slugs this Station makes available in this space. Explicit allowlist.",
+            "properties": {
+              "slugs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "inference": {
+            "type": "object",
+            "description": "Local model connection ids offered in this space. Explicit allowlist.",
+            "properties": {
+              "connectionIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "firstRun": {
+      "description": "Whether the guided first run has been offered on this home and what the person did with it (UX audit RT-02/SHELL-12). Absent means this home predates the field and the run is not offered; only a brand-new home is written with 'pending'.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pending", "skipped", "completed"]
+        },
+        "completedAt": { "type": "string" },
+        "skippedAt": { "type": "string" }
+      }
+    },
+    "userProfile": {
+      "description": "First-run 'About you' answers (station#2652). Absent means the questions were skipped or unanswered, and Station injects nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["engineer", "manager", "researcher", "operator", "other"]
+        },
+        "comfort": {
+          "type": "string",
+          "enum": ["new-to-this", "comfortable", "expert"]
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

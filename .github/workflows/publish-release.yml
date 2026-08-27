@@ -1,0 +1,241 @@
+name: Publish Station release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft release tag to revalidate and publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      created_at: ${{ steps.source.outputs.created_at }}
+      version: ${{ steps.source.outputs.version }}
+      channel: ${{ steps.source.outputs.channel }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - run: npm run dependencies:ci
+      - name: Resolve draft tag to one immutable commit
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          sha=$(git rev-list -n 1 "$RELEASE_TAG")
+          gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
+          created_at=$(node -e 'process.stdout.write(new Date(Number(process.argv[1]) * 1000).toISOString())' "$(git show -s --format=%ct "$sha")")
+          {
+            echo "sha=$sha"
+            echo "created_at=$created_at"
+            echo "version=${RELEASE_TAG#v}"
+            echo "channel=$([[ "$RELEASE_TAG" == *-preview.* ]] && echo preview || echo stable)"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: native-release-publish
+    concurrency:
+      group: station-release-publish-${{ needs.resolve.outputs.sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      packages: write
+      attestations: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+      RELEASE_CREATED_AT: ${{ needs.resolve.outputs.created_at }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ vars.NATIVE_APP_UPDATE_CHANNEL }}
+      VITE_NATIVE_APP_VERSION: ${{ needs.resolve.outputs.version }}
+      NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - run: npm run dependencies:ci
+      - name: Download and revalidate every staged release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          mkdir release-assets
+          gh release download "$RELEASE_TAG" --dir release-assets --pattern '*'
+          node scripts/release-artifacts.mjs validate --assets-dir release-assets --inventory release-assets/station-release-inventory.json --container-descriptor release-assets/station-container-release.json --updater-public-key release-assets/station-updater-public-key.txt
+          node scripts/release-sbom-predicates.mjs --assets-dir release-assets
+          test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-release-inventory.json")).sourceSha)' )" = "$RELEASE_SHA"
+          test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-container-release.json")).createdAt)' )" = "$RELEASE_CREATED_AT"
+          scripts/verify-release-checksums.sh release-assets
+      - name: Verify GitHub provenance for every downloaded asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          identity="^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release\\.yml@refs/tags/${RELEASE_TAG}$"
+          for asset in release-assets/*; do
+            gh attestation verify "$asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+              --source-ref "refs/tags/$RELEASE_TAG" \
+              --source-digest "$RELEASE_SHA" \
+              --cert-identity-regex "$identity" \
+              --cert-oidc-issuer https://token.actions.githubusercontent.com \
+              --deny-self-hosted-runners
+          done
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Authenticate to GHCR with the ephemeral workflow token
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Promote only the recorded immutable GHCR digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          descriptor=release-assets/station-container-release.json
+          image=$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1])).image)' "$descriptor")
+          digest=$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1])).digest)' "$descriptor")
+          staging="$image:sha-$RELEASE_SHA"
+          resolved=$(docker buildx imagetools inspect "$staging" --format '{{.Manifest.Digest}}')
+          test "$resolved" = "$digest"
+          node -e 'for (const tag of JSON.parse(require("node:fs").readFileSync(process.argv[1])).tags) console.log(tag)' "$descriptor" |
+            while read -r tag; do
+              docker buildx imagetools create --tag "$image:$tag" "$image@$digest"
+            done
+      - name: Publish release and compensate to draft until feed verifies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_APP_UPDATE_PUBLISH_TOKEN: ${{ secrets.NATIVE_APP_UPDATE_PUBLISH_TOKEN }}
+        run: |
+          test -n "$NATIVE_APP_UPDATE_PUBLISH_TOKEN" || { echo "Missing native update provider credential" >&2; exit 1; }
+          feed="release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json"
+          scripts/publish-mobile-feed-transaction.sh "$feed"
+
+      # Deploy ledger (station#4572). Deliberately HERE, not in release.yml:
+      # release.yml assembles a DRAFT; this job is the moment a stable
+      # release actually ships (release published, GHCR tags promoted, mobile
+      # feed verified). Recording in release.yml would assert a deploy that
+      # may never be published. Publish-first-then-ledger: this step runs
+      # after the publish steps above and its failure reddens the job
+      # without un-shipping anything — visible, never blocking.
+      # The sha is RELEASE_SHA = needs.resolve.outputs.sha (pinned by
+      # scripts/__tests__/deploy-ledger-workflow-pins.test.ts): the exact
+      # commit every producer job built and every attestation names — never
+      # github.sha, which here is the tag's commit but is NOT the resolved,
+      # revalidated source of this release.
+      # --require-ancestor refuses before any commit or push when RELEASE_SHA
+      # is not an ancestor of origin/main: without it, the commit-back's
+      # rebase would replay EVERY commit in origin/main..HEAD — the whole
+      # off-main history of a tag cut off main — onto main as a ledger side
+      # effect. A ledger commit may carry ledger files only.
+      # The bounded re-derive-and-retry commit-back lives in
+      # scripts/lib/deploy-ledger-commit.mjs (unit-tested; shell in YAML
+      # cannot be). nullglob + the empty check below exist because an empty
+      # release-assets/ download would otherwise record a literal
+      # 'release-asset:release-assets/*' artifact string.
+      - name: Record the stable release in the deploy ledger
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          record=(node scripts/deploy-ledger.mjs
+            --channel stable-desktop
+            --version "$version"
+            --sha "$RELEASE_SHA"
+            --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            --gate-result "release.yml producer gates and publish-release revalidation/attestations success on $RELEASE_SHA"
+            --github-repo "$GITHUB_REPOSITORY"
+            --artifact "github-release:$RELEASE_TAG (desktop installers, portable archive, SBOMs)")
+          shopt -s nullglob
+          assets=(release-assets/*)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::release-assets/ is empty; refusing to record a literal glob as a release artifact"
+            exit 1
+          fi
+          for asset in "${assets[@]}"; do
+            record+=(--artifact "release-asset:$(basename "$asset")")
+          done
+          node scripts/lib/deploy-ledger-commit.mjs \
+            --commit-subject "docs(ledger): record stable-desktop $version from run $GITHUB_RUN_ID" \
+            --summary-line "- recorded: \`stable-desktop $version\` at \`$RELEASE_SHA\`" \
+            --require-ancestor "$RELEASE_SHA" \
+            -- "${record[@]}"
+
+      # Storage/quota failure is an infrastructure condition, not a verdict
+      # on the record (station#2218); the commit inside the record step
+      # above is authoritative. Runs on failure too, so a push that never
+      # succeeded still leaves the recorded ledger files in an artifact.
+      - name: Retain this run's deploy ledger files
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deploy-ledger-stable-${{ github.run_id }}
+          path: |
+            docs/reference/deploy-ledger.json
+            docs/reference/deploy-ledger.md
+          if-no-files-found: error
+          retention-days: 14
+
+  release-availability:
+    needs: [resolve, publish]
+    if: >-
+      ${{
+        always() &&
+        needs.resolve.result == 'success' &&
+        needs.publish.result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      attestations: read
+    env:
+      RELEASE_PUBLISH_SUCCEEDED: 'true'
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+      RELEASE_CHANNEL: ${{ needs.resolve.outputs.channel }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 257
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - run: npm run dependencies:ci
+      - name: Validate public release inventory and GitHub attestations
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          node scripts/release-availability-driver.mjs
+      - name: Project verified release availability
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release-availability-driver.mjs --project

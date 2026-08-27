@@ -1,0 +1,198 @@
+/* ═══ Activity Timeline ═══ */
+
+/* ── Date picker ── */
+
+.timeline-date-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.timeline-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.timeline-date-input {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* ── Summary bar ── */
+
+.timeline-summary {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+/* ── Chart ── */
+
+.timeline-chart-wrap {
+  position: relative;
+}
+
+.timeline-bars-container {
+  display: flex;
+  gap: 2px;
+  height: 160px;
+  margin-bottom: 0.5rem;
+  position: relative;
+}
+
+.timeline-y-axis {
+  width: 32px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  text-align: right;
+  padding-right: 4px;
+}
+
+.timeline-bars {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  position: relative;
+}
+
+.timeline-bar-col {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.timeline-bar-hover-target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.timeline-bar-visual {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  transition: opacity 0.15s;
+}
+
+.timeline-bar-stack {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 2px 2px 0 0;
+  overflow: hidden;
+}
+
+.timeline-bar-empty {
+  height: 2px;
+  background: var(--border-primary);
+  border-radius: 1px;
+}
+
+/* ── Tooltip ── */
+
+.timeline-tooltip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 180px;
+}
+
+.timeline-tooltip-date {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.timeline-tooltip-stats {
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.timeline-tooltip-agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.timeline-agent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.timeline-tooltip-agent-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-tooltip-agent-count {
+  color: var(--text-secondary);
+}
+
+/* ── X-axis ── */
+
+.timeline-x-axis {
+  display: flex;
+  gap: 2px;
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  padding-left: 36px;
+}
+
+.timeline-x-label {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  overflow: hidden;
+}
+
+/* ── Legend ── */
+
+.timeline-legend {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.timeline-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.timeline-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}

@@ -1,0 +1,77 @@
+import type { StationBasisPaneScope } from '@kontourai/station-basis-pane/station-basis-pane';
+import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
+import { lazy, type ReactNode, Suspense, useCallback, useState } from 'react';
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../components/ResponsiveDialogSurface';
+import { SkeletonBlock } from '../components/state';
+import { useWorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
+import './BasisPaneLauncher.css';
+
+const LazyConnectedBasisFallbackPane = lazy(() =>
+  import('./BasisPaneFallbackContent').then(
+    ({ ConnectedBasisFallbackPane }) => ({
+      default: ConnectedBasisFallbackPane,
+    }),
+  ),
+);
+export type BasisPaneHostScope =
+  | StationBasisPaneScope
+  | { kind: 'session-inventory'; sessionId: string };
+
+interface FallbackState {
+  scope: BasisPaneHostScope;
+  currentProjectId?: string;
+  returnFocusTarget: HTMLElement | null;
+}
+
+export function useBasisPaneLauncher(): {
+  openBasis(
+    instance: WorkspacePaneInstance | null,
+    scope: BasisPaneHostScope,
+    trigger: HTMLElement,
+  ): void;
+  fallback: ReactNode;
+} {
+  const host = useWorkspacePaneHostOpenAction();
+  const [fallbackState, setFallbackState] = useState<FallbackState | null>(
+    null,
+  );
+  const openBasis = useCallback(
+    (
+      instance: WorkspacePaneInstance | null,
+      scope: BasisPaneHostScope,
+      trigger: HTMLElement,
+    ) => {
+      if (instance && host?.open(instance)) return;
+      setFallbackState({
+        scope: { ...scope },
+        currentProjectId: instance?.boundContext?.projectId,
+        returnFocusTarget: trigger,
+      });
+    },
+    [host],
+  );
+  const fallback = fallbackState ? (
+    <ResponsiveDialogSurface
+      ariaLabel="Basis"
+      panelClassName="basis-pane-fallback"
+      returnFocusTarget={fallbackState.returnFocusTarget}
+      onClose={() => setFallbackState(null)}
+    >
+      <ResponsiveDialogHeader
+        title="Basis"
+        closeLabel="Close Basis"
+        onClose={() => setFallbackState(null)}
+      />
+      <Suspense fallback={<SkeletonBlock count={3} label="Loading Basis" />}>
+        <LazyConnectedBasisFallbackPane
+          scope={fallbackState.scope}
+          currentProjectId={fallbackState.currentProjectId}
+        />
+      </Suspense>
+    </ResponsiveDialogSurface>
+  ) : null;
+  return { openBasis, fallback };
+}

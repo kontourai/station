@@ -1,0 +1,373 @@
+/* ── Skill Detail Panel ── */
+
+.skill-detail {
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Hero: icon + name + badge + action */
+.skill-detail__hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.skill-detail__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-4xl);
+  flex-shrink: 0;
+  border: 1px solid var(--border-primary);
+}
+
+.skill-detail__hero-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-detail__name {
+  font-size: var(--text-3xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.skill-detail__meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skill-detail__meta span {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.skill-detail__source-note {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+
+.skills-view__sidebar-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.guidance-conversion__notes {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+
+.skill-detail__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.skill-detail__badge--installed {
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.skill-detail__badge--registry {
+  background: rgba(74, 158, 255, 0.1);
+  color: var(--accent-primary);
+  border: 1px solid rgba(74, 158, 255, 0.15);
+}
+
+.skill-detail__badge--local {
+  background: rgba(201, 168, 84, 0.1);
+  color: var(--accent-yellow);
+  border: 1px solid rgba(201, 168, 84, 0.15);
+}
+
+/* Actions */
+.skill-detail__actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-detail__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: var(--text-md);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    filter var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.skill-detail__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skill-detail__btn--install {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.skill-detail__btn--install:hover:not(:disabled) {
+  background: var(--accent-hover-fill);
+}
+
+.skill-detail__btn--uninstall {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+}
+
+.skill-detail__btn--uninstall:hover:not(:disabled) {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.skill-detail__btn-icon {
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+/* Content sections */
+.skill-detail__section {
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-primary);
+}
+
+.skill-detail__description {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.skill-detail__label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.skill-detail__path {
+  font-size: var(--text-base);
+  color: var(--text-tertiary);
+  word-break: break-all;
+  background: var(--bg-tertiary);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Hint */
+.skill-detail__hint {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  padding: 12px 16px;
+  border-left: 2px solid var(--accent-primary);
+  background: rgba(74, 158, 255, 0.04);
+  border-radius: 0 6px 6px 0;
+}
+
+/* Tags */
+.skill-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skill-detail__tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+/* Version badge */
+.skill-detail__badge--version {
+  background: rgba(168, 85, 247, 0.1);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.15);
+}
+
+/* SKILL.md body */
+.skill-detail__body {
+  font-size: var(--text-lg);
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.skill-detail__body h1,
+.skill-detail__body h2,
+.skill-detail__body h3 {
+  color: var(--text-primary);
+  margin: 16px 0 8px;
+}
+
+.skill-detail__body h1 {
+  font-size: var(--text-2xl);
+}
+.skill-detail__body h2 {
+  font-size: var(--text-xl);
+}
+.skill-detail__body h3 {
+  font-size: var(--text-lg);
+}
+
+.skill-detail__body p {
+  margin: 0 0 12px;
+}
+
+.skill-detail__body code {
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: var(--text-base);
+}
+
+.skill-detail__body pre {
+  background: var(--bg-tertiary);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0 0 12px;
+}
+
+.skill-detail__body pre code {
+  background: none;
+  padding: 0;
+}
+
+.skill-detail__body ul,
+.skill-detail__body ol {
+  padding-left: 20px;
+  margin: 0 0 12px;
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .skills-view .split-pane__right {
+    padding-bottom: 1rem;
+  }
+  .skill-detail {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .skill-detail__hero {
+    flex-wrap: wrap;
+  }
+
+  .skill-detail__actions {
+    width: 100%;
+  }
+
+  .skill-detail__btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .skill-detail__name {
+    font-size: var(--text-2xl);
+  }
+
+  /* Long filesystem paths must wrap instead of forcing horizontal scroll. */
+  .skill-detail__meta {
+    min-width: 0;
+  }
+
+  .skill-detail__meta span {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ── Command skills ── */
+
+.skill-variables {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.skill-variables__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.skill-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.skill-detail__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+@media (max-width: 768px) {
+  .skill-variables__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The filter's own state is the style: `aria-pressed` is what a screen reader
+   is told, so deriving the pressed look from it means the two cannot drift. */
+.skills-view .split-pane__add-btn[aria-pressed="true"] {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-hover);
+}

@@ -1,0 +1,13 @@
+{
+  "name": "coding-starter",
+  "version": "1.0.0",
+  "displayName": "Coding Starter",
+  "description": "Code-focused starter layout with file browser, terminal notes, diff review, and chat handoff patterns.",
+  "entrypoint": "src/index.tsx",
+  "capabilities": ["chat", "navigation"],
+  "permissions": ["navigation.dock"],
+  "layout": {
+    "slug": "coding",
+    "source": "./layout.json"
+  }
+}

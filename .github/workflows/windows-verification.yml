@@ -1,0 +1,93 @@
+name: Windows Verification
+
+# This is the supported native-Windows portable floor, not full Vitest parity.
+# The complete Windows corpus remains a failing diagnostic tracked by #1420.
+# Browser E2E also remains outside this lane; full browser coverage belongs to
+# CI Extended on Ubuntu.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-verification.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.nvmrc'
+      - 'biome.json'
+      - 'tsconfig*.json'
+      - 'scripts/**'
+      - 'src-server/**'
+      - 'src-shared/**'
+      - 'src-ui/**'
+      - 'packages/**'
+      - 'tests/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-floor:
+    if: github.event_name != 'pull_request'
+    name: Windows static and portable test floor (no full Vitest/E2E)
+    runs-on: [self-hosted, Windows, X64, kontour-windows, native]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # The shared preflight validates Node as part of the native toolchain, so
+      # run it after the workflow has selected Station's declared Node version.
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: 'E:\kontour-runner-capacity'
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "5"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - run: npm run dependencies:ci
+
+      - name: Verify verification policy contract
+        run: npm run verification:policy:gate
+
+      - name: Run bounded Windows portable floor
+        # This includes the deterministic pre-push corpus plus the physical-
+        # Windows-proven OpenSSH argv, cleanup, and broken-pipe contracts. Its
+        # pre-push bootstrap also builds the static workspace prerequisites
+        # consumed by the typecheck below.
+        # It must not be presented as the still-red full corpus (#1420).
+        run: npm run test:windows:portable
+
+      - name: Typecheck Station contracts
+        run: npm run typecheck
+
+      - name: Run focused static ratchets
+        run: npm run gate:naming && npm run gate:ui-contracts
+
+      - name: Upload coordinated verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: windows-verification-${{ github.run_id }}
+          path: |
+            .kontourai/verification-receipts/
+            .kontourai/verification-output/
+          if-no-files-found: ignore
+          retention-days: 14

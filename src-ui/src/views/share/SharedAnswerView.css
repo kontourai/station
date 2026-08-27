@@ -1,0 +1,95 @@
+/* Shared-answer permalink page (station#1423). A Kontour-facing trust
+   surface — it exists to present an answer with its receipts — so it uses
+   Console Kit --k-* tokens, like the provenance card it embeds. See the
+   token-scoping rule at the top of src-ui/src/index.css. */
+
+.shared-answer {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: var(--k-space-5, 2rem) var(--k-space-4, 1.5rem);
+  color: var(--k-text);
+}
+
+.shared-answer__header {
+  margin-bottom: var(--k-space-4, 1.5rem);
+  padding-bottom: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.shared-answer__title {
+  margin: 0 0 var(--k-space-2);
+  font-size: var(--k-text-lg, 1.125rem);
+}
+
+.shared-answer__subtitle,
+.shared-answer__status,
+.shared-answer__omitted,
+.shared-answer__footer {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.shared-answer__notice {
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+}
+
+.shared-answer__notice-title {
+  margin: 0 0 var(--k-space-2);
+  font-size: var(--k-text-sm);
+}
+
+.shared-answer__notice-detail {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.shared-answer__body {
+  margin-bottom: var(--k-space-3);
+}
+
+.shared-answer__block {
+  margin: 0 0 var(--k-space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.shared-answer__omitted {
+  font-style: italic;
+}
+
+/* station#1598. Deliberately styled like the notice rather than like a badge:
+   the panel reports what this Station says about its own log, and a badge
+   reads as a seal. Nothing here is signed. */
+.shared-answer__channel {
+  margin-top: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+}
+
+.shared-answer__channel-title {
+  margin: 0 0 var(--k-space-2);
+  font-size: var(--k-text-sm);
+}
+
+.shared-answer__channel-detail {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.shared-answer__channel-detail code {
+  word-break: break-all;
+}
+
+.shared-answer__footer {
+  margin-top: var(--k-space-4, 1.5rem);
+  padding-top: var(--k-space-3);
+  border-top: 1px solid var(--k-line);
+}

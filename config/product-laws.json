@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "laws": [
+    {
+      "id": "station.queue-dispatch.ordered-drain",
+      "family": "queue-dispatch",
+      "invariant": "When a turn completes, Station removes exactly the queued head before canonical dispatch; a definitive 4xx rejection removes that head instead of requeueing it into a refusal loop.",
+      "module": "Chat queue drain",
+      "interface": "drainQueuedMessageOnTurnCompleted",
+      "remediationOwner": "station#613",
+      "affectedPaths": ["src-ui/src/hooks/orchestration/queueDrain.ts"],
+      "observation": {
+        "kind": "vitest-file",
+        "testFile": "src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts",
+        "selector": "pops the head synchronously, then dispatches the canonical Agent target after the settle delay"
+      },
+      "faultInjection": {
+        "kind": "vitest-file",
+        "testFile": "src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts",
+        "selector": "a definitive 4xx rejection drops the entry instead of requeueing and surfaces the failure"
+      }
+    },
+    {
+      "id": "station.lifecycle-completion.gate-derived",
+      "family": "lifecycle-completion",
+      "invariant": "A Flow run advances only when its gate evaluates matching evidence; completion is derived from that gate outcome rather than asserted by the caller.",
+      "module": "Flow run service",
+      "interface": "FlowRunService.evaluate",
+      "remediationOwner": "station#1555",
+      "affectedPaths": ["src-server/services/flow/flow-run-service.ts"],
+      "observation": {
+        "kind": "vitest-file",
+        "testFile": "src-server/services/flow/__tests__/flow-run-service.test.ts",
+        "selector": "passes the gate and advances when claim evidence matches"
+      },
+      "faultInjection": {
+        "kind": "vitest-file",
+        "testFile": "src-server/services/flow/__tests__/flow-run-service.test.ts",
+        "selector": "routes back on failed evidence with attempt budget"
+      }
+    },
+    {
+      "id": "station.approvals.actionable-resolution",
+      "family": "approvals",
+      "invariant": "Only a known approval action can resolve actionable orchestration attention; an unknown action is rejected rather than failing open, and a real resolution marks the request actioned.",
+      "module": "Approval inbox",
+      "interface": "ApprovalInboxService",
+      "remediationOwner": "station#1284",
+      "affectedPaths": ["src-server/services/approvals/approval-inbox.ts"],
+      "observation": {
+        "kind": "vitest-file",
+        "testFile": "src-server/services/approvals/__tests__/approval-inbox.test.ts",
+        "selector": "marks orchestration notifications actioned when the request resolves"
+      },
+      "faultInjection": {
+        "kind": "vitest-file",
+        "testFile": "src-server/services/approvals/__tests__/approval-inbox.test.ts",
+        "selector": "rejects unknown approval actions instead of failing open"
+      }
+    },
+    {
+      "id": "station.home-role.recovery-floor",
+      "family": "home-role-recovery",
+      "invariant": "A granted Home renderer failure falls back to the built-in Home with the actual failure and a recovery action, never a blank root.",
+      "module": "Home role pane",
+      "interface": "HomeRolePane",
+      "remediationOwner": "station#3122",
+      "affectedPaths": ["src-ui/src/views/home/HomeRolePane.tsx"],
+      "observation": {
+        "kind": "vitest-file",
+        "testFile": "src-ui/src/views/home/__tests__/HomeRolePane.test.tsx",
+        "selector": "a renderer that throws on mount lands on the built-in Home with the actual failure text"
+      },
+      "faultInjection": {
+        "kind": "vitest-file",
+        "testFile": "src-ui/src/views/home/__tests__/HomeRolePane.test.tsx",
+        "selector": "retry into a still-broken renderer lands back on the built-in, not a loop or a blank"
+      }
+    },
+    {
+      "id": "station.release-stage.inventory-truth",
+      "family": "release-stage-truth",
+      "invariant": "Release staging accepts only the complete required variant inventory, checksums, updater sidecars, and immutable container descriptor for one source identity.",
+      "module": "Release artifact inventory",
+      "interface": "validateReleaseInventory",
+      "remediationOwner": "station#818",
+      "affectedPaths": ["scripts/lib/release-artifacts.mjs"],
+      "observation": {
+        "kind": "vitest-file",
+        "testFile": "scripts/__tests__/release-artifacts.test.ts",
+        "selector": "assembles every required variant, sidecar, and immutable container"
+      },
+      "faultInjection": {
+        "kind": "vitest-file",
+        "testFile": "scripts/__tests__/release-artifacts.test.ts",
+        "selector": "fails when uploaded bytes differ from the assembled checksum"
+      }
+    }
+  ]
+}

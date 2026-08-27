@@ -1,0 +1,60 @@
+/*
+ * The goal chooser's option cards. The dialog chrome itself (header, eyebrow,
+ * close, mobile sheet geometry) comes from the shared `Dialog`, so what is
+ * left here is the three-option grid.
+ *
+ * These rules used to live in the Connections hub's page stylesheet, which
+ * went with the hub — so the chooser rendered as three runs of unseparated
+ * text until they moved here, beside the component that renders them.
+ */
+
+.add-machine-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.add-machine-modal__options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.add-machine-modal__option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.add-machine-modal__option:hover {
+  border-color: var(--accent-primary);
+}
+
+.add-machine-modal__option-title {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.add-machine-modal__option-detail {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.add-machine-modal__option-unlocks {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.add-machine-modal__learn-more {
+  align-self: flex-start;
+  justify-content: flex-start;
+  font-size: var(--text-sm);
+  color: var(--accent-primary);
+}

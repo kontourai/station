@@ -1,0 +1,12 @@
+{
+  "name": "custom-branding",
+  "version": "1.0.0",
+  "displayName": "Custom Branding Example",
+  "description": "Example plugin showing how to override Station branding via the provider system",
+  "providers": [
+    {
+      "type": "branding",
+      "module": "./providers/branding.js"
+    }
+  ]
+}

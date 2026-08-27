@@ -1,0 +1,137 @@
+/*
+ * station#3177. This file styles two populations with opposite owners, and the
+ * defect was applying one `--color-*` vocabulary to both.
+ *
+ * Everything except `__iframe` is Station's own chrome — Station renders every
+ * pixel and writes every string in it — so it follows the theme, on Station's
+ * real scale (`--bg-*` / `--text-*` / `--border-*`), with no `var(--x, #hex)`
+ * fallbacks. Half of the old names resolved (`--color-text`, `--color-border`)
+ * and half did not (`--color-surface-muted`, `--color-text-muted`,
+ * `--color-warning`), so the card painted its light literal `#f8fafc` in BOTH
+ * themes while the title on it followed the theme: measured 1.07:1 in dark, and
+ * the pills inverted the same defect at 2.35:1 (light-theme slate on the
+ * theme-aware surface). Dropping the fallbacks arms
+ * `src-ui/src/__tests__/undefined-css-custom-properties.test.ts` on these
+ * names, which the fallback form deliberately hides from it.
+ *
+ * `__iframe` is the exception and is deliberately NOT theme-aware — see the
+ * rule at the bottom of the file.
+ */
+
+.mcp-tool-ui-frame {
+  display: flex;
+  min-height: 320px;
+  height: 100%;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.mcp-tool-ui-frame__status {
+  display: flex;
+  min-height: 280px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.mcp-tool-ui-frame__message {
+  width: min(560px, 100%);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  padding: 24px;
+}
+
+.mcp-tool-ui-frame__eyebrow {
+  margin: 0 0 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.mcp-tool-ui-frame__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.mcp-tool-ui-frame__description {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.mcp-tool-ui-frame__approval {
+  margin: 12px 0 0;
+  /* `--warning-text` is the contrast-measured warning foreground defined per
+     theme; `--color-warning` was defined nowhere and always painted #b45309.
+     Same substitution as `.new-chat-modal__compat-warning` (station#3050). */
+  border-left: 3px solid var(--warning-text);
+  padding-left: 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mcp-tool-ui-frame__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mcp-tool-ui-frame__pill {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  padding: 4px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.mcp-tool-ui-frame__fallback {
+  margin-top: 18px;
+}
+
+.mcp-tool-ui-frame--live {
+  min-height: 0;
+  padding: 0;
+}
+
+/*
+ * The one deliberately theme-invariant surface in this file. What renders here
+ * is a third-party MCP author's document, and Station owns neither its text
+ * colour nor its background: an embedded document with no colours of its own
+ * gets the UA's light-scheme canvas (opaque white) and `canvastext` (black),
+ * which covers whatever this element declares. Captured in both themes on the
+ * inline-srcdoc path, an unstyled resource rendered black-on-white either way.
+ *
+ * So Station cannot pair this surface with its text the way it does above, and
+ * a theme-aware value here would only be the colour that flashes before the
+ * document paints — i.e. a dark flash immediately replaced by the document's
+ * white. Declaring the ground the embedded default was designed against makes
+ * that transition invisible instead.
+ *
+ * `color-scheme: light` is what makes the claim true rather than observed: it
+ * pins the embedded document's used colour scheme, so this pairing cannot be
+ * silently inverted by a future `color-scheme` on Station's root. A resource
+ * that declares its own `color-scheme` still wins, and owns its own contrast.
+ */
+.mcp-tool-ui-frame__iframe {
+  --mcp-ui-embed-ground: #ffffff;
+
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  border: 0;
+  color-scheme: light;
+  background: var(--mcp-ui-embed-ground);
+}

@@ -1,0 +1,615 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://station.kontour.ai/schemas/daily-driver-qualification.schema.json",
+  "title": "Station daily-driver qualification report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "run",
+    "profiles",
+    "scenarios",
+    "rows",
+    "timing",
+    "promotion"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "run": { "$ref": "#/$defs/run" },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 8,
+      "items": { "$ref": "#/$defs/scenario" }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/row" }
+    },
+    "timing": { "$ref": "#/$defs/timing" },
+    "promotion": { "$ref": "#/$defs/promotion" }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$" },
+    "reasonCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,80}$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "status": { "enum": ["PASS", "FAIL", "NOT_VERIFIED", "unavailable"] },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "repetitions", "timeoutMs", "harnessStatus"],
+      "properties": {
+        "mode": { "enum": ["deterministic", "live"] },
+        "repetitions": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 60000 },
+        "harnessStatus": { "$ref": "#/$defs/status" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "engine",
+        "modelSelector",
+        "exposedParameters",
+        "requiredCapabilities",
+        "optionalCapabilities",
+        "availability"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "engine": { "$ref": "#/$defs/identifier" },
+        "modelSelector": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9-]{0,79}$"
+        },
+        "exposedParameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "requiredCapabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "optionalCapabilities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "availability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "deterministicHarness",
+            "liveQualification",
+            "liveReasonCode"
+          ],
+          "properties": {
+            "deterministicHarness": { "type": "boolean" },
+            "liveQualification": { "type": "boolean" },
+            "liveReasonCode": { "$ref": "#/$defs/reasonCode" }
+          }
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "capability"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "capability": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "harnessObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "classification", "expectationMet", "digest"],
+      "properties": {
+        "outcome": {
+          "enum": [
+            "trimmed",
+            "malformed",
+            "empty",
+            "markdown",
+            "prefix",
+            "suffix",
+            "timeout"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "exact_match",
+            "rejected",
+            "timed_out",
+            "completed_before_timeout"
+          ]
+        },
+        "expectationMet": { "type": "boolean" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "uiProductPathObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "assistantMessageCount",
+        "terminal",
+        "workingCleared",
+        "workingStable",
+        "commandBinding",
+        "identityBinding",
+        "projectBinding",
+        "classification",
+        "expectationMet",
+        "producer",
+        "testId",
+        "sourceRevision",
+        "digest"
+      ],
+      "properties": {
+        "outcome": { "const": "ui-product-path" },
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "exact-confirmation" },
+        "capability": { "const": "exact-confirmation" },
+        "repetition": { "const": 1 },
+        "assistantMessageCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "terminal": { "type": "boolean" },
+        "workingCleared": { "type": "boolean" },
+        "workingStable": { "type": "boolean" },
+        "commandBinding": { "type": "boolean" },
+        "identityBinding": { "type": "boolean" },
+        "projectBinding": { "type": "boolean" },
+        "classification": { "enum": ["exact_match", "rejected"] },
+        "expectationMet": { "const": true },
+        "producer": { "const": "station-cross-runtime-chat-switching" },
+        "testId": { "const": "daily-driver-ui-exact-confirmation" },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "renderCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+    "samplesMs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "agreementObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "classification",
+        "turnsCompleted",
+        "expectationMet",
+        "digest"
+      ],
+      "properties": {
+        "outcome": { "enum": ["carryover", "history-blind"] },
+        "classification": {
+          "enum": ["context_carryover", "context_missing"]
+        },
+        "turnsCompleted": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "expectationMet": { "type": "boolean" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "uiLivenessSettlementObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "answerRenderings",
+        "liveRowsAfterResume",
+        "failureRenderings",
+        "failureBanners",
+        "classification",
+        "expectationMet",
+        "producer",
+        "testId",
+        "sourceRevision",
+        "digest"
+      ],
+      "properties": {
+        "outcome": { "const": "ui-scenario" },
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "liveness-settlement" },
+        "capability": { "const": "liveness-settlement" },
+        "repetition": { "const": 1 },
+        "answerRenderings": { "$ref": "#/$defs/renderCount" },
+        "liveRowsAfterResume": { "$ref": "#/$defs/renderCount" },
+        "failureRenderings": { "$ref": "#/$defs/renderCount" },
+        "failureBanners": { "$ref": "#/$defs/renderCount" },
+        "classification": {
+          "enum": ["settled_once", "flashed_or_duplicated"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "producer": { "const": "station-daily-driver-scenarios" },
+        "testId": { "const": "daily-driver-ui-scenarios" },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "uiConversationAgreementObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "completedTurns",
+        "conversationStable",
+        "carryOverBound",
+        "continuationRouteUsed",
+        "distinctSessionCount",
+        "terminalPredecessorCount",
+        "terminalReuseRefused",
+        "persistedLineage",
+        "reloadExactlyOnce",
+        "settled",
+        "classification",
+        "expectationMet",
+        "producer",
+        "testId",
+        "sourceRevision",
+        "digest"
+      ],
+      "properties": {
+        "outcome": { "const": "ui-scenario" },
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "conversation-agreement" },
+        "capability": { "const": "conversation-agreement" },
+        "repetition": { "const": 1 },
+        "completedTurns": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "conversationStable": { "type": "boolean" },
+        "carryOverBound": { "type": "boolean" },
+        "continuationRouteUsed": { "type": "boolean" },
+        "distinctSessionCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "terminalPredecessorCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "terminalReuseRefused": { "type": "boolean" },
+        "persistedLineage": { "type": "boolean" },
+        "reloadExactlyOnce": { "type": "boolean" },
+        "settled": { "type": "boolean" },
+        "classification": {
+          "enum": ["context_carryover", "context_missing"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "producer": { "const": "station-daily-driver-scenarios" },
+        "testId": { "const": "daily-driver-ui-scenarios" },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "uiAgentEngineHandoffObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "targetProfile",
+        "explicitRouteUsed",
+        "conversationStable",
+        "targetSessionDistinct",
+        "disclosureComplete",
+        "targetAgentApplied",
+        "persistedMarker",
+        "markerExactlyOnce",
+        "classification",
+        "expectationMet",
+        "producer",
+        "testId",
+        "sourceRevision",
+        "digest"
+      ],
+      "properties": {
+        "outcome": { "const": "ui-scenario" },
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "agent-engine-handoff" },
+        "capability": { "const": "agent-engine-handoff" },
+        "repetition": { "const": 1 },
+        "targetProfile": { "$ref": "#/$defs/identifier" },
+        "explicitRouteUsed": { "type": "boolean" },
+        "conversationStable": { "type": "boolean" },
+        "targetSessionDistinct": { "type": "boolean" },
+        "disclosureComplete": { "type": "boolean" },
+        "targetAgentApplied": { "type": "boolean" },
+        "persistedMarker": { "type": "boolean" },
+        "markerExactlyOnce": { "type": "boolean" },
+        "classification": { "enum": ["handoff_visible", "handoff_failed"] },
+        "expectationMet": { "type": "boolean" },
+        "producer": { "const": "station-daily-driver-scenarios" },
+        "testId": { "const": "daily-driver-ui-scenarios" },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "uiTranscriptStabilityObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "fixtureTurnCount",
+        "mountedRowCap",
+        "maxMountedRows",
+        "loadedRows",
+        "orderStable",
+        "tailBound",
+        "restoreSamplesMs",
+        "classification",
+        "expectationMet",
+        "producer",
+        "testId",
+        "sourceRevision",
+        "digest"
+      ],
+      "properties": {
+        "outcome": { "const": "ui-scenario" },
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "transcript-stability" },
+        "capability": { "const": "transcript-stability" },
+        "repetition": { "const": 1 },
+        "fixtureTurnCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "mountedRowCap": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "maxMountedRows": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "loadedRows": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "orderStable": { "type": "boolean" },
+        "tailBound": { "type": "boolean" },
+        "restoreSamplesMs": { "$ref": "#/$defs/samplesMs" },
+        "classification": {
+          "enum": ["structurally_bounded", "unbounded"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "producer": { "const": "station-daily-driver-scenarios" },
+        "testId": { "const": "daily-driver-ui-scenarios" },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "uiPerformanceStressObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "repetition",
+        "scrollHeldDuringStream",
+        "taskSwitchStable",
+        "queueDrained",
+        "mountedRowsDuringStream",
+        "loadedRows",
+        "mountedRowCap",
+        "settled",
+        "deltaPaintSamplesMs",
+        "classification",
+        "expectationMet",
+        "producer",
+        "testId",
+        "sourceRevision",
+        "digest"
+      ],
+      "properties": {
+        "outcome": { "const": "ui-scenario" },
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "const": "ui" },
+        "scenario": { "const": "performance-stress" },
+        "capability": { "const": "performance-stress" },
+        "repetition": { "const": 1 },
+        "scrollHeldDuringStream": { "type": "boolean" },
+        "taskSwitchStable": { "type": "boolean" },
+        "queueDrained": { "type": "boolean" },
+        "mountedRowsDuringStream": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "loadedRows": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "mountedRowCap": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "settled": { "type": "boolean" },
+        "deltaPaintSamplesMs": { "$ref": "#/$defs/samplesMs" },
+        "classification": {
+          "enum": ["stress_bounded", "stress_failed"]
+        },
+        "expectationMet": { "type": "boolean" },
+        "producer": { "const": "station-daily-driver-scenarios" },
+        "testId": { "const": "daily-driver-ui-scenarios" },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "observation": {
+      "oneOf": [
+        { "$ref": "#/$defs/harnessObservation" },
+        { "$ref": "#/$defs/agreementObservation" },
+        { "$ref": "#/$defs/uiProductPathObservation" },
+        { "$ref": "#/$defs/uiLivenessSettlementObservation" },
+        { "$ref": "#/$defs/uiConversationAgreementObservation" },
+        { "$ref": "#/$defs/uiAgentEngineHandoffObservation" },
+        { "$ref": "#/$defs/uiTranscriptStabilityObservation" },
+        { "$ref": "#/$defs/uiPerformanceStressObservation" }
+      ]
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "repetition",
+        "capability",
+        "status",
+        "reasonCode",
+        "evidence"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "enum": ["deterministic-harness", "ui", "cli", "phone"] },
+        "scenario": { "$ref": "#/$defs/identifier" },
+        "repetition": { "type": "integer", "minimum": 1 },
+        "capability": { "$ref": "#/$defs/identifier" },
+        "status": { "$ref": "#/$defs/status" },
+        "reasonCode": { "$ref": "#/$defs/reasonCode" },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["observations"],
+          "properties": {
+            "observations": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/observation" }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": { "status": { "const": "PASS" } },
+            "required": ["status"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "evidence": {
+                "type": "object",
+                "properties": {
+                  "observations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "expectationMet": { "const": true }
+                      },
+                      "required": ["expectationMet"]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "timingAggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "surface",
+        "scenario",
+        "capability",
+        "samplesMs",
+        "medianMs",
+        "p95Ms",
+        "maxMs",
+        "budgetMs",
+        "budgetStatus",
+        "budgetVersion"
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "surface": { "enum": ["deterministic-harness", "ui", "cli", "phone"] },
+        "scenario": { "$ref": "#/$defs/identifier" },
+        "capability": { "$ref": "#/$defs/identifier" },
+        "samplesMs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "medianMs": { "type": "number", "minimum": 0 },
+        "p95Ms": { "type": "number", "minimum": 0 },
+        "maxMs": { "type": "number", "minimum": 0 },
+        "budgetMs": { "type": "integer", "minimum": 1 },
+        "budgetStatus": { "enum": ["PASS", "FAIL", "NOT_VERIFIED"] },
+        "budgetVersion": { "const": "daily-driver-v1" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["budgetVersion", "status", "reasonCode", "aggregates"],
+      "properties": {
+        "budgetVersion": { "const": "daily-driver-v1" },
+        "status": { "$ref": "#/$defs/status" },
+        "reasonCode": { "$ref": "#/$defs/reasonCode" },
+        "aggregates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/timingAggregate" }
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasonCodes"],
+      "properties": {
+        "status": { "$ref": "#/$defs/status" },
+        "reasonCodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/reasonCode" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,444 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  # PR routing is read from the base branch, so a candidate cannot replace it
+  # with a self-hosted job before these conditions are evaluated.
+  pull_request_target:
+    branches: [main]
+  # Manual trigger for bounded fast feedback and the completion gate on demand.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    name: Exact full-diff classification
+    # Keep candidate feedback off the starved heavy listener; non-PR jobs use
+    # this full-diff result.
+    if: ${{ github.event_name != 'pull_request_target' }}
+    # station#1931: this MUST NOT be provider-hosted. Every other job in this
+    # workflow `needs:` it, so while provider-hosted jobs cannot start (org
+    # billing, 2026-08-01) a zero-step failure here SKIPS the entire
+    # self-hosted fleet — `full:regression` did not run on `main` for 25+
+    # consecutive pushes, and nothing surfaced that. It classifies a diff with
+    # one node script; it has no reason to need a provider runner.
+    # `fast-feedback` is policy-reserved for `fast-checks` alone
+    # (scripts/actionlint-gate.mjs), so this takes the heavy-host listener.
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    timeout-minutes: 10
+    outputs:
+      heavy: ${{ steps.classify.outputs.heavy }}
+      container: ${{ steps.classify.outputs.container }}
+      classification: ${{ steps.classify.outputs.classification }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      # Same bounded-lane shape as `fast-checks`, which runs on this listener
+      # and is this job's immediate consumer. Weight 1: classification reads a
+      # diff, it does not build.
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "1"
+          timeout-seconds: "300"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - id: classify
+        name: Classify the complete before..sha diff
+        env:
+          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          AFTER: ${{ github.sha }}
+        run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
+
+  fast-checks:
+    needs: classify
+    # `always()` permits same-repository PR feedback after its intentionally
+    # skipped heavy-host classifier. Fork PRs must stay on provider-hosted
+    # infrastructure below; no untrusted fork code reaches this persistent
+    # runner.
+    if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    permissions:
+      contents: read
+    concurrency:
+      # PR numbers isolate candidate feedback from main's push lane. Event
+      # type keeps dispatches isolated from pushes on refs/heads/main.
+      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    # `fast-feedback` is a dedicated listener without the shared
+    # `kontour-linux` label.  That keeps admission for this bounded lane
+    # available while a heavy job waits on (or holds) host capacity. Reserve
+    # one unit: every other desktop-win reservation is capped at nine, so a
+    # compliant heavyweight cannot consume the bounded feedback headroom.
+    runs-on: [self-hosted, Linux, X64, fast-feedback]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Veritas binds evidence to the PR base/head diff; a depth-1 merge
+          # checkout cannot resolve those exact revisions.
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "1"
+          timeout-seconds: "300"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install pinned actionlint
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
+      - run: npm run dependencies:ci
+
+      - name: Dependency advisory floor
+        run: npm run audit:policy
+
+      # fast-checks' changed-test selection can include real-Chromium
+      # touch-target checks (NotificationContainer, station#3513) whenever
+      # the merge snapshot touches notification code — and they fail loud
+      # (not silently skip) without a browser, redding every affected PR.
+      # Same persistent-$HOME convention as full-regression's install below
+      # (station#3453): survives runs on the persistent listener without a
+      # cache step; `playwright install` called directly so the exported
+      # path wins over install:playwright's node_modules pin. Bounded +
+      # retried per #3517.
+      - name: Install Chromium for changed-set touch-target checks
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
+
+      - name: Run fast CI lane
+        id: fast_ci
+        env:
+          STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
+        run: npm run ci:fast
+
+      # Synthetic fixture only: the reference-hardware lane owns actual
+      # latency evidence, so arbitrary PR runners cannot pass it by accident.
+      - name: Run interactive workspace performance smoke
+        run: npm run performance:workspace:smoke
+
+      # station#2290: enforce the initial-payload ratchet on the candidate
+      # that changes it. Keeping this in PR feedback prevents bundle growth
+      # from landing silently and billing the next contributor at pre-push.
+      - name: Enforce candidate UI bundle budget
+        run: npm run build:connect && npm run build:ui
+
+      - name: Upload bounded fast-feedback diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: ci-fast-verification-${{ github.run_id }}
+          path: |
+            .kontourai/verification-receipts/
+            .kontourai/verification-output/
+          if-no-files-found: ignore
+          # station#4132: upload-artifact v4 EXCLUDES hidden files by default,
+          # and .kontourai is a hidden directory — without this line the step
+          # matched nothing on every failing run ("No artifacts will be
+          # uploaded") while the artifacts sat on disk. Four phantom gate
+          # failures in one evening were undiagnosable because of it.
+          include-hidden-files: true
+          retention-days: 14
+
+  fork-smoke:
+    name: Fork pull-request smoke
+    # This is intentionally exact: untrusted fork code is admitted only to an
+    # ephemeral hosted runner, never to the persistent self-hosted fleet.
+    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install pinned actionlint
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
+      - run: npm run dependencies:ci
+
+      - name: Run isolated fork smoke
+        env:
+          STATION_CI_FAST_BASE: ${{ github.event.pull_request.base.sha }}
+        run: npm run ci:fast
+
+
+  full-regression:
+    # Avoid the weight-6, roughly 65-minute heavy-host lease on every push or
+    # PR; dispatch remains available for an explicitly requested completion gate.
+    needs: [classify, fast-checks]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
+    concurrency:
+      group: ci-full-regression-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+
+      - name: Install Chromium (BannerHost.touch-target.test.tsx, station#3453)
+        # `npm run dependencies:ci` does not provision Playwright browsers — root `postinstall`
+        # is `patch-package` only. `full:regression`'s ordinary Vitest corpus
+        # now includes a real-Chromium touch-target check that fails loud
+        # (not a silent skip) without this.
+        #
+        # Installed to `$HOME/.cache/ms-playwright`, exported job-wide via
+        # `$GITHUB_ENV` — the same convention `browser-smoke` below already
+        # uses. This org's Linux heavy-host fleet is a single persistent
+        # listener (`desktop-win-linux`), so both jobs land on the same
+        # machine and the same `$HOME`. Unlike `node_modules`,
+        # `$HOME` is untouched by `npm run dependencies:ci` above, so a browser downloaded on
+        # one run survives to the next without any GitHub Actions cache
+        # step (station#3517, station#3555). This intentionally does NOT use
+        # `npm run install:playwright`: that script hardcodes an
+        # in-`node_modules` browsers path as a package.json prefix, which
+        # would override the exported env var. Calling `playwright install`
+        # directly lets the export win. The touch-target test's own default
+        # (`tests/helpers/css-cascade-fixture.ts`) and
+        # `scripts/run-e2e-suite.mjs` both honor any already-*set*
+        # `PLAYWRIGHT_BROWSERS_PATH` rather than forcing `0`, so they resolve
+        # the same path this step just installed to.
+        #
+        # Trade-off, disclosed: the browser store is now shared across runs
+        # on that host rather than pinned per-checkout. Not a hazard on CI —
+        # one checkout, one Playwright version — and concurrent access is
+        # already serialized by the physical-host capacity lease plus
+        # `browser-smoke`'s `needs: full-regression` below.
+        #
+        # Bounded + retried, mirroring ci-extended.yml's `playwright-full`
+        # install: the previous single 5-minute attempt with no retry was
+        # #3517's headline harm on a slow/flaky first run.
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
+
+      - name: Run full regression completion gate
+        id: full_regression
+        run: npm run full:regression
+
+      - name: Rebuild connected-agent prerequisites after a failed completion gate
+        if: ${{ !cancelled() && steps.full_regression.outcome == 'failure' }}
+        run: npm run build:sdk && npm run build:connect
+
+      - name: Run connected-agents suite
+        if: ${{ !cancelled() && (steps.full_regression.outcome == 'success' || steps.full_regression.outcome == 'failure') }}
+        run: npm run test:connected-agents
+
+      - name: Veritas readiness evidence
+        if: always()
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          FULL_REGRESSION_RESULT: ${{ steps.full_regression.outcome }}
+        run: |
+          if [ -n "$BASE_REF" ] && [ -n "$HEAD_REF" ]; then
+            BASELINE_STATUS="unknown"
+            if [ "$FULL_REGRESSION_RESULT" = "success" ]; then
+              BASELINE_STATUS="success"
+            elif [ "$FULL_REGRESSION_RESULT" = "failure" ]; then
+              BASELINE_STATUS="failed"
+            fi
+            if node scripts/veritas-readiness-evidence.mjs --check evidence \
+              --run-id veritas-${{ github.run_id }} \
+              --source-ref "${{ github.event_name }}:${{ github.ref }}" \
+              --baseline-ci-fast-status "$BASELINE_STATUS" \
+              --changed-from "$BASE_REF" \
+              --changed-to "$HEAD_REF"; then
+              echo "Veritas readiness evidence recorded."
+            else
+              READINESS_EXIT=$?
+              case "$READINESS_EXIT" in
+                1)
+                  echo "Veritas readiness evidence reported unmet requirements." >&2
+                  exit 1
+                  ;;
+                2)
+                  echo "NOT_VERIFIED: Veritas readiness evidence could not be fully evaluated." >&2
+                  exit 2
+                  ;;
+                *)
+                  echo "Veritas readiness evidence could not be evaluated (exit $READINESS_EXIT)." >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+          else
+            echo "NOT_VERIFIED: Veritas readiness evidence has no diff range available." >&2
+            exit 2
+          fi
+
+      - name: Upload full-regression diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: full-regression-verification-${{ github.run_id }}
+          path: |
+            .kontourai/verification-receipts/
+            .kontourai/verification-output/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  browser-smoke:
+    name: Deterministic Browser Smoke
+    # The completion gate owns weight 6, so start browser smoke only after it
+    # releases capacity. GitHub skips failed dependencies by default.
+    needs: [classify, full-regression]
+    if: github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')
+    concurrency:
+      group: ci-browser-smoke-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+
+      - name: Install Chromium
+        timeout-minutes: 5
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
+
+      - name: Run deterministic browser smoke
+        timeout-minutes: 10
+        env:
+          PW_REPORTER: line,html
+        run: npm run test:e2e:pr-smoke
+
+      - name: Upload browser-smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a job
+        # whose work passed (station#2218).
+        continue-on-error: true
+        with:
+          name: browser-smoke-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14

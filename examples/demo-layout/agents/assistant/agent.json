@@ -1,0 +1,14 @@
+{
+  "name": "Assistant",
+  "prompt": "You are a helpful assistant. Answer questions clearly and concisely.",
+  "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "guardrails": {
+    "maxTokens": 4096,
+    "temperature": 0.7
+  },
+  "tools": {
+    "mcpServers": [],
+    "available": [],
+    "autoApprove": []
+  }
+}

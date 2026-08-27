@@ -1,0 +1,122 @@
+/*
+ * station#3815 — the held-permissions review.
+ *
+ * Deliberately quiet: this is an audit surface, so the rows read as a
+ * ledger rather than as controls competing for attention. Only the tier
+ * badge carries colour, because the tier is the one fact that changes how
+ * a person should feel about a row.
+ */
+
+.plugin-permissions__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.plugin-permissions__row {
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+/* A request is not a grant: the same row, one step back in emphasis. */
+.plugin-permissions__row--muted {
+  background: transparent;
+}
+
+.plugin-permissions__tier {
+  border-radius: 4px;
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  text-transform: uppercase;
+}
+
+.plugin-permissions__tier--passive {
+  background: #22c55e20;
+  border: 1px solid #22c55e40;
+  color: #22c55e;
+}
+
+.plugin-permissions__tier--active {
+  background: #f59e0b20;
+  border: 1px solid #f59e0b40;
+  color: #f59e0b;
+}
+
+.plugin-permissions__tier--trusted {
+  background: #ef444415;
+  border: 1px solid #ef444440;
+  color: #fca5a5;
+}
+
+.plugin-permissions__what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plugin-permissions__label {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+/* The identifier is for the reader who wants to search for it, not the one
+   deciding — so it is present and subordinate, never the row's headline. */
+.plugin-permissions__id {
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plugin-permissions__what + * {
+  margin-left: auto;
+}
+
+.plugin-permissions__hint,
+.plugin-permissions__requested-header {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.plugin-permissions__requested {
+  border-top: 1px solid var(--border-primary);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.plugin-permissions__hint {
+  margin: 10px 0 0;
+}
+
+/* station#4288: the content-binding notice. Two variants — the neutral one
+   states a bookkeeping gap, the `--changed` one states that approved code was
+   replaced — so they must not read alike. */
+.plugin-permissions__binding {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+
+.plugin-permissions__binding--changed {
+  background: #f59e0b12;
+  border-left: 2px solid #f59e0b;
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 8px 10px;
+}

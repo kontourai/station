@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "channels": {
+    "development": {
+      "appName": "Station Dev (<worktree>)",
+      "desktopIdentifier": "io.kontourai.station.dev.<worktree>",
+      "androidIdentifier": "io.kontourai.station.debug",
+      "iosIdentifier": null,
+      "runtimeDirectory": "instances/dev/<worktree-id>",
+      "serverPort": "39141-39640",
+      "uiPort": "40141-40640",
+      "desktopIconSource": "src-desktop/icons/dev",
+      "androidIconSource": "src-desktop/icons/dev/android",
+      "iosIconSource": null,
+      "iosStatus": "gated: no isolated development bundle identifier or provisioning contract"
+    },
+    "stable": {
+      "appName": "Station",
+      "desktopIdentifier": "io.kontourai.station",
+      "androidIdentifier": "io.kontourai.station",
+      "iosIdentifier": "io.kontourai.station",
+      "runtimeDirectory": "instances/stable",
+      "serverPort": 18141,
+      "uiPort": 18000,
+      "desktopIconSource": "src-desktop/icons",
+      "androidIconSource": "src-desktop/icons/stable/android",
+      "iosIconSource": "src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset",
+      "iosStatus": "release-enabled"
+    },
+    "beta": {
+      "appName": "Station Beta",
+      "desktopIdentifier": "io.kontourai.station.beta",
+      "androidIdentifier": "io.kontourai.station.beta",
+      "iosIdentifier": "io.kontourai.station.beta",
+      "runtimeDirectory": "instances/beta",
+      "serverPort": 28141,
+      "uiPort": 28000,
+      "desktopIconSource": "src-desktop/icons/beta",
+      "androidIconSource": "src-desktop/icons/beta/android",
+      "iosIconSource": null,
+      "iosStatus": "gated: separate App ID, provisioning profile, signing secret, and App Store Connect or TestFlight listing required"
+    },
+    "nightly": {
+      "appName": "Station Nightly",
+      "desktopIdentifier": "io.kontourai.station.nightly",
+      "androidIdentifier": "io.kontourai.station.nightly",
+      "iosIdentifier": "io.kontourai.station.nightly",
+      "runtimeDirectory": "instances/nightly",
+      "serverPort": 38141,
+      "uiPort": 38000,
+      "desktopIconSource": "src-desktop/icons/nightly",
+      "androidIconSource": "src-desktop/icons/nightly/android",
+      "iosIconSource": null,
+      "iosStatus": "gated: separate App ID, provisioning profile, signing secret, and App Store Connect or TestFlight listing required"
+    }
+  }
+}

@@ -1,0 +1,80 @@
+#!/bin/bash
+set -e
+
+# Resolve $0 through any symlink chain (e.g. `station link`'s
+# ~/.local/bin/station -> repo/station) before computing SCRIPT_DIR. A naive
+# `dirname "$0"` resolves relative to the symlink's own location, not the
+# real script, which sends the npm bootstrap into the symlink's directory
+# instead of the repo. `readlink -f` isn't portable to stock macOS, so walk
+# the symlink chain by hand.
+resolve_script_path() {
+  local src="$1"
+  while [ -L "$src" ]; do
+    local dir target
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    target="$(readlink "$src")"
+    case "$target" in
+      /*) src="$target" ;;
+      *) src="$dir/$target" ;;
+    esac
+  done
+  echo "$src"
+}
+SCRIPT_PATH="$(resolve_script_path "$0")"
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+# Preserve the caller's original working directory before we `cd` into the
+# repo root below. Plugin commands (create/build/dev/install) that operate on
+# a plugin directory outside the repo read this to resolve paths against
+# where the user actually invoked `station` from, not the repo root.
+export STATION_INVOKED_CWD="$PWD"
+
+# Fail before dependency bootstrap or CLI startup when the repository's tested
+# Node runtime is not active. The script reads package.json as the manifest
+# authority and prints the version-manager remediation.
+node "$SCRIPT_DIR/scripts/node-runtime-contract.mjs"
+
+# Bootstrap: ensure deps are installed
+if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+  echo "🐎 First run — installing dependencies..."
+  [ -f "$SCRIPT_DIR/package-lock.json" ] || {
+    echo "Station dependency lockfile is missing; refusing cold bootstrap." >&2
+    exit 1
+  }
+  npm run --prefix "$SCRIPT_DIR" dependencies:ci
+  echo "🐎 Installing Playwright browser bundle..."
+  npm run --prefix "$SCRIPT_DIR" install:playwright
+fi
+
+# --link: register SDK and CLI as global npm links for plugin development.
+#
+# This is a launcher flag, not the `station link` command (which symlinks this
+# launcher into ~/.local/bin). It is handled here rather than in the TypeScript
+# CLI because it operates on this checkout's package directories before any
+# Station command runs.
+#
+# The printed follow-up used to be `npx @kontourai/station-cli dev`, which
+# cannot work: @kontourai/station-cli is a private package with no npm entry,
+# so npx would try to fetch it and fail. Linking the package into the plugin
+# repo first is what actually makes the `station` bin resolvable there.
+if [ "$1" = "--link" ]; then
+  echo "🔗 Linking @kontourai/station-sdk and @kontourai/station-cli globally..."
+  # The CLI's `bin` is the built bundle (packages/cli/dist/station.mjs), which
+  # is gitignored — without this the global `station` link dangles on a fresh
+  # checkout. The launcher below does not need it: contributors run the
+  # TypeScript sources through tsx.
+  npm run --prefix "$SCRIPT_DIR" build:cli
+  (cd "$SCRIPT_DIR/packages/sdk" && npm link)
+  (cd "$SCRIPT_DIR/packages/cli" && npm link)
+  echo ""
+  echo "Done. In your plugin repo, run:"
+  echo "  npm link @kontourai/station-sdk @kontourai/station-cli"
+  echo "  npx station plugin dev"
+  echo ""
+  echo "(This is the launcher's --link flag. 'station link' is a different"
+  echo " command: it puts this launcher on your PATH.)"
+  exit 0
+fi
+
+cd "$SCRIPT_DIR"
+exec npx tsx "$SCRIPT_DIR/scripts/station-cli.ts" "$@"

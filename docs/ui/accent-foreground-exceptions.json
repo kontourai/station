@@ -1,0 +1,10 @@
+{
+  "$comment": "Reviewed accent-filled rules whose foreground is not the accent's derived partner. station#3392 migrated 53 controls to var(--text-on-accent) / var(--text-on-accent-yellow); what remains here is reviewed and reasoned, not a backlog. scripts/accent-foreground-ratchet.mjs blocks a new entry and rejects a stale one, so this list can only shrink.",
+  "exceptions": [
+    {
+      "path": "src-ui/src/components/coding-layout/CodingLayout.css",
+      "selector": ".workflow-plan-panel__runtime-state--live .workflow-plan-panel__runtime-dot",
+      "reason": "Not a foreground. The dot is an 8px empty span with no text; its `color` exists so `currentcolor` drives the pulse ring's box-shadow (see `@keyframes workflow-runtime-pulse` and the tone comment above the rule), and it is deliberately the same accent as the fill so the ring reads as the dot's own glow. Pointing it at --text-on-accent would paint the ring near-black on the dark theme and name a text contrast this rule never renders."
+    }
+  ]
+}

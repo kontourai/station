@@ -1,0 +1,1811 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Station API",
+    "version": "0.1.0",
+    "description": "Generated OpenAPI for the first-pass Station portability route set."
+  },
+  "paths": {
+    "/config/app": {
+      "get": {
+        "operationId": "getAppConfig",
+        "summary": "Get application configuration",
+        "tags": [
+          "config"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateAppConfig",
+        "summary": "Update application configuration",
+        "tags": [
+          "config"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "summary": "List enriched agents",
+        "tags": [
+          "agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCatalogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgent",
+        "summary": "Create an agent",
+        "tags": [
+          "agents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/agents/{slug}": {
+      "put": {
+        "operationId": "updateAgent",
+        "summary": "Update an agent",
+        "tags": [
+          "agents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgent",
+        "summary": "Delete an agent",
+        "tags": [
+          "agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/integrations": {
+      "get": {
+        "operationId": "listIntegrations",
+        "summary": "List integrations",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createIntegration",
+        "summary": "Create or update an integration",
+        "tags": [
+          "integrations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Integration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/integrations/{id}": {
+      "get": {
+        "operationId": "getIntegration",
+        "summary": "Get an integration",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateIntegration",
+        "summary": "Update an integration",
+        "tags": [
+          "integrations"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteIntegration",
+        "summary": "Delete an integration",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/integrations/{id}/reconnect": {
+      "post": {
+        "operationId": "reconnectIntegration",
+        "summary": "Reconnect an integration",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/skills": {
+      "get": {
+        "operationId": "listSkills",
+        "summary": "List installed skills",
+        "tags": [
+          "skills"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/skills/{name}": {
+      "get": {
+        "operationId": "getSkill",
+        "summary": "Get a skill (resolves a legacy identifier)",
+        "tags": [
+          "skills"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateSkill",
+        "summary": "Update a local skill, including its command and variables",
+        "tags": [
+          "skills"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "409": {
+            "description": "Read-only skill, or a command word another skill already holds"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSkill",
+        "summary": "Remove an installed skill",
+        "tags": [
+          "skills"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/skills/local": {
+      "post": {
+        "operationId": "createLocalSkill",
+        "summary": "Create a local skill package",
+        "tags": [
+          "skills"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "409": {
+            "description": "A command word another skill already holds"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/skills/import": {
+      "post": {
+        "operationId": "importSkills",
+        "summary": "Import markdown files as local skills",
+        "tags": [
+          "skills"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "201": {
+            "description": "Every file imported"
+          },
+          "207": {
+            "description": "Per-file results; at least one file did not import"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/skills/{name}/run": {
+      "post": {
+        "operationId": "trackSkillRun",
+        "summary": "Track a skill run",
+        "tags": [
+          "skills"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "404": {
+            "description": "No skill answers to that name or legacy identifier"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Usage counters are unreadable; they were left untouched"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/skills/{name}/outcome": {
+      "post": {
+        "operationId": "recordSkillOutcome",
+        "summary": "Record skill outcome quality",
+        "tags": [
+          "skills"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillOutcome"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "404": {
+            "description": "No skill answers to that name or legacy identifier"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Usage counters are unreadable; they were left untouched"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/registry/plugins": {
+      "get": {
+        "operationId": "listRegistryPlugins",
+        "summary": "List available registry plugins",
+        "tags": [
+          "registry"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/registry/plugins/installed": {
+      "get": {
+        "operationId": "listInstalledRegistryPlugins",
+        "summary": "List installed registry plugins",
+        "tags": [
+          "registry"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/registry/plugins/install": {
+      "post": {
+        "operationId": "installRegistryPlugin",
+        "summary": "Install a plugin from the registry",
+        "tags": [
+          "registry"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryInstall"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/registry/plugins/{id}": {
+      "delete": {
+        "operationId": "uninstallRegistryPlugin",
+        "summary": "Uninstall a registry plugin",
+        "tags": [
+          "registry"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins": {
+      "get": {
+        "operationId": "listPlugins",
+        "summary": "List installed plugins",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/plugins/preview": {
+      "post": {
+        "operationId": "previewPluginInstall",
+        "summary": "Preview a plugin before install",
+        "tags": [
+          "plugins"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginPreview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/plugins/install": {
+      "post": {
+        "operationId": "installPlugin",
+        "summary": "Install a plugin from a source",
+        "tags": [
+          "plugins"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginInstall"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/plugins/check-updates": {
+      "get": {
+        "operationId": "checkPluginUpdates",
+        "summary": "Check installed plugins for updates",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/plugins/{name}/update": {
+      "post": {
+        "operationId": "updatePlugin",
+        "summary": "Update an installed plugin",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins/{name}": {
+      "delete": {
+        "operationId": "deletePlugin",
+        "summary": "Delete an installed plugin",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins/reload": {
+      "post": {
+        "operationId": "reloadPlugins",
+        "summary": "Reload installed plugin providers",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/plugins/{name}/providers": {
+      "get": {
+        "operationId": "getPluginProviders",
+        "summary": "Get provider state for a plugin",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/plugins/{name}/overrides": {
+      "get": {
+        "operationId": "getPluginOverrides",
+        "summary": "Get plugin override state",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updatePluginOverrides",
+        "summary": "Update plugin override state",
+        "tags": [
+          "plugins"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginOverrides"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppConfigUpdate": {
+        "$ref": "#/definitions/AppConfigUpdate",
+        "definitions": {
+          "AppConfigUpdate": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "AgentCreate": {
+        "$ref": "#/definitions/AgentCreate",
+        "definitions": {
+          "AgentCreate": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "slug": {
+                "type": "string",
+                "maxLength": 50,
+                "pattern": "^[a-z0-9-]*$"
+              },
+              "prompt": {
+                "type": "string",
+                "maxLength": 100000
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "region": {
+                "type": "string",
+                "maxLength": 50
+              },
+              "maxSteps": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "icon": {
+                "type": "string",
+                "maxLength": 10
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "AgentCatalogResponse": {
+        "$ref": "#/definitions/AgentCatalogResponse",
+        "definitions": {
+          "AgentCatalogResponse": {}
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "AgentUpdate": {
+        "$ref": "#/definitions/AgentUpdate",
+        "definitions": {
+          "AgentUpdate": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "slug": {
+                "type": "string",
+                "maxLength": 50,
+                "pattern": "^[a-z0-9-]*$"
+              },
+              "prompt": {
+                "type": "string",
+                "maxLength": 100000
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "region": {
+                "type": "string",
+                "maxLength": 50
+              },
+              "maxSteps": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "icon": {
+                "type": "string",
+                "maxLength": 10
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "Integration": {
+        "$ref": "#/definitions/Integration",
+        "definitions": {
+          "Integration": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "disabledTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string"
+              },
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "sse",
+                  "streamable-http"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "icon": {
+                "type": "string",
+                "maxLength": 240
+              },
+              "env": {
+                "allOf": [
+                  {},
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "secretEnv": {
+                "allOf": [
+                  {},
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "removeSecretEnvKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeouts": {
+                "type": "object",
+                "properties": {
+                  "startupMs": {
+                    "type": "number"
+                  },
+                  "requestMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "healthCheck": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "jsonrpc",
+                      "http",
+                      "command"
+                    ]
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "intervalMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "IntegrationUpdate": {
+        "$ref": "#/definitions/IntegrationUpdate",
+        "definitions": {
+          "IntegrationUpdate": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "disabledTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string"
+              },
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "sse",
+                  "streamable-http"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "icon": {
+                "type": "string",
+                "maxLength": 240
+              },
+              "env": {
+                "allOf": [
+                  {},
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "secretEnv": {
+                "allOf": [
+                  {},
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "removeSecretEnvKeys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeouts": {
+                "type": "object",
+                "properties": {
+                  "startupMs": {
+                    "type": "number"
+                  },
+                  "requestMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "healthCheck": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "jsonrpc",
+                      "http",
+                      "command"
+                    ]
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "intervalMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginInstall": {
+        "$ref": "#/definitions/PluginInstall",
+        "definitions": {
+          "PluginInstall": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "skip": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "consent": {
+                "type": "object",
+                "properties": {
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 256
+                  },
+                  "contentDigest": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "dependencies": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 256
+                  }
+                },
+                "required": [
+                  "permissions",
+                  "contentDigest"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginOverrides": {
+        "$ref": "#/definitions/PluginOverrides",
+        "definitions": {
+          "PluginOverrides": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "PluginPreview": {
+        "$ref": "#/definitions/PluginPreview",
+        "definitions": {
+          "PluginPreview": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "RegistryInstall": {
+        "$ref": "#/definitions/RegistryInstall",
+        "definitions": {
+          "RegistryInstall": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "SkillCreate": {
+        "$ref": "#/definitions/SkillCreate",
+        "definitions": {
+          "SkillCreate": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              },
+              "description": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "agent": {
+                "type": "string"
+              },
+              "global": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[a-z0-9][a-z0-9-]*$"
+                  },
+                  "global": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "description": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "default": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "createdFrom": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "agent",
+                          "plugin",
+                          "user",
+                          "asset"
+                        ]
+                      },
+                      "agentSlug": {
+                        "type": "string"
+                      },
+                      "conversationId": {
+                        "type": "string"
+                      },
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "provider-capability-to-skill"
+                        ]
+                      },
+                      "convertedAt": {
+                        "type": "string"
+                      },
+                      "asset": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "skill",
+                              "provider-capability"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "registry",
+                              "plugin",
+                              "provider"
+                            ]
+                          },
+                          "providerId": {
+                            "type": "string"
+                          },
+                          "connectionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "name",
+                          "owner"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "updatedFrom": {
+                    "$ref": "#/definitions/SkillCreate/properties/provenance/properties/createdFrom"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "_sourceContext": {
+                "$ref": "#/definitions/SkillCreate/properties/provenance/properties/createdFrom"
+              }
+            },
+            "required": [
+              "name",
+              "body"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "SkillImport": {
+        "$ref": "#/definitions/SkillImport",
+        "definitions": {
+          "SkillImport": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100000
+                    }
+                  },
+                  "required": [
+                    "filename",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1,
+                "maxItems": 50
+              }
+            },
+            "required": [
+              "files"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "SkillOutcome": {
+        "$ref": "#/definitions/SkillOutcome",
+        "definitions": {
+          "SkillOutcome": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "success",
+                  "failure"
+                ]
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "SkillUpdate": {
+        "$ref": "#/definitions/SkillUpdate",
+        "definitions": {
+          "SkillUpdate": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              },
+              "description": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "agent": {
+                "type": "string"
+              },
+              "global": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[a-z0-9][a-z0-9-]*$"
+                  },
+                  "global": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false
+              },
+              "variables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "description": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "default": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 50
+              },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "createdFrom": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "agent",
+                          "plugin",
+                          "user",
+                          "asset"
+                        ]
+                      },
+                      "agentSlug": {
+                        "type": "string"
+                      },
+                      "conversationId": {
+                        "type": "string"
+                      },
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "provider-capability-to-skill"
+                        ]
+                      },
+                      "convertedAt": {
+                        "type": "string"
+                      },
+                      "asset": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "skill",
+                              "provider-capability"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "registry",
+                              "plugin",
+                              "provider"
+                            ]
+                          },
+                          "providerId": {
+                            "type": "string"
+                          },
+                          "connectionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id",
+                          "name",
+                          "owner"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "updatedFrom": {
+                    "$ref": "#/definitions/SkillUpdate/properties/provenance/properties/createdFrom"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "_sourceContext": {
+                "$ref": "#/definitions/SkillUpdate/properties/provenance/properties/createdFrom"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  }
+}

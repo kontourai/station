@@ -1,0 +1,90 @@
+/* VoiceOrb — toggle mic button */
+
+/* Component-level tokens */
+.voice-orb {
+  --vo-size: 34px;
+  --vo-active-bg: var(--health-error, #ef4444);
+  --vo-active-color: #fff;
+  --vo-active-outline: rgba(239, 68, 68, 0.4);
+  --vo-idle-bg: var(--bg-tertiary);
+  --vo-error-color: var(--health-error, #ef4444);
+
+  position: relative;
+  box-sizing: border-box !important;
+  width: var(--vo-size) !important;
+  height: var(--vo-size) !important;
+  min-width: var(--vo-size) !important;
+  max-width: var(--vo-size) !important;
+  min-height: var(--vo-size) !important;
+  max-height: var(--vo-size) !important;
+  border-radius: 50% !important;
+  border: none !important;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto !important;
+  font-size: var(--text-xl);
+  user-select: none;
+  background: var(--vo-idle-bg);
+  color: var(--text-muted);
+  transition:
+    background 0.15s,
+    outline 0.15s,
+    transform 0.2s,
+    z-index 0s;
+  outline: 2px solid transparent;
+  z-index: 1;
+}
+
+.voice-orb:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* States */
+.voice-orb--listening {
+  --vo-size: 48px;
+  background: var(--vo-active-bg);
+  color: var(--vo-active-color);
+  outline-color: var(--vo-active-outline);
+  z-index: 10;
+  /* #729: the orb now sits between the attachment control and Send inside
+     .chat-controls-row (previously the composer's leftmost, unflanked
+     child) — grow in place instead of nudging right, which would bias the
+     enlarged hit area onto the adjacent Send button. */
+}
+
+.voice-orb--error {
+  color: var(--vo-error-color);
+}
+
+/* Pulse ring (rendered as a sibling span inside the button) */
+.voice-orb__pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--vo-active-bg);
+  animation: voice-orb-pulse 1s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes voice-orb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.2;
+  }
+}
+
+/* ── Mobile touch targets ── */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .voice-orb {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+}

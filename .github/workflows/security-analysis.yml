@@ -1,0 +1,84 @@
+name: Security analysis
+
+on:
+  push:
+    branches: [main]
+  # The workflow definition is read from the protected base branch. Candidate
+  # code runs only on the disposable GitHub-hosted runner below.
+  pull_request_target:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-analysis-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    if: ${{ github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          vulnerability-check: true
+          fail-on-severity: high
+          license-check: false
+          warn-only: false
+          comment-summary-in-pr: never
+  codeql:
+    name: CodeQL JavaScript and TypeScript
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out base policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: base-policy
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: base-policy/.nvmrc
+      - name: Check out candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+          source-root: candidate
+      - id: analyze
+        name: Analyze without ingestion
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          category: /language:javascript-typescript
+          checkout_path: candidate
+          output: ${{ runner.temp }}/codeql-sarif
+          upload: never
+          upload-database: false
+      - name: Enforce JavaScript SARIF policy
+        env:
+          CODEQL_SARIF_DIRECTORY: ${{ runner.temp }}/codeql-sarif
+        run: |
+          mapfile -d '' -t SARIF_FILES < <(find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif -print0)
+          if [ "${#SARIF_FILES[@]}" -ne 1 ]; then
+            echo "Expected exactly one JavaScript CodeQL SARIF file; found ${#SARIF_FILES[@]}." >&2
+            exit 1
+          fi
+          node base-policy/scripts/codeql-sarif-policy.mjs --input="${SARIF_FILES[0]}"

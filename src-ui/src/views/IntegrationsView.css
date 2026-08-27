@@ -1,0 +1,95 @@
+/* IntegrationsView — integration-specific overrides + mobile */
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Form / Raw JSON toggle: full-width, equal halves, 44px tap targets.
+     Desktop keeps the compact fit-content pill from editor-layout.css. */
+  .integration__mode-tabs {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .integration__mode-tab {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+  }
+
+  /* Keep the raw mcp.json editor inside the viewport (no horizontal scroll). */
+  .integration__raw-editor {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Per-server MCP-UI render permission toggle (S2). */
+.editor-toggle-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.editor-toggle-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.editor-toggle-field input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ── Integration list icon: glyph + connectivity badge (issue #691) ── */
+.integration-list-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.integration-list-icon__status {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  box-shadow: 0 0 0 2px var(--bg-secondary);
+}
+
+.integration-health {
+  display: grid;
+  gap: 0.4rem;
+}
+.integration-health__error {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--error-text);
+}
+.integration-tools {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+/* CI-R15: the read-only name list rendered when a probe recorded names but no
+   session has opened a client yet, so there is nothing to toggle. Same box as
+   the toggle beside it, minus the interactive affordance. */
+.integration-tool-name {
+  padding: 0.65rem;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.integration-tool-toggle {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.65rem;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.integration-tool-toggle--pending {
+  border-color: var(--warning-text);
+  background: color-mix(in srgb, var(--warning-text) 12%, var(--bg-secondary));
+}

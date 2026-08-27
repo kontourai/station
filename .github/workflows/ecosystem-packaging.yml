@@ -1,0 +1,48 @@
+name: Ecosystem packaging dry-run
+
+on:
+  pull_request_target:
+    paths:
+      - 'install.sh'
+      - 'packaging/**'
+      - 'scripts/ecosystem-manifest.mjs'
+      - 'scripts/ecosystem-publish-boundary.sh'
+      - 'scripts/exercise-ecosystem-packaging-dry-run.sh'
+      - 'scripts/__tests__/ecosystem-manifest.test.ts'
+      - '.github/workflows/ecosystem-packaging.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Owner-only external publish enablement
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  exercise-clean-macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: npm run dependencies:ci
+      - name: Verify signed manifest, cask, and no-GitHub installer path
+        run: npx vitest run --root . scripts/__tests__/ecosystem-manifest.test.ts
+      - name: Exercise the real artifact path through the publish boundary
+        run: scripts/exercise-ecosystem-packaging-dry-run.sh
+      - name: Owner-gated external publish boundary
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          STATION_ECOSYSTEM_PUBLISH: ${{ inputs.publish && '1' || '0' }}
+          STATION_ECOSYSTEM_MANIFEST_PUBLISH_COMMAND: ${{ secrets.STATION_ECOSYSTEM_MANIFEST_PUBLISH_COMMAND }}
+          STATION_ECOSYSTEM_HOMEBREW_TAP_PUBLISH_COMMAND: ${{ secrets.STATION_ECOSYSTEM_HOMEBREW_TAP_PUBLISH_COMMAND }}
+        run: scripts/ecosystem-publish-boundary.sh

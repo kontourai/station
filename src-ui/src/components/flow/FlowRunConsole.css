@@ -1,0 +1,235 @@
+/* FlowRunConsole — project-wide Flow run visibility (builtin layout component).
+   Console Kit adoption (S2 item 4): sections use the `.panel` chrome and the
+   run-status pills the `.badge`/`.tone-*` contract from
+   @kontourai/ui/react/styles.css; evidence counts render through the
+   Metric primitive. Rules here are Station-side layout glue written against
+   the `--k-*` token contract only. Gate cards reuse the shared
+   `.flow-gate-card` verdict language from flow-events.css. */
+
+.flow-run-console {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flow-run-console--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.flow-run-console__sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--k-line);
+  padding: var(--k-space-4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+}
+
+.flow-run-console__sidebar-title {
+  margin: 0;
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+  text-transform: uppercase;
+}
+
+.flow-run-console__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.flow-run-console__run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  width: 100%;
+  text-align: left;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  cursor: pointer;
+  transition: border-color var(--k-dur) var(--k-ease);
+}
+
+.flow-run-console__run:hover {
+  border-color: var(--k-brand);
+}
+
+.flow-run-console__run--active {
+  border-color: var(--k-brand);
+  background: var(--k-panel-raised);
+}
+
+.flow-run-console__run-id {
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  word-break: break-all;
+}
+
+.flow-run-console__run-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+.flow-run-console__status {
+  white-space: nowrap;
+}
+
+.flow-run-console__detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--k-space-4);
+}
+
+.flow-run-console__detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  max-width: 860px;
+}
+
+.flow-run-console__detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.flow-run-console__detail-title {
+  margin: 0;
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-lg);
+  color: var(--k-text);
+  word-break: break-all;
+}
+
+.flow-run-console__detail-sub {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
+}
+
+.flow-run-console__next-action {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.flow-run-console__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  border-radius: var(--k-radius-md);
+}
+
+.flow-run-console__section-title {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--k-text-muted);
+}
+
+.flow-run-console__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.flow-run-console__list-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  font-size: var(--k-text-sm);
+  color: var(--k-text);
+}
+
+.flow-run-console__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--k-space-2);
+}
+
+.flow-run-console__gate-evidence {
+  list-style: none;
+  margin: var(--k-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.flow-run-console__evidence-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  font-size: var(--k-text-sm);
+}
+
+.flow-run-console__evidence-claim {
+  font-family: var(--k-font-mono);
+  color: var(--k-text);
+  word-break: break-all;
+}
+
+.flow-run-console__evidence-meta {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+.flow-run-console__hint {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+/* Console Kit's `.empty` adds vertical padding; the console's hints sit in
+   tight stacks, so neutralize it where the Empty primitive carries the hint
+   class. */
+.flow-run-console__hint.empty {
+  padding: 0;
+}
+
+.flow-run-console__error {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-negative);
+}
+
+/* Run-detail loading (station#2651): canonical Skeleton lines inside the
+   shared `.indeterminate-sweep` so a projection parked at 0% still reads as
+   working. */
+.flow-run-console__loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+}
+
+.flow-run-console__loading-line {
+  width: 100%;
+}

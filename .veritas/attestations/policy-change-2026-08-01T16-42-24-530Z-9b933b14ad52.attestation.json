@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-08-01T16:42:24.530Z",
+  "repoStandardsHash": "sha256:557d97771d2e68b25933652c0868626b6644f288297d93e43c52f126c062894b",
+  "repoMapHash": "sha256:830f704cc89388f1aafd66a600666c169c7234314973f037559589424e03a87d",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048",
+  "validUntilDays": 90,
+  "notes": "Approve the delivery-conduct Repo Standards: trust-surface gap honesty, evidence-claim anchoring, exact read-path joins, verification conduct. Guide-level, no new gate. Owner approval on PR #1453.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048",
+    "approvalRef": "kontourai/station#1453",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "ddcc2e8e64d5475c3e9dd75a819eb3d8407e4d55d60d61b4719d0349627cca60",
+        "validUntil": "2026-10-30T16:42:24.530Z"
+      },
+      "createdAt": "2026-08-01T16:42:24.530Z",
+      "updatedAt": "2026-08-01T16:42:24.530Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52",
+      "claimId": "veritas.attestation.policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Approve the delivery-conduct Repo Standards: trust-surface gap honesty, evidence-claim anchoring, exact read-path joins, verification conduct. Guide-level, no new gate. Owner approval on PR #1453.",
+      "observedAt": "2026-08-01T16:42:24.530Z",
+      "collectedBy": "brian",
+      "integrityRef": "ddcc2e8e64d5475c3e9dd75a819eb3d8407e4d55d60d61b4719d0349627cca60",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-08-01T16:42:24.530Z",
+        "validUntil": "2026-10-30T16:42:24.530Z",
+        "contentHash": "ddcc2e8e64d5475c3e9dd75a819eb3d8407e4d55d60d61b4719d0349627cca60"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52.verified",
+      "claimId": "veritas.attestation.policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52"
+      ],
+      "createdAt": "2026-08-01T16:42:24.530Z",
+      "verifiedAt": "2026-08-01T16:42:24.530Z"
+    }
+  }
+}

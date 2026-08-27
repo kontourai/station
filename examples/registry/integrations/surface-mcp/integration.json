@@ -1,0 +1,22 @@
+{
+  "id": "surface-mcp",
+  "kind": "mcp",
+  "displayName": "Surface Trust State (MCP)",
+  "icon": "🛡️",
+  "description": "Kontour Surface MCP server (stdio) serving queryable trust state to agents: surface_summary, surface_stale_claims, surface_missing_evidence, surface_get_claim, surface_policy. Replace the report path placeholder with the latest Veritas reportArtifactPath; the version-pinned Veritas adapter unwraps trust.bundle without a manual extraction step.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": [
+    "-y",
+    "@kontourai/surface@2.12.0",
+    "mcp",
+    "--adapter",
+    "veritas",
+    "--input",
+    "<Veritas reportArtifactPath>"
+  ],
+  "timeouts": {
+    "startupMs": 15000,
+    "requestMs": 60000
+  }
+}

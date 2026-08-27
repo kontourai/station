@@ -1,0 +1,54 @@
+/* The .skeleton base + variants now come from @kontourai/ui/react/styles.css.
+   This file only holds the Station-specific list layout that mirrors
+   .split-pane__item (icon + name + subtitle). */
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+}
+
+.skeleton-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+/* Without this, the icon placeholder falls back to the shared circle's
+   default 28px (@kontourai/ui/react/styles.css) — visibly taller than the
+   24px row icon it stands in for (station#4463 slice 2 fix round, M1: the
+   list rhythm this replaced was faithful to .split-pane__item's actual icon
+   size, and the consolidation onto SkeletonList silently widened it). */
+.skeleton-list__icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+}
+
+.skeleton-list__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.skeleton-list__name {
+  width: 65%;
+}
+
+.skeleton-list__sub {
+  width: 40%;
+  height: 0.6rem;
+}
+
+/* Region placeholder (SkeletonBlock): the non-list half of the loading
+   vocabulary. Blocks stack at the rhythm of a settings section / page body so
+   the region holds its height while its data arrives. */
+.skeleton-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}

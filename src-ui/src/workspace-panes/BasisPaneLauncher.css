@@ -1,0 +1,13 @@
+.basis-pane-fallback {
+  width: min(760px, calc(100vw - 24px));
+  max-height: min(90dvh, 900px);
+  overflow: auto;
+}
+@media (max-width: 767px) {
+  .basis-pane-fallback {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+}

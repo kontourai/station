@@ -1,0 +1,86 @@
+/* ═══ Toggle Switch ═══
+   Class names are Station-owned (`station-toggle*`), never the bare `.toggle`:
+   `@kontourai/ui/react/styles.css` (imported globally in src-ui/index.css)
+   defines its own `.toggle` for a checkbox-based switch — width, border,
+   background, and a grey `::after` disc. Both ship in the same bundle, and the
+   design-system rule loads later, so with equal specificity it silently
+   overrode this component's track and painted a second "thumb" (the settings
+   toggles rendered as outlined pills with double circles and no on-state
+   accent). Keep this prefix so the collision cannot regress. */
+.station-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: var(--border-primary);
+  border-radius: 999px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.station-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.station-toggle--on {
+  background: var(--accent-primary);
+}
+
+.station-toggle__thumb {
+  display: block;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* md (default) — 36×20 */
+.station-toggle--md {
+  width: 36px;
+  height: 20px;
+}
+.station-toggle--md .station-toggle__thumb {
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+}
+.station-toggle--md.station-toggle--on .station-toggle__thumb {
+  transform: translateX(16px);
+}
+
+/* sm — 28×16 */
+.station-toggle--sm {
+  width: 28px;
+  height: 16px;
+}
+.station-toggle--sm .station-toggle__thumb {
+  width: 12px;
+  height: 12px;
+  margin: 2px;
+}
+.station-toggle--sm.station-toggle--on .station-toggle__thumb {
+  transform: translateX(12px);
+}
+
+/* ── Mobile touch targets ──
+   Expand the hit area via an invisible pseudo-element rather than
+   inflating the track itself — the track keeps its real 36×20 (md) /
+   28×16 (sm) pill dimensions in both orientations, so the thumb's
+   translateX still lands on the true edge instead of a circle.
+
+   The condition matches every other mobile block in this repo: width alone
+   reports a phone in landscape (~855 CSS px) as a desktop, which would drop
+   this hit area on exactly the device that needs it. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .station-toggle--md::before,
+  .station-toggle--sm::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}

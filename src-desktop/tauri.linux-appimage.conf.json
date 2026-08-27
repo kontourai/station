@@ -1,0 +1,19 @@
+{
+  "build": {
+    "beforeBuildCommand": "npm run build:desktop:resources"
+  },
+  "bundle": {
+    "resources": {
+      "../dist-server": null,
+      "../dist-desktop-runtime/node_modules": null
+    },
+    "linux": {
+      "appimage": {
+        "files": {
+          "usr/share/Station/dist-server": "../dist-server",
+          "usr/share/Station/node_modules": "../dist-desktop-runtime/node_modules"
+        }
+      }
+    }
+  }
+}

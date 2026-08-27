@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>Name</key><string>Station Ad Hoc</string>
+  <key>UUID</key><string>00000000-0000-0000-0000-000000000002</string>
+  <key>TeamIdentifier</key><array><string>ABCDE12345</string></array>
+  <key>ExpirationDate</key><date>2027-01-01T00:00:00Z</date>
+  <key>AppIDName</key><string>Station</string>
+  <key>ProvisionedDevices</key><array><string>00008030-001C195E0E92802E</string></array>
+  <key>Entitlements</key><dict><key>get-task-allow</key><false/></dict>
+</dict></plist>

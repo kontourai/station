@@ -1,0 +1,19 @@
+{
+  "name": "demo-layout",
+  "version": "1.0.0",
+  "displayName": "Demo Layout",
+  "description": "A demo layout showing Station capabilities \u2014 no external dependencies",
+  "entrypoint": "src/index.tsx",
+  "capabilities": ["chat", "navigation"],
+  "permissions": ["navigation.dock"],
+  "agents": [
+    {
+      "slug": "assistant",
+      "source": "./agents/assistant/agent.json"
+    }
+  ],
+  "layout": {
+    "slug": "demo",
+    "source": "./layout.json"
+  }
+}

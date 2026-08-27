@@ -1,0 +1,382 @@
+/* Meeting Notes plugin styles. CSS classes only — no inline styles, per
+ * repo convention (CLAUDE.md "Code style"). Layout/color tokens come from
+ * the host app's already-loaded @kontourai/ui tokens (--bg-*, --text-*,
+ * --border-*), the same tokens examples/meeting-transcription's inline
+ * styles already reference. */
+
+.mn-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  max-width: 720px;
+}
+
+.mn-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.mn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.mn-field__label {
+  font-weight: 600;
+  color: var(--text-secondary, #999);
+}
+
+.mn-select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-primary, #333);
+  background: var(--bg-secondary, #1a1a1a);
+  color: var(--text-primary, #eee);
+}
+
+.mn-textarea {
+  min-height: 220px;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary, #333);
+  background: var(--bg-secondary, #1a1a1a);
+  color: var(--text-primary, #eee);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.mn-file-input {
+  font-size: 0.8rem;
+}
+
+.mn-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mn-notice {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.mn-notice-info {
+  background: var(--bg-tertiary, #222);
+  color: var(--text-secondary, #999);
+}
+
+.mn-notice-success {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--color-success, #22c55e);
+}
+
+.mn-notice-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--color-error, #ef4444);
+}
+
+.mn-record-link {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #999);
+}
+
+.mn-live-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+}
+
+.mn-live-capture__controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mn-live-capture__preview {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #999);
+  white-space: pre-wrap;
+}
+
+.mn-hint {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted, #777);
+}
+
+.mn-stub {
+  padding: 1.5rem;
+}
+
+.mn-error-state {
+  padding: 1rem;
+}
+
+.mn-error-state__icon {
+  color: var(--color-error, #ef4444);
+}
+
+.mn-root-picker__skeleton {
+  width: 220px;
+}
+
+/* GraphPane (Wave 2 Task 4) — dependency-free SVG wikilink renderer. */
+
+.mn-graph-shell {
+  max-width: 960px;
+}
+
+.mn-graph-body {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.mn-graph-svg {
+  flex: 1 1 60%;
+  width: 100%;
+  max-width: 600px;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  background: var(--bg-secondary, #1a1a1a);
+}
+
+.mn-graph-edge {
+  stroke: var(--border-primary, #444);
+  stroke-width: 1;
+}
+
+.mn-graph-node {
+  cursor: pointer;
+}
+
+.mn-graph-node__circle {
+  fill: var(--bg-tertiary, #2a2a2a);
+  stroke: var(--text-secondary, #999);
+  stroke-width: 1.5;
+}
+
+.mn-graph-node--raw .mn-graph-node__circle {
+  fill: #3b82f6;
+}
+
+.mn-graph-node--compiled .mn-graph-node__circle {
+  fill: #22c55e;
+}
+
+.mn-graph-node--concept .mn-graph-node__circle {
+  fill: #eab308;
+}
+
+.mn-graph-node--snapshot .mn-graph-node__circle {
+  fill: #a855f7;
+}
+
+.mn-graph-node--person .mn-graph-node__circle {
+  fill: #ec4899;
+}
+
+.mn-graph-node--selected .mn-graph-node__circle {
+  stroke: var(--text-primary, #eee);
+  stroke-width: 3;
+}
+
+.mn-graph-node__label {
+  font-size: 9px;
+  fill: var(--text-secondary, #999);
+  text-anchor: middle;
+}
+
+.mn-graph-detail {
+  flex: 1 1 40%;
+  min-width: 220px;
+  padding: 0.75rem;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+}
+
+.mn-graph-detail__title {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.mn-graph-detail__meta {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.mn-graph-detail__excerpt {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.mn-graph-detail__links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.mn-graph-detail__link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mn-graph-view-toggle {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.mn-graph-view-toggle [aria-pressed="true"] {
+  background: var(--bg-tertiary, #2a2a2a);
+  color: var(--text-primary, #eee);
+  border-color: var(--text-secondary, #999);
+}
+
+.mn-graph-neo4j-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* AskPane (Wave 2 Task 5) — retrieval-grounded Q&A, answer cards + a
+ * self-contained provenance detail panel. */
+
+.mn-ask-field__query {
+  flex: 1 1 auto;
+}
+
+.mn-ask-input {
+  width: 100%;
+}
+
+.mn-ask-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mn-ask-card {
+  padding: 0.75rem;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  background: var(--bg-secondary, #1a1a1a);
+}
+
+.mn-ask-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.mn-ask-card__title {
+  font-weight: 600;
+}
+
+.mn-ask-card__category {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary, #999);
+}
+
+.mn-ask-card__excerpt {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--border-primary, #444);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text-primary, #eee);
+}
+
+.mn-ask-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mn-ask-card__score {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #999);
+}
+
+.mn-ask-card__source-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-accent, #3b82f6);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.mn-ask-detail {
+  padding: 0.75rem;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+}
+
+.mn-ask-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.mn-ask-detail__title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary, #999);
+}
+
+.mn-ask-detail__meta {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+.mn-ask-detail__id {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #999);
+}
+
+.mn-ask-detail__content {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+/* fieldset reset for the view toggle (semantic-element a11y fix): keep the
+   pre-fieldset visual box — the class owns all presentation. */
+.mn-graph-view-toggle {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}

@@ -1,0 +1,10 @@
+# Force LF for all text files regardless of a checkout machine's core.autocrlf
+# setting. Without this, Git for Windows' default (core.autocrlf=true)
+# CRLF-converts the entire working tree on clone, and biome (LF-only) then
+# flags nearly every file in the repo as a formatting error.
+* text=auto eol=lf
+
+# Provider steering aliases are workspace metadata, not portable runtime files.
+# The installer rejects symlinks by design, so exclude this tracked alias from
+# release archives rather than weakening extraction safety.
+CLAUDE.md export-ignore

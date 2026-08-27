@@ -1,0 +1,54 @@
+/* Width override needs to beat the bare `.modal-content` rule, hence the
+   compound selector. */
+.modal-content.shortcuts-cheatsheet {
+  max-width: 600px;
+}
+
+.shortcuts-cheatsheet__body {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.shortcuts-cheatsheet__group {
+  margin-bottom: 24px;
+}
+
+.shortcuts-cheatsheet__group:last-child {
+  margin-bottom: 0;
+}
+
+.shortcuts-cheatsheet__category {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.shortcuts-cheatsheet__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shortcuts-cheatsheet__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+.shortcuts-cheatsheet__desc {
+  color: var(--text-primary);
+}
+
+.shortcuts-cheatsheet__kbd {
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}

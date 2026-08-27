@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "station.channel-key-revocation/v1",
+  "channelId": "chan-design",
+  "memberId": "member-alex",
+  "revokedKeyId": "key-laptop-1",
+  "reason": "because-i-said-so"
+}

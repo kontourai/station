@@ -1,0 +1,13 @@
+{
+  "id": "calendar-mcp",
+  "kind": "mcp",
+  "displayName": "Calendar & Email (Outlook)",
+  "description": "Access calendar and email via MCP",
+  "transport": "stdio",
+  "command": "outlook-mcp",
+  "args": [],
+  "requiredEnv": [],
+  "permissions": {
+    "network": true
+  }
+}

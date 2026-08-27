@@ -1,0 +1,10 @@
+<resources>
+    <!-- Debug builds install alongside a release/Play build as
+         io.kontourai.station.debug (applicationIdSuffix in build.gradle.kts).
+         Same label on both would put two identical "Station" icons on the
+         launcher with no way to tell them apart, so the debug source set
+         overrides it. Android resource merging gives a build-type source set
+         priority over main/. -->
+    <string name="app_name">"Station Dev"</string>
+    <string name="main_activity_title">"Station Dev"</string>
+</resources>

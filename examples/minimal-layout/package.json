@@ -1,0 +1,35 @@
+{
+  "name": "@kontourai/station-minimal-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal workspace plugin example for Station",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "plugin.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "postinstall": "node scripts/install-plugin.js"
+  },
+  "peerDependencies": {
+    "@kontourai/station-sdk": "*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@kontourai/station-sdk": "*",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "station",
+    "workspace",
+    "plugin",
+    "ai"
+  ],
+  "author": "",
+  "license": "Apache-2.0"
+}

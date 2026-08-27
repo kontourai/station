@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Station repo hooks. Activate with:
+#
+#   git config core.hooksPath .githooks
+#
+# Kept in-repo and version-controlled so the checks travel with the branch and
+# every worktree gets the same behaviour, rather than depending on whatever is
+# configured globally on a given machine.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# station#3160: warn when core.hooksPath is an ABSOLUTE path inside this repo.
+# Git resolves the relative form per worktree, so the checks travel with the
+# branch as this file's header promises; the absolute form makes every worktree
+# execute whatever the primary checkout currently has staged out, so a hook
+# change arrives non-deterministically across lanes and nothing looks wrong.
+hooks_path="$(git config core.hooksPath || true)"
+if [[ "$hooks_path" == /* ]]; then
+  echo "[station pre-push] WARNING: core.hooksPath is absolute ($hooks_path)."
+  echo "  Every worktree then runs the primary checkout's hooks, from whatever"
+  echo "  branch it has checked out. Fix with: npm run hooks:install"
+fi
+
+# Branch deletions arrive with a zero local OID and have no tree to check.
+# station#3160: a deletion must skip ITS OWN ref, not the whole push — a mixed
+# push (delete one branch, update another) previously exited 0 on the first
+# zero-OID line and skipped every check, including the merge-base gate.
+has_updates=0
+push_ref_lines=()
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  if [[ "$local_sha" =~ ^0+$ ]]; then
+    continue
+  fi
+  has_updates=1
+  push_ref_lines+=("${_local_ref} ${local_sha} ${_remote_ref} ${_remote_sha}")
+done
+if [[ "$has_updates" -eq 0 ]]; then
+  exit 0
+fi
+
+# Only seconds-scale checks belong here. `ci:fast` stays the bounded feedback
+# lane and `full:regression` stays the sole completion receipt; what runs here
+# is the subset that is cheap enough to run on every push and whose failure
+# would otherwise land on main and stop every other lane.
+echo "[station pre-push] checking the branch contains origin/main"
+git fetch --quiet origin main 2>/dev/null || true
+node scripts/check-merge-base-fresh.mjs
+
+# ~4s. Formatting and organize-imports break every lane's verify:static the
+# moment they reach main, and the fix is three seconds for whoever wrote it
+# and a whole gate cycle for whoever finds it (#3141).
+echo "[station pre-push] biome check (lint, formatting, organized imports)"
+npm run --silent lint:check
+
+# ~9s, and only when this push changes something the UI build reads (#3033).
+echo "[station pre-push] UI entry-bundle ceiling"
+node scripts/check-prepush-ui-bundle.mjs
+
+echo "[station pre-push] orchestration transfer budgets"
+node scripts/check-prepush-orchestration-transfer.mjs
+
+# ~7s, and only when this push changes something these gates read (#3208).
+# The UI-contract ratchets and the content gates live in verify:static, which
+# only full:regression composes, which CI runs only on push-to-main — so
+# without this they evaluate a change after it is already on main, and the red
+# lands on whoever gates next. Three regressions reached main in one day that
+# way (two motion literals, one undeclared Coding dependency).
+echo "[station pre-push] static gates (UI contracts, content)"
+node scripts/check-prepush-static-gates.mjs
+
+# ~6s, and only when this push changes the SDK's own sources (#3629). The
+# barrel invariant already exists as a test; what was missing is running it
+# while the change is still the author's problem. Five omissions reached main
+# in one day, each caught by that test AFTER merge, each blocking whoever
+# gated next.
+echo "[station pre-push] SDK public barrel"
+node scripts/check-prepush-sdk-barrel.mjs
+
+# Instant. The ref lines were collected during the deletion-skipping loop
+# above (stdin reads once), re-emitted verbatim in git's own four-field form
+# (`<local_ref> <local_sha> <remote_ref> <remote_sha>`) because that is the
+# shape scripts/commit-message-gate.mjs destructures — a two-field emission
+# silently swaps the SHAs into the wrong slots and validates the wrong range
+# (the seam test executes this loop through the parser). The gate validates
+# ONLY the commits this push introduces — the push range, never history —
+# because commit subjects will feed the deploy-ledger changelog
+# (station#4572, forthcoming; owner decision 2026-08-28). The commit-msg
+# hook guards the local write; this guards the push itself.
+echo "[station pre-push] commit subjects (push range only)"
+printf '%s\n' "${push_ref_lines[@]}" | node scripts/commit-message-gate.mjs --prepush-stdin

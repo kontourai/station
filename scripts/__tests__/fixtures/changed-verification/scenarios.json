@@ -1,0 +1,47 @@
+{
+  "sourceEdges": {
+    "server": "src-server/routes/chat/chat.ts",
+    "ui": "src-ui/src/App.tsx",
+    "package": "packages/sdk/src/api-knowledge.ts",
+    "script": "scripts/run-prepush-tier.mjs",
+    "dynamicScript": "scripts/prepush-test-manifest.mjs",
+    "fixtureReadme": "scripts/__tests__/fixtures/changed-verification/README.md"
+  },
+  "deferredEdges": {
+    "e2e": "tests/example.spec.ts",
+    "native": "src-desktop/tauri.nightly.conf.json",
+    "nightly": "ops/nightly/install-macos.zsh",
+    "docs": "docs/guide.md"
+  },
+  "e2eContract": {
+    "suiteRunner": "scripts/run-e2e-suite.mjs",
+    "coverageRunner": "scripts/run-e2e-coverage.mjs",
+    "runnerOptions": "scripts/lib/e2e-runner-options.mjs",
+    "manifest": "tests/e2e-manifest.mjs",
+    "playwrightConfig": "playwright.config.ts",
+    "ordinaryScript": "scripts/run-prepush-tier.mjs"
+  },
+  "escalations": {
+    "rootConfig": "package-lock.json",
+    "vitestConfig": "vitest.workspace.ts",
+    "viteConfig": "vite.shared.ts",
+    "biomeConfig": "biome.jsonc",
+    "tsconfig": "tsconfig.integration.json",
+    "workflow": ".github/workflows/ci.yml",
+    "selector": "scripts/run-changed-verification.mjs",
+    "highFanout": "packages/contracts/src/index.ts",
+    "unknown": "tooling/new-checker.rs"
+  },
+  "gitChanges": {
+    "deleted": "src-server/removed.ts",
+    "renamedFrom": "src-ui/src/old.tsx",
+    "renamedTo": "src-ui/src/new.tsx",
+    "untracked": "scripts/new-helper.mjs",
+    "staged": "src-server/staged.ts"
+  },
+  "testFiles": {
+    "ts": "src-server/routes/chat/chat.test.ts",
+    "tsx": "src-ui/src/App.test.tsx",
+    "spec": "packages/sdk/src/index.spec.ts"
+  }
+}

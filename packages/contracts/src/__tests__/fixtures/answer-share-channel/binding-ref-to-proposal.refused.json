@@ -1,0 +1,6 @@
+{
+  "binding": "committed",
+  "ref": { "refKind": "proposal", "id": "prop-9f2c1b7a" },
+  "coordinate": { "channelId": "chan-team-alpha", "epoch": 3, "seq": 412 },
+  "checkpointDigest": "1f0a5f3d5a2b41c8b1d7e6c9f4a80b2e5d3c7a91b6e4f28d0c5a3b7e9d1f6c48"
+}

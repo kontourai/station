@@ -1,0 +1,13 @@
+{
+  "name": "minimal-layout",
+  "version": "1.0.0",
+  "displayName": "Minimal Layout",
+  "description": "A minimal layout plugin example",
+  "entrypoint": "./src/index.tsx",
+  "capabilities": ["chat", "navigation"],
+  "permissions": ["navigation.dock"],
+  "layout": {
+    "slug": "minimal",
+    "source": "./layout.json"
+  }
+}

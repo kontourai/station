@@ -1,0 +1,37 @@
+/*
+ * Tailwind v4 — seeded incrementally (seed-as-I-go). We import ONLY the theme
+ * + utilities layers, deliberately skipping `preflight` (Tailwind's global CSS
+ * reset) so existing hand-written component CSS is left completely untouched.
+ * New desktop-shell chrome is built with these utilities; the rest of the app
+ * migrates over time.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/*
+ * Semantic design tokens mapped onto Station's existing CSS variables, so
+ * utilities read by intent (bg-surface, text-ink, border-line) and stay
+ * theme-aware. These are the seed of the shared @kontourai/ui --k-* token set.
+ */
+@theme {
+  --color-surface: var(--bg-secondary);
+  --color-surface-raised: var(--bg-tertiary);
+  --color-surface-sunken: var(--bg-primary);
+  --color-ink: var(--text-primary);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+  --color-line: var(--border-primary);
+  --color-line-strong: var(--border-secondary);
+  --color-brand: var(--accent-primary);
+
+  /* Tight, desktop-grade radii. The control radius comes from the shared
+     @kontourai/ui token; the panel radius stays local (no shared equivalent). */
+  --radius-control: var(--k-radius-control);
+  --radius-panel: 6px;
+
+  /* The single layered overlay elevation, shared with the plain-CSS overlays
+     via --elevation-overlay so Tailwind utilities and hand-written CSS lift
+     identically. */
+  --shadow-elevated: var(--elevation-overlay);
+}

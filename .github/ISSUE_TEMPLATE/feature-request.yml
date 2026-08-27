@@ -1,0 +1,50 @@
+name: Feature Request
+description: Propose a bounded improvement grounded in a user problem.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, access tokens, private URLs, customer data, or unredacted logs.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem needs to be solved, and for whom?
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: What do people do now, and where does that fall short?
+    validations:
+      required: true
+  - type: textarea
+    id: core-or-extension
+    attributes:
+      label: Why core rather than an extension?
+      description: Explain why this belongs in Station core instead of a plugin, integration, or local workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: What should this change deliberately not do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Which approaches, including doing nothing, were considered and why are they insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution (optional)
+      description: Offer a possible shape only if it helps explain the problem. Maintainers may choose a different implementation.

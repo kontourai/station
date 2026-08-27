@@ -1,0 +1,18 @@
+{
+  "id": "meeting-transcription",
+  "name": "meeting-transcription",
+  "displayName": "Meeting Transcription",
+  "version": "0.1.0",
+  "description": "Continuous speech capture → transcript → extract action items. Registers a toolbar action.",
+  "providerTypes": [],
+  "permissions": ["voice:stt"],
+  "clientBundle": "dist/index.js",
+  "toolbarActions": [
+    {
+      "id": "meeting-transcription",
+      "label": "Meeting",
+      "icon": "record",
+      "shortcut": null
+    }
+  ]
+}

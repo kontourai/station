@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "station.channel-checkpoint/v1",
+  "channelId": "chan-design",
+  "epoch": 3,
+  "seq": 41,
+  "headEnvelopeDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "policyRevision": "policy-rev-17",
+  "observedAt": "2026-08-02T09:00:02.000Z"
+}

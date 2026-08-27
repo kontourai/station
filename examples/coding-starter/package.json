@@ -1,0 +1,29 @@
+{
+  "name": "@kontourai/station-coding-starter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Code-focused Station starter plugin.",
+  "type": "module",
+  "main": "./src/index.tsx",
+  "files": [
+    "layout.json",
+    "plugin.json",
+    "src"
+  ],
+  "peerDependencies": {
+    "@kontourai/station-sdk": "*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@kontourai/station-sdk": "*",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "station",
+    "starter",
+    "plugin",
+    "coding"
+  ],
+  "license": "Apache-2.0"
+}

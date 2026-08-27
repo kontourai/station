@@ -1,0 +1,36 @@
+.engine-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+/* station#3140. The chip paints its own opaque `--bg-tertiary`, so its ratio
+   is fixed by the token pair alone and does not vary with the surface it is
+   dropped onto — measured identically on every host backdrop (page, panel,
+   panel-raised, elevated, modal) in both themes.
+
+   `--text-muted` measured 4.38:1 dark / 4.33:1 light on that fill. `--text-xs`
+   is 10px, which is normal text under WCAG 1.4.3 (the 18.66px/14px-bold large
+   text threshold is nowhere near), so it needs 4.5:1 and missed in both
+   themes. This is one of the most repeated labels in the product — it names
+   the engine in agent lists, session tabs, hub cards and chat attribution —
+   so it was also one of the least legible.
+
+   `--text-tertiary` is the next rung up the scale that #3146 made real, not a
+   new value: 8.49:1 dark / 5.91:1 light on the same fill. It stays visibly
+   subordinate to the `--text-primary` name beside it while clearing AA with
+   margin. The new-chat picker used to carry a scoped override to this exact
+   token for exactly this reason; fixing it at source made that override
+   redundant, and it was removed with this change. */
+.engine-chip__pill {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}

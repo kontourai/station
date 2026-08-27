@@ -1,0 +1,137 @@
+/*
+ * First-run "Which agents do you use?" checklist (station#3027).
+ *
+ * Chrome and placement belong to `FirstRunHomeChapter`'s shared dialog (UX
+ * audit SHELL-12) — this file styles the checklist and nothing else. The rows
+ * are no longer `<label>`s wrapping a raw OS checkbox: only a row that can
+ * genuinely be ticked mounts one, and it is the shared `Checkbox`.
+ */
+
+.first-run-engines__list {
+  list-style: none;
+  margin: 0 0 var(--space-4, 16px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.first-run-engines__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  font-size: var(--font-size-sm, 13px);
+  transition-property: border-color, background-color;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+.first-run-engines__row:focus-within {
+  border-color: var(--color-accent, var(--color-primary));
+}
+
+/* A row Station cannot act on carries a state and a reason, not a control. */
+.first-run-engines__row[data-state="blocked"],
+.first-run-engines__row--muted {
+  color: var(--color-text-secondary);
+}
+
+.first-run-engines__name {
+  font-weight: 600;
+}
+
+.first-run-engines__note {
+  font-size: var(--font-size-xs, 11px);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.first-run-engines__more {
+  margin: 0 0 var(--space-4, 16px);
+  font-size: var(--font-size-xs, 11px);
+  color: var(--color-text-secondary);
+}
+
+.first-run-engines__more summary {
+  cursor: pointer;
+  margin-bottom: var(--space-2, 8px);
+}
+
+.first-run-engines__report {
+  list-style: none;
+  margin: 0 0 var(--space-4, 16px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  font-size: var(--font-size-xs, 11px);
+  line-height: 1.5;
+}
+
+/* The report's own focus ring — it takes focus when it arrives, so it has to
+   show where focus went. */
+.first-run-engines__report:focus-visible {
+  outline: 2px solid var(--color-accent, var(--color-primary));
+  outline-offset: 2px;
+}
+
+/* Severity is carried by colour as well as wording. All the outcome kinds used
+   to render in the same muted grey, so "could not be set up" and "set up"
+   looked identical at a glance. These are the shared, contrast-measured
+   semantic foregrounds defined for both themes in `index.css` — used here,
+   never redefined here. `existing` shares the success colour because it IS a
+   success: the engine the user asked for is there. Only the wording separates
+   it, because only the wording is what this run did. */
+.first-run-engines__report-item[data-status="created"],
+.first-run-engines__report-item[data-status="existing"] {
+  color: var(--success-text);
+}
+
+.first-run-engines__report-item[data-status="warned"] {
+  color: var(--warning-text);
+}
+
+.first-run-engines__report-item[data-status="failed"] {
+  color: var(--error-text);
+}
+
+/* Shown in place of the list while the engine catalog has not answered, and
+   for the honest "this machine has none" case. The chapter itself does not
+   wait for either — its presence comes from a durable fact, so a slow or
+   flapping probe changes this text and nothing else. */
+.first-run-engines__loading {
+  margin: 0 0 var(--space-4, 16px);
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/* Batch progress / summary live region. */
+.first-run-engines__status {
+  margin: 0;
+  font-size: var(--font-size-xs, 11px);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/* Only the SPACING reacts to emptiness. The region itself stays rendered and
+   in the accessibility tree at all times: a live region that is display:none
+   until it has something to say is announced no more reliably than one that is
+   inserted with its content already in it — which is the defect this replaces.
+   An empty <p> with no margin occupies no height, so the idle card is
+   unchanged. */
+.first-run-engines__status:not(:empty) {
+  margin-bottom: var(--space-3, 12px);
+}
+
+/* Mobile touch floor, matching the About-you controls beside it. */
+@media (max-width: 768px) {
+  .first-run-engines__row {
+    min-height: 44px;
+    justify-content: center;
+  }
+}

@@ -1,0 +1,10 @@
+// Stand-in for packages/contracts/src/settings-registry.ts — the non-JSX copy
+// source station#1543 found had moved OUT of the gate's scan tree entirely
+// while the gate went on reporting clean over what remained.
+export const APP_SETTINGS_REGISTRY = [
+  defineSetting({
+    key: 'logLevel',
+    label: 'Log level',
+    description: 'How much detail Station writes to its logs.',
+  }),
+];

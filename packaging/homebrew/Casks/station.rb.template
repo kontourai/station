@@ -1,0 +1,11 @@
+cask "station" do
+  version "{{VERSION}}"
+  sha256 "{{SHA256}}"
+
+  url "{{ARTIFACT_URL}}"
+  name "Station"
+  desc "Local-first agent workspace"
+  homepage "https://station.kontour.ai"
+
+  app "Station.app"
+end

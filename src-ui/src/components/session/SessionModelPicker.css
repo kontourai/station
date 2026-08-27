@@ -1,0 +1,243 @@
+.session-model-picker {
+  position: absolute;
+  z-index: var(--layer-popover);
+  right: 8px;
+  bottom: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(520px, calc(100dvh - 32px));
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+}
+
+/* The shared title/close-button header lives in `index.css` as
+   `.responsive-dialog-header` (rendered via `ResponsiveDialogHeader`,
+   station#1825) so it loads eagerly instead of only when this lazy-loaded
+   stylesheet does. */
+.session-model-picker__models small,
+.session-model-picker__providers small {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.session-model-picker__reset,
+.session-model-picker__models [role="option"],
+.session-model-picker__favorite,
+.session-model-picker__providers button {
+  flex: none;
+  border-radius: var(--radius-md) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.session-model-picker__search {
+  min-height: 44px;
+  margin: var(--space-3);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.session-model-picker__providers {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  overflow-x: auto;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.session-model-picker__filters {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  overflow-x: auto;
+  margin: 0;
+  border: 0;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.session-model-picker__filters button {
+  flex: none;
+  padding: 0 var(--space-2);
+  min-height: 32px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.session-model-picker__filters button[aria-pressed="true"] {
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.session-model-picker__providers button {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.session-model-picker__providers button[aria-pressed="true"] {
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.session-model-picker__providers button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.session-model-picker__models {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.session-model-picker__model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: var(--space-1);
+}
+
+.session-model-picker__models [role="option"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-items: start;
+  gap: 2px var(--space-2);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-model-picker__models [role="option"] small {
+  grid-column: 1;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* station#1806: the check glyph used to fall into implicit grid placement
+   (column 2, row 1 only — the same row as the model name), so it sat
+   pinned to the top of the two-line name+id cell instead of centered
+   against the option's full height. Spans both rows explicitly and
+   centers within that span. */
+.session-model-picker__models
+  [role="option"]
+  .session-model-picker__model-check {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+
+.session-model-picker__models [role="option"]:hover,
+.session-model-picker__models [role="option"]:focus-visible,
+.session-model-picker__models .session-model-picker__model--active {
+  border-color: var(--accent-primary);
+  background: var(--bg-hover) !important;
+}
+
+.session-model-picker__models [role="option"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.session-model-picker__favorite {
+  min-width: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.session-model-picker__favorite:hover,
+.session-model-picker__favorite:focus-visible,
+.session-model-picker__favorite[aria-pressed="true"] {
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+.session-model-picker__effort {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 52px;
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-primary);
+}
+
+.session-model-picker__effort select {
+  min-height: 40px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.session-model-picker__state {
+  padding: var(--space-4);
+  color: var(--text-muted);
+}
+
+.session-model-picker__reset {
+  min-height: 44px;
+  margin: 0 var(--space-3) var(--space-3);
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .session-model-picker {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: min(70dvh, calc(var(--visual-viewport-height, 100dvh) - 12px));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding-bottom: var(--safe-bottom, 0px);
+  }
+
+  .session-model-picker__providers button {
+    min-height: 44px;
+  }
+}

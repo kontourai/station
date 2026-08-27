@@ -1,0 +1,33 @@
+{
+  "hardCodedDeclarationCeiling": 100,
+  "perFileCeilings": {
+    "src-ui/src/components/ActivityTimeline.css": 1,
+    "src-ui/src/components/Checkbox.css": 1,
+    "src-ui/src/components/GuidedConnect.css": 1,
+    "src-ui/src/components/OnboardingGate.css": 4,
+    "src-ui/src/components/PathAutocomplete.css": 1,
+    "src-ui/src/components/SplitPaneLayout.css": 4,
+    "src-ui/src/components/Toggle.css": 2,
+    "src-ui/src/components/acp-connections/ACPConnections.css": 2,
+    "src-ui/src/components/badges/AchievementsBadge.css": 2,
+    "src-ui/src/components/coding-layout/CodingInspectorPanel.css": 1,
+    "src-ui/src/components/coding-layout/CodingLayout.css": 5,
+    "src-ui/src/components/header/PageBreadcrumb.css": 1,
+    "src-ui/src/components/notifications/NotificationHistory.css": 1,
+    "src-ui/src/components/project-sidebar/ProjectSidebar.css": 2,
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css": 4,
+    "src-ui/src/components/voice/GlobalVoiceButton.css": 2,
+    "src-ui/src/components/voice/VoiceOrb.css": 2,
+    "src-ui/src/components/voice/VoicePill.css": 5,
+    "src-ui/src/pages/NotificationsPage.css": 2,
+    "src-ui/src/pages/ProfilePage.css": 7,
+    "src-ui/src/views/MonitoringWidgets.css": 8,
+    "src-ui/src/views/PluginManagementView.css": 8,
+    "src-ui/src/views/ProjectPage.css": 8,
+    "src-ui/src/views/SettingsView.css": 12,
+    "src-ui/src/views/SortableTable.css": 2,
+    "src-ui/src/views/editor-layout.css": 14
+  },
+  "recordedAt": "2026-08-11T00:00:00Z",
+  "recordedBy": "station#2308 representative component migrations; regenerate only from a reviewed current-main inventory; UX audit lane C3 (SHELL-05): route entrance moved to the app-shell seam, editor-layout.css entrance migrated to tokens — global 105->103, editor-layout.css 15->14; UX audit closing lane (DRY mobile-CSS retirement): 12 redundant page-local prefers-reduced-motion blocks deleted in favour of the ONE global reset in tokens.css — global 103->100, WorkspacePaneHost.css entry removed (0 remaining; its two 0ms duration overrides were restating that reset)"
+}

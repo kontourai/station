@@ -1,0 +1,44 @@
+/* HostAction — the paired-device presentation of a host-executing
+   affordance (station#3843 §2). No media queries: the guidance is a wrapping
+   column at every width, so 390 and 1440 are the same rule. */
+
+.host-action {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+}
+
+.host-action--guidance {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.host-action__instruction,
+.host-action__helper {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* Wraps rather than scrolls: a command a person has to retype on another
+   machine has to be readable in full, including at 390. */
+.host-action__command {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-tertiary, var(--bg-primary));
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* `.copy-affordance--failed` is declaration-free by design (see index.css);
+   each host declares a rule that wins on specificity. */
+.host-action .button.copy-affordance--failed {
+  color: var(--error-text);
+}

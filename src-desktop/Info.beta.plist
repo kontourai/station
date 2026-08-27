@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>io.kontourai.station.beta</string><key>StationChannel</key><string>beta</string><key>StationServerPort</key><integer>28141</integer><key>LSEnvironment</key><dict><key>STATION_DESKTOP_CHANNEL</key><string>beta</string><key>STATION_DESKTOP_PORT</key><string>28141</string></dict></dict></plist>

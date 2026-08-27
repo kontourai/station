@@ -1,0 +1,703 @@
+/* ═══ Shared Page Layout ═══
+ * Common classes for all core management views.
+ * Provides consistent header, typography, animation, and container styling.
+ * All management views MUST use .page as their root container class.
+ */
+
+/* ── Page Container ── */
+.page {
+  padding: 2rem 1.5rem;
+  font-family: var(--font-sans);
+  /* The route entrance moved to `.route-transition` (app-shell) so the eight
+     split-pane routes, which are not `.page` descendants, get one too. The
+     keyframe that used to run here was named `page-fade-in` and animated an
+     8 px slide with no opacity at all — measured, every route popped in at
+     full opacity. It also collided by name with a second, different
+     `page-fade-in` in `editor-layout.css`; both were global, so whichever
+     sheet loaded last silently decided what every `.page` did. */
+}
+
+.page--narrow {
+  max-width: 960px;
+}
+.page--full {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 1.5rem 1rem;
+  }
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px), (pointer: coarse),
+  (max-height: 540px) and (pointer: coarse) {
+  .page__grid,
+  .page__card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Tab strips scroll horizontally instead of clipping off-screen at EVERY
+     viewport (station#4463 slice 2 review HIGH-1 — `.page__tabs`/`.page__tab`'s
+     scroll/nowrap layout is unconditional below; this media query now only
+     adds the mobile-specific bits: a hidden scrollbar and a 44px touch
+     target). */
+  .page__tabs {
+    scrollbar-width: none;
+  }
+
+  .page__tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .page__tab {
+    min-height: 44px;
+  }
+
+  .section-nav .page__tab {
+    min-height: 44px;
+  }
+
+  .form-section,
+  .agent-editor__section {
+    padding: var(--space-8);
+  }
+}
+
+.page__section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+
+/* ── PageSection ── */
+.page-section {
+  scroll-margin-top: 88px;
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.page-section:focus {
+  outline: none;
+}
+
+.page-section:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.page-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.125rem 1.25rem 1rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.page-section__heading {
+  min-width: 0;
+}
+
+.page-section__eyebrow {
+  margin-bottom: 0.35rem;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.page-section__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.page-section__description {
+  max-width: 68ch;
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.page-section__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.page-section__body {
+  padding: 1.25rem;
+}
+
+.page-section--danger .page-section__eyebrow,
+.page-section--danger .page-section__title {
+  color: var(--error-text);
+}
+
+/* ── PageRow ── */
+.page-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 44px;
+  padding: 0.875rem 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.page-row:first-child {
+  padding-top: 0;
+}
+
+.page-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.page-row__content {
+  min-width: 0;
+}
+
+.page-row__label {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.page-row__description {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.page-row__aside {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+}
+
+.page-row__status {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .page-section__header,
+  .page-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-section__actions,
+  .page-row__aside,
+  .page-row__control {
+    width: 100%;
+  }
+
+  .page-section__actions > button,
+  .page-section__actions > a,
+  .page-row__control > button,
+  .page-row__control > a {
+    min-height: 44px;
+  }
+}
+
+.page__search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.page__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.85rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+.page__search-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.page__search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.page__message {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+/* ── Section Headers ── */
+.page__section-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+/* ── Card Grid ── */
+.page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1px;
+  background: var(--border-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.page__card {
+  background: var(--bg-secondary);
+  padding: 1.25rem 1.5rem;
+  cursor: pointer;
+  position: relative;
+  transition: background var(--motion-base) var(--ease-standard);
+}
+
+.page__card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  transition: background var(--motion-slow) var(--ease-standard);
+}
+
+.page__card:hover {
+  background: var(--bg-tertiary);
+}
+.page__card:hover::before {
+  background: var(--accent-primary);
+}
+
+/* ── Loose Card Grid (separate cards with gaps) ── */
+.page__card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.page__card-loose {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard);
+}
+
+.page__card-loose:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+.page__card-loose--selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.page__card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.page__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.page__meta-pill {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+}
+
+/* ── Empty State ── */
+.page__empty {
+  text-align: center;
+  padding: 3.5rem 1.5rem;
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-primary);
+  border-radius: 12px;
+}
+
+.page__empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  opacity: 0.7;
+}
+
+.page__empty-title {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.25rem;
+}
+
+.page__empty-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+}
+
+/* Gives an empty state a way out instead of dead-ending. */
+.page__empty-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.page__empty-action:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-active);
+}
+
+/* A tab strip that stays put while its catalog scrolls. Used inside a
+   `PageFrame`, where the page header itself scrolls away and the tabs are
+   what a reader needs to keep. `--bg-primary` matches `.main-content`'s
+   `--bg-input` (both resolve to `--k-bg`), so nothing seams. */
+.page__tabs--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  /* The padding is the strip's own opaque band — content scrolls under it,
+     not into the gap below it — so the base rule's margin comes off, or the
+     two stack into 64px of dead space between the tabs and the first row. */
+  padding-top: 0.25rem;
+  padding-bottom: 1rem;
+  margin-bottom: 0;
+  background: var(--bg-primary);
+}
+
+/* Shared editor/form section rhythm. Detail views use this rather than
+   page-local spacing so desktop and mobile sections keep one cadence. */
+.form-section,
+.agent-editor__section {
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-12);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.form-section:last-child,
+.agent-editor__section:last-child {
+  border-bottom: none;
+}
+
+.form-section__header,
+.agent-editor__section-header {
+  margin-bottom: var(--space-4);
+}
+
+.form-section__title,
+.agent-editor__section-title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.form-section__description,
+.agent-editor__section-desc {
+  margin: 0 0 var(--space-8);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+/* ── Card Row (name + tag) ── */
+.page__card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.page__card-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.page__card-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page__card-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.page__card-icon {
+  margin-top: 0.125rem;
+}
+
+/* ── Utility: Tag/Badge ── */
+.page__tag {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.page__tag--accent {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: transparent;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Primary Action Button ──
+   Retired. `.page__btn-primary` / `.page__btn-secondary` were a third button
+   family beside `.button` and `.editor-btn`, differing only in padding and
+   font-size; their 13 call sites now render the shared `Button` at
+   `size="sm"` (SHELL-02's five primary-button treatments).
+
+   One property of theirs was load-bearing rather than cosmetic and is kept,
+   scoped to the rows they lived in: `white-space: nowrap`. Without it "View
+   Getting Started Starter details" wraps to two lines and the Registry card
+   grid loses its rhythm (compared at 1440x900 against the audit's own
+   A-registry.png). It is deliberately NOT added to `.button` itself — a long
+   label in a narrow dialog should wrap rather than overflow. */
+.page__card-footer .button,
+.page__header-actions-inline .button,
+.page__actions .button {
+  white-space: nowrap;
+}
+
+/* ── Tabs ──
+   station#4463 slice 2 review HIGH-1: a strip that overflows its container
+   must scroll at EVERY viewport, not just narrow/coarse-pointer ones — the
+   deleted `.page__section-nav` rules (SectionNav's predecessor) had this
+   unconditional, and Tabs did not, so a wide desktop window with a long
+   strip (e.g. Settings' ~15 tabs) overflowed the PAGE horizontally instead
+   of scrolling contained. `flex-wrap`/`overflow-x`/`flex: 0 0 auto`/
+   `white-space: nowrap` are therefore base rules now; only the touch target
+   floor and the hidden-scrollbar cosmetic stay mobile-scoped below. */
+.page__tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.page__tab {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 0.35rem 0.85rem;
+  border-radius: 5px;
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.page__tab:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.page__tab--active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+/* station#4463 slice 2 review HIGH-1 (fix round): `.page__tab` is
+   `display: inline-flex`, and flexbox trims a flex item's OWN leading
+   whitespace at the start of its line box — the count span's text content
+   (" 3") therefore rendered as "3" with no visible gap ("Models0"), even
+   though the tab's accessible name (`Tabs.tsx`'s plain string
+   concatenation, unaffected by CSS) correctly read "Models 3". A
+   non-breaking space would only relocate the same trimming bug one
+   character later; the gap belongs in CSS, on the element the layout bug
+   actually affects. */
+.page__tab-count {
+  margin-left: 0.25rem;
+}
+
+/* A `role="tabpanel"` wrapper that is otherwise invisible to layout — for a
+   host whose body used to be a DIRECT flex child of a `flex-direction: column`
+   ancestor (`.pane-host`) and relied on that to size/scroll. Wrapping such a
+   body in a plain `<div role="tabpanel">` (station#4463 slice 2's tabpanel
+   contract) would otherwise insert a non-flex box between the column and its
+   scrolling child, collapsing the child's height. Apply only where the body
+   actually needs this — a host whose parent context is ordinary block flow
+   (Registry's `page__section-stack`, Memory's already-scrolled detail pane)
+   must NOT use it, since `display: flex` here would itself change that
+   content's layout. */
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ── SectionNav (scroll-spy / URL-section links; station#4463 slice 2) ──
+   Shares `.page__tab`'s pill visual for each link but is a `<nav>` of real
+   anchors, not a `role="tablist"` — see `components/SectionNav.tsx`. Scrolls
+   at every viewport like `.page__tabs` above, with an ALWAYS-visible thin
+   scrollbar (not hidden, unlike Tabs' mobile-only hide): this was previously
+   per-host CSS (`.settings__section-nav`, `.project-settings__section-nav`)
+   duplicated across three files, and review MED-4 found a higher-specificity
+   rule could silently outrank a host's own copy. Defined once here so
+   nothing can defeat it. */
+.section-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-muted) transparent;
+}
+
+.section-nav::-webkit-scrollbar {
+  display: block;
+  height: 3px;
+}
+
+.section-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+/* The non-textual stand-in for a group label sharing the nav row
+   (station#4463 slice 2 — Settings' STATION/DEFAULTS labels used to render
+   inline with its links). A dedicated presentational element between two
+   items, never a border modifier on the item itself — a border-based divider
+   on the last item of a group visibly conflicted with that same item's
+   active-pill border when it was also selected (review MED-2). */
+.section-nav__divider {
+  flex: 0 0 auto;
+  width: 1px;
+  align-self: stretch;
+  margin: 0 0.4rem;
+  background: var(--border-primary);
+}
+
+/* Shared Guidance/section tab-strip primitive: tabs grow to a 44px touch
+   target and Tabs' (not SectionNav's) scrollbar hides on touch-sized
+   screens; page surfaces must not supply their own mobile rail. */
+@media (max-width: 768px), (pointer: coarse) {
+  .page__tabs.tab-strip--scroll {
+    scrollbar-width: none;
+  }
+
+  .page__tabs.tab-strip--scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .page__tabs.tab-strip--scroll > .page__tab,
+  .section-nav > .page__tab {
+    min-height: 44px;
+  }
+}
+
+.guidance-navigation {
+  border-bottom: 1px solid var(--border-primary);
+  padding: 0.75rem 1rem 0.6rem;
+}
+
+.guidance-navigation .page__tabs {
+  margin-bottom: 0.45rem;
+}
+
+.guidance-navigation__description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* A tab strip that is the first thing inside a FLUSH page-frame body (the
+   frame drops the body inset for the split pane below it, but a tab strip is
+   page furniture and lines up with the title). */
+.guidance-view__tabs {
+  padding: 0 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .guidance-view__tabs {
+    padding: 0 1rem;
+  }
+}

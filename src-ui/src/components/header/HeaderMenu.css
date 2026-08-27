@@ -1,0 +1,20 @@
+/*
+ * Portalled menu backdrops are real buttons so click-away dismissal has the
+ * same interface for pointer and keyboard callers. They are otherwise
+ * transparent hit targets: inheriting the global button chrome would paint a
+ * full-viewport control behind the menu.
+ */
+.header-menu__dismiss-backdrop {
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.header-menu__dismiss-backdrop:hover,
+.header-menu__dismiss-backdrop:focus,
+.header-menu__dismiss-backdrop:focus-visible {
+  background: transparent;
+  border-color: transparent;
+}

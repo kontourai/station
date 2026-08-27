@@ -1,0 +1,13 @@
+{
+  "name": "Fieldwork Review",
+  "slug": "fieldwork-review",
+  "icon": "🔬",
+  "description": "Launch project-local Fieldwork runs and open their protected review surface.",
+  "tabs": [
+    {
+      "id": "fieldwork-review",
+      "label": "Fieldwork Review",
+      "component": "fieldwork-review-main"
+    }
+  ]
+}

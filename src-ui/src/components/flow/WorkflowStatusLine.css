@@ -1,0 +1,68 @@
+/* ── WorkflowStatusLine — compact flow-agents sidecar status row ── */
+
+.workflow-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.workflow-status-line__label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.workflow-status-line__slug {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary, var(--text-muted));
+}
+
+.workflow-status-line__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+}
+
+.workflow-status-line__badge--phase {
+  color: var(--text-muted);
+}
+
+.workflow-status-line__step,
+.workflow-status-line__gates {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary, var(--text-muted));
+}
+
+.workflow-status-line__gates {
+  flex-basis: 100%;
+}
+
+.workflow-status-line__hint {
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.workflow-status-line-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workflow-status-line-list__more {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

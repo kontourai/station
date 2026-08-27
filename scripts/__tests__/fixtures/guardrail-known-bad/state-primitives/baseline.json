@@ -1,0 +1,12 @@
+{
+  "emptyFamilyCeiling": 0,
+  "adHocNoXCeiling": 0,
+  "loadingStringCeiling": 0,
+  "fabricatedLoadingCeiling": 0,
+  "unguardedEmptyCeiling": 0,
+  "bespokeButtonCeiling": 0,
+  "modalFamilyCeiling": 0,
+  "s4DeferredFiles": [],
+  "recordedAt": "2026-08-03T00:00:00Z",
+  "recordedBy": "guardrail known-bad fixture (station#1555). Not the repo's real baseline: both ceilings are 0 so that ONE planted occurrence crosses them. The real ceilings live in scripts/state-primitives-baseline.json and are deliberately not read here — a fixture bound to the production ceiling would silently stop testing the ceiling check the day the ceiling moved."
+}

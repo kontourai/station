@@ -1,0 +1,54 @@
+/*
+ * The readiness row's state + action pair (DESIGN.md §2/§5), co-located with
+ * the component that renders it so both hosts get it.
+ *
+ * The action used to carry a class nothing styled (`split-pane__row-action`
+ * existed in exactly one file: the markup that referenced it). In the rail
+ * that put an unstyled `<button>` after a badge whose own `min-width` filled
+ * the trailing slot's 38% cap, so the row's ONE action was clipped out of
+ * sight — a readiness board with nothing to press. Caught in this lane's own
+ * 1440 capture, not by a test.
+ */
+.agent-readiness {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.agent-readiness__action {
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-4);
+  min-height: 28px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.agent-readiness__action:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.agent-readiness__action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The compact inline pill: overrides the kit's block geometry only — tone
+   colours, font and border stay the kit's. */
+.agent-readiness__status {
+  display: inline-grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--space-2);
+  margin-left: var(--space-2);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  vertical-align: middle;
+}

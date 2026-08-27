@@ -1,0 +1,248 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "workspaces": {
+    "patterns": [
+      "packages/contracts",
+      "packages/sdk",
+      "packages/shared",
+      "packages/cli",
+      "packages/connect",
+      "examples/builder-delivery-viewer",
+      "examples/minimal-layout",
+      "examples/shared-providers",
+      "examples/demo-layout",
+      "examples/enterprise-layout",
+      "examples/coding-starter",
+      "examples/getting-started-starter",
+      "examples/knowledge-library",
+      "examples/meeting-notes",
+      "examples/knowledge-docs-starter",
+      "examples/survey-review-workbench",
+      "examples/fieldwork-review"
+    ]
+  },
+  "publicPackages": [
+    "@kontourai/station-contracts",
+    "@kontourai/station-sdk",
+    "@kontourai/station-shared"
+  ],
+  "dynamicallyLoaded": [
+    "docs/pages/styles.css",
+    "examples/**/plugin.mjs",
+    "examples/**/providers/*.{js,ts}",
+    "examples/**/src/index.{ts,tsx}",
+    "examples/minimal-layout/scripts/install-plugin.js",
+    "src-ui/public/sw.js",
+    "src-ui/public/voice-processor.js"
+  ],
+  "ignoreDependencies": [
+    "canvas",
+    "node:sqlite",
+    "@modelcontextprotocol/sdk",
+    "@kontourai/flow-agents"
+  ],
+  "ignoreExportsUsedInFile": {
+    "type": true,
+    "interface": true
+  },
+  "usedClassMembers": [
+    {
+      "implements": "IAgentRegistryProvider",
+      "members": [
+        "listAvailable",
+        "listInstalled",
+        "install",
+        "uninstall",
+        "update"
+      ]
+    },
+    {
+      "implements": "IIntegrationRegistryProvider",
+      "members": [
+        "listAvailable",
+        "listInstalled",
+        "install",
+        "uninstall",
+        "getToolDef",
+        "sync",
+        "installByCommand",
+        "update"
+      ]
+    },
+    {
+      "implements": "ISkillRegistryProvider",
+      "members": [
+        "listAvailable",
+        "listInstalled",
+        "install",
+        "uninstall",
+        "update",
+        "getContent"
+      ]
+    },
+    {
+      "implements": "IPluginRegistryProvider",
+      "members": [
+        "listAvailable",
+        "listInstalled",
+        "install",
+        "uninstall",
+        "preview",
+        "update"
+      ]
+    },
+    {
+      "implements": "ISchedulerProvider",
+      "members": [
+        "id",
+        "displayName",
+        "capabilities",
+        "getFormFields",
+        "listJobs",
+        "addJob",
+        "editJob",
+        "removeJob",
+        "runJob",
+        "enableJob",
+        "disableJob",
+        "getJobLogs",
+        "readRunFile",
+        "getStats",
+        "getStatus",
+        "previewSchedule",
+        "subscribe",
+        "getPrerequisites"
+      ]
+    },
+    {
+      "implements": "INotificationProvider",
+      "members": [
+        "id",
+        "displayName",
+        "categories",
+        "poll",
+        "handleAction",
+        "handleDismiss"
+      ]
+    },
+    {
+      "implements": "IVectorDbProvider",
+      "members": [
+        "id",
+        "displayName",
+        "createNamespace",
+        "deleteNamespace",
+        "namespaceExists",
+        "upsertDocuments",
+        "deleteDocuments",
+        "search",
+        "getStats",
+        "testConnection"
+      ]
+    },
+    {
+      "implements": "ILLMProvider",
+      "members": [
+        "id",
+        "displayName",
+        "listModels",
+        "complete",
+        "stream",
+        "testConnection"
+      ]
+    },
+    {
+      "implements": "IEmbeddingProvider",
+      "members": ["id", "displayName", "embed", "testConnection"]
+    },
+    {
+      "implements": "StorageAdapter",
+      "members": [
+        "addMessages",
+        "clearMessages",
+        "deleteMessages",
+        "createConversation",
+        "getConversations",
+        "getConversation",
+        "saveConversation",
+        "deleteConversation",
+        "getMessages",
+        "saveMessage",
+        "deleteMessage",
+        "getWorkflowState",
+        "setWorkflowState",
+        "clearWorkflowState"
+      ]
+    }
+  ],
+  "rules": {
+    "unresolved-imports": "error",
+    "unlisted-dependencies": "error",
+    "unused-dependencies": "warn",
+    "unused-dev-dependencies": "warn",
+    "unused-optional-dependencies": "warn",
+    "unused-files": "warn",
+    "unused-exports": "warn",
+    "unused-types": "warn",
+    "unused-class-members": "warn",
+    "duplicate-exports": "off",
+    "circular-dependencies": "warn",
+    "stale-suppressions": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["examples/**"],
+      "rules": {
+        "unused-files": "warn",
+        "unused-exports": "off",
+        "unused-types": "off",
+        "unused-class-members": "off",
+        "duplicate-exports": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/sdk/src/**",
+        "packages/connect/src/**",
+        "packages/shared/src/**",
+        "packages/contracts/src/**"
+      ],
+      "rules": {
+        "unused-exports": "off",
+        "unused-types": "off",
+        "duplicate-exports": "off"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx"
+      ],
+      "rules": {
+        "unused-exports": "off",
+        "unused-types": "off"
+      }
+    }
+  ],
+  "duplicates": {
+    "mode": "mild",
+    "minTokens": 80,
+    "minLines": 8,
+    "threshold": 0,
+    "ignoreImports": true,
+    "ignore": ["package-lock.json", "docs/research/**", "examples/**"]
+  },
+  "health": {
+    "maxCyclomatic": 20,
+    "maxCognitive": 15,
+    "maxCrap": 30,
+    "ignore": ["docs/**", "examples/**", "package-lock.json"]
+  },
+  "audit": {
+    "deadCodeBaseline": "fallow-baselines/dead-code.json",
+    "healthBaseline": "fallow-baselines/health.json",
+    "dupesBaseline": "fallow-baselines/dupes.json"
+  }
+}

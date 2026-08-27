@@ -1,0 +1,5 @@
+// Stand-in for src-ui/src/App.tsx — pinned by the gate's
+// PINNED_SCOPE_INVENTORY (station#1559). No violation.
+export function App() {
+  return <main className="app">{null}</main>;
+}

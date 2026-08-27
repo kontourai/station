@@ -1,0 +1,492 @@
+{
+  "schemaVersion": 1,
+  "note": "Receipts archive (station#4043): evidence bytes for the digests the dogfood reports commit. Download the release asset named below and check it with node scripts/build-evidence-archive.mjs --verify=<path>. The release lives on the repository this manifest is committed to; re-upload the identical asset (same sha256) if the repository is mirrored.",
+  "archive": {
+    "releaseTag": "dogfood-evidence-archive-v1",
+    "asset": "dogfood-evidence-archive.tar.gz",
+    "sha256": "a10c2db74ec81d73eb36c096bd50be38959614429b59da1dd1eb896ed8c8ba4d",
+    "bytes": 1503748
+  },
+  "entries": [
+    {
+      "member": "dogfood-001-readiness-gate-wiring/evidence/ev.1781244850210.1.txt",
+      "run": "dogfood-001-readiness-gate-wiring",
+      "evidenceId": "ev.1781244850210.1",
+      "sha256": "15c8e70bac2c7c2d320efd6559a36a3edfb58867be711a2644a2aba4d6be28ed",
+      "bytes": 1817,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-001-readiness-gate-wiring/evidence/ev.1781244859616.2.txt",
+      "run": "dogfood-001-readiness-gate-wiring",
+      "evidenceId": "ev.1781244859616.2",
+      "sha256": "ff188508ccec0e32249bf4bbac283b97ae8d5f184472f22909813423121d4df0",
+      "bytes": 563,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-001-readiness-gate-wiring/evidence/ev.1781244875598.3.json",
+      "run": "dogfood-001-readiness-gate-wiring",
+      "evidenceId": "ev.1781244875598.3",
+      "sha256": "5057b4a616d9a95290878e2beff79bdfe1121d41cc0c4f59c77ef3f4ef628ac5",
+      "bytes": 268650,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-001-readiness-gate-wiring/evidence/manifest.json",
+      "sha256": "220513d0f4baf7d35554b5b975072086b2aefaa299f3c859c32e3d52c22ba074",
+      "bytes": 1952,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-002-command-evidence-helper/evidence/ev.1781245927237.1.json",
+      "run": "dogfood-002-command-evidence-helper",
+      "evidenceId": "ev.1781245927237.1",
+      "sha256": "1c5879d8499236821d13e1c56831656045e5510e6165a77bb9338710d8cb5b1a",
+      "bytes": 6216,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-002-command-evidence-helper/evidence/ev.1781245949542.2.json",
+      "run": "dogfood-002-command-evidence-helper",
+      "evidenceId": "ev.1781245949542.2",
+      "sha256": "bc67cf44f931d1acf500cd35926641b967e19b1df5dff02ee555af23c931befe",
+      "bytes": 1186,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-002-command-evidence-helper/evidence/ev.1781245968176.3.json",
+      "run": "dogfood-002-command-evidence-helper",
+      "evidenceId": "ev.1781245968176.3",
+      "sha256": "49d1c4baf41343bb5eac6ef9fa8c66bc8bfb47d8b8b6166bd5af5d64daefec70",
+      "bytes": 237404,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-002-command-evidence-helper/evidence/manifest.json",
+      "sha256": "102aa4c56d5772d6f5f9e59f17d1cc1200b07869f209e915bd498f0d3018120a",
+      "bytes": 2195,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-003-trusted-producers-session/evidence/ev.1781246973131.1.json",
+      "run": "dogfood-003-trusted-producers-session",
+      "evidenceId": "ev.1781246973131.1",
+      "sha256": "ba7f7d4ac35b06464bced44d5a9abd5a23b185997634b6f336aeecfa53132e7d",
+      "bytes": 6211,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-003-trusted-producers-session/evidence/ev.1781246974353.2.json",
+      "run": "dogfood-003-trusted-producers-session",
+      "evidenceId": "ev.1781246974353.2",
+      "sha256": "a1196047661b8071c0718502db12d22e23a1c47f1d5dfa341b1ed7bde77de861",
+      "bytes": 1350,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-003-trusted-producers-session/evidence/ev.1781246975578.3.json",
+      "run": "dogfood-003-trusted-producers-session",
+      "evidenceId": "ev.1781246975578.3",
+      "sha256": "21901fdb48f2f9bf03b6199855f0e408267ff71caca83a4f826e4a5c72e6c6e1",
+      "bytes": 228509,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-003-trusted-producers-session/evidence/manifest.json",
+      "sha256": "8459d5220b47590547a115dc63dd7536ed212a73a0b67f5953d47640bfd79f0e",
+      "bytes": 2197,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-004-survey-workbench-plugin/evidence/ev.1781286890477.1.json",
+      "run": "dogfood-004-survey-workbench-plugin",
+      "evidenceId": "ev.1781286890477.1",
+      "sha256": "ea1daea76a1a52dafcbe2e945b708c9f03572dc6da87bb9a719bbe7b9770f082",
+      "bytes": 6094,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-004-survey-workbench-plugin/evidence/ev.1781286894525.2.json",
+      "run": "dogfood-004-survey-workbench-plugin",
+      "evidenceId": "ev.1781286894525.2",
+      "sha256": "880316ffa1a3c85dfdd68d9a4ffa951d70b9095e72a85df019f7f36ac9b00430",
+      "bytes": 1218,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-004-survey-workbench-plugin/evidence/ev.1781286894994.3.json",
+      "run": "dogfood-004-survey-workbench-plugin",
+      "evidenceId": "ev.1781286894994.3",
+      "sha256": "6ee48526bcf41118cdad68fe647595432b6f0ccd7a89f02fcb1264a4fa7a2ad8",
+      "bytes": 267371,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-004-survey-workbench-plugin/evidence/manifest.json",
+      "sha256": "b9d82ebab20e8554c1db0946a2f3a67f1528a2017e8c2490f6ed030d68af242c",
+      "bytes": 2199,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-005-trust-surfaces/evidence/ev.1781289190075.1.json",
+      "run": "dogfood-005-trust-surfaces",
+      "evidenceId": "ev.1781289190075.1",
+      "sha256": "6557c79d1e069d8e4d57420d2fc3a9dfddba7e41aca6acbc9f0db11e68244dbb",
+      "bytes": 6259,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-005-trust-surfaces/evidence/ev.1781289204594.2.json",
+      "run": "dogfood-005-trust-surfaces",
+      "evidenceId": "ev.1781289204594.2",
+      "sha256": "a208ce5b9267a3b1e95147e6ec5c638dd6a950fdc1b4ddc4b91d7a14557a487f",
+      "bytes": 3198,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-005-trust-surfaces/evidence/ev.1781289206243.3.json",
+      "run": "dogfood-005-trust-surfaces",
+      "evidenceId": "ev.1781289206243.3",
+      "sha256": "e410d9280de85d868e757962f1477724c70dae8c8f262ecc1df099e9ed926e89",
+      "bytes": 393209,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-005-trust-surfaces/evidence/manifest.json",
+      "sha256": "f74cc55f1c28012a881e900cf08875880dd2382ddae867e213f66ab36529ef8a",
+      "bytes": 2190,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-006-console-kit-adoption/evidence/ev.1781290877911.1.json",
+      "run": "dogfood-006-console-kit-adoption",
+      "evidenceId": "ev.1781290877911.1",
+      "sha256": "591df9f0016561a567106d6f90cb1b05b664cf0bcf24c637b6402f72e0856ce7",
+      "bytes": 6261,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-006-console-kit-adoption/evidence/ev.1781290893831.2.json",
+      "run": "dogfood-006-console-kit-adoption",
+      "evidenceId": "ev.1781290893831.2",
+      "sha256": "977900299fb8974536c5cfb3ca4c563ab71bcc6d1d16b8a556dc1c58537a8f4f",
+      "bytes": 2664,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-006-console-kit-adoption/evidence/ev.1781290894618.3.json",
+      "run": "dogfood-006-console-kit-adoption",
+      "evidenceId": "ev.1781290894618.3",
+      "sha256": "efc25129c78660024024248a8e63576e16db8c77c01159af7b4d9eccf8f8edbf",
+      "bytes": 305286,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-006-console-kit-adoption/evidence/manifest.json",
+      "sha256": "7a427658f364e8399f7d6a51302d05f275e4f5e9833bca08ea9be0c3aa98d2cd",
+      "bytes": 2196,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-007-native-policy-enforcement/evidence/ev.1781298753740.1.json",
+      "run": "dogfood-007-native-policy-enforcement",
+      "evidenceId": "ev.1781298753740.1",
+      "sha256": "e290211928524d7ab7983d0f868240c655c38fae824e328528a9dc7d1b190edc",
+      "bytes": 6259,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-007-native-policy-enforcement/evidence/ev.1781298756765.2.json",
+      "run": "dogfood-007-native-policy-enforcement",
+      "evidenceId": "ev.1781298756765.2",
+      "sha256": "7526992a6bc915f50c0bd80146df4d8a867280429f9136c0debf1947ce035416",
+      "bytes": 1180,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-007-native-policy-enforcement/evidence/ev.1781298758251.3.json",
+      "run": "dogfood-007-native-policy-enforcement",
+      "evidenceId": "ev.1781298758251.3",
+      "sha256": "5792688adec19a4515e3345e63cae9320c4c7206ea8c394790a814c246b06d7a",
+      "bytes": 313912,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-007-native-policy-enforcement/evidence/manifest.json",
+      "sha256": "888418e9f296e6227dcafb56a25760a7d2091702cab73d347b4e73672bd5e474",
+      "bytes": 2201,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-008-sidecars-and-skills/evidence/ev.1781300427565.1.json",
+      "run": "dogfood-008-sidecars-and-skills",
+      "evidenceId": "ev.1781300427565.1",
+      "sha256": "dc0e339e7dae40fd944efb0c129ed24563fdb440279b586b80636930ccd9b271",
+      "bytes": 6178,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-008-sidecars-and-skills/evidence/ev.1781300430807.2.json",
+      "run": "dogfood-008-sidecars-and-skills",
+      "evidenceId": "ev.1781300430807.2",
+      "sha256": "6a1e90757df438041d997a51ad8ea4b0c46920669600484fcf1acf590ae86437",
+      "bytes": 1182,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-008-sidecars-and-skills/evidence/ev.1781300432548.3.json",
+      "run": "dogfood-008-sidecars-and-skills",
+      "evidenceId": "ev.1781300432548.3",
+      "sha256": "87e27ca9bab64558da133ac9802b590d08233368cbbf991ee4976d0811b122c8",
+      "bytes": 332348,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-008-sidecars-and-skills/evidence/manifest.json",
+      "sha256": "874d391ba9122d0449dd10b8a142f1056929996a9372746339d297985dd9b817",
+      "bytes": 2195,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-009-gated-platform-mutations/evidence/ev.1781302308778.1.json",
+      "run": "dogfood-009-gated-platform-mutations",
+      "evidenceId": "ev.1781302308778.1",
+      "sha256": "532b616a0314d69681d35e2e466acf64eb5ccea94f84ae2d31e2fe68b71f10d7",
+      "bytes": 6267,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-009-gated-platform-mutations/evidence/ev.1781302311109.2.json",
+      "run": "dogfood-009-gated-platform-mutations",
+      "evidenceId": "ev.1781302311109.2",
+      "sha256": "0636f75cd7ab5a2b789641e969644d5798da1a9b013fe57b3e13cca9cce9faa5",
+      "bytes": 1167,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-009-gated-platform-mutations/evidence/ev.1781302312764.3.json",
+      "run": "dogfood-009-gated-platform-mutations",
+      "evidenceId": "ev.1781302312764.3",
+      "sha256": "45a5dc2f3136bdf52b816d977ad82bd22d13ce9995e7ced0bea94ffbebb243f1",
+      "bytes": 299478,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-009-gated-platform-mutations/evidence/manifest.json",
+      "sha256": "9129ffacf2d5ac7979abf41fed2e585628c126582486ff409285191d1a59d78d",
+      "bytes": 2200,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-010-console-emission/evidence/ev.1781304822014.1.json",
+      "run": "dogfood-010-console-emission",
+      "evidenceId": "ev.1781304822014.1",
+      "sha256": "21e73c7393dfd6b9080ac8b0d8ff1fd7a002edef10358ff696ffd911355b9515",
+      "bytes": 6261,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-010-console-emission/evidence/ev.1781304822471.2.json",
+      "run": "dogfood-010-console-emission",
+      "evidenceId": "ev.1781304822471.2",
+      "sha256": "d4331c35adfa8b5df5aa89b439fa7916938f88e31d940744d2fb16c046202968",
+      "bytes": 3283,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-010-console-emission/evidence/ev.1781304823949.3.json",
+      "run": "dogfood-010-console-emission",
+      "evidenceId": "ev.1781304823949.3",
+      "sha256": "4b70851cafd239eec17bd4c6078d666d29a84cf0a1384f2473487b9085eab1aa",
+      "bytes": 276193,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-010-console-emission/evidence/manifest.json",
+      "sha256": "c5c2e0f445e4f7efafb1bd39feba6c3dc2b58c741142ea5511401ab6efbd8d34",
+      "bytes": 2195,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-011-the-rename/evidence/ev.1781494450581.1.json",
+      "run": "dogfood-011-the-rename",
+      "evidenceId": "ev.1781494450581.1",
+      "sha256": "e9b9f8b67a4f66b138d849978cd2e7ac56a7c6463d3a955bb39272d36c8b626c",
+      "bytes": 6287,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-011-the-rename/evidence/ev.1781494529778.2.json",
+      "run": "dogfood-011-the-rename",
+      "evidenceId": "ev.1781494529778.2",
+      "sha256": "6657c38a0443b4226dc03406030808ea3c559dd7847dd9928bbacb97d6e1b9b1",
+      "bytes": 12823,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-011-the-rename/evidence/ev.1781494531642.3.json",
+      "run": "dogfood-011-the-rename",
+      "evidenceId": "ev.1781494531642.3",
+      "sha256": "2596da81904741d1286c41bccc6b67642fa6c19694a8e97f46f319022c34abf2",
+      "bytes": 5456427,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-011-the-rename/evidence/manifest.json",
+      "sha256": "96cc7f13e7716d186751c28fc648cf1e08ee1f5165757b77ebf9c274f75d74ed",
+      "bytes": 2184,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-012-remove-compat-shims/evidence/ev.1781496667865.1.json",
+      "run": "dogfood-012-remove-compat-shims",
+      "evidenceId": "ev.1781496667865.1",
+      "sha256": "452c1b741fa5720969afc1e69ae49645d7f7f013aa9520b26ab5f86616701bab",
+      "bytes": 6318,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-012-remove-compat-shims/evidence/ev.1781496747769.2.json",
+      "run": "dogfood-012-remove-compat-shims",
+      "evidenceId": "ev.1781496747769.2",
+      "sha256": "8caadda0d5275adaff6a8923a2eae3112fbba18c549ca5791e320baf86c01288",
+      "bytes": 12822,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-012-remove-compat-shims/evidence/ev.1781496749904.3.json",
+      "run": "dogfood-012-remove-compat-shims",
+      "evidenceId": "ev.1781496749904.3",
+      "sha256": "48049132ac76cfd032d004df404f80be832e00e111ed9013b02f3f372f62bd3e",
+      "bytes": 385212,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-012-remove-compat-shims/evidence/manifest.json",
+      "sha256": "a3fb5752034cacf529ff7a5d1478ebbf96e117b39a0699c029c501b8ff540583",
+      "bytes": 2193,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-013-product-hardening/evidence/ev.1781501127478.1.json",
+      "run": "dogfood-013-product-hardening",
+      "evidenceId": "ev.1781501127478.1",
+      "sha256": "aeec1d0106a6e92991322421880ff6b04c1698e8782e60eb67592c64eeab46a7",
+      "bytes": 6255,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-013-product-hardening/evidence/ev.1781501205987.2.json",
+      "run": "dogfood-013-product-hardening",
+      "evidenceId": "ev.1781501205987.2",
+      "sha256": "0cbb5b299df7f7ebbcae186aff9d4788fa179654ff7c73012d00943dc7a9b82a",
+      "bytes": 12830,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-013-product-hardening/evidence/ev.1781501207749.3.json",
+      "run": "dogfood-013-product-hardening",
+      "evidenceId": "ev.1781501207749.3",
+      "sha256": "551a555cfff4f3f13bf5ac938715f83f9c4826155d97a59582e9e10809e233ef",
+      "bytes": 345730,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-013-product-hardening/evidence/manifest.json",
+      "sha256": "4eca57fb017d865f50a0a2f92820bb0be2065718761ce1576cb24fe8b2b7bae8",
+      "bytes": 2191,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-014-side-panel-redesign/evidence/ev.1781536508980.1.json",
+      "run": "dogfood-014-side-panel-redesign",
+      "evidenceId": "ev.1781536508980.1",
+      "sha256": "4d21d398269404c5d5aec006271011d7b0915ac51c90325a3f67975589c4791d",
+      "bytes": 6362,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-014-side-panel-redesign/evidence/ev.1781536591520.2.json",
+      "run": "dogfood-014-side-panel-redesign",
+      "evidenceId": "ev.1781536591520.2",
+      "sha256": "b903f2e30cd807353320b30bcdf84ee91d6797d9bfc4da198db20c542f075ced",
+      "bytes": 12905,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-014-side-panel-redesign/evidence/ev.1781536593314.3.json",
+      "run": "dogfood-014-side-panel-redesign",
+      "evidenceId": "ev.1781536593314.3",
+      "sha256": "c672649b5c5efcc7928accb1e8a942365658b6bdc6e8dc4abf27816e6033a2f3",
+      "bytes": 337083,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-014-side-panel-redesign/evidence/manifest.json",
+      "sha256": "f8383789bdd6834d03164369941515782daa6b9abd78637b4255f970152e67fe",
+      "bytes": 2193,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-015-product-icons/evidence/ev.1781539986041.1.json",
+      "run": "dogfood-015-product-icons",
+      "evidenceId": "ev.1781539986041.1",
+      "sha256": "a67bc4b6742558303638c7b75cbc42d8f826a2eec94bf91a2b281d2eabc1c166",
+      "bytes": 6344,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-015-product-icons/evidence/ev.1781540070644.2.json",
+      "run": "dogfood-015-product-icons",
+      "evidenceId": "ev.1781540070644.2",
+      "sha256": "052134b947166786137935d05c394a4a821efb90da3dc963aeb60c47c5a05652",
+      "bytes": 12905,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-015-product-icons/evidence/ev.1781540071296.3.json",
+      "run": "dogfood-015-product-icons",
+      "evidenceId": "ev.1781540071296.3",
+      "sha256": "3454127884b54a51d0594fe9a7d90deb4d4be193d64426185b894139e6f9bec8",
+      "bytes": 215533,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-015-product-icons/evidence/manifest.json",
+      "sha256": "439d7704d2c90fe04babe1af44a92943fd65d94c5cfeb8b6be3296e443c041e4",
+      "bytes": 2187,
+      "kind": "sidecar"
+    },
+    {
+      "member": "dogfood-016-consume-kontourai-ui/evidence/ev.1781551288208.1.json",
+      "run": "dogfood-016-consume-kontourai-ui",
+      "evidenceId": "ev.1781551288208.1",
+      "sha256": "9fd86c360f31b18e25b5195c5b7be571487b988fd9287e8dd0b32a7d13635aab",
+      "bytes": 6389,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-016-consume-kontourai-ui/evidence/ev.1781551369390.2.json",
+      "run": "dogfood-016-consume-kontourai-ui",
+      "evidenceId": "ev.1781551369390.2",
+      "sha256": "c065a3b091f64707e877857820380de410193dd94c294e3c729b8b8ff03fcc6b",
+      "bytes": 12906,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-016-consume-kontourai-ui/evidence/ev.1781551370052.3.json",
+      "run": "dogfood-016-consume-kontourai-ui",
+      "evidenceId": "ev.1781551370052.3",
+      "sha256": "b00c3851f174d3221db51fa2a5b84cca32b8e058b27699dfbc5fd0d883958e3a",
+      "bytes": 260057,
+      "kind": "artifact"
+    },
+    {
+      "member": "dogfood-016-consume-kontourai-ui/evidence/manifest.json",
+      "sha256": "dbc80dbc47c30f1b623e49e84aefcbebac986fcef9b6cbe853616a98ffadcec1",
+      "bytes": 2194,
+      "kind": "sidecar"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+.usage-rollup {
+  display: grid;
+  gap: 1rem;
+}
+.usage-rollup__header,
+.usage-rollup__controls,
+.usage-rollup__footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.usage-rollup__header h3,
+.usage-rollup__header p {
+  margin: 0;
+}
+.usage-rollup__header p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+.usage-rollup__coverage--gap {
+  border-color: var(--warning, #c88800);
+}
+.usage-rollup__controls fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.4rem;
+}
+.usage-rollup__controls legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.usage-rollup button,
+.usage-rollup select {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 0.35rem 0.55rem;
+}
+.usage-rollup button[aria-pressed="true"] {
+  border-color: var(--accent-primary);
+}
+.usage-rollup__table-wrap {
+  overflow-x: auto;
+  border-radius: 6px;
+}
+.usage-rollup__table-wrap:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.usage-rollup table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.usage-rollup th,
+.usage-rollup td {
+  padding: 0.55rem;
+  border-bottom: 1px solid var(--border-primary);
+  text-align: left;
+  white-space: nowrap;
+}
+.usage-rollup__drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgb(0 0 0 / 45%);
+  display: flex;
+  justify-content: flex-end;
+}
+.usage-rollup__drawer > div {
+  width: min(30rem, 100%);
+  overflow: auto;
+  padding: 1.5rem;
+  background: var(--bg-secondary);
+}
+@media (max-width: 40rem) {
+  .usage-rollup__header,
+  .usage-rollup__controls,
+  .usage-rollup__footer {
+    align-items: stretch;
+  }
+  .usage-rollup__header > *,
+  .usage-rollup__controls > *,
+  .usage-rollup__footer > * {
+    width: 100%;
+  }
+  .usage-rollup__controls fieldset {
+    flex-wrap: wrap;
+  }
+  .usage-rollup__drawer > div {
+    width: 100%;
+    min-height: 100%;
+  }
+}

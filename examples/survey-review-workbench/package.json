@@ -1,0 +1,29 @@
+{
+  "name": "@kontourai/station-survey-review-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.tsx",
+  "files": [
+    "layout.json",
+    "plugin.json",
+    "server",
+    "src"
+  ],
+  "scripts": {
+    "build": "../../station plugin build"
+  },
+  "dependencies": {
+    "@kontourai/survey": "^0.7.2"
+  },
+  "peerDependencies": {
+    "@kontourai/station-sdk": "*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "^5.0.0"
+  }
+}

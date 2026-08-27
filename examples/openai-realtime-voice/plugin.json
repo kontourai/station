@@ -1,0 +1,8 @@
+{
+  "name": "openai-realtime-voice",
+  "displayName": "OpenAI-compatible Realtime Voice",
+  "version": "0.1.0",
+  "description": "An explicit injected-transport realtime voice pack.",
+  "entrypoint": "src/index.ts",
+  "permissions": []
+}

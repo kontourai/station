@@ -1,0 +1,15 @@
+// The negative control. Same tree, same scope, no violation.
+//
+// Every rejection case in this fixture set is the clean tree plus exactly one
+// file. Without this control a fixture that fails for an unrelated reason
+// (a missing baseline, an unparsable scratch repo, a scope-drift throw) looks
+// identical to the guardrail biting.
+import { Empty } from '../components/state/Empty';
+
+export function CleanView() {
+  return (
+    <section className="clean-view">
+      <Empty label="Nothing yet" />
+    </section>
+  );
+}

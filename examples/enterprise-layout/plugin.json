@@ -1,0 +1,42 @@
+{
+  "name": "enterprise-layout",
+  "version": "1.0.0",
+  "displayName": "Enterprise Layout",
+  "description": "Calendar, CRM, and notes layout — demonstrates multi-provider plugin architecture",
+  "entrypoint": "src/index.tsx",
+  "capabilities": ["chat", "navigation", "agents"],
+  "permissions": ["navigation.dock", "agents.invoke"],
+  "env": {
+    "NOTES_VAULT_PATH": {
+      "required": true,
+      "description": "Path to your notes vault",
+      "sensitive": false,
+      "promptAt": "install"
+    }
+  },
+  "integrations": [
+    "./integrations/crm/integration.json",
+    "./integrations/calendar/integration.json"
+  ],
+  "agents": [
+    {
+      "slug": "enterprise-assistant",
+      "source": "./agents/enterprise-assistant/agent.json"
+    }
+  ],
+  "layout": {
+    "slug": "enterprise",
+    "source": "./layout.json"
+  },
+  "prompts": {
+    "source": "./prompts"
+  },
+  "knowledge": {
+    "namespaces": [
+      { "id": "notes", "label": "Meeting Notes", "behavior": "rag" }
+    ]
+  },
+  "dependencies": [
+    { "id": "shared-providers", "source": "../shared-providers" }
+  ]
+}

@@ -1,0 +1,6 @@
+// Stand-in for src-ui/src/main.tsx. See app.tsx.fixture.
+import { App } from './App';
+
+export function mount() {
+  return <App />;
+}

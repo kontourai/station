@@ -1,0 +1,182 @@
+/* ── Knowledge Connection View ──────────────────────────────────── */
+/* Shell (root wrapper, header, title/desc, empty states) now rides the
+   canonical page-layout.css (.page/.page--narrow) + DetailHeader + Empty
+   family (#242 Knowledge port) — only the genuinely view-specific card/
+   status/stat/field styling below has no canonical equivalent. */
+
+/* ── Sections ───────────────────────────────────────────────────── */
+
+.knowledge-view__section {
+  margin-bottom: 2rem;
+}
+
+/* ── Card ───────────────────────────────────────────────────────── */
+
+.knowledge-view__card {
+  min-width: 0;
+}
+
+.knowledge-view__card-header {
+  margin-bottom: 16px;
+}
+
+.knowledge-view__card-header .page-row__label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.knowledge-view__card-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+}
+
+.knowledge-view__card-name {
+  font-size: var(--text-15);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.knowledge-view__card-type {
+  font-size: var(--text-sm);
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.knowledge-view__card-desc {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Status ─────────────────────────────────────────────────────── */
+
+.knowledge-view__status {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.knowledge-view__status--enabled {
+  color: var(--success-text, #22c55e);
+  background: color-mix(in srgb, var(--success-text, #22c55e) 10%, transparent);
+}
+
+.knowledge-view__status--disabled {
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+}
+
+/* ── Field ──────────────────────────────────────────────────────── */
+
+.knowledge-view__field {
+  margin-bottom: 12px;
+}
+
+/* ── Actions ────────────────────────────────────────────────────── */
+
+.knowledge-view__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.knowledge-view__test-result {
+  font-size: var(--text-md);
+  margin-left: 4px;
+}
+
+.knowledge-view__test-result--ok {
+  color: var(--success-text, #22c55e);
+}
+
+.knowledge-view__test-result--fail {
+  color: var(--error-text);
+}
+
+/* ── Stats ──────────────────────────────────────────────────────── */
+
+.knowledge-view__stats {
+  display: flex;
+  gap: 32px;
+}
+
+.knowledge-view__stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.knowledge-view__stat-value {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.knowledge-view__stat-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── Link ───────────────────────────────────────────────────────── */
+
+.knowledge-view__link {
+  color: var(--accent-primary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-size: inherit;
+  padding: 0;
+}
+
+.knowledge-view__link:hover {
+  text-decoration: underline;
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .knowledge-view__card-header {
+    gap: 8px;
+  }
+
+  .knowledge-view__card-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .knowledge-view__field input,
+  .knowledge-view__field .editor-input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+  }
+
+  .knowledge-view__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Width is this page's concern; the 44px floor is the primitive's
+     (station#3783). */
+  .knowledge-view__actions .editor-btn {
+    width: 100%;
+  }
+
+  .knowledge-view__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .knowledge-view__stats {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+}

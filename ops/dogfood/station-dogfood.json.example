@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "repo": "/Users/you/src/station",
+  "githubRepo": "kontourai/station",
+  "instance": "dogfood",
+  "stationHome": "/Users/you/.station",
+  "supportDir": "/Users/you/Library/Application Support/Station Dogfood",
+  "logDir": "/Users/you/Library/Logs/Station Dogfood",
+  "serverPort": 3141,
+  "uiPort": 3000,
+  "tailnetUrl": "https://your-device.your-tailnet.ts.net"
+}

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/station/catches.schema.json",
+  "title": "Catch record",
+  "description": "One record per event where a defect was caught before it shipped. The file is JSON Lines: one of these objects per line, no wrapping array. The class enum is derived from the recorded events, not invented up front — add a value only when a real event does not fit an existing one, and say so in the README's class table.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "date",
+    "repo",
+    "class",
+    "detector",
+    "detector_kind",
+    "caught_by_machine",
+    "summary",
+    "evidence_ref",
+    "fix_ref",
+    "confidence",
+    "unverified",
+    "notes"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Stable kebab-case identifier, unique across the file. Never reused or renumbered."
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "The date the catch happened, UTC. For a catch attributed to a merged PR this is the UTC date of mergedAt, which can be the day after the local evening the work happened."
+    },
+    "repo": {
+      "type": "string",
+      "description": "Repository the defect lived in — not necessarily the one that caught it."
+    },
+    "class": {
+      "description": "How the defect hid. Derived from the events in this file; see the README's class table for the count behind each value.",
+      "enum": [
+        "absence-as-success",
+        "eager-import-cost",
+        "fail-open-validation",
+        "fix-round-regression",
+        "host-specific-assertion",
+        "misattributed-evidence",
+        "pipe-masked-exit",
+        "silent-source-corruption",
+        "stale-evidence-as-fresh",
+        "uncaught-fault-injection",
+        "unexecuted-evidence",
+        "ungated-completion",
+        "unimplemented-claim",
+        "unit-green-integration-red",
+        "unsatisfiable-gate",
+        "vacuous-assertion"
+      ]
+    },
+    "detector": {
+      "type": "string",
+      "minLength": 3,
+      "description": "What actually found it, named specifically: a gate command, a review lens, a probe, or `human`. `unknown` is permitted only with confidence `low` and `detector` listed in `unverified`."
+    },
+    "detector_kind": {
+      "enum": ["gate", "review-lens", "human", "unknown"],
+      "description": "gate = an automated check that failed on its own. review-lens = a deliberate independent pass (report-only review, verifier, fault injection, red-team). human = a person or agent noticing while reading or probing, outside a scheduled lens."
+    },
+    "caught_by_machine": {
+      "type": "boolean",
+      "description": "true only when an automated check went red unprompted and that failure is what surfaced the defect. A fault injection that came back GREEN is false by construction — the finding is the silence."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 40,
+      "description": "What the defect was and why it hid, concretely enough that a reader who never saw the change can judge it."
+    },
+    "evidence_ref": {
+      "type": "string",
+      "minLength": 5,
+      "description": "Where to go and look: `repo@sha`, `path:line`, an issue or PR number, or a retained bundle path. Must resolve to something a reader can open."
+    },
+    "fix_ref": {
+      "type": ["string", "null"],
+      "description": "The commit, file, or practice that closed it. null means genuinely unfixed — explain in notes."
+    },
+    "confidence": {
+      "enum": ["high", "medium", "low"],
+      "description": "How well grounded the row is. `low` rows are excluded from the machine/human ratio and must list what is unverified."
+    },
+    "unverified": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Field names that could not be grounded in something read. Empty for a fully verified row."
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Corrections, caveats, and anything a reader would otherwise have to rediscover."
+    }
+  }
+}

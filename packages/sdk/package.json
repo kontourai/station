@@ -1,0 +1,99 @@
+{
+  "name": "@kontourai/station-sdk",
+  "version": "0.7.0",
+  "description": "SDK for building Station workspace plugins",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./core-update-restart-status": "./src/core-update-restart-status.ts",
+    "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
+    "./workspace-file-preview": "./src/workspace-file-preview.ts",
+    "./workspace-pane": "./src/workspace-pane.ts",
+    "./task-outputs": "./src/task-outputs.ts",
+    "./session-outputs": "./src/session-outputs.ts",
+    "./session-inventory": "./src/session-inventory.ts",
+    "./session-output-actions": "./src/session-output-actions.ts",
+    "./answer-support": "./src/answer-support.ts",
+    "./answer-basis": "./src/answer-basis.ts",
+    "./answer-assessment-events": "./src/answer-assessment-events.ts",
+    "./answer-narrative-binding": "./src/client/answer-narrative-binding.ts",
+    "./answer-narrative-events": "./src/answer-narrative-events.ts",
+    "./task-basis": "./src/task-basis.ts",
+    "./task-user-input-references": "./src/task-user-input-references.ts",
+    "./task-tool-results": "./src/task-tool-results.ts",
+    "./flow-gate-evaluations": "./src/flow-gate-evaluations.ts",
+    "./client/flow-gate-evaluations": "./src/client/flow-gate-evaluations.ts",
+    "./client": "./src/client/index.ts",
+    "./setup-imports": "./src/client/setup-imports.ts",
+    "./setup-imports-query": "./src/query-domains/setupImports.ts",
+    "./secret-bindings": "./src/client/secret-bindings.ts",
+    "./secret-bindings-query": "./src/query-domains/secret-bindings.ts",
+    "./client-origin": "./src/client-origin.ts",
+    "./error-state": "./src/components/ErrorState.tsx",
+    "./app-config": "./src/app-config.ts",
+    "./developer-runtime": "./src/query-domains/developerRuntime.ts",
+    "./project-task-rooms": "./src/query-domains/projectTaskRooms.ts",
+    "./live-activity": "./src/live-activity.ts",
+    "./action-operations": "./src/action-operations.ts",
+    "./resource-posture": "./src/query-domains/resourcePosture.ts",
+    "./spatial-board": "./src/spatial-board.ts",
+    "./testing": "./src/voice/testing.ts",
+    "./voice": "./src/voice/session.ts"
+  },
+  "scripts": {
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "node -e \"const fs=require('fs'),path=require('path');const src='src/components',dst='dist/components';fs.readdirSync(src).filter(f=>f.endsWith('.css')).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(dst,f)))\"",
+    "watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "station",
+    "plugin",
+    "sdk"
+  ],
+  "files": [
+    "src",
+    "!src/__tests__",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "README.md",
+    "LICENSE"
+  ],
+  "author": "Station",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/station.git",
+    "directory": "packages/sdk"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@kontourai/console-core": "^0.3.0",
+    "@kontourai/flow": "5.1.0",
+    "@kontourai/flow-agents": "6.2.0",
+    "@kontourai/station-contracts": "^0.7.0",
+    "@kontourai/surface": "^3.0.0",
+    "@kontourai/thread": "0.5.0",
+    "@kontourai/ui": "^1.12.0"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.90.12",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10"
+  },
+  "overrides": {
+    "nanoid": "3.3.18"
+  }
+}

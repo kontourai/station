@@ -1,0 +1,398 @@
+/* ═══ Onboarding Gate — Loading & Status Screens ═══ */
+
+/* ── Loading screen ── */
+
+.onboarding-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg-primary, #0a0a0a);
+  color: var(--text-secondary, #999);
+  font-family: var(--font-sans);
+  position: relative;
+  overflow: hidden;
+}
+
+.onboarding-loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 60% 40% at 50% 40%,
+      rgba(74, 158, 255, 0.05),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 40% 30% at 70% 60%,
+      rgba(167, 139, 250, 0.03),
+      transparent 60%
+    );
+  pointer-events: none;
+}
+
+.onboarding-loading__content {
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  animation: onboarding-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes onboarding-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Logo with glow ring */
+.onboarding-loading__logo-wrap {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 2rem;
+}
+
+.onboarding-loading__logo {
+  width: 56px;
+  height: 56px;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 20px rgba(74, 158, 255, 0.15));
+}
+
+.onboarding-loading__logo-ring {
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  border-top-color: var(--accent-primary);
+  animation: onboarding-spin 1.8s linear infinite;
+}
+
+@keyframes onboarding-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.onboarding-loading__logo-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(74, 158, 255, 0.08) 0%,
+    transparent 70%
+  );
+  animation: onboarding-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes onboarding-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+/* Text */
+.onboarding-loading__label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted, #666);
+  margin-bottom: 0.5rem;
+}
+
+.onboarding-loading__status {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #999);
+  letter-spacing: -0.01em;
+}
+
+/* Dot animation */
+.onboarding-loading__dots span {
+  animation: onboarding-dot-blink 1.4s infinite;
+  opacity: 0;
+}
+.onboarding-loading__dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+.onboarding-loading__dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.onboarding-loading__dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes onboarding-dot-blink {
+  0%,
+  60%,
+  100% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+.onboarding-setup-banner {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: var(--layer-notice);
+  width: min(420px, calc(100vw - 32px));
+  border-radius: 14px;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  background: linear-gradient(
+    180deg,
+    rgba(10, 18, 34, 0.97),
+    rgba(9, 13, 24, 0.97)
+  );
+  color: #e5eefc;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  padding: 16px;
+}
+
+.onboarding-setup-banner__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboarding-setup-banner__title {
+  font-size: var(--text-15);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.onboarding-setup-banner__description {
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: rgba(229, 238, 252, 0.78);
+}
+
+.onboarding-setup-banner__dismiss {
+  border: none;
+  background: transparent;
+  color: rgba(229, 238, 252, 0.7);
+  cursor: pointer;
+  font-size: var(--text-2xl);
+  line-height: 1;
+  padding: 0;
+}
+
+.onboarding-setup-banner__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.onboarding-setup-banner__badge {
+  border: 1px solid rgba(147, 197, 253, 0.22);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.14);
+  color: #bfdbfe;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+.onboarding-setup-banner__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.onboarding-setup-launcher {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(
+    var(--dock-slot-size, var(--chat-dock-header-height, 38px)) +
+    var(--safe-bottom) +
+    var(--space-4)
+  );
+  z-index: var(--layer-notice);
+  width: min(420px, calc(100vw - var(--space-8)));
+  pointer-events: none;
+}
+
+.onboarding-setup-launcher__panel {
+  pointer-events: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  background: linear-gradient(
+    180deg,
+    rgba(12, 18, 30, 0.98),
+    rgba(9, 13, 22, 0.98)
+  );
+  color: #e5eefc;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+  padding: var(--space-4);
+}
+
+.onboarding-setup-launcher__eyebrow {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin-bottom: 12px;
+}
+
+.onboarding-setup-launcher__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboarding-setup-launcher__title {
+  font-size: var(--text-xl);
+  font-weight: 650;
+  line-height: 1.15;
+  margin-bottom: 10px;
+}
+
+.onboarding-setup-launcher__description {
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: rgba(229, 238, 252, 0.82);
+  max-width: 52ch;
+}
+
+.onboarding-setup-launcher__dismiss {
+  /* Was a 12x22 glyph with no padding — the one control on this screen that
+     failed the 44px touch floor the Android suite enforces. Pre-existing, but
+     it is the first thing a phone user is asked to tap. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: rgba(229, 238, 252, 0.72);
+  cursor: pointer;
+  font-size: var(--text-4xl);
+  line-height: 1;
+  padding: 0;
+}
+
+.onboarding-setup-launcher__dismiss:hover,
+.onboarding-setup-launcher__dismiss:focus-visible {
+  background: rgba(229, 238, 252, 0.12);
+}
+
+.onboarding-setup-launcher__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.onboarding-setup-launcher__badge {
+  border: 1px solid rgba(147, 197, 253, 0.22);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.14);
+  color: #bfdbfe;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+.onboarding-setup-launcher__steps {
+  margin-top: var(--space-3);
+}
+
+.onboarding-setup-launcher__step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.onboarding-setup-launcher__step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.18);
+  color: #bfdbfe;
+  font-size: var(--text-base);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.onboarding-setup-launcher__step-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.onboarding-setup-launcher__step-desc {
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: rgba(229, 238, 252, 0.72);
+}
+
+/* Layout only. The colour, radius, weight and disabled treatment are the
+   shared `.button--primary`'s now — this was a hard-coded blue gradient, the
+   app's fifth primary-button treatment (SHELL-02). */
+.onboarding-setup-launcher__primary {
+  margin-top: var(--space-3);
+  width: 100%;
+}
+
+.onboarding-setup-launcher__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .onboarding-setup-launcher {
+    right: max(var(--space-3), var(--safe-right));
+  }
+
+  .onboarding-setup-launcher__panel {
+    max-height: calc(
+      100dvh -
+      var(--app-toolbar-total-height, 46px) -
+      var(--dock-slot-size, var(--chat-dock-header-height, 38px)) -
+      var(--safe-bottom) -
+      var(--space-6)
+    );
+    overflow-y: auto;
+  }
+
+  .onboarding-setup-launcher__primary,
+  .onboarding-setup-launcher__secondary {
+    min-height: 44px;
+  }
+
+  .onboarding-setup-launcher__actions > * {
+    flex: 1 1 140px;
+  }
+}

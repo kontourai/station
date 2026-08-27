@@ -1,0 +1,224 @@
+.kl-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 100%;
+  padding: 1.25rem;
+  color: var(--text-primary, #e8edf4);
+  background: var(--background, #0b1017);
+}
+
+.kl-page-header,
+.kl-panel__header,
+.kl-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.kl-page-header h1,
+.kl-panel h2,
+.kl-detail h2,
+.kl-detail h3,
+.kl-detail h4,
+.kl-page-header p,
+.kl-panel p {
+  margin-top: 0;
+}
+
+.kl-eyebrow {
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary, #9ba8b8);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kl-read-only,
+.kl-status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border, #334155);
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  color: var(--text-secondary, #b8c2cf);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.kl-status--retired {
+  color: #fda4af;
+  border-color: #9f1239;
+}
+.kl-status--implemented {
+  color: #86efac;
+  border-color: #166534;
+}
+
+.kl-field {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 32rem;
+}
+
+.kl-field__label {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.kl-select,
+.kl-button {
+  border: 1px solid var(--border, #334155);
+  border-radius: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  color: inherit;
+  background: var(--surface, #151d29);
+}
+
+.kl-button,
+.kl-node,
+.kl-link-button {
+  cursor: pointer;
+}
+
+.kl-button:hover,
+.kl-node:hover,
+.kl-link-button:hover {
+  border-color: var(--accent, #60a5fa);
+}
+
+.kl-button:focus-visible,
+.kl-node:focus-visible,
+.kl-link-button:focus-visible,
+.kl-select:focus-visible {
+  outline: 2px solid var(--accent, #60a5fa);
+  outline-offset: 2px;
+}
+
+.kl-authority {
+  margin: 0;
+  border-left: 3px solid var(--accent, #60a5fa);
+  padding: 0.65rem 0.8rem;
+  color: var(--text-secondary, #b8c2cf);
+  background: var(--surface, #151d29);
+}
+
+.kl-grid {
+  display: grid;
+  grid-template-columns: minmax(15rem, 0.8fr) minmax(20rem, 1.2fr);
+  gap: 1rem;
+  min-height: 30rem;
+}
+
+.kl-panel {
+  min-width: 0;
+  border: 1px solid var(--border, #283548);
+  border-radius: 0.65rem;
+  padding: 1rem;
+  background: var(--surface, #111923);
+}
+
+.kl-panel__header {
+  border-bottom: 1px solid var(--border, #283548);
+}
+.kl-panel__header > span {
+  color: var(--text-secondary, #9ba8b8);
+  font-size: 0.8rem;
+}
+
+.kl-node-list,
+.kl-links {
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.kl-node-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.kl-node {
+  display: grid;
+  width: 100%;
+  gap: 0.3rem;
+  border: 1px solid var(--border, #283548);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  color: inherit;
+  text-align: left;
+  background: var(--background, #0b1017);
+}
+
+.kl-node--selected {
+  border-color: var(--accent, #60a5fa);
+  box-shadow: inset 3px 0 var(--accent, #60a5fa);
+}
+.kl-node__title {
+  font-weight: 700;
+}
+.kl-node__meta,
+.kl-muted {
+  color: var(--text-secondary, #9ba8b8);
+  font-size: 0.8rem;
+}
+
+.kl-facts,
+.kl-provenance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+.kl-facts div,
+.kl-provenance div {
+  min-width: 0;
+}
+.kl-facts dt,
+.kl-provenance dt {
+  color: var(--text-secondary, #9ba8b8);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.kl-facts dd,
+.kl-provenance dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.kl-detail section {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border, #283548);
+  padding-top: 1rem;
+}
+.kl-record-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.kl-links {
+  display: grid;
+  gap: 0.4rem;
+}
+.kl-link-button {
+  border: 0;
+  padding: 0;
+  color: var(--accent, #93c5fd);
+  text-align: left;
+  background: transparent;
+}
+.kl-error-state {
+  min-height: 10rem;
+}
+
+@media (max-width: 800px) {
+  .kl-grid {
+    grid-template-columns: 1fr;
+  }
+  .kl-page-header {
+    flex-direction: column;
+  }
+  .kl-facts,
+  .kl-provenance {
+    grid-template-columns: 1fr;
+  }
+}

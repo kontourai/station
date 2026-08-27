@@ -1,0 +1,63 @@
+name: Desktop clean-checkout build
+
+on:
+  workflow_dispatch:
+  pull_request_target:
+    paths:
+      - '.github/workflows/desktop-clean-checkout.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src-desktop/**'
+      - 'config/channel-ports.json'
+      - 'scripts/channel-ports.mjs'
+      - 'scripts/verify-desktop-clean-checkout.mjs'
+      - 'scripts/__tests__/verify-desktop-clean-checkout.test.ts'
+      - 'scripts/stage-desktop-server-runtime.mjs'
+      - 'esbuild.config.mjs'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/desktop-clean-checkout.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src-desktop/**'
+      - 'config/channel-ports.json'
+      - 'scripts/channel-ports.mjs'
+      - 'scripts/verify-desktop-clean-checkout.mjs'
+      - 'scripts/__tests__/verify-desktop-clean-checkout.test.ts'
+      - 'scripts/stage-desktop-server-runtime.mjs'
+      - 'esbuild.config.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-clean-checkout-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Install Linux desktop prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - run: npm run dependencies:ci
+
+      - name: Verify clean-checkout desktop build
+        run: npm run verify:desktop-clean-checkout

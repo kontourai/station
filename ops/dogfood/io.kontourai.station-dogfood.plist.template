@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.kontourai.station-dogfood</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__RUNNER__</string>
+    <string>supervise</string>
+    <string>--config=__CONFIG__</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>STATION_DOGFOOD_CI_BILLING_WAIVER_EXPIRES_AT</key>
+    <string>__CI_BILLING_WAIVER_EXPIRES_AT__</string>
+  </dict>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ExitTimeOut</key>
+  <integer>600</integer>
+  <key>Umask</key>
+  <integer>63</integer>
+  <key>StandardOutPath</key>
+  <string>__LAUNCHD_OUT__</string>
+  <key>StandardErrorPath</key>
+  <string>__LAUNCHD_ERR__</string>
+</dict>
+</plist>

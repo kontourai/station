@@ -1,0 +1,138 @@
+.existing-setup-import {
+  display: grid;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  border: 1px solid var(--color-border, var(--border-primary));
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-raised, var(--bg-secondary));
+}
+
+.existing-setup-import__heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.existing-setup-import__heading h3,
+.existing-setup-import__receipt h4,
+.existing-setup-import__heading p,
+.existing-setup-import__summary,
+.existing-setup-import__exclusions,
+.existing-setup-import__warnings {
+  margin: 0;
+}
+
+.existing-setup-import__heading h3,
+.existing-setup-import__receipt h4 {
+  font-size: var(--font-size-md, 15px);
+}
+
+.existing-setup-import__heading p,
+.existing-setup-import__exclusions,
+.existing-setup-import__warnings {
+  margin-top: var(--space-1, 4px);
+  color: var(--color-text-secondary, var(--text-muted));
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.45;
+}
+
+.existing-setup-import__status {
+  min-height: 1.25em;
+  margin: 0;
+  color: var(--color-text-secondary, var(--text-muted));
+}
+
+.existing-setup-import__entries,
+.existing-setup-import__preview,
+.existing-setup-import__receipt {
+  display: grid;
+  gap: var(--space-3, 12px);
+  margin: 0;
+  padding: 0;
+}
+
+.existing-setup-import__entry {
+  display: grid;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--color-border, var(--border-primary));
+  border-radius: var(--radius-sm, 6px);
+  list-style: none;
+}
+
+.existing-setup-import__identity {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.existing-setup-import__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px) var(--space-4, 16px);
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+}
+
+.existing-setup-import__facts div {
+  display: grid;
+  gap: 2px;
+}
+.existing-setup-import__facts dt {
+  color: var(--color-text-secondary, var(--text-muted));
+}
+.existing-setup-import__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.existing-setup-import__facts code {
+  font-size: 0.9em;
+}
+
+.existing-setup-import__rename {
+  display: grid;
+  gap: var(--space-1, 4px);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.existing-setup-import__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+.existing-setup-import__error {
+  margin: 0;
+  color: var(--color-danger, #e53935);
+  font-size: var(--font-size-sm, 13px);
+}
+
+/* Same compact receipt-row presentation as the manual Skills importer, but
+   owned here so opening this workflow never pulls in browser file handling. */
+.existing-setup-import__outcomes {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+}
+.existing-setup-import__outcomes .import-modal__preview-item {
+  padding: 12px;
+}
+.existing-setup-import__outcomes .import-modal__preview-item:not(:last-child) {
+  border-bottom: 1px solid var(--border-primary);
+}
+.existing-setup-import__outcomes .import-modal__preview-item:nth-child(even) {
+  background: var(--bg-secondary);
+}
+.existing-setup-import__outcomes .import-modal__file-label {
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .existing-setup-import__heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .existing-setup-import__heading .button {
+    width: 100%;
+  }
+}

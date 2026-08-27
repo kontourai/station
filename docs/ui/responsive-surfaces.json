@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "ownerRules": [
+    {
+      "prefix": "packages/connect/",
+      "owner": "Station Connect"
+    },
+    {
+      "prefix": "src-ui/src/components/",
+      "owner": "UI Components"
+    },
+    {
+      "prefix": "src-ui/src/views/",
+      "owner": "Product Views"
+    }
+  ],
+  "actionInventory": "docs/ui/responsive-action-surfaces.txt",
+  "surfaces": [
+    {
+      "path": "packages/connect/src/react/ConnectionManagerModal.tsx",
+      "strategy": "covered",
+      "evidence": "tests/connect-modal.spec.ts"
+    },
+    {
+      "path": "packages/connect/src/react/ConnectionManagerModalContent.tsx",
+      "strategy": "covered",
+      "evidence": "tests/connect-modal.spec.ts"
+    },
+    {
+      "path": "src-ui/src/components/modals/AutoSelectModal.tsx",
+      "strategy": "covered",
+      "evidence": "packages/sdk/src/__tests__/AutoSelectModal.test.tsx"
+    },
+    {
+      "path": "src-ui/src/components/modals/ConfirmModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/components/modals/__tests__/ConfirmModal.test.tsx"
+    },
+    {
+      "path": "src-ui/src/components/modals/ImportSkillsModal.tsx",
+      "strategy": "covered",
+      "evidence": "src-ui/src/__tests__/ImportSkillsModal.test.tsx"
+    },
+    {
+      "path": "src-ui/src/components/modals/NewChatModal.tsx",
+      "strategy": "covered",
+      "evidence": "tests/new-chat-provider-managed.spec.ts"
+    },
+    {
+      "path": "src-ui/src/components/modals/NewProjectModal.tsx",
+      "strategy": "covered",
+      "evidence": "tests/project-forms.spec.ts"
+    },
+    {
+      "path": "src-ui/src/components/modals/NewProjectModalContent.tsx",
+      "strategy": "covered",
+      "evidence": "tests/project-forms.spec.ts"
+    },
+    {
+      "path": "src-ui/src/components/modals/PromptModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/components/modals/SkillRunModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/components/modals/SessionPickerModal.tsx",
+      "strategy": "covered",
+      "evidence": "packages/sdk/src/__tests__/AutoSelectModal.test.tsx"
+    },
+    {
+      "path": "src-ui/src/components/modals/UserDetailModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/components/acp-connections/ACPAddConnectionModal.tsx",
+      "strategy": "covered",
+      "evidence": "src-ui/src/__tests__/ACPAddConnectionModal.test.tsx"
+    },
+    {
+      "path": "src-ui/src/components/acp-connections/ACPConnectionDetailModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/components/badges/ComposerModeSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/ApprovalModeChip.test.tsx drives the sheet's radio rows, the full-access confirm step, and back-out; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer"
+    },
+    {
+      "path": "src-ui/src/components/chat/ShareTargetPickerModal.tsx",
+      "strategy": "covered",
+      "evidence": "src-ui/src/__tests__/ShareTargetPickerModal.test.tsx"
+    },
+    {
+      "path": "src-ui/src/components/chat/ToolCallBatchSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/ToolCallBatch.test.tsx opens the batch sheet, asserts every individual call is revealed, and pins the close control as a named button"
+    },
+    {
+      "path": "src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/BackgroundTasksSheet.test.tsx covers the shared responsive dialog, named close action, running rows, expandable finished actions, and empty state"
+    },
+    {
+      "path": "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "tests/mobile-chat-composer.spec.ts 320/390px overflow menu containment, 44px menuitems, Escape dismissal with trigger focus return"
+    },
+    {
+      "path": "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+      "strategy": "covered",
+      "evidence": "tests/mobile-chat-composer.spec.ts"
+    },
+    {
+      "path": "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/ChatDockProjectSwitcherSheet.test.tsx drives every row's Continue-in-<project> row action and demoted icon-only Open <project> action (#3319), the decorative Current flag, and empty state; src-ui/src/__tests__/ChatDockProjectContext.test.tsx and ChatDockMobileHeader.test.tsx cover the desktop-anchored and mobile-edge-sheet trigger sites; tests/cross-runtime-chat-switching.spec.ts proves the desktop anchored popover and mobile edge sheet in a real browser"
+    },
+    {
+      "path": "src-ui/src/components/coding-layout/NewTerminalModal.tsx",
+      "strategy": "covered",
+      "evidence": "tests/coding-layout-plan-panel.spec.ts"
+    },
+    {
+      "path": "src-ui/src/components/conversation-stats/ConversationStatsModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/components/scheduler/JobFormModal.tsx",
+      "strategy": "covered",
+      "evidence": "tests/schedule-runs.spec.ts"
+    },
+    {
+      "path": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/AgentAddModal.tsx",
+      "strategy": "covered",
+      "evidence": "responsive-surface-panel adoption; mobile action target contract"
+    },
+    {
+      "path": "src-ui/src/views/connections-hub/AddMachineModal.tsx",
+      "strategy": "covered",
+      "evidence": "src-ui/src/__tests__/AddMachineModal.test.tsx; renders through the shared `Dialog`, which composes ResponsiveDialogSurface and owns the mobile sheet geometry"
+    },
+    {
+      "path": "src-ui/src/views/integrations/DeleteIntegrationModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/plugin-management/FolderPickerModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/plugin-management/InstallPluginModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/plugin-management/InstallPreviewModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/plugin-management/LayoutAssignmentModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/plugin-management/PluginModalStack.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/project-page/ProjectKnowledgeScanModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/project-page/ProjectKnowledgeViewerModal.tsx",
+      "strategy": "covered",
+      "evidence": "responsive-surface-panel adoption; contained long-content scroll"
+    }
+  ]
+}

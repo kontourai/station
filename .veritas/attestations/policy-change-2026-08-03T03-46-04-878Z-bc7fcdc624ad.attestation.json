@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-08-03T03:46:04.878Z",
+  "repoStandardsHash": "sha256:732cc29af20e0c80028e383f2f8adda1ce4bd83cf63a2de966b54dda2d8f5402",
+  "repoMapHash": "sha256:830f704cc89388f1aafd66a600666c169c7234314973f037559589424e03a87d",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52",
+  "validUntilDays": 90,
+  "notes": "Promote trust-surfaces-name-their-gaps to Require per the owner-approved plan on station#1480, and reconcile every pre-1.5 rule from the inert `stage` field to `enforcementLevel` (station#1561, kontourai/veritas#188): block -> Require for required-station-governance-artifacts and forbid-shared-root-imports (both verified passing with zero violations), warn/recommend -> Guide for ai-instruction-files-synced and brownfield-gap-log-present. evidence-claims-anchor-to-executed-commands, read-paths-join-exactly-and-never-write and verification-conduct-sentinels-and-fault-injection are held at Guide with per-rule reasons recorded on station#1480.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-08-01T16-42-24-530Z-9b933b14ad52",
+    "approvalRef": "kontourai/station#1480",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "c23f64cc176524f6e836481ee9bed468381b418e6825bb8112b512f4b8b50bb7",
+        "validUntil": "2026-11-01T03:46:04.878Z"
+      },
+      "createdAt": "2026-08-03T03:46:04.878Z",
+      "updatedAt": "2026-08-03T03:46:04.878Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad",
+      "claimId": "veritas.attestation.policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Promote trust-surfaces-name-their-gaps to Require per the owner-approved plan on station#1480, and reconcile every pre-1.5 rule from the inert `stage` field to `enforcementLevel` (station#1561, kontourai/veritas#188): block -> Require for required-station-governance-artifacts and forbid-shared-root-imports (both verified passing with zero violations), warn/recommend -> Guide for ai-instruction-files-synced and brownfield-gap-log-present. evidence-claims-anchor-to-executed-commands, read-paths-join-exactly-and-never-write and verification-conduct-sentinels-and-fault-injection are held at Guide with per-rule reasons recorded on station#1480.",
+      "observedAt": "2026-08-03T03:46:04.878Z",
+      "collectedBy": "brian",
+      "integrityRef": "c23f64cc176524f6e836481ee9bed468381b418e6825bb8112b512f4b8b50bb7",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-08-03T03:46:04.878Z",
+        "validUntil": "2026-11-01T03:46:04.878Z",
+        "contentHash": "c23f64cc176524f6e836481ee9bed468381b418e6825bb8112b512f4b8b50bb7"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad.verified",
+      "claimId": "veritas.attestation.policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad"
+      ],
+      "createdAt": "2026-08-03T03:46:04.878Z",
+      "verifiedAt": "2026-08-03T03:46:04.878Z"
+    }
+  }
+}

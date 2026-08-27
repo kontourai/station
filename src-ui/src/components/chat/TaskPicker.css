@@ -1,0 +1,97 @@
+.task-picker {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.task-picker__trigger {
+  min-width: 44px;
+  min-height: 44px;
+  padding-inline: 0.35rem;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+.task-picker__trigger:focus-visible,
+.task-picker__task:focus-visible,
+.task-picker__search:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.task-picker__status {
+  display: inline-block;
+  margin-inline-start: 0.35rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.task-picker__dialog-body {
+  display: grid;
+  gap: 1rem;
+}
+.task-picker__search-label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.task-picker__search {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+}
+.task-picker__task-list {
+  display: grid;
+  max-height: min(46vh, 26rem);
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.task-picker__task {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.task-picker__task:hover,
+.task-picker__task--selected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-primary));
+}
+.task-picker__task-title,
+.task-picker__task-meta,
+.task-picker__submission-error {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.task-picker__task-title {
+  font-weight: 600;
+}
+.task-picker__task-meta {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.task-picker__submission-error {
+  margin: 0;
+  color: var(--error-text);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}

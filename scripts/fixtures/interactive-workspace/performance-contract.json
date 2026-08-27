@@ -1,0 +1,738 @@
+{
+  "contractVersion": "interactive-workspace-v3",
+  "fixtureCorpus": {
+    "id": "plain-text-100k-lines-v1",
+    "sha256": "54c4ad172e77b00770badb4630d5fbf0cd5c7657766108a4332abbde9c2df466"
+  },
+  "sampling": { "warmups": 5, "samples": 100 },
+  "degraded": { "maxPerFixture": 0, "maxTotal": 0 },
+  "referenceEnvironment": {
+    "name": "station-reference-desktop-win-v1",
+    "platform": "win32",
+    "buildMode": "production",
+    "maxArtifactAgeMs": 3600000,
+    "hardware": "Dedicated desktop-win Windows reference host; CPU, RAM, GPU, and display are collected from the adapter runtime, not workflow variables.",
+    "warmColdRules": "Every fixture runs five discarded warmups then exactly 100 measured iterations. Reference file-open evidence must attest a real fetched 100k-line corpus and its warm/cold action sequence."
+  },
+  "fixtures": [
+    {
+      "id": "local-input-apply",
+      "seam": "local-input/apply",
+      "fixture": "workspace-edit-sequence-v1",
+      "workloads": ["typing", "input-apply", "diff-render"],
+      "measurementPhases": {
+        "measured": [
+          {
+            "id": "typing",
+            "startMark": "inputAt",
+            "endMark": "handledAt",
+            "marks": ["inputAt", "handledAt"]
+          },
+          {
+            "id": "input-apply",
+            "startMark": "applyStartedAt",
+            "endMark": "modelCommittedAt",
+            "marks": ["applyStartedAt", "modelCommittedAt"]
+          },
+          {
+            "id": "diff-render",
+            "startMark": "renderStartedAt",
+            "endMark": "renderCommittedAt",
+            "marks": ["renderStartedAt", "renderCommittedAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "inputToModelCommitMs": {
+            "phase": "measured",
+            "start": ["typing", "inputAt"],
+            "end": ["input-apply", "modelCommittedAt"]
+          },
+          "interactionTaskMs": {
+            "phase": "measured",
+            "start": ["typing", "inputAt"],
+            "end": ["diff-render", "renderCommittedAt"]
+          }
+        },
+        "components": {
+          "inputDispatchMs": {
+            "phase": "measured",
+            "start": ["typing", "inputAt"],
+            "end": ["typing", "handledAt"]
+          },
+          "stateApplyMs": {
+            "phase": "measured",
+            "start": ["input-apply", "applyStartedAt"],
+            "end": ["input-apply", "modelCommittedAt"]
+          },
+          "renderCommitMs": {
+            "phase": "measured",
+            "start": ["diff-render", "renderStartedAt"],
+            "end": ["diff-render", "renderCommittedAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "inputDispatchMs",
+        "stateApplyMs",
+        "renderCommitMs"
+      ],
+      "metrics": [
+        {
+          "id": "inputToModelCommitMs",
+          "limits": [{ "stat": "p95Ms", "maxMs": 16 }]
+        },
+        {
+          "id": "interactionTaskMs",
+          "limits": [{ "stat": "maxMs", "maxMs": 50 }]
+        }
+      ],
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    },
+    {
+      "id": "remote-apply",
+      "seam": "remote-apply",
+      "fixture": "accepted-operation-apply-v1",
+      "workloads": [
+        "remote-ingress",
+        "transport",
+        "server-acceptance",
+        "authoritative-document-apply",
+        "render-commit"
+      ],
+      "measurementPhases": {
+        "measured": [
+          {
+            "id": "remote-ingress",
+            "startMark": "ingressStartedAt",
+            "endMark": "sentAt",
+            "marks": ["ingressStartedAt", "sentAt"]
+          },
+          {
+            "id": "transport",
+            "startMark": "transportStartedAt",
+            "endMark": "arrivedAt",
+            "marks": ["transportStartedAt", "arrivedAt"]
+          },
+          {
+            "id": "server-acceptance",
+            "startMark": "acceptanceStartedAt",
+            "endMark": "acceptedAt",
+            "marks": ["acceptanceStartedAt", "acceptedAt"]
+          },
+          {
+            "id": "authoritative-document-apply",
+            "startMark": "applyStartedAt",
+            "endMark": "appliedAt",
+            "marks": ["applyStartedAt", "appliedAt"]
+          },
+          {
+            "id": "render-commit",
+            "startMark": "renderStartedAt",
+            "endMark": "renderCommittedAt",
+            "marks": ["renderStartedAt", "renderCommittedAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "acceptedIngressToRenderCommitMs": {
+            "phase": "measured",
+            "start": ["server-acceptance", "acceptanceStartedAt"],
+            "end": ["render-commit", "renderCommittedAt"]
+          }
+        },
+        "components": {
+          "ingressSendMs": {
+            "phase": "measured",
+            "start": ["remote-ingress", "ingressStartedAt"],
+            "end": ["remote-ingress", "sentAt"]
+          },
+          "transportMs": {
+            "phase": "measured",
+            "start": ["transport", "transportStartedAt"],
+            "end": ["transport", "arrivedAt"]
+          },
+          "serverAcceptanceMs": {
+            "phase": "measured",
+            "start": ["server-acceptance", "acceptanceStartedAt"],
+            "end": ["server-acceptance", "acceptedAt"]
+          },
+          "authoritativeDocumentApplyMs": {
+            "phase": "measured",
+            "start": ["authoritative-document-apply", "applyStartedAt"],
+            "end": ["authoritative-document-apply", "appliedAt"]
+          },
+          "applyToLayoutCommitMs": {
+            "phase": "measured",
+            "start": ["authoritative-document-apply", "appliedAt"],
+            "end": ["render-commit", "renderCommittedAt"]
+          },
+          "renderCommitMs": {
+            "phase": "measured",
+            "start": ["render-commit", "renderStartedAt"],
+            "end": ["render-commit", "renderCommittedAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "ingressSendMs",
+        "transportMs",
+        "serverAcceptanceMs",
+        "authoritativeDocumentApplyMs",
+        "applyToLayoutCommitMs",
+        "renderCommitMs"
+      ],
+      "metrics": [
+        {
+          "id": "acceptedIngressToRenderCommitMs",
+          "limits": [{ "stat": "p95Ms", "maxMs": 16 }]
+        }
+      ],
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    },
+    {
+      "id": "synthetic-collaboration",
+      "seam": "end-to-end-collaboration",
+      "fixture": "two-participant-same-region-v1",
+      "workloads": ["remote-ingress", "participant-update", "cursor-update"],
+      "measurementPhases": {
+        "measured": [
+          {
+            "id": "remote-ingress",
+            "startMark": "ingressStartedAt",
+            "endMark": "sentAt",
+            "marks": ["ingressStartedAt", "sentAt"]
+          },
+          {
+            "id": "participant-update",
+            "startMark": "presenceStartedAt",
+            "endMark": "presenceVisibleAt",
+            "marks": ["presenceStartedAt", "presenceVisibleAt"]
+          },
+          {
+            "id": "cursor-update",
+            "startMark": "cursorStartedAt",
+            "endMark": "cursorVisibleAt",
+            "marks": ["cursorStartedAt", "cursorVisibleAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "operationVisibilityMs": {
+            "phase": "measured",
+            "start": ["remote-ingress", "ingressStartedAt"],
+            "end": ["cursor-update", "cursorVisibleAt"]
+          }
+        },
+        "components": {
+          "transportMs": {
+            "phase": "measured",
+            "start": ["remote-ingress", "ingressStartedAt"],
+            "end": ["remote-ingress", "sentAt"]
+          },
+          "participantPresenceMs": {
+            "phase": "measured",
+            "start": ["participant-update", "presenceStartedAt"],
+            "end": ["participant-update", "presenceVisibleAt"]
+          },
+          "cursorVisibilityMs": {
+            "phase": "measured",
+            "start": ["cursor-update", "cursorStartedAt"],
+            "end": ["cursor-update", "cursorVisibleAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "transportMs",
+        "participantPresenceMs",
+        "cursorVisibilityMs"
+      ],
+      "metrics": [
+        {
+          "id": "operationVisibilityMs",
+          "limits": [{ "stat": "p95Ms", "maxMs": 150 }]
+        }
+      ],
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    },
+    {
+      "id": "open-100k-lines",
+      "seam": "file-open/scroll/diff-render",
+      "fixture": "plain-text-100k-lines-v1",
+      "workloads": ["file-open", "scroll", "diff-render"],
+      "measurementPhases": {
+        "warm": [
+          {
+            "id": "file-open",
+            "startMark": "openStartedAt",
+            "endMark": "editableAt",
+            "marks": ["openStartedAt", "editableAt"]
+          },
+          {
+            "id": "scroll",
+            "startMark": "scrollStartedAt",
+            "endMark": "scrollRenderedAt",
+            "marks": ["scrollStartedAt", "scrollRenderedAt"]
+          },
+          {
+            "id": "diff-render",
+            "startMark": "diffStartedAt",
+            "endMark": "diffRenderedAt",
+            "marks": ["diffStartedAt", "diffRenderedAt"]
+          }
+        ],
+        "cold": [
+          {
+            "id": "file-open",
+            "startMark": "openStartedAt",
+            "endMark": "editableAt",
+            "marks": ["openStartedAt", "editableAt"]
+          },
+          {
+            "id": "scroll",
+            "startMark": "scrollStartedAt",
+            "endMark": "scrollRenderedAt",
+            "marks": ["scrollStartedAt", "scrollRenderedAt"]
+          },
+          {
+            "id": "diff-render",
+            "startMark": "diffStartedAt",
+            "endMark": "diffRenderedAt",
+            "marks": ["diffStartedAt", "diffRenderedAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "warmEditableMs": {
+            "phase": "warm",
+            "start": ["file-open", "openStartedAt"],
+            "end": ["diff-render", "diffRenderedAt"]
+          },
+          "coldEditableMs": {
+            "phase": "cold",
+            "start": ["file-open", "openStartedAt"],
+            "end": ["diff-render", "diffRenderedAt"]
+          }
+        },
+        "components": {
+          "warmFileOpenMs": {
+            "phase": "warm",
+            "start": ["file-open", "openStartedAt"],
+            "end": ["file-open", "editableAt"]
+          },
+          "coldFileOpenMs": {
+            "phase": "cold",
+            "start": ["file-open", "openStartedAt"],
+            "end": ["file-open", "editableAt"]
+          },
+          "warmScrollMs": {
+            "phase": "warm",
+            "start": ["scroll", "scrollStartedAt"],
+            "end": ["scroll", "scrollRenderedAt"]
+          },
+          "coldScrollMs": {
+            "phase": "cold",
+            "start": ["scroll", "scrollStartedAt"],
+            "end": ["scroll", "scrollRenderedAt"]
+          },
+          "warmDiffRenderMs": {
+            "phase": "warm",
+            "start": ["diff-render", "diffStartedAt"],
+            "end": ["diff-render", "diffRenderedAt"]
+          },
+          "coldDiffRenderMs": {
+            "phase": "cold",
+            "start": ["diff-render", "diffStartedAt"],
+            "end": ["diff-render", "diffRenderedAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "warmFileOpenMs",
+        "coldFileOpenMs",
+        "warmScrollMs",
+        "coldScrollMs",
+        "warmDiffRenderMs",
+        "coldDiffRenderMs"
+      ],
+      "metrics": [
+        {
+          "id": "warmEditableMs",
+          "limits": [
+            { "stat": "p95Ms", "maxMs": 1000 },
+            { "stat": "maxMs", "maxMs": 1000 }
+          ]
+        },
+        {
+          "id": "coldEditableMs",
+          "limits": [
+            { "stat": "p95Ms", "maxMs": 2000 },
+            { "stat": "maxMs", "maxMs": 2000 }
+          ]
+        }
+      ],
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    },
+    {
+      "id": "reconnect-10k-operations",
+      "seam": "reconnect/fallback",
+      "fixture": "retained-operations-10k-v1",
+      "workloads": [
+        "reconnect",
+        "replay-apply",
+        "snapshot-fallback",
+        "render-commit"
+      ],
+      "measurementPhases": {
+        "retained": [
+          {
+            "id": "reconnect",
+            "startMark": "reconnectStartedAt",
+            "endMark": "transportReadyAt",
+            "marks": ["reconnectStartedAt", "transportReadyAt"]
+          },
+          {
+            "id": "replay-apply",
+            "startMark": "replayStartedAt",
+            "endMark": "replayAppliedAt",
+            "marks": ["replayStartedAt", "replayAppliedAt"]
+          },
+          {
+            "id": "render-commit",
+            "startMark": "renderStartedAt",
+            "endMark": "renderCommittedAt",
+            "marks": ["renderStartedAt", "renderCommittedAt"]
+          }
+        ],
+        "fallback": [
+          {
+            "id": "snapshot-fallback",
+            "startMark": "fallbackStartedAt",
+            "endMark": "fallbackAppliedAt",
+            "marks": ["fallbackStartedAt", "fallbackAppliedAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "replayAndRenderMs": {
+            "phase": "retained",
+            "start": ["replay-apply", "replayStartedAt"],
+            "end": ["render-commit", "renderCommittedAt"]
+          }
+        },
+        "components": {
+          "transportMs": {
+            "phase": "retained",
+            "start": ["reconnect", "reconnectStartedAt"],
+            "end": ["reconnect", "transportReadyAt"]
+          },
+          "replayApplyMs": {
+            "phase": "retained",
+            "start": ["replay-apply", "replayStartedAt"],
+            "end": ["replay-apply", "replayAppliedAt"]
+          },
+          "snapshotFallbackMs": {
+            "phase": "fallback",
+            "start": ["snapshot-fallback", "fallbackStartedAt"],
+            "end": ["snapshot-fallback", "fallbackAppliedAt"]
+          },
+          "renderCommitMs": {
+            "phase": "retained",
+            "start": ["render-commit", "renderStartedAt"],
+            "end": ["render-commit", "renderCommittedAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "transportMs",
+        "replayApplyMs",
+        "snapshotFallbackMs",
+        "renderCommitMs"
+      ],
+      "metrics": [
+        {
+          "id": "replayAndRenderMs",
+          "limits": [
+            { "stat": "p95Ms", "maxMs": 2000 },
+            { "stat": "maxMs", "maxMs": 2000 }
+          ]
+        }
+      ],
+      "fallback": {
+        "retainedOperations": 10000,
+        "beyondWindowStrategy": "snapshot"
+      },
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    },
+    {
+      "id": "long-session-bounded-growth",
+      "seam": "long-session-retention",
+      "fixture": "one-hour-production-collaboration-v1",
+      "workloads": ["participant-update", "cursor-update", "long-session"],
+      "measurementPhases": {
+        "measured": [
+          {
+            "id": "participant-update",
+            "startMark": "presenceStartedAt",
+            "endMark": "presenceAppliedAt",
+            "marks": ["presenceStartedAt", "presenceAppliedAt"]
+          },
+          {
+            "id": "cursor-update",
+            "startMark": "cursorStartedAt",
+            "endMark": "cursorVisibleAt",
+            "marks": ["cursorStartedAt", "cursorVisibleAt"]
+          },
+          {
+            "id": "long-session",
+            "startMark": "bookkeepingStartedAt",
+            "endMark": "bookkeepingFinishedAt",
+            "marks": ["bookkeepingStartedAt", "bookkeepingFinishedAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "operationVisibilityMs": {
+            "phase": "measured",
+            "start": ["participant-update", "presenceStartedAt"],
+            "end": ["cursor-update", "cursorVisibleAt"]
+          }
+        },
+        "components": {
+          "participantPresenceMs": {
+            "phase": "measured",
+            "start": ["participant-update", "presenceStartedAt"],
+            "end": ["participant-update", "presenceAppliedAt"]
+          },
+          "cursorVisibilityMs": {
+            "phase": "measured",
+            "start": ["cursor-update", "cursorStartedAt"],
+            "end": ["cursor-update", "cursorVisibleAt"]
+          },
+          "sessionBookkeepingMs": {
+            "phase": "measured",
+            "start": ["long-session", "bookkeepingStartedAt"],
+            "end": ["long-session", "bookkeepingFinishedAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "participantPresenceMs",
+        "cursorVisibilityMs",
+        "sessionBookkeepingMs"
+      ],
+      "metrics": [
+        {
+          "id": "operationVisibilityMs",
+          "limits": [{ "stat": "p95Ms", "maxMs": 150 }]
+        }
+      ],
+      "duration": { "referenceDurationMs": 3600000 },
+      "growth": {
+        "retainedUiNodes": { "maxDelta": 0 },
+        "listeners": { "maxDelta": 0 },
+        "perOperationBookkeeping": { "maxDelta": 0 }
+      },
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    },
+    {
+      "id": "work-board-200-pins-v1",
+      "seam": "work-board/restore-resolution-interaction",
+      "fixture": "work-board-200-pins-v1",
+      "workloads": [
+        "board-cold-restore",
+        "board-warm-restore",
+        "board-grouped-live-resolution-commit",
+        "board-keyboard-move-resize",
+        "board-pointer-move-resize"
+      ],
+      "measurementPhases": {
+        "measured": [
+          {
+            "id": "board-cold-restore",
+            "startMark": "restoreStartedAt",
+            "endMark": "restoreCommittedAt",
+            "marks": ["restoreStartedAt", "restoreCommittedAt"]
+          },
+          {
+            "id": "board-warm-restore",
+            "startMark": "restoreStartedAt",
+            "endMark": "restoreCommittedAt",
+            "marks": ["restoreStartedAt", "restoreCommittedAt"]
+          },
+          {
+            "id": "board-grouped-live-resolution-commit",
+            "startMark": "resolutionStartedAt",
+            "endMark": "resolutionCommittedAt",
+            "marks": ["resolutionStartedAt", "resolutionCommittedAt"]
+          },
+          {
+            "id": "board-keyboard-move-resize",
+            "startMark": "interactionStartedAt",
+            "endMark": "interactionCommittedAt",
+            "marks": ["interactionStartedAt", "interactionCommittedAt"]
+          },
+          {
+            "id": "board-pointer-move-resize",
+            "startMark": "interactionStartedAt",
+            "endMark": "interactionCommittedAt",
+            "marks": ["interactionStartedAt", "interactionCommittedAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "coldRestoreMs": {
+            "phase": "measured",
+            "start": ["board-cold-restore", "restoreStartedAt"],
+            "end": ["board-cold-restore", "restoreCommittedAt"]
+          },
+          "warmRestoreMs": {
+            "phase": "measured",
+            "start": ["board-warm-restore", "restoreStartedAt"],
+            "end": ["board-warm-restore", "restoreCommittedAt"]
+          },
+          "interactionTaskMs": {
+            "phase": "measured",
+            "start": ["board-keyboard-move-resize", "interactionStartedAt"],
+            "end": ["board-pointer-move-resize", "interactionCommittedAt"]
+          }
+        },
+        "components": {
+          "coldRestoreMs": {
+            "phase": "measured",
+            "start": ["board-cold-restore", "restoreStartedAt"],
+            "end": ["board-cold-restore", "restoreCommittedAt"]
+          },
+          "warmRestoreMs": {
+            "phase": "measured",
+            "start": ["board-warm-restore", "restoreStartedAt"],
+            "end": ["board-warm-restore", "restoreCommittedAt"]
+          },
+          "groupedLiveResolutionCommitMs": {
+            "phase": "measured",
+            "start": [
+              "board-grouped-live-resolution-commit",
+              "resolutionStartedAt"
+            ],
+            "end": [
+              "board-grouped-live-resolution-commit",
+              "resolutionCommittedAt"
+            ]
+          },
+          "keyboardMoveResizeMs": {
+            "phase": "measured",
+            "start": ["board-keyboard-move-resize", "interactionStartedAt"],
+            "end": ["board-keyboard-move-resize", "interactionCommittedAt"]
+          },
+          "pointerMoveResizeMs": {
+            "phase": "measured",
+            "start": ["board-pointer-move-resize", "interactionStartedAt"],
+            "end": ["board-pointer-move-resize", "interactionCommittedAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "coldRestoreMs",
+        "warmRestoreMs",
+        "groupedLiveResolutionCommitMs",
+        "keyboardMoveResizeMs",
+        "pointerMoveResizeMs"
+      ],
+      "metrics": [
+        {
+          "id": "coldRestoreMs",
+          "limits": [
+            { "stat": "p95Ms", "maxMs": 2000 },
+            { "stat": "maxMs", "maxMs": 2000 }
+          ]
+        },
+        {
+          "id": "warmRestoreMs",
+          "limits": [
+            { "stat": "p95Ms", "maxMs": 1000 },
+            { "stat": "maxMs", "maxMs": 1000 }
+          ]
+        },
+        {
+          "id": "interactionTaskMs",
+          "limits": [
+            { "stat": "p95Ms", "maxMs": 16 },
+            { "stat": "maxMs", "maxMs": 50 }
+          ]
+        }
+      ],
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    },
+    {
+      "id": "work-board-one-hour-v1",
+      "seam": "work-board/one-hour-retention",
+      "fixture": "work-board-one-hour-v1",
+      "workloads": ["board-live-resolution", "board-interaction-bookkeeping"],
+      "measurementPhases": {
+        "measured": [
+          {
+            "id": "board-live-resolution",
+            "startMark": "resolutionStartedAt",
+            "endMark": "resolutionCommittedAt",
+            "marks": ["resolutionStartedAt", "resolutionCommittedAt"]
+          },
+          {
+            "id": "board-interaction-bookkeeping",
+            "startMark": "bookkeepingStartedAt",
+            "endMark": "bookkeepingFinishedAt",
+            "marks": ["bookkeepingStartedAt", "bookkeepingFinishedAt"]
+          }
+        ]
+      },
+      "derivation": {
+        "metrics": {
+          "interactionTaskMs": {
+            "phase": "measured",
+            "start": ["board-live-resolution", "resolutionStartedAt"],
+            "end": ["board-interaction-bookkeeping", "bookkeepingFinishedAt"]
+          }
+        },
+        "components": {
+          "groupedLiveResolutionCommitMs": {
+            "phase": "measured",
+            "start": ["board-live-resolution", "resolutionStartedAt"],
+            "end": ["board-live-resolution", "resolutionCommittedAt"]
+          },
+          "interactionBookkeepingMs": {
+            "phase": "measured",
+            "start": ["board-interaction-bookkeeping", "bookkeepingStartedAt"],
+            "end": ["board-interaction-bookkeeping", "bookkeepingFinishedAt"]
+          }
+        }
+      },
+      "requiredComponents": [
+        "groupedLiveResolutionCommitMs",
+        "interactionBookkeepingMs"
+      ],
+      "metrics": [
+        {
+          "id": "interactionTaskMs",
+          "limits": [
+            { "stat": "p95Ms", "maxMs": 16 },
+            { "stat": "maxMs", "maxMs": 50 }
+          ]
+        }
+      ],
+      "duration": { "referenceDurationMs": 3600000 },
+      "growth": {
+        "boardDomNodes": { "maxDelta": 0 },
+        "boardListeners": { "maxDelta": 0 },
+        "boardPendingInteractions": { "maxDelta": 0 },
+        "boardQueryCacheEntries": { "maxDelta": 0 }
+      },
+      "decision": { "onPass": "keep", "onFail": "optimize" }
+    }
+  ]
+}

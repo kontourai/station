@@ -1,0 +1,103 @@
+.project-layout-catalog,
+.project-layout-catalog__list {
+  display: grid;
+  gap: 8px;
+}
+
+.project-layout-catalog__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.project-layout-catalog__item:hover {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 4%, var(--bg-secondary));
+}
+
+.project-layout-catalog__item--selected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-secondary));
+}
+
+.project-layout-catalog__item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.project-layout-catalog__item:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.project-layout-catalog__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+}
+
+.project-layout-catalog__info {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.project-layout-catalog__info strong {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.project-layout-catalog__info small {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.project-layout-catalog__metadata {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.project-layout-catalog__badge {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.project-layout-catalog__badge--added {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: color-mix(in srgb, var(--success-text) 12%, transparent);
+  color: var(--success-text);
+  font-weight: 650;
+}
+
+.project-layout-catalog .skeleton-list {
+  margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .project-layout-catalog__item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .project-layout-catalog__metadata {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

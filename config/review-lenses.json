@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "lenses": [
+    {
+      "id": "runtime",
+      "nodeIds": ["product.src-server", "product.src-shared"],
+      "instructions": "Assess server and shared-runtime behavior, failure paths, and contract boundaries. Findings are evidence input only."
+    },
+    {
+      "id": "ui",
+      "nodeIds": ["product.src-ui"],
+      "instructions": "Assess user-visible behavior, state transitions, accessibility, and SDK-bound data access. Findings are evidence input only."
+    },
+    {
+      "id": "public-contracts",
+      "nodeIds": [
+        "package.contracts",
+        "package.sdk",
+        "package.connect",
+        "package.cli",
+        "package.shared"
+      ],
+      "instructions": "Assess compatibility, validation, and CLI, SDK, and API parity. Findings are evidence input only."
+    },
+    {
+      "id": "evidence",
+      "nodeIds": [
+        "product.src-server.evidence-services",
+        "product.src-ui.trust-surfaces",
+        "governance.veritas",
+        "governance.flow"
+      ],
+      "instructions": "Assess provenance, durable evidence, and whether uncertainty remains explicitly disclosed. Findings are evidence input only."
+    },
+    {
+      "id": "verification",
+      "nodeIds": [
+        "tooling.scripts",
+        "verification.tests",
+        "delivery.github",
+        "governance.root-manifests"
+      ],
+      "instructions": "Assess whether changed verification and delivery behavior proves what it claims, including fault and boundary cases. Findings are evidence input only."
+    },
+    {
+      "id": "native",
+      "nodeIds": ["product.src-desktop"],
+      "instructions": "Assess desktop and native-platform behavior, isolation, and platform-specific failure modes. Findings are evidence input only."
+    }
+  ]
+}

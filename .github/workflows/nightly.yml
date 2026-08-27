@@ -1,0 +1,836 @@
+name: Nightly
+
+# One build per day, not one per push. "Nightly" is a claim about cadence, so
+# it is derived from a date; a day with no new commit produces no build, since
+# a new version number over identical content is a version number that lies.
+#
+# Ships to the Play internal testing track under its OWN applicationId
+# (io.kontourai.station.nightly), so its version-code line never entangles
+# with production's. See scripts/lib/nightly-build-identity.mjs for why, and
+# station#2211 for the channel model.
+#
+# station#4539: the `test-gate` job below runs the nightly's tests on the
+# exact commit this workflow ships, and the `nightly` build/publish job
+# requires its 'success' result before any build step can start. That closes
+# the ships-with-zero-tests mechanism — nothing broader. The pr-smoke suite
+# exercises Station as a same-machine loopback browser caller (temp home,
+# dynamic loopback ports) — and its two chat specs mock the chat endpoints
+# outright, so no real turn is dispatched — exactly the context where
+# station#4518's paired-device principal break was invisible, and none of
+# its four specs touch device sessions or pairing. Paired-device journey coverage is
+# separate, open work (station#4537 item 1).
+#
+# Deliberately self-hosted: build-android.yml already builds Android on this
+# fleet, so the nightly does not depend on provider-hosted capacity. Adding a
+# new workflow to the fleet requires it in the "Kontour Build Fleet" runner
+# group's allow-list — until then its jobs queue rather than run.
+on:
+  schedule:
+    # 09:00 UTC — early morning in the maintainer's timezone, so a day's work
+    # starts against a build of the previous day's merges.
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      rebuild_index:
+        description: 'Optional same-day rebuild index (0-99), not a boolean. Leave empty to build the latest main once; an explicit index must be unused and above existing same-day reservations.'
+        required: false
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  test-gate:
+    name: Nightly test gate (station#4539)
+    # Before station#4539 this workflow built and published with zero test
+    # steps, so a nightly could ship with core journeys broken and nothing
+    # red in the nightly lane. This gate closes that ships-with-zero-tests
+    # mechanism and claims nothing more: the pr-smoke suite is the same
+    # same-machine loopback caller described in the header comment, so
+    # paired-device journeys stay uncovered (station#4537 item 1, open).
+    # What actually runs: `npm run lint:check`, `npm run build:connect`
+    # (precondition for the typecheck aggregate), `node
+    # scripts/typecheck-aggregate.mjs`, and `npm run test:e2e:pr-smoke` —
+    # two of run-ci-fast.mjs's eight FAST_STATIC_COMMANDS plus lint:check,
+    # not "the fast static checks" as a class. It is a nightly gate, not
+    # full:regression, so it stays bounded to the same suites ci.yml's
+    # fast-checks and browser-smoke jobs already run.
+    #
+    # The only `if:` is the pull_request exclusion the persistent-runner
+    # policy requires; this workflow's triggers are schedule and
+    # workflow_dispatch, neither of which is a pull_request, so on every
+    # actual nightly run this job runs and cannot be skipped into a
+    # green-looking result. It also still runs on days the build job's
+    # `decide` step finds nothing to build.
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Same workflow run as the build job, and both jobs resolve this
+          # same immutable event SHA; writing it out keeps the "exact commit
+          # the nightly ships" contract readable.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          # Same weight as ci.yml's browser-smoke job: the same work on the
+          # same single persistent listener. The build job's weight-9 lease
+          # cannot be admitted until this lease is released, and it cannot
+          # start before this job finishes anyway.
+          #
+          # Disclosure: this lease deliberately precedes the nightly job's
+          # operator-input prevalidation (rebuild-index validation runs in
+          # that job, after this capacity is already held — for up to 45
+          # minutes). Hoisting prevalidation ahead of the gate would need a
+          # third prevalidation job, which was reviewed and rejected as
+          # over-build; the malformed-input cost is a wasted gate run, not
+          # a wasted build.
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+
+      - run: npm run dependencies:ci
+
+      - name: Lint
+        run: npm run lint:check
+
+      # build:connect is a precondition for the typecheck aggregate, not a
+      # build for its own sake: typecheck:ui resolves @kontourai/station-connect
+      # through packages/connect/dist, which is gitignored and absent from a
+      # fresh checkout (station#4273). The aggregate is invoked directly
+      # rather than via `npm run typecheck`, which chains dist:freshness
+      # ahead of it and would fail on the equally unbuilt packages/cli/dist
+      # before any lane ran — the same reasoning scripts/run-ci-fast.mjs
+      # records for the identical invocation in ci:fast.
+      - run: npm run build:connect
+      - name: Typecheck
+        run: node scripts/typecheck-aggregate.mjs
+
+      - name: Install Chromium
+        # Persistent-$HOME convention (station#3453): this fleet is a single
+        # persistent listener, so a browser downloaded on one run survives to
+        # the next with no cache step. Bounded and retried per station#3517.
+        # run-e2e-suite.mjs fails loud when Chromium is missing
+        # (assertPlaywrightBrowsersInstalled), so a broken install reddens
+        # this gate rather than silently skipping the smoke.
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
+
+      - name: Run deterministic browser smoke
+        # The same pr-smoke suite ci.yml's browser-smoke job runs: the four
+        # core-journey specs named by PR_BROWSER_SMOKE_CONTRACT in
+        # tests/e2e-manifest.mjs, booted by scripts/run-e2e-suite.mjs against
+        # a temp-home Station on dynamic loopback ports.
+        timeout-minutes: 10
+        env:
+          PW_REPORTER: line,html
+        run: npm run test:e2e:pr-smoke
+
+      - name: Upload test-gate diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # Diagnostics: a storage/quota failure here is an infrastructure
+        # condition, not a verdict on the code. It must not redden a gate
+        # whose checks passed (station#2218).
+        continue-on-error: true
+        with:
+          name: nightly-test-gate-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  nightly:
+    needs: [test-gate]
+    # Fail-loud and fail-closed (station#4539): `always()` forces this
+    # condition to be evaluated even when the test gate failed, was
+    # cancelled, or was skipped, and the explicit result check admits only
+    # a gate that actually ran and passed — so no gate result other than
+    # 'success' can publish a nightly. GitHub's default needs-skip already
+    # withholds this job on failure; writing the contract out keeps a future
+    # careless `if: always()` or a dropped needs edge from reintroducing the
+    # silent-skip hole where a nightly publishes with the gate never run.
+    # The conjunct ORDER below is load-bearing, not stylistic:
+    # scripts/actionlint-gate.mjs's skipsAutomaticPullRequest accepts only
+    # the literal prefix ladder ending in `github.event_name !=
+    # 'pull_request'`, so reordering the conjuncts reddens gate:workflows.
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    timeout-minutes: 90
+    env:
+      GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
+      ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+      ANDROID_UPLOAD_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
+      # Pin the verification tools to the build-tools revision installed below;
+      # setup-android exposes sdkmanager, not the build-tools binaries on PATH.
+      ANDROID_BUILD_TOOLS_VERSION: "36.0.0"
+      # Optional trusted build default; no deployment-specific host is tracked.
+      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Written out rather than left to checkout's implicit default: the
+          # gate job checks out the same immutable event SHA, so the SHA the
+          # tests verdict applies to stays identical to the SHA this job
+          # builds and ships even if that default ever changes.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Validate requested Nightly rebuild index
+        env:
+          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
+        shell: bash
+        run: |
+          node --input-type=module -e '
+            import { parseNightlyRebuildIndex } from "./scripts/lib/nightly-build-identity.mjs";
+            parseNightlyRebuildIndex(process.env.NIGHTLY_REBUILD_INDEX);
+          '
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "9"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      - name: Decide whether there is anything to build
+        id: decide
+        env:
+          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
+        run: |
+          # The rolling `nightly` tag records the commit the last nightly was
+          # cut from. If main has not moved, publishing again would mint a new
+          # version code for identical bytes. An explicit manual index is the
+          # narrow exception: allocation will still reject any reused/lower
+          # code before this job can build it.
+          head_sha=$(git rev-parse HEAD)
+          last_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          if [ "$head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]; then
+            echo "::notice::main has not moved since the last nightly ($head_sha); nothing to build."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reserve a monotonic nightly version code
+        if: steps.decide.outputs.build == 'true'
+        id: allocate
+        env:
+          NIGHTLY_REQUESTED_BUILD: ${{ inputs.rebuild_index }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Reservations happen before the build. A failed job can still leave
+          # an installable artifact, so retrying its code would not be safe.
+          # Checkout deliberately leaves no credential behind. Supply the
+          # step token to the authenticated read through its ephemeral
+          # environment; never put it in the remote URL or repository config.
+          nightly_git() {
+            GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0='http.https://github.com/.extraheader' \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')" \
+              git "$@"
+          }
+          reservation_remote="https://github.com/${{ github.repository }}"
+          NIGHTLY_NOW="$(date -u +%Y-%m-%dT00:00:00Z)"
+          export NIGHTLY_NOW
+          # Consumed by the allocation subprocess.
+          # shellcheck disable=SC2034
+          export NIGHTLY_RESERVED_TAGS
+          head_sha="${{ steps.decide.outputs.head_sha }}"
+          reservation_created=false
+          for attempt in $(seq 1 100); do
+            # Re-read immediately before every allocation. The concurrency
+            # group serializes normal runs, while this closes the remaining
+            # collision window against a manually created reservation tag.
+            NIGHTLY_RESERVED_TAGS=$(nightly_git ls-remote --refs "$reservation_remote" 'refs/tags/nightly-version-code/*')
+            allocation_output=$(mktemp)
+            allocation=$(GITHUB_OUTPUT="$allocation_output" node scripts/allocate-nightly-version-code.mjs)
+            printf '%s\n' "$allocation"
+            tag=$(printf '%s\n' "$allocation" | awk -F= '$1 == "reservation_tag" { print $2 }')
+            version_code=$(printf '%s\n' "$allocation" | awk -F= '$1 == "version_code" { print $2 }')
+            test -n "$tag"
+            test -n "$version_code"
+            reservation_ref="refs/tags/$tag"
+            request_body=$(node --input-type=module -e '
+              process.stdout.write(JSON.stringify({
+                ref: process.argv[1],
+                sha: process.argv[2],
+              }));
+            ' "$reservation_ref" "$head_sha")
+            reservation_response=$(mktemp)
+            status=$(curl --silent --show-error \
+              --output "$reservation_response" \
+              --max-filesize 65536 \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer $GITHUB_TOKEN" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              --url "$GITHUB_API_URL/repos/${{ github.repository }}/git/refs" \
+              --data "$request_body")
+            if ! classification=$(node scripts/classify-nightly-reservation-response.mjs \
+              "$status" "$reservation_response" "$reservation_ref" "$head_sha"); then
+              rm -f "$allocation_output" "$reservation_response"
+              echo '::error::Nightly version-code reservation response could not be validated.'
+              exit 1
+            fi
+            if [ "$classification" = 'created' ]; then
+              cat "$allocation_output" >> "$GITHUB_OUTPUT"
+              rm -f "$allocation_output" "$reservation_response"
+              reservation_created=true
+              break
+            fi
+            if [ "$classification" = 'reference-already-exists' ]; then
+              collision_ref=$(nightly_git ls-remote --refs "$reservation_remote" "$reservation_ref")
+              if ! printf '%s\n' "$collision_ref" | awk -v expected="$reservation_ref" '
+                NF == 2 && $2 == expected { matches += 1 }
+                END { exit matches == 1 ? 0 : 1 }
+              '; then
+                rm -f "$allocation_output" "$reservation_response"
+                echo '::error::GitHub reported an existing Nightly reservation, but the exact ref was not observable.'
+                exit 1
+              fi
+              rm -f "$allocation_output" "$reservation_response"
+              echo "::notice::Nightly reservation tag collision for $tag on attempt $attempt; allocating again."
+              continue
+            fi
+            rm -f "$allocation_output" "$reservation_response"
+            echo "::error::Nightly version-code reservation API returned HTTP $status."
+            exit 1
+          done
+          if [ "$reservation_created" != true ]; then
+            echo '::error::Nightly version-code reservation did not converge after 100 attempts.'
+            exit 1
+          fi
+          unset -f nightly_git
+
+      - name: Derive nightly build identity
+        if: steps.decide.outputs.build == 'true'
+        id: identity
+        run: |
+          # Allocation has already reserved a code, so the config and web
+          # build consume one exact identity even across midnight.
+          node scripts/lib/nightly-build-identity.mjs \
+            --package-json package.json \
+            --tauri-config src-desktop/tauri.conf.json \
+            --date "$NIGHTLY_NOW" \
+            --build "$NIGHTLY_BUILD" \
+            --output "$NIGHTLY_CONFIG_PATH" \
+            --github-output "$GITHUB_OUTPUT"
+        env:
+          NIGHTLY_NOW: ${{ steps.allocate.outputs.date }}
+          NIGHTLY_BUILD: ${{ steps.allocate.outputs.build }}
+          NIGHTLY_CONFIG_PATH: ${{ runner.temp }}/tauri.nightly.conf.json
+
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.decide.outputs.build == 'true'
+        with: { node-version-file: .nvmrc }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        if: steps.decide.outputs.build == 'true'
+        with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        if: steps.decide.outputs.build == 'true'
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        if: steps.decide.outputs.build == 'true'
+      - run: sdkmanager "ndk;27.0.12077973" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+        if: steps.decide.outputs.build == 'true'
+
+      - run: npm run dependencies:ci && npm run build:sdk && npm run build:connect && STATION_BUILD_VERSION="${{ steps.identity.outputs.version }}" npm run build:desktop:resources
+        if: steps.decide.outputs.build == 'true'
+
+      # @kontourai/station-cli nightly publish (station#4536). Independent of
+      # the Android pipeline above and below: it shares only `dependencies:ci`
+      # and `id-token: write`, already present for the whole job. A missing
+      # npm trusted publisher for this package must never fail this job's
+      # primary purpose (the Android nightly build) — it fails closed on the
+      # one thing it gates (no unauthenticated or token-based CLI publish,
+      # ever) with a loud `::notice::` naming the manual registry steps,
+      # mirroring this file's own established shape for an optional
+      # integration that is not configured yet (the Play upload steps below,
+      # which skip-with-notice on a missing GCP variable rather than failing
+      # the job). A genuine environment break — no id-token permission, a
+      # stray NPM_TOKEN, an npm version below the trusted-publishing floor —
+      # still fails loud, because those are workflow bugs, not registry-side
+      # setup lag.
+      # Reuses the day-number-derived `-nightly.<n>` scheme
+      # `nightlyVersion()` already applies to the Android version name, over
+      # the CLI package's OWN version (0.6.0), not the root package.json's.
+      # `steps.allocate.outputs.date` is the same UTC day boundary the
+      # Android identity above was derived from, so both artifacts built by
+      # this run carry the same day number. Note: unlike the Android version
+      # CODE, which is monotonic per `build` index, this version STRING is
+      # not — an explicit same-day manual rebuild (`inputs.rebuild_index`)
+      # would collide with an already-published npm version and fail the
+      # publish step below loudly, which is the correct fail-closed answer
+      # (never a silent republish), not a defect to work around here.
+      #
+      # Computed BEFORE the build, not after: the CLI bundle bakes its own
+      # `package.json` version and `STATION_CLI_BUILD_CHANNEL` in at build
+      # time (`packages/cli/build-metadata.mjs`, read by
+      # `esbuild.config.mjs`) into `globalThis.__STATION_CLI_BUNDLE__`, which
+      # is what `station --version` reports. Building first and versioning
+      # after (the original order here) baked in the wrong npm version and
+      # the default `development` channel on every artifact this step
+      # published — exactly the "which Station am I running" ambiguity this
+      # whole issue exists to remove. `station --version` on the published
+      # nightly bundle must say `<version>-nightly.<n> / nightly`.
+      - name: Compute CLI nightly npm version
+        if: steps.decide.outputs.build == 'true'
+        id: cli_identity
+        env:
+          NIGHTLY_NOW: ${{ steps.allocate.outputs.date }}
+        run: |
+          set -euo pipefail
+          version=$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { nightlyVersion } from "./scripts/lib/nightly-build-identity.mjs";
+            const cliVersion = JSON.parse(readFileSync("packages/cli/package.json", "utf8")).version;
+            process.stdout.write(nightlyVersion(cliVersion, new Date(process.env.NIGHTLY_NOW)));
+          ')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Computed CLI nightly version: $version"
+
+      # `npm version` first (bakes the nightly version into
+      # packages/cli/package.json), THEN build (bakes package.json's version
+      # PLUS STATION_CLI_BUILD_CHANNEL=nightly into the bundle via
+      # build-metadata.mjs's `deriveCliBundleMetadata`) — the channel
+      # vocabulary ('stable' | 'beta' | 'nightly' | 'dev') is
+      # `packages/shared/src/runtime-path-resolver.ts`'s
+      # `StationRuntimeChannel`, reused rather than invented. `--no-git-tag-version`:
+      # this is a throwaway CI checkout's package.json, never committed.
+      - name: Version and build CLI for nightly publish
+        if: steps.decide.outputs.build == 'true'
+        env:
+          STATION_CLI_BUILD_CHANNEL: nightly
+          # npm version dirties package.json + the root lockfile before the
+          # build, so the bundle's own git-status probe would stamp a
+          # constant "<sha>-dirty" — masking genuinely dirty builds. Pin the
+          # already-decided ship SHA instead (build-metadata.mjs validates
+          # it as 40-hex).
+          STATION_CLI_SOURCE_SHA: ${{ steps.decide.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          (cd packages/cli && npm version "${{ steps.cli_identity.outputs.version }}" --no-git-tag-version --allow-same-version)
+          npm run build:cli
+
+      # Mirrors publish-packages.yml's "Assert npm trusted publishing is
+      # configured and authenticating" step (see that file for the full
+      # rationale behind each sub-check, including check 0's ref guard),
+      # scoped to one package, with one deliberate difference: publishing
+      # from the wrong ref OR a MISSING trusted publisher for
+      # @kontourai/station-cli both skip this run's CLI publish via an
+      # output rather than failing the whole job — the latter because it is
+      # the expected steady state until a human completes the one-time
+      # bootstrap documented in publish-packages.yml (npmjs.com has no
+      # settings page for a name that has never been published), the former
+      # because a hard `exit 1` here would also abort every Android step
+      # below it in this same job, and the Android nightly build is this
+      # job's primary purpose — never collateral damage from an unrelated
+      # npm-publish policy check. Soft-skipping still fully satisfies "never
+      # publish/move the public nightly dist-tag from the wrong ref": the
+      # publish step below is gated on this step's output either way.
+      - name: Check npm trusted publishing for @kontourai/station-cli
+        if: steps.decide.outputs.build == 'true'
+        id: cli_npm_preflight
+        env:
+          NPM_REGISTRY: https://registry.npmjs.org
+          CLI_PACKAGE: '@kontourai/station-cli'
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          skip() {
+            printf 'message=%s\n' "$1" >> "$GITHUB_OUTPUT"
+            echo "trusted_publisher=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$1"
+            echo "$1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            exit 0
+          }
+
+          # 0. Same guard as publish-packages.yml check 0, same reasoning:
+          #    npm's trusted-publisher configuration has no ref field, so
+          #    this job is what stops a dispatch from a non-main branch from
+          #    publishing under the public `nightly` dist-tag. Unlike
+          #    publish-packages.yml, a wrong ref here SKIPS (not fails) —
+          #    see the step-level comment above for why.
+          if [ "${GITHUB_REF:-}" != "refs/heads/main" ]; then
+            skip "Refusing to publish @kontourai/station-cli from ${GITHUB_REF:-<unset>}: nightly npm publishing is only permitted from refs/heads/main."
+          fi
+
+          probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cli-npm-auth-preflight.XXXXXX")"
+          trap 'rm -rf "$probe_dir"' EXIT
+
+          # Genuine environment breaks fail loud; see the step-level comment
+          # above for why these are not treated the same as "no trusted
+          # publisher yet".
+          required=11.5.1
+          actual="$(npm --version)"
+          if [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n1)" != "$required" ]; then
+            fail "npm $actual is below the $required trusted-publishing floor."
+          fi
+          [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || fail "ACTIONS_ID_TOKEN_REQUEST_URL is unset: this job has no id-token permission."
+          [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || fail "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset: this job has no id-token permission."
+          [ -z "${NPM_TOKEN:-}" ] || fail "NPM_TOKEN is set; this workflow authenticates by OIDC only. Remove it or change this auth model deliberately."
+          node scripts/check-publish-npmrc-credentials.mjs
+
+          NPM_REGISTRY="${NPM_REGISTRY%/}"
+          audience="npm:$(printf '%s' "$NPM_REGISTRY" | sed -e 's|^https\{0,1\}://||' -e 's|/.*$||')"
+          status="$(curl -sS --max-time 30 --retry 3 --retry-connrefused \
+            -o "$probe_dir/id-token.json" -w '%{http_code}' \
+            -H 'Accept: application/json' \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
+          if [ "$status" != "200" ]; then
+            fail "OIDC id-token request returned HTTP $status: this runner cannot mint an id-token for $audience."
+          fi
+          node -e '
+            const fs = require("node:fs");
+            let value;
+            try {
+              value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).value;
+            } catch {
+              console.log("::error::OIDC id-token response was not valid JSON.");
+              process.exit(1);
+            }
+            if (typeof value !== "string" || value.split(".").length !== 3) {
+              console.log("::error::OIDC endpoint returned no usable JWT in .value.");
+              process.exit(1);
+            }
+            fs.writeFileSync(process.argv[2], value);
+          ' "$probe_dir/id-token.json" "$probe_dir/id-token.jwt"
+          echo "::add-mask::$(cat "$probe_dir/id-token.jwt")"
+
+          # This exchange is the ONLY check that can tell "no trusted
+          # publisher configured" apart from a genuine environment break —
+          # and, unlike every check above, that specific outcome is expected
+          # here (see the file-level comment), so it does not call fail().
+          escaped="$(printf '%s' "$CLI_PACKAGE" | sed 's|/|%2f|')"
+          status="$(curl -sS --max-time 30 --retry 3 --retry-connrefused \
+            -o "$probe_dir/exchange.json" -w '%{http_code}' \
+            -X POST \
+            -H 'Accept: application/json' \
+            -H "Authorization: Bearer $(cat "$probe_dir/id-token.jwt")" \
+            "$NPM_REGISTRY/-/npm/v1/oidc/token/exchange/package/$escaped")"
+          detail="$(node -e '
+            const fs = require("node:fs");
+            try {
+              const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              process.stdout.write(typeof body.message === "string" ? body.message.replace(/\s+/g, " ") : "");
+            } catch { process.stdout.write(""); }
+          ' "$probe_dir/exchange.json")"
+          token_ok="false"
+          case "$status" in
+            2[0-9][0-9])
+              token_ok="$(node -e '
+                const fs = require("node:fs");
+                let token;
+                try { token = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).token; } catch { token = undefined; }
+                process.stdout.write(typeof token === "string" && token.length > 0 ? "true" : "false");
+              ' "$probe_dir/exchange.json")"
+              ;;
+          esac
+          if [ "$token_ok" = "true" ]; then
+            echo "trusted_publisher=true" >> "$GITHUB_OUTPUT"
+            echo "Trusted publisher confirmed for $CLI_PACKAGE"
+          else
+            skip "No confirmed npm trusted publisher for $CLI_PACKAGE (HTTP $status${detail:+, npm said: $detail}). Skipping the nightly publish for this package this run. See publish-packages.yml for the one-time bootstrap steps (station#4536)."
+          fi
+
+      # `npm version` already ran in the "Version and build" step above, so
+      # this only publishes the exact bundle that was just built from it —
+      # no second version write here, which would otherwise let the bundle's
+      # baked-in identity and the published npm version disagree.
+      - name: Publish @kontourai/station-cli to the nightly dist-tag
+        if: steps.decide.outputs.build == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
+        working-directory: packages/cli
+        run: npm publish --tag nightly --access public
+
+      - name: Initialize Tauri Android project
+        if: steps.decide.outputs.build == 'true'
+        working-directory: src-desktop
+        run: |
+          node ../scripts/reset-android-generated-project.mjs
+          npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.nightly.conf.json"
+
+      - name: Apply release signing to the generated nightly project
+        if: steps.decide.outputs.build == 'true'
+        run: node scripts/apply-android-release-signing.mjs
+
+      # Apply to both main and debug source sets. Android gives debug resources
+      # precedence, so updating main alone can silently show the Dev icon.
+      - name: Apply nightly launcher icons
+        if: steps.decide.outputs.build == 'true'
+        run: node scripts/apply-android-channel-icons.mjs nightly
+
+      - name: Apply native credential bootstrap to the nightly namespace
+        if: steps.decide.outputs.build == 'true'
+        run: node scripts/apply-android-native-bootstrap.mjs
+
+      - name: Reclaim disk for four Android Rust targets
+        if: steps.decide.outputs.build == 'true'
+        run: bash scripts/reclaim-android-runner-disk.sh
+
+      - name: Authenticate to Google Cloud with GitHub OIDC
+        id: google_auth
+        if: steps.decide.outputs.build == 'true' && env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER != '' && env.GCP_PLAY_SERVICE_ACCOUNT != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+
+      - name: Fetch Android upload signing material
+        id: android_signing
+        if: steps.decide.outputs.build == 'true' && env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER != '' && env.GCP_PLAY_SERVICE_ACCOUNT != ''
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3
+        with:
+          secrets: |-
+            keystore_base64:kontourai-station-release/station-android-upload-keystore-base64
+            keystore_password:kontourai-station-release/station-android-upload-keystore-password
+
+      - name: Download pinned Play upload action
+        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
+        id: play_upload_action
+        env:
+          PLAY_UPLOAD_ACTION_SHA: e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+          PLAY_UPLOAD_ACTION_DIGEST: 15b27f8937f30f20d81bb585c4ad7ec7032e84491be51ac4dda330767a287f6b
+        run: |
+          action_path="$RUNNER_TEMP/upload-google-play-$PLAY_UPLOAD_ACTION_SHA.js"
+          curl --fail --silent --show-error --location --max-filesize 2000000 \
+            "https://raw.githubusercontent.com/r0adkll/upload-google-play/$PLAY_UPLOAD_ACTION_SHA/lib/index.js" \
+            --output "$action_path"
+          printf '%s  %s\n' "$PLAY_UPLOAD_ACTION_DIGEST" "$action_path" | sha256sum --check --strict
+          echo "path=$action_path" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed nightly AAB
+        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.android_signing.outputs.keystore_password != '' && env.ANDROID_UPLOAD_KEY_ALIAS != ''
+        working-directory: src-desktop
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ steps.android_signing.outputs.keystore_base64 }}
+          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
+          TAURI_ANDROID_KEY_ALIAS: ${{ env.ANDROID_UPLOAD_KEY_ALIAS }}
+          TAURI_ANDROID_KEY_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
+          NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
+          # Tauri runs tauri.conf.json's beforeBuildCommand again here. Keep
+          # that UI build bound to the exact identity used by the native config.
+          STATION_BUILD_VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          keystore="$RUNNER_TEMP/station-nightly.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          export TAURI_ANDROID_KEYSTORE_PATH="$keystore"
+          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" \
+            npx tauri android build --aab --apk --config "$RUNNER_TEMP/tauri.nightly.conf.json"
+
+      # Attempt archival before package verification and the Play API call so
+      # the receipt reports retention separately from publication.
+      - name: Archive signed nightly artifacts
+        id: nightly_artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.android_signing.outputs.keystore_password != '' && env.ANDROID_UPLOAD_KEY_ALIAS != ''
+        continue-on-error: true
+        with:
+          name: station-nightly-${{ steps.identity.outputs.version_code }}
+          path: |
+            src-desktop/gen/android/app/build/outputs/apk/universal/release/*.apk
+            src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record signed artifact archive outcome
+        if: ${{ always() && steps.decide.outputs.build == 'true' }}
+        env:
+          NIGHTLY_ARTIFACT_ARCHIVE_OUTCOME: ${{ steps.nightly_artifact.outcome }}
+          NIGHTLY_ARTIFACT_ID: ${{ steps.nightly_artifact.outputs.artifact-id }}
+        run: |
+          node --input-type=module -e '
+            import { classifyNightlyArtifactArchive } from "./scripts/lib/nightly-build-identity.mjs";
+            const result = classifyNightlyArtifactArchive({
+              outcome: process.env.NIGHTLY_ARTIFACT_ARCHIVE_OUTCOME,
+              artifactId: process.env.NIGHTLY_ARTIFACT_ID,
+            });
+            console.log("::" + result.annotation + "::" + result.message);
+          '
+
+      - name: Verify the built package carries the nightly identity
+        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
+        run: |
+          # A config overlay that silently failed to apply would otherwise
+          # publish a production-identified build to the nightly track.
+          apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          build_tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION"
+          aapt="$build_tools/aapt"
+          apksigner="$build_tools/apksigner"
+          test -x "$aapt"
+          test -x "$apksigner"
+          test -n "$ANDROID_UPLOAD_CERT_SHA256"
+          badging=$("$aapt" dump badging "$apk")
+          echo "$badging" | grep -F "package: name='${{ steps.identity.outputs.identifier }}'"
+          echo "$badging" | grep -F "application-label:'${{ steps.identity.outputs.product_name }}'"
+          echo "$badging" | grep -F "versionCode='${{ steps.identity.outputs.version_code }}'"
+          echo "$badging" | grep -F "versionName='${{ steps.identity.outputs.version }}'"
+          node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
+          aab=$(find src-desktop/gen/android/app/build/outputs/bundle/universalRelease -name '*.aab' -print -quit)
+          test -n "$aab"
+          node scripts/verify-android-aab-signature.mjs "$aab" "$ANDROID_UPLOAD_CERT_SHA256"
+          node scripts/check-android-16kb-alignment.mjs "$apk"
+
+      - name: Upload to Play internal testing track
+        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
+        env:
+          PLAY_UPLOAD_ACTION_PATH: ${{ steps.play_upload_action.outputs.path }}
+          INPUT_SERVICEACCOUNTJSON: ${{ steps.google_auth.outputs.credentials_file_path }}
+          INPUT_PACKAGENAME: ${{ steps.identity.outputs.identifier }}
+          INPUT_RELEASEFILES: src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
+          INPUT_TRACKS: internal
+          INPUT_STATUS: completed
+        run: node scripts/play-upload-retry.mjs
+
+      - name: Note skipped publication
+        if: steps.decide.outputs.build == 'true' && (env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER == '' || env.GCP_PLAY_SERVICE_ACCOUNT == '' || env.ANDROID_UPLOAD_KEY_ALIAS == '')
+        run: |
+          echo "::notice::Nightly was not published: Google Play OIDC variables and ANDROID_UPLOAD_KEY_ALIAS must be configured. A workflow artifact is available only if its archive outcome above reports success."
+
+      - name: Advance the rolling nightly tag
+        # Only after a successful publish path: the tag is what suppresses
+        # tomorrow's build, so moving it on a failed run would skip a day.
+        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -f nightly "${{ steps.decide.outputs.head_sha }}"
+          # --no-verify: npm run dependencies:ci earlier in this job armed .githooks via the
+          # prepare script, and the pre-push hook would otherwise run repo
+          # gates (lint:check first) inside a tag-advance push — a lint red on
+          # main must not stop the rolling nightly tag from advancing.
+          git push -f --no-verify \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}" \
+            refs/tags/nightly
+
+      # ── Deploy ledger (station#4572) ─────────────────────────────────────
+      # Publish-first-then-ledger, by construction: both steps below run only
+      # after the publishes above them succeeded, so a ledger failure can
+      # never block a ship. If a ledger step fails the JOB goes red — an
+      # unrecorded ship must be visible — accepting the tradeoff that the
+      # nightly is already live with a red recording step; the next
+      # successful nightly's changelog slice covers the gap. Known residual:
+      # the npm publish happens before the Android build in this job, so an
+      # Android-step failure reddens the job with the npm ship recorded only
+      # in the next green run — visible either way, never silent.
+      # The entry sha is steps.decide.outputs.head_sha: the SAME decided SHA
+      # the gate verdicted and the build shipped. A ledger on a different SHA
+      # than the one that shipped is a lie, which is what station#4572
+      # exists to end. Each record step commits its entry back to main via
+      # scripts/lib/deploy-ledger-commit.mjs (bounded re-derive-and-retry
+      # against concurrent ledger writers — every channel prepends to the
+      # same JSON array, so two ships racing is the normal case, not the
+      # exception; the script's header states why re-deriving on retry is
+      # safe). Two steps means two commits; both subjects are docs(ledger):
+      # and excluded from every changelog slice.
+      - name: Record the nightly Android ship in the deploy ledger
+        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
+          DEPLOY_LEDGER_VERSION: ${{ steps.identity.outputs.version }}
+          DEPLOY_LEDGER_VERSION_CODE: ${{ steps.identity.outputs.version_code }}
+          DEPLOY_LEDGER_IDENTIFIER: ${{ steps.identity.outputs.identifier }}
+          DEPLOY_LEDGER_ARTIFACT_OUTCOME: ${{ steps.nightly_artifact.outcome }}
+        run: |
+          set -euo pipefail
+          record=(node scripts/deploy-ledger.mjs
+            --channel nightly-android
+            --version "$DEPLOY_LEDGER_VERSION"
+            --sha "$DEPLOY_LEDGER_SHA"
+            --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            --gate-result "nightly test-gate success on $DEPLOY_LEDGER_SHA (station#4539)"
+            --github-repo "$GITHUB_REPOSITORY"
+            --artifact "play-internal-aab:$DEPLOY_LEDGER_IDENTIFIER@versionCode $DEPLOY_LEDGER_VERSION_CODE")
+          if [ "$DEPLOY_LEDGER_ARTIFACT_OUTCOME" = 'success' ]; then
+            record+=(--artifact "workflow-artifact:station-nightly-$DEPLOY_LEDGER_VERSION_CODE (7-day retention)")
+          fi
+          node scripts/lib/deploy-ledger-commit.mjs \
+            --commit-subject "docs(ledger): record nightly-android $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
+            --summary-line "- recorded: \`nightly-android $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \
+            -- "${record[@]}"
+
+      - name: Record the nightly CLI npm ship in the deploy ledger
+        # The npm publish step ran early in this job; the RECORD runs last so
+        # its failure can never abort the Android build still ahead of it —
+        # the same publish-first-then-ledger ordering as the Android entry.
+        if: steps.decide.outputs.build == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
+          DEPLOY_LEDGER_VERSION: ${{ steps.cli_identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/lib/deploy-ledger-commit.mjs \
+            --commit-subject "docs(ledger): record nightly-npm $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
+            --summary-line "- recorded: \`nightly-npm $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \
+            -- node scripts/deploy-ledger.mjs \
+              --channel nightly-npm \
+              --version "$DEPLOY_LEDGER_VERSION" \
+              --sha "$DEPLOY_LEDGER_SHA" \
+              --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              --gate-result "nightly test-gate success on $DEPLOY_LEDGER_SHA (station#4539)" \
+              --github-repo "$GITHUB_REPOSITORY" \
+              --artifact "npm:@kontourai/station-cli@$DEPLOY_LEDGER_VERSION (dist-tag nightly)"
+
+      # Durable belt-and-braces copy of the ledger for this ship. Storage or
+      # quota failure here is an infrastructure condition, not a verdict on
+      # the record (station#2218) — hence continue-on-error. The commit
+      # inside the record steps above is the durable record of authority;
+      # this artifact exists so a push that never succeeded (or the very
+      # first live runs) stays debuggable.
+      - name: Retain this run's deploy ledger files
+        if: ${{ always() && steps.decide.outputs.build == 'true' && (steps.android_signing.outputs.keystore_base64 != '' || steps.cli_npm_preflight.outputs.trusted_publisher == 'true') }}
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deploy-ledger-nightly-${{ github.run_id }}
+          path: |
+            docs/reference/deploy-ledger.json
+            docs/reference/deploy-ledger.md
+          if-no-files-found: error
+          retention-days: 14

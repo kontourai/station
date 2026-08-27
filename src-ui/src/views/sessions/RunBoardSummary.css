@@ -1,0 +1,46 @@
+.run-board {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.16rem;
+  min-inline-size: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.run-board__cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.08rem;
+  min-height: 24px;
+  padding: 0.1rem 0.22rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.run-board__cluster:hover {
+  background: var(--bg-hover-panel);
+  color: var(--text-primary);
+}
+
+.run-board__cluster:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.run-board__cluster--emphasis {
+  border-color: color-mix(
+    in srgb,
+    var(--color-warning, #d97706) 48%,
+    transparent
+  );
+  background: color-mix(in srgb, var(--color-warning, #d97706) 8%, transparent);
+}

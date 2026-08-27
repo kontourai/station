@@ -1,0 +1,108 @@
+/*
+ * First-run coachmark. Sits at --layer-notice, the same slot the setup
+ * launcher and the banner host use: it is chrome that annotates the page, so
+ * it must clear ordinary content and the dock without competing with dialogs.
+ */
+
+.first-run-coachmark {
+  position: fixed;
+  z-index: var(--layer-notice);
+  width: min(340px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: var(--space-4, 16px);
+  border-radius: var(--radius-lg, 10px);
+  border: 1px solid var(--color-border-strong, var(--color-border));
+  background: var(--color-surface-raised, var(--color-surface));
+  color: var(--color-text);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 35%));
+  transition-property: opacity, transform;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+.first-run-coachmark--above {
+  transform: translateY(-100%);
+}
+
+/* No anchor element on this surface: centre the card and drop the pointer
+ * rather than pinning it somewhere that implies a target. */
+.first-run-coachmark--unanchored {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.first-run-coachmark__progress {
+  font-size: var(--font-size-xs, 11px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.first-run-coachmark__title {
+  margin: var(--space-2, 8px) 0 var(--space-1, 4px);
+  font-size: var(--font-size-md, 15px);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.first-run-coachmark__body {
+  margin: 0 0 var(--space-4, 16px);
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.first-run-coachmark__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+
+.first-run-coachmark__advance {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-left: auto;
+}
+
+.first-run-coachmark__primary,
+.first-run-coachmark__secondary {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: var(--radius-sm, 6px);
+  font-size: var(--font-size-sm, 13px);
+  cursor: pointer;
+  transition-property: background-color, border-color, color;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+.first-run-coachmark__primary {
+  border: 1px solid var(--color-accent, var(--color-primary));
+  background: var(--color-accent, var(--color-primary));
+  color: var(--text-on-accent-yellow);
+  font-weight: 600;
+}
+
+.first-run-coachmark__secondary {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.first-run-coachmark__secondary:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-strong, var(--color-border));
+}
+
+/* Mobile touch floor (index.css `.tap-target` / `--bp-mobile`): the first-run
+   controls are the very first thing a phone user taps, so they meet the 44px
+   target rather than inheriting a desktop-sized hit area. */
+@media (max-width: 768px) {
+  .first-run-coachmark__primary,
+  .first-run-coachmark__secondary {
+    min-height: 44px;
+  }
+}

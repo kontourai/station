@@ -1,0 +1,17 @@
+// KNOWN-BAD: retired vocabulary in user-facing copy.
+//
+// Two shapes in one file, because the gate scans both and a fixture covering
+// only one would leave the other unproven:
+//   - a scanned attribute value (`title`), and
+//   - a JSX text node.
+//
+// `guidance` and `runtime` are both in BANNED_WORD_PATTERN; the canonical
+// nouns are in docs/glossary.md.
+export function StaleNounView() {
+  return (
+    <section className="stale-noun-view">
+      <button title="Runtime settings">Open</button>
+      <p>Guidance</p>
+    </section>
+  );
+}

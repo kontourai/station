@@ -1,0 +1,9 @@
+/src/main/**/generated
+/src/main/jniLibs/**/*.so
+/src/main/assets/tauri.conf.json
+# Build provenance staged per build by scripts/write-android-build-manifest.mjs
+# (station#3592). Derived from the tree being built, never committed.
+/src/main/assets/station-build.json
+/tauri.build.gradle.kts
+/proguard-tauri.pro
+/tauri.properties

@@ -1,0 +1,25 @@
+{
+  "name": "Getting Started",
+  "slug": "getting-started",
+  "icon": "✨",
+  "description": "A default starter workspace for learning the Station plugin SDK.",
+  "tabs": [
+    {
+      "id": "start",
+      "label": "Start",
+      "component": "getting-started-home"
+    },
+    {
+      "id": "patterns",
+      "label": "SDK Patterns",
+      "component": "getting-started-patterns"
+    }
+  ],
+  "actions": [
+    {
+      "type": "prompt",
+      "label": "Explain this workspace",
+      "data": "Explain how this starter plugin is structured and what I should customize first."
+    }
+  ]
+}

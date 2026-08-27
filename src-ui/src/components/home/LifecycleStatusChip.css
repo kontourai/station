@@ -1,0 +1,46 @@
+.lifecycle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.lifecycle-chip svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* in-motion */
+.lifecycle-chip--active {
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  color: var(--accent-primary);
+}
+
+/* act-now */
+.lifecycle-chip--warning {
+  background: color-mix(in srgb, var(--warning, #d97706) 16%, transparent);
+  color: var(--warning, #d97706);
+}
+
+/* neutral resting state — deliberately not a fourth color meaning */
+.lifecycle-chip--done {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/**
+ * station#1783: "can't be answered here" — settled-looking, but visibly NOT
+ * the "Done" chip. Review caught the first version reusing `--done`, which
+ * painted the opposite meaning in the same colour on a row that has not
+ * finished. Still inside the neutral family (no fourth colour meaning): the
+ * outline is what distinguishes it, not a hue.
+ */
+.lifecycle-chip--idle {
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border-subtle, var(--bg-tertiary));
+}

@@ -1,0 +1,4 @@
+{
+  "_comment": "Findings present when the actionlint gate landed (station#1219). Ratchet: this list may only shrink — a finding not listed here fails the gate. Keyed by file+rule, deliberately not line/col, so unrelated edits that shift lines do not force a baseline rewrite.",
+  "findings": [".github/workflows/install-smoke.yml::shellcheck"]
+}

@@ -1,0 +1,356 @@
+{
+  "version": 1,
+  "issue": 2950,
+  "status": "stage-0-inventory",
+  "architectureRule": "Coding is a declarative Workspace Composition. The generic Workspace Pane host owns composition; renderers are leaves.",
+  "mcpApps": {
+    "role": "sandboxed-renderer-leaf",
+    "workspaceAuthority": false,
+    "displayMode": {
+      "status": "IMPLEMENTED",
+      "deliveryIssue": 2952,
+      "contract": "@kontourai/station-contracts/mcp-app-display-mode",
+      "hostPolicy": "intersect app-declared and host-available modes; report actual mode",
+      "receipt": "MCPAppDisplayModeDecision",
+      "testProofs": [
+        {
+          "path": "src-ui/src/__tests__/MCPToolUIFrame.test.tsx",
+          "anchor": "test('mediates AppBridge fullscreen and PiP requests through exact Pane host intent',"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/__tests__/mcpAppDisplayModeTelemetry.test.ts",
+          "anchor": "describe('MCP App display-mode production telemetry',"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx",
+          "anchor": "test('renderer display intent reuses host maximize and preserves the exact occurrence',"
+        }
+      ],
+      "pip": "UNSUPPORTED",
+      "fullscreenIsPopout": false
+    },
+    "constraints": [
+      "same-server resource and app-visible tools",
+      "approval-mediated writes",
+      "no Station navigation or host-document authority"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "files",
+      "contract": "workspace-coding-panels + project workspace file routes",
+      "adapter": "workspace-coding-file-browser",
+      "permission": "project-scoped bounded filesystem mediation",
+      "scope": ["project", "source", "workspace"],
+      "availability": ["available", "missing-context", "unsupported"],
+      "receipt": "workspace pane operational events",
+      "authorityOwner": "Station project filesystem service",
+      "cancellation": "request abort and stale-revision refusal",
+      "journeys": ["list", "open", "preview", "propose-write", "recover"],
+      "testProofs": [
+        {
+          "path": "src-ui/src/workspace-panes/__tests__/FilePreviewPane.test.tsx",
+          "anchor": "describe('FilePreviewPane',"
+        },
+        {
+          "path": "src-server/services/projects/__tests__/workspace-pane-catalog.test.ts",
+          "anchor": "describe('current Workspace Pane catalog adapter',"
+        }
+      ]
+    },
+    {
+      "id": "terminal-process",
+      "contract": "workspace-coding-panels + terminal service",
+      "adapter": "workspace-coding-terminal",
+      "permission": "terminal/process ownership",
+      "scope": ["project", "workspace", "terminal"],
+      "availability": ["available", "missing-context", "unsupported"],
+      "receipt": "terminal ownership and lifecycle state",
+      "authorityOwner": "Station terminal service",
+      "cancellation": "interrupt, stop, disconnect, and owned-process reap",
+      "journeys": ["create", "attach", "input", "resize", "interrupt", "stop"],
+      "testProofs": [
+        {
+          "path": "src-ui/src/components/coding-layout/__tests__/TerminalPanel.test.tsx",
+          "anchor": "test('scans one selection spanning two PTY reads without redacting the live terminal',"
+        },
+        {
+          "path": "src-server/services/terminal/__tests__/terminal-service.test.ts",
+          "anchor": "describe('TerminalService',"
+        }
+      ]
+    },
+    {
+      "id": "git-review",
+      "contract": "workspace-coding-panels + diff/proposed-change/pull-request SDK",
+      "adapter": "workspace-coding-diff",
+      "permission": "project Git read; explicit mutation grants",
+      "scope": ["project", "source", "revision"],
+      "availability": ["available", "missing-git", "stale", "unsupported"],
+      "receipt": "proposed-change decisions and review evidence",
+      "authorityOwner": "Station project Git and review services",
+      "cancellation": "abort request and reject stale source revision",
+      "journeys": [
+        "status",
+        "diff",
+        "branch",
+        "propose",
+        "review",
+        "pull-request"
+      ],
+      "testProofs": [
+        {
+          "path": "src-ui/src/__tests__/DiffPanel.test.tsx",
+          "anchor": "describe('DiffPanel',"
+        },
+        {
+          "path": "src-server/services/projects/__tests__/workspace-pane-availability-resolver.test.ts",
+          "anchor": "describe('Workspace Pane catalog availability resolver',"
+        }
+      ]
+    },
+    {
+      "id": "chat-context",
+      "contract": "workspace-chat-pane + composer context contracts",
+      "adapter": "workspace-chat-pane",
+      "permission": "session-scoped message mutation",
+      "scope": ["project", "session", "source-revision"],
+      "availability": ["available", "missing-session", "unsupported"],
+      "receipt": "turn provenance",
+      "authorityOwner": "Station orchestration/session service",
+      "cancellation": "turn interrupt and session teardown",
+      "journeys": [
+        "select-context",
+        "append-draft",
+        "send",
+        "interrupt",
+        "resume"
+      ],
+      "testProofs": [
+        {
+          "path": "src-ui/src/workspace-panes/__tests__/CodingChatPane.test.tsx",
+          "anchor": "describe('CodingChatPane',"
+        },
+        {
+          "path": "src-ui/src/__tests__/ChatDock.a11y.test.tsx",
+          "anchor": "describe('ChatDock activity region',"
+        }
+      ]
+    },
+    {
+      "id": "tasks-plans-evidence-flow",
+      "contract": "workspace-evidence-panels + public task/flow/readiness SDK",
+      "adapter": "plan/readiness/trust renderer primitives",
+      "permission": "read projections; explicit governed actions",
+      "scope": ["project", "task", "run", "session"],
+      "availability": [
+        "available",
+        "unavailable-owner",
+        "stale",
+        "unsupported"
+      ],
+      "receipt": "Flow and Veritas evidence receipts",
+      "authorityOwner": "Station Task plus owning Flow/Veritas services",
+      "cancellation": "owner-specific cancellation and stale-run refusal",
+      "journeys": [
+        "task",
+        "plan",
+        "readiness",
+        "trust",
+        "flow-run",
+        "evidence"
+      ],
+      "testProofs": [
+        {
+          "path": "src-ui/src/__tests__/CodingInspectorPanel.test.tsx",
+          "anchor": "describe('CodingInspectorPanel \u2014 tabs',"
+        },
+        {
+          "path": "src-server/services/projects/__tests__/workspace-pane-known-declarations.test.ts",
+          "anchor": "describe('known Workspace Pane declarations',"
+        }
+      ]
+    },
+    {
+      "id": "multi-pane-shell",
+      "contract": "workspace-pane-host v1",
+      "adapter": "generic WorkspacePaneHost",
+      "permission": "none beyond admitted instances",
+      "scope": ["project", "layout", "task-optional"],
+      "availability": ["available", "renderer-missing", "context-missing"],
+      "receipt": "workspace pane operational events",
+      "authorityOwner": "generic Workspace Pane host",
+      "cancellation": "per-instance close arbitration and renderer dispose",
+      "journeys": [
+        "place",
+        "select",
+        "move",
+        "split",
+        "resize",
+        "maximize",
+        "restore",
+        "popout"
+      ],
+      "testProofs": [
+        {
+          "path": "src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx",
+          "anchor": "test('layout catalog placement opens through the controller as the sole document writer',"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/__tests__/workspacePaneHostTransactions.test.ts",
+          "anchor": "describe('workspace pane host transactions',"
+        }
+      ]
+    },
+    {
+      "id": "permissions-recovery",
+      "contract": "workspace-pane availability and renderer selection",
+      "adapter": "generic availability resolver/runtime",
+      "permission": "descriptor-specific",
+      "scope": ["descriptor", "instance", "contribution"],
+      "availability": [
+        "disabled",
+        "denied",
+        "renderer-missing",
+        "failed",
+        "retryable"
+      ],
+      "receipt": "bounded availability telemetry",
+      "authorityOwner": "generic catalog availability resolver and renderer runtime",
+      "cancellation": "renderer teardown and retry supersession",
+      "journeys": [
+        "disable",
+        "deny",
+        "fail",
+        "retry",
+        "reconnect",
+        "uninstall"
+      ],
+      "testProofs": [
+        {
+          "path": "src-ui/src/workspace-panes/__tests__/resolvedWorkspacePaneCatalog.test.ts",
+          "anchor": "describe('resolveWorkspacePaneCatalogPresentation',"
+        },
+        {
+          "path": "packages/contracts/src/__tests__/workspace-pane-availability.test.ts",
+          "anchor": "describe('Workspace Pane availability resolver',"
+        }
+      ]
+    },
+    {
+      "id": "distribution",
+      "contract": "plugin manifest workspacePanes + distribution policy",
+      "adapter": "plugin install/catalog ingestion",
+      "permission": "inspect/install/enable/update/revoke",
+      "scope": ["package", "project", "contribution"],
+      "availability": ["installed", "disabled", "conflict", "unsupported"],
+      "receipt": "plugin lifecycle and provenance",
+      "authorityOwner": "Station plugin distribution and Project enablement",
+      "cancellation": "transaction rollback and publication-lock release",
+      "journeys": [
+        "inspect",
+        "install",
+        "enable",
+        "update",
+        "disable",
+        "revoke"
+      ],
+      "testProofs": [
+        {
+          "path": "src-server/routes/plugins/__tests__/plugin-install-shared.test.ts",
+          "anchor": "describe('installPluginFromSource',"
+        },
+        {
+          "path": "src-server/services/projects/__tests__/workspace-pane-catalog.test.ts",
+          "anchor": "describe('current Workspace Pane catalog adapter',"
+        }
+      ]
+    }
+  ],
+  "nonDeveloperCompositionFixture": {
+    "name": "Meeting Notes",
+    "hostVocabulary": [
+      "descriptor",
+      "instance",
+      "tabs",
+      "split",
+      "availability",
+      "renderer"
+    ],
+    "forbiddenVocabulary": ["coding", "git", "terminal", "file tree"],
+    "descriptors": [
+      {
+        "id": "meeting-capture",
+        "version": "1.0",
+        "name": "Capture",
+        "rendererId": "meeting-notes.capture",
+        "renderer": {
+          "kind": "plugin-component",
+          "name": "meeting-capture"
+        },
+        "placement": {
+          "supportedRegions": ["primary"]
+        },
+        "provenance": {
+          "origin": "plugin",
+          "pluginId": "meeting-notes"
+        },
+        "lifecycle": {
+          "stage": "stable"
+        },
+        "modes": [
+          {
+            "id": "default"
+          }
+        ]
+      },
+      {
+        "id": "meeting-library",
+        "version": "1.0",
+        "name": "Library",
+        "rendererId": "meeting-notes.library",
+        "renderer": {
+          "kind": "mcp-tool-ui",
+          "ref": "meeting-notes/library",
+          "approvalPolicy": "read-only"
+        },
+        "placement": {
+          "supportedRegions": ["secondary"]
+        },
+        "provenance": {
+          "origin": "plugin",
+          "pluginId": "meeting-notes",
+          "mcpServerId": "meeting-notes"
+        },
+        "lifecycle": {
+          "stage": "stable"
+        },
+        "modes": [
+          {
+            "id": "default"
+          }
+        ]
+      }
+    ],
+    "instances": [
+      {
+        "version": "1.0",
+        "descriptorId": "meeting-capture",
+        "instanceId": "meeting-capture-instance",
+        "stateKey": "meeting-capture-state",
+        "boundContext": {
+          "projectId": "meeting-project"
+        }
+      },
+      {
+        "version": "1.0",
+        "descriptorId": "meeting-library",
+        "instanceId": "meeting-library-instance",
+        "stateKey": "meeting-library-state",
+        "boundContext": {
+          "projectId": "meeting-project"
+        }
+      }
+    ]
+  }
+}

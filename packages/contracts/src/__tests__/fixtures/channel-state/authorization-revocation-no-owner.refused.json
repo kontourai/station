@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "station.channel-agent-authorization-revocation/v1",
+  "authorizationId": "auth-triage-bot-1",
+  "channelId": "chan-design",
+  "reasonCode": "owner-revoked"
+}

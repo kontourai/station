@@ -1,0 +1,274 @@
+/* CodingInspectorPanel — tabbed, collapsible right-side inspector for the
+   coding layout. Owns the Plan | Readiness | Trust tab bar, attention badges,
+   per-tab setup CTAs, and the collapsed slim strip.
+
+   Colour tokens are the base names, not the --color-* alias layer — see the
+   note at the top of CodingLayout.css (station#1254). */
+
+.coding-inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.coding-inspector__bar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.coding-inspector__tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.coding-inspector__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+
+.coding-inspector__tab:hover {
+  color: var(--text-primary);
+}
+
+.coding-inspector__tab.is-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.coding-inspector__tab-icon {
+  flex-shrink: 0;
+}
+
+.coding-inspector__tab-badge {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-danger, #ef4444);
+  flex-shrink: 0;
+}
+
+.coding-inspector__collapse {
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  line-height: 1;
+  padding: 0 12px;
+}
+
+.coding-inspector__collapse:hover {
+  color: var(--text-primary);
+}
+
+.coding-inspector__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.coding-inspector__body > * {
+  flex-shrink: 0;
+}
+
+/* The plan panel owns its own single inner scroll region, so it must FILL the
+   inspector body (a bounded flex height) rather than size to content. Without
+   this it stays content-sized and overflows a tightly-bounded mobile viewport,
+   clipping mid-content and leaving dead space below. */
+.coding-inspector__body > .workflow-plan-panel {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.coding-inspector__tab {
+  transition:
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.coding-inspector__trust {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Per-tab empty / not-configured state (matches ReadinessPanel empty chrome). */
+.coding-inspector__empty {
+  margin: 12px;
+  padding: 16px;
+  border: 1px dashed var(--border-primary);
+  border-radius: 12px;
+}
+
+.coding-inspector__empty-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.coding-inspector__empty-desc {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+/* Setup CTA — one-click action, copy-command fallback, and docs link. */
+.coding-inspector__cta {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coding-inspector__cta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.coding-inspector__cta-action {
+  align-self: flex-start;
+  border: 1px solid var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+
+.coding-inspector__cta-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-primary) 22%, transparent);
+}
+
+.coding-inspector__cta-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* station#3341: the refused-clipboard colour, paired with this button's own
+   class. This stylesheet is injected as its own chunk AFTER the entry sheet, so
+   a bare `.copy-affordance--failed` there loses the same-specificity tie. */
+.coding-inspector__cta-action.copy-affordance--failed {
+  border-color: var(--status-error);
+  color: var(--status-error);
+}
+
+.coding-inspector__cta-link {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+}
+
+.coding-inspector__cta-link:hover {
+  color: var(--text-primary);
+}
+
+.coding-inspector__cta-command {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  word-break: break-all;
+}
+
+.coding-inspector__cta-error {
+  margin: 0;
+  color: var(--color-danger, #ef4444);
+  font-size: var(--text-sm);
+}
+
+/* ── Collapsed slim strip ──────────────────────────────────────────────── */
+.coding-inspector-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  height: 100%;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* On mobile the inspector stacks BELOW the editor, so the collapsed strip is
+     a horizontal icon bar — not a tall vertical column orphaned in a void. */
+  .coding-inspector-strip {
+    flex-direction: row;
+    height: auto;
+    padding: 6px 10px;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+}
+
+.coding-inspector-strip__expand {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  line-height: 1;
+  padding: 6px;
+}
+
+.coding-inspector-strip__expand:hover {
+  color: var(--text-primary);
+}
+
+.coding-inspector-strip__icons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coding-inspector-strip__icon {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-lg);
+}
+
+.coding-inspector-strip__icon:hover {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.coding-inspector-strip__badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-danger, #ef4444);
+}

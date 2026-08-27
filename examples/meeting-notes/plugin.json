@@ -1,0 +1,19 @@
+{
+  "name": "meeting-notes",
+  "version": "1.0.0",
+  "displayName": "Meeting Notes",
+  "description": "Capture a meeting transcript, compile it into a note with a provenance link back to the raw transcript, and recall it via a wikilink graph and retrieval-grounded Q&A (Knowledge K5).",
+  "entrypoint": "src/index.tsx",
+  "capabilities": ["navigation", "knowledge"],
+  "permissions": ["navigation.dock"],
+  "agents": [
+    {
+      "slug": "compile",
+      "source": "./agents/compile/agent.json"
+    }
+  ],
+  "layout": {
+    "slug": "meeting-notes",
+    "source": "./layout.json"
+  }
+}

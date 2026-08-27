@@ -1,0 +1,75 @@
+/* ═══ Styled Checkbox ═══ */
+.cb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.cb--disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cb__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.cb__box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  flex-shrink: 0;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.cb__input:checked + .cb__box {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+.cb__input:focus-visible + .cb__box {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.cb:hover .cb__box {
+  border-color: var(--accent-primary);
+}
+
+.cb__check {
+  width: 12px;
+  height: 12px;
+  color: #fff;
+}
+
+.cb__label {
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+/* ── Mobile touch targets ── */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .cb {
+    min-height: 44px;
+  }
+}
+
+/* ── Presentational tick (CheckboxGlyph) ── */
+/* No `<input>` to key `:checked` off, so the state is a class. The row that
+   contains it owns the click and announces `aria-pressed`; this only draws. */
+.cb--static {
+  cursor: inherit;
+}
+.cb--static.cb--checked .cb__box {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}

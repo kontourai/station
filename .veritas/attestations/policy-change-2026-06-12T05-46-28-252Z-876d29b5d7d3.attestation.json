@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian.anderson1222@gmail.com",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-06-12T05:46:28.252Z",
+  "repoStandardsHash": "sha256:d90d1daf2216954572506cf102ea152112c7de8fb0585bc5717419139be8e20a",
+  "repoMapHash": "sha256:66e29ccbb490481998a2845371d9db58cee15aaef052ff0d6d99a215a98efd95",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "bootstrap-2026-06-12T05-34-00-966Z-204f58ddb272",
+  "validUntilDays": 90,
+  "notes": "Add componentIds alongside nodeIds on evidenceCheckRoutes so 0.5.0 runtime route matching works (schema/runtime key mismatch; see brownfield-gap-log 2026-06-11).",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "bootstrap-2026-06-12T05-34-00-966Z-204f58ddb272",
+    "approvalRef": "roadmap-S1c-prerequisite-veritas-0.5-migration",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "surface": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "6b5900be741014b0dbc150dff0f32964553a6b7c4080b55f9bff1909d4c74fcc",
+        "validUntil": "2026-09-10T05:46:28.252Z"
+      },
+      "createdAt": "2026-06-12T05:46:28.252Z",
+      "updatedAt": "2026-06-12T05:46:28.252Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3",
+      "claimId": "veritas.attestation.policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Add componentIds alongside nodeIds on evidenceCheckRoutes so 0.5.0 runtime route matching works (schema/runtime key mismatch; see brownfield-gap-log 2026-06-11).",
+      "observedAt": "2026-06-12T05:46:28.252Z",
+      "collectedBy": "brian.anderson1222@gmail.com",
+      "integrityRef": "6b5900be741014b0dbc150dff0f32964553a6b7c4080b55f9bff1909d4c74fcc",
+      "metadata": {
+        "actor": {
+          "id": "brian.anderson1222@gmail.com",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-06-12T05:46:28.252Z",
+        "validUntil": "2026-09-10T05:46:28.252Z",
+        "contentHash": "6b5900be741014b0dbc150dff0f32964553a6b7c4080b55f9bff1909d4c74fcc"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3.verified",
+      "claimId": "veritas.attestation.policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3",
+      "status": "verified",
+      "actor": "brian.anderson1222@gmail.com",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-06-12T05-46-28-252Z-876d29b5d7d3"
+      ],
+      "createdAt": "2026-06-12T05:46:28.252Z",
+      "verifiedAt": "2026-06-12T05:46:28.252Z"
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "schema_version": "0.1",
+  "run_id": "dogfood-017-acp-canonical-cutover",
+  "definition_id": "station-delivery",
+  "definition_version": "1",
+  "subject": "dogfood-017-acp-canonical-cutover",
+  "status": "completed",
+  "summary": "station-delivery / dogfood-017-acp-canonical-cutover",
+  "current_step": "readiness",
+  "next_action": "run complete; no further action required",
+  "continuation": "resume from readiness, not chat memory",
+  "open_gates": ["readiness-gate"],
+  "accepted_exceptions": [],
+  "gate_summaries": [
+    {
+      "gate_id": "implement-gate",
+      "status": "pass",
+      "summary": "verify:static (biome + e2e manifest + tsc + unit tests) passes for the change. satisfied",
+      "evidence_refs": ["ev.1783183245671.1"],
+      "missing": [],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "static-gates-green",
+          "evidence_id": "ev.1783183245671.1"
+        }
+      ],
+      "transition_validation": {
+        "valid": true,
+        "status": "allowed",
+        "diagnostics": [],
+        "transition": {
+          "type": "step",
+          "from_step": "implement",
+          "to_step": "verify",
+          "status": "allowed",
+          "gate_id": "implement-gate",
+          "reason": "required evidence present",
+          "at": "2026-07-04T16:40:45.700Z"
+        }
+      }
+    },
+    {
+      "gate_id": "verify-gate",
+      "status": "pass",
+      "summary": "Behavioral verification recorded for the change: focused Playwright lane, smoke run against a live instance, or equivalent observed-behavior evidence — not just unit tests. satisfied",
+      "evidence_refs": ["ev.1783183390925.2", "ev.1783183404858.3"],
+      "missing": [],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "verification-verdict",
+          "evidence_id": "ev.1783183404858.3"
+        }
+      ],
+      "transition_validation": {
+        "valid": true,
+        "status": "allowed",
+        "diagnostics": [],
+        "transition": {
+          "type": "step",
+          "from_step": "verify",
+          "to_step": "readiness",
+          "status": "allowed",
+          "gate_id": "verify-gate",
+          "reason": "required evidence present",
+          "at": "2026-07-04T16:43:24.862Z"
+        }
+      }
+    },
+    {
+      "gate_id": "readiness-gate",
+      "status": "pass",
+      "summary": "Veritas merge-readiness evidence for the working tree, attached as a Station-asserted Hachure TrustBundle (claim `governance.merge-readiness`, status `assumed`). Flow 1.3.x replaced the surface.claim model with trust.bundle evidence; the trust model downgrades `verified` without backing verification, so the Station-asserted readiness claim is `assumed`. Attaching the full Veritas TrustBundle with verification backing (→ `verified`) is a future enhancement. satisfied",
+      "evidence_refs": ["ev.1783183406978.4"],
+      "missing": [],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "merge-readiness",
+          "evidence_id": "ev.1783183406978.4"
+        }
+      ],
+      "transition_validation": {
+        "valid": true,
+        "status": "allowed",
+        "diagnostics": [],
+        "transition": {
+          "type": "step",
+          "from_step": "readiness",
+          "to_step": null,
+          "status": "allowed",
+          "gate_id": "readiness-gate",
+          "reason": "required evidence present",
+          "at": "2026-07-04T16:43:26.982Z"
+        }
+      }
+    }
+  ]
+}

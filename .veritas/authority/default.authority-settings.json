@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "station-default",
+  "name": "Station Default",
+  "description": "Conservative profile: observe first, learn from evidence, and only harden requirements after repeated catch evidence (see docs/strategy/veritas/proof-family-promotion-workflow.md).",
+  "defaults": {
+    "mode": "observe",
+    "new_rule_stage": "recommend"
+  },
+  "review_preferences": {
+    "human_signoff_required_for_stage_promotion": true,
+    "reviewer_confidence_scale": ["low", "medium", "high"],
+    "major_rewrite_definition": "A major rewrite replaces the main structure or control flow instead of making local edits."
+  },
+  "promotion_preferences": {
+    "evidence_checks_required_before_require": ["npm run verify:static"],
+    "warnings_block_in_ci": false,
+    "require_consistent_feedback_before_promotion": true
+  }
+}

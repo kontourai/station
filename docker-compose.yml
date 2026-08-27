@@ -1,0 +1,20 @@
+services:
+  station:
+    image: ${STATION_IMAGE:-ghcr.io/kontourai/station:latest}
+    ports:
+      - "${STATION_BIND_HOST:-127.0.0.1}:${STATION_UI_PORT:-3000}:3000"
+    environment:
+      OTEL_SERVICE_NAME: station
+      ALLOWED_ORIGINS: ${STATION_ALLOWED_ORIGINS:-}
+    volumes:
+      - station-data:/data/station
+      - ${STATION_WORKSPACE_DIR:-station-workspace}:/workspace
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/__station/identity').then(async(response)=>{if(!response.ok)throw new Error(String(response.status));const identity=await response.json();if(identity.sha!==process.env.STATION_IMAGE_SHA)throw new Error('image identity mismatch')})"]
+
+volumes:
+  station-data:
+  station-workspace:

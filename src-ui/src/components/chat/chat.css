@@ -1,0 +1,2064 @@
+/* ═══ Chat Component Styles ═══
+ * Shared classes for Header, ChatInputArea, MessageBubble, WorkspaceHeader.
+ * Extends the base index.css classes with design-system-consistent typography,
+ * transitions, and hover states matching the page-layout.css aesthetic.
+ */
+
+/* ── Header ── */
+.app-toolbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition:
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+  position: relative;
+}
+
+.app-toolbar__brand:hover {
+  background: linear-gradient(
+    135deg,
+    var(--bg-hover) 0%,
+    var(--bg-tertiary) 100%
+  );
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.app-toolbar__logo {
+  width: 20px;
+  height: 20px;
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+
+.app-toolbar__brand:hover .app-toolbar__logo {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.app-toolbar__name {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  background: linear-gradient(
+    135deg,
+    var(--text-primary) 0%,
+    var(--accent-primary) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.app-toolbar__spacer {
+  flex: 1;
+}
+
+/*
+ * station#3766: ONE owner for this cluster's flex behaviour.
+ *
+ * `index.css`'s mobile block declared `flex-shrink: 0` here at the same
+ * specificity as the `flex-shrink: 1; overflow: hidden` that used to live on
+ * this rule, so which one applied was decided by bundled stylesheet order
+ * rather than by intent. When the shrinking pair won, a news-carrying
+ * connection chip (`Can't connect` / `Reconnecting` / `Credential required`)
+ * grew the cluster past the space left over and the cluster clipped ITSELF
+ * away: all four controls stayed in the DOM and in the accessibility tree
+ * while painting no pixels, and the offline banner took the hit test at
+ * `More actions` — the only mobile route to Connections, so a disconnected
+ * phone user could not reach the surface that would reconnect them.
+ *
+ * The cluster is the toolbar's last-resort chrome and holds its size; the
+ * brand beside it already truncates (`index.css`'s `.app-toolbar__brand`) and
+ * is what absorbs the overflow. `overflow: hidden` is gone with the shrink it
+ * existed to clip — it also clipped nothing useful, since the overflow menu
+ * renders in a portal (see `components/header/OverflowMenu.tsx`).
+ */
+.app-toolbar__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+@media (max-width: 480px) {
+  .app-toolbar__actions {
+    gap: 2px;
+  }
+  .app-toolbar__icon-btn {
+    padding: 4px 6px;
+    font-size: var(--text-md);
+  }
+  .app-toolbar__workspace-btn {
+    display: none;
+  }
+  .app-toolbar__conn-name,
+  .app-toolbar__conn-note {
+    display: none;
+  }
+}
+
+/* Mobile: overflow menu for secondary actions */
+.app-toolbar__overflow-btn.app-toolbar__overflow-btn {
+  display: none;
+}
+
+.app-toolbar__overflow-menu {
+  /* Fixed, not absolute: this renders in a portal on document.body, so it is
+     anchored to the toolbar's occupied height rather than to a parent. */
+  position: fixed;
+  top: calc(
+    var(--chat-visual-viewport-top, 0px) +
+    var(--app-toolbar-total-height)
+  );
+  right: 8px;
+  margin-top: 6px;
+  /* Above the fixed mobile coding tabs and a maximized chat dock: the toolbar
+     creates no stacking context, so this menu drops straight into the band
+     those occupy and would otherwise be painted underneath them.
+
+     station#3766: and above passive notices. At `--layer-popover` (1000) the
+     offline banner (`--layer-notice`, 9000) painted over this menu, so the
+     one mobile route to Connections opened and its rows still hit-tested to
+     `.banner-host__collapse` — the notice telling a phone user they were
+     disconnected sat on top of the control that reconnects them. The token
+     scale's own rule is that a passive notice yields to an active surface;
+     `--layer-navigation` is where this menu belongs, because on mobile it IS
+     the app's navigation overflow. `OverflowMenu.tsx` derives its dismiss
+     backdrop from the same token so the two cannot drift apart. */
+  z-index: var(--layer-navigation);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  min-width: 160px;
+}
+
+.app-toolbar__overflow-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.app-toolbar__overflow-menu button:hover {
+  background: var(--bg-tertiary);
+}
+
+.app-toolbar__overflow-menu button + button {
+  border-top: 1px solid var(--border-primary);
+}
+
+/* ── Header Buttons ── */
+.app-toolbar__workspace-btn {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  font-weight: 600;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.app-toolbar__workspace-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.app-toolbar__workspace-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.app-toolbar__icon-btn {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.app-toolbar__icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.app-toolbar__icon-btn.is-active {
+  color: var(--accent-primary);
+}
+
+.app-toolbar__notification-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  /* Danger as a solid fill under white text is --error-fill's job, not
+     --status-error's: --status-error aliases the FOREGROUND token, and white
+     on dark's #ff6b6b measures 2.78:1 (station#1125's exact defect, reached
+     via the alias rather than via --error-text, which is why the #1125 sweep
+     did not reach it). --error-fill is 4.98:1 in both themes. */
+  background: var(--error-fill);
+  color: white;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.app-toolbar__conn-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-base);
+  font-weight: 500;
+}
+
+/* station#3311: the connection surface is self-describing — the state is
+   visible text beside the dot, with the identity after it.
+   station#4474: `connStateLabel` (HeaderActions.tsx) is one of five strings
+   of different lengths ("Connected", "Reconnecting", "Can't connect",
+   "No Station", "Pair") depending on connection state, and this had no
+   reserved width — so every OTHER control in `.app-toolbar__actions`
+   (notifications, profile, help, overflow, settings) shifted horizontally
+   each time the connection flipped state, on every page, since this chip is
+   mounted app-wide. `.app-toolbar__conn-name` (the identity) is not a second
+   variable, because index.css hides it entirely under the mobile
+   breakpoint — this label is the one thing that has to hold still.
+   station#4512 added two longer labels ("Awaiting approval", "Needs
+   re-pairing" — the chip now distinguishes a pending access request and an
+   identity mismatch from a genuinely unreachable host instead of collapsing
+   both into "Can't connect"), and re-measured all seven strings the same
+   way: a headless Chromium page with the real self-hosted DM Sans face at
+   this font-size/weight, `getBoundingClientRect().width`. "Awaiting
+   approval" is now the widest at ~102px (up from "Can't connect"'s ~81px);
+   `min-width` is that measurement plus the same proportional headroom the
+   original 92px used (~1.135x) — this app has no runtime i18n today, so
+   cross-locale width is not a live concern, and the headroom is just an
+   unmeasured margin against ordinary engine-to-engine font-metric variance
+   (WKWebView, WebView2, WebKitGTK), not a verified number for any of them.
+   `text-align: center` keeps a shorter label centered in the reserved slot
+   rather than flush left against empty trailing space. */
+.app-toolbar__conn-state {
+  min-width: 116px;
+  font-size: var(--text-base);
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.app-toolbar__conn-state--alert {
+  color: var(--warning-text);
+}
+
+/* The bundled-server lifetime note ("App only"), which QUALIFIES the identity
+   rather than replacing it — it describes the locally supervised server, not
+   which Station the connection points at (station#3311 review). Muted so the
+   identity stays the emphasis. */
+.app-toolbar__conn-note {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+
+/* Presentational "State · Name · Note" separators; kept out of the text
+   content so the accessible name and tests read clean strings. */
+.app-toolbar__conn-name::before,
+.app-toolbar__conn-note::before {
+  content: "· ";
+}
+
+/* The profile entry's initials chip inside the ⋯ overflow menu. */
+.app-toolbar__overflow-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+/* ── Workspace Modal ── */
+.workspace-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--layer-dialog);
+  animation: modal-fade-in var(--motion-slow) var(--ease-standard);
+}
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+}
+
+.workspace-modal {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 20px;
+  min-width: 400px;
+  max-width: 600px;
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-primary);
+  animation: modal-slide-up var(--motion-slow) var(--ease-standard);
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes modal-slide-up {
+  from {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.workspace-modal::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent-primary),
+    transparent
+  );
+  opacity: 0.6;
+}
+
+.workspace-modal__search {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-lg);
+}
+
+.workspace-modal__search:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.workspace-modal__list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.workspace-modal__item {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.workspace-modal__item:hover,
+.workspace-modal__item.is-active {
+  background: var(--bg-hover);
+}
+
+.workspace-modal__item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-modal__item-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-modal__item-desc {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-modal__pill {
+  font-size: var(--text-sm);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.workspace-modal__pill--plugin {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+.workspace-modal__pill--active {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.workspace-modal__empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-lg);
+}
+
+/* ── MessageBubble ── */
+.message-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-width: 0;
+  width: 100%;
+  margin-bottom: 16px;
+  /* GPU-composited entry: transform + opacity only. */
+  animation: message-slide-in var(--motion-slow) var(--ease-standard);
+  will-change: transform, opacity;
+}
+
+/* Drop the entry hint once the animation has settled so will-change does not
+   keep a compositor layer alive for every message in a long conversation. */
+.message-row:not(:last-child) {
+  will-change: auto;
+}
+
+@keyframes message-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Respect users who prefer reduced motion: drop the per-message slide. */
+.message-row--user {
+  flex-direction: row-reverse;
+}
+
+.message-row__avatar {
+  margin-top: 4px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.message-row__avatar::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    var(--accent-primary),
+    var(--accent-secondary, var(--accent-primary))
+  );
+  opacity: 0;
+  transition: opacity var(--motion-slow) var(--ease-standard);
+  z-index: -1;
+}
+
+.message-row:hover .message-row__avatar::after {
+  opacity: 0.2;
+}
+
+.message--from-prompt {
+  background: linear-gradient(
+    135deg,
+    var(--bg-tertiary) 0%,
+    var(--bg-secondary) 100%
+  );
+  border-left: 3px solid var(--accent-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.message--from-prompt::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    var(--accent-primary),
+    var(--accent-secondary, var(--accent-primary))
+  );
+  animation: prompt-glow var(--motion-status-breathe) var(--ease-standard)
+    infinite alternate;
+}
+
+@keyframes prompt-glow {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.message__trace {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.65em;
+  color: var(--text-muted);
+  text-decoration: none;
+  opacity: 0.4;
+  letter-spacing: 0.5px;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.message__trace:hover {
+  opacity: 0.7;
+}
+
+.message__copy-btn {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  padding: 0.25rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.message__copy-btn:hover {
+  opacity: 1;
+}
+
+.message__rating {
+  position: absolute;
+  bottom: 5px;
+  right: 32px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.message:hover .message__rating {
+  opacity: 0.6;
+}
+
+.message__rating:hover {
+  opacity: 1 !important;
+}
+
+/* A settled answer's footer is an interactive row. Keep the legacy absolute
+   copy/rating controls out of that row; otherwise their invisible hover area
+   can intercept the Task-basis control before a person can click it. */
+.message__rating-btn {
+  padding: 3px 4px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.message__rating-btn:hover {
+  opacity: 1;
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.message__rating-btn--active {
+  opacity: 1;
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.message__rating-expand {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  max-width: 0;
+  transition: max-width var(--motion-base) var(--ease-standard);
+  vertical-align: middle;
+}
+
+.message__rating-expand--open {
+  max-width: 160px;
+}
+
+.message__rating-reason {
+  width: 150px;
+  font-size: 0.7rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: inherit;
+  outline: none;
+}
+
+.message__rating-reason:focus {
+  border-color: var(--accent-primary);
+}
+
+.message__rating-reason-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-style: italic;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Derived output is a separate complementary region, not a message bubble or
+   child of the transcript log. */
+.session-summary {
+  margin: 8px 12px;
+  padding: 10px;
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  font-size: 0.85rem;
+}
+
+.session-summary__header,
+.session-summary__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.session-summary__header span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.session-summary__stale {
+  color: var(--warning, #b06b00) !important;
+}
+.session-summary__text {
+  white-space: pre-wrap;
+  margin: 8px 0;
+}
+.session-summary__attribution {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin: 0 0 8px;
+}
+
+/* #3310: in-flight and failed-generation states — the only un-summarized
+   states that still earn transcript space (the idle entry point moved to the
+   chat-settings menu). */
+.session-summary__generating {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.session-summary__failure p {
+  margin: 0 0 8px;
+  color: var(--error-text, var(--text-primary));
+}
+
+.message__model-badge {
+  font-family: var(--font-mono);
+  font-size: 0.64em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* ── Envelope-sourced model claims (station#1434) ──
+   Replaces the bare badge above on a row whose turn provenance envelope is
+   readable. Each claim carries its own label, because the envelope models
+   "what Station requested" and "what the engine reported" as separate
+   facts: a row may state both, and neither may be shown unlabelled. Wraps
+   rather than truncating — a model id the reader can't finish reading is
+   the kind of half-fact this surface exists to avoid. */
+.message__model-claims {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
+.message__model-claim {
+  font-family: var(--font-mono);
+  font-size: 0.64em;
+  color: var(--text-muted);
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+
+/* Not `text-transform`, and the label/value gap is a real space in the JSX
+   rather than margin alone — the visible text and the DOM text must stay the
+   same string, so a test (and a screen reader, and a copy-paste) reads what
+   a person reads. */
+.message__model-claim-label {
+  font-weight: 600;
+  margin-right: 1px;
+  opacity: 0.75;
+}
+
+/* ── MessageAttribution (station#1424) ──
+   Additive identity strip: agent identity text + engine/owner/permission-
+   posture chips. Sits above the model badge, inside the existing bubble —
+   the row shape stays identical, this only adds a quiet identity line. No
+   icon of its own (station#1424 review fix S2) — the row already renders
+   one avatar per message. */
+.message-attribution {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
+.message-attribution__agent-name {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.message__thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.message__pending-approval {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--warning-primary, orange);
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--warning-bg, rgba(255, 165, 0, 0.1));
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+/* ── ChatInputArea ── */
+.chat-input__clear {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-2xl);
+  color: var(--text-muted);
+  padding: 4px;
+  line-height: 1;
+  z-index: 1;
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+
+.chat-input__clear:hover {
+  color: var(--text-primary);
+}
+
+/* station#3344: attached files, shown in the composer rather than only behind
+   the paperclip popover, so a pasted screenshot is visibly attached. The row
+   scrolls instead of wrapping — wrapping grows the composer upward and pushes
+   Send off a phone screen. */
+.composer-attachments {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.composer-attachments__chip {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  align-items: center;
+  max-width: 220px;
+  padding: 2px 2px 2px var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+}
+
+.composer-attachments__thumb {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.composer-attachments__glyph {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.composer-attachments__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* station#3375: the chip says the bytes changed. It is a label, not a control
+   — nothing here is clickable, so it carries no target-size obligation. */
+.composer-attachments__resized {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+}
+
+.composer-attachments__remove {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.composer-attachments__remove:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.composer-attachments__stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.composer-attachments__stage progress {
+  inline-size: 4rem;
+  block-size: 0.4rem;
+}
+
+.composer-attachments__stage button {
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  /* --accent-primary, not a --accent no theme root defines: the unresolvable
+     name rendered as inherited text color, so the stage button was not
+     accent-colored in either palette (station#3050 class). */
+  color: var(--accent-primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.1rem 0.2rem;
+}
+
+.composer-attachments__choose {
+  color: var(--accent-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.composer-attachments__choose input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* station#3344 (review MEDIUM-4): on a touch device this control has to meet
+   the same 44px floor its composer siblings do (WCAG 2.5.5) — a 20px target
+   between a thumbnail and the next chip is a mis-tap waiting to happen. The
+   button grows; the glyph does not. */
+@media (max-width: 768px), (pointer: coarse) {
+  .composer-attachments__chip {
+    min-height: 44px;
+  }
+  .composer-attachments__remove {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+.chat-input__attachment-error {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-1);
+  left: var(--space-2);
+  overflow: hidden;
+  color: var(--error-text);
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The composer's primary action: one circular, accent-filled target pinned to
+   the capsule's trailing edge. It used to be a text button that shared the
+   wrapping row with five peers and could end up below the fold on a phone. */
+.chat-input__send-btn,
+.chat-input__stop-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    background var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+
+.chat-input__send-btn--active {
+  background: var(--color-primary);
+  /* --color-primary IS --accent-primary, so a literal white foreground was a
+     contrast claim about whatever accent happens to be set: 1.62:1 against the
+     shipped dark-theme brand (#5ce0c6) and as low as 1.92:1 against a custom
+     accent. --text-on-accent is derived from the same color the fill uses, so
+     the same case reads 12.35:1. Figures are the SHIPPED @kontourai/ui tokens;
+     index.css retints --k-brand only under :root.is-dev-build, so a dev build
+     measures differently. */
+  color: var(--text-on-accent);
+}
+
+.chat-input__send-btn--active:hover:not(:disabled) {
+  background: var(--accent-hover-fill);
+}
+
+.chat-input__send-btn--inactive {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  /* Was 0.25 — at that opacity the disabled Send read as a rendering artifact
+     rather than a control that is waiting for input. */
+  opacity: 0.5;
+}
+
+/* Stop shares Send's geometry so the control does not jump position when a turn
+   starts; only its fill and glyph change. Always enabled — stopping a running
+   turn must not depend on there being text in the input. */
+.chat-input__stop-btn {
+  background: var(--error-bg);
+  color: var(--error-text, var(--text-primary));
+}
+
+.chat-input__stop-btn svg {
+  fill: currentColor;
+}
+
+/* --error-primary was never defined (station#1168), so this hover fill has
+   always resolved to `transparent` while the glyph still went white — in the
+   light theme that painted a white Stop icon onto a white composer, i.e. the
+   control for interrupting a running turn disappeared under the cursor.
+   --error-fill is the white-carrying danger fill (4.98:1 in both themes). */
+.chat-input__stop-btn:hover:not(:disabled) {
+  background: var(--error-fill);
+  color: white;
+}
+
+/* Scoped under `.chat-input__meta` for the same reason as the approval chip
+   below — `.chat-input button` was stripping this pill's padding and
+   background too, so the model control rendered as bare text (#1010 item 1). */
+.chat-input__meta .chat-input__model-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+  min-height: 24px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--motion-base) var(--ease-standard);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Agent and Model are the composer's two primary choices. Provider/engine
+   stay in the model detail, not as competing selector nouns. */
+.chat-input__meta .chat-input__agent-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+  min-height: 24px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--accent-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+}
+
+.chat-input__control-label {
+  flex: 0 0 auto;
+  margin-inline-end: var(--space-1);
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.chat-input__agent-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-input__meta .chat-input__agent-btn:hover:not(:disabled) {
+  background: var(--accent-light);
+}
+
+.chat-input__model-identity {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-input__model-provider,
+.chat-input__model-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-input__model-provider {
+  color: var(--text-secondary);
+}
+
+.chat-input__model-source {
+  /* --font-sans, not the --font-family this read until station#1254. There is
+     no --font-family token; tokens.css declares --font-sans and --font-mono.
+     The declaration was dropped and the label inherited body copy — which is
+     --font-sans, so this is the one conversion in that sweep that changes no
+     pixels. Naming the token that exists is still worth doing: the next
+     reader should not have to establish that by hand. */
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.chat-input__meta .chat-input__model-reset {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  /* --bg-tertiary, not --bg-secondary: the latter is byte-identical to the
+     chat-dock background in both themes (#111824 dark / #ffffff light), so
+     Reset rendered as bare text between two filled pills — the exact defect
+     this change exists to fix, left in one of the three controls. */
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* `--accent-primary-rgb` is not defined anywhere in this repo, so every
+   `rgba(var(--accent-primary-rgb, 0, 102, 204), …)` here was resolving to its
+   literal fallback — a hardcoded #0066cc that ignores the theme and the brand
+   token. `--accent-subtle`/`--accent-light` are the real tokens for these two
+   weights and are defined in both skins. */
+.chat-input__meta .chat-input__model-btn--default {
+  color: var(--text-muted);
+  font-weight: 400;
+  background: var(--accent-subtle);
+}
+
+.chat-input__meta .chat-input__model-btn--default:hover {
+  background: var(--accent-light);
+}
+
+/* Fill derived from the same yellow as the text, not the brand mint. Review
+   found `--accent-light` (a brand-tinted color-mix) under `--accent-yellow`
+   measured 1.60:1 in light theme — olive on mint, and unreadable. This is the
+   principle the --pending rule below already states; it was not applied here. */
+.chat-input__meta .chat-input__model-btn--override {
+  color: var(--accent-yellow-text);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
+}
+
+.chat-input__meta .chat-input__model-btn--override:hover {
+  background: color-mix(in srgb, var(--accent-yellow) 20%, transparent);
+}
+
+/* #1010 item 1 — the meta row's pills are scoped under `.chat-input__meta`
+   (0,2,0) on purpose. `.chat-input button` (index.css, 0,1,1) sets
+   `padding: 0` and `background: transparent`, which beat these single-class
+   component rules and silently stripped BOTH off every chip that is a
+   `<button>`. Measured on origin/main: the interactive chips rendered at
+   `padding: 0px` with `background: rgba(0,0,0,0)` while the inert read-only
+   `<span>` — exempt from that selector — kept its `0 6px` padding and its
+   filled background. The row therefore read exactly backwards: the controls
+   you can click looked like loose text, and the one thing you cannot click
+   looked like the only real control. That file already documents this
+   clobbering hazard for `color` (station#763); this is the same trap for the
+   two properties that make a pill a pill. */
+.chat-input__meta .chat-input__approval-chip {
+  flex: 0 0 auto;
+  /* 24, not 32: this row is a status readout above the composer, and at a
+     10px label 32px was mostly empty box (#1010 item 1). The mobile block
+     below restores the 44px touch floor where a finger has to hit it. */
+  min-height: 24px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chat-input__approval-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-input__approval-chip-caret {
+  opacity: 0.7;
+}
+
+/* The readonly chip carries TWO labels — "Set by engine" and the tool-policy
+   coverage. Together they overflowed the composer's meta row on a phone and
+   crowded out the model selector (station#3151). The policy half is
+   aria-hidden already, and the full pairing is the chip's accessible name and
+   its tooltip, so hiding it here narrows only the visible projection: no
+   disclosure is lost, and the chip still says Station is not the thing
+   governing this engine. */
+@media (max-width: 480px) {
+  .turn-footer__actions {
+    justify-content: flex-start;
+  }
+
+  .chat-input__approval-chip-policy {
+    display: none;
+  }
+}
+
+.chat-input__meta .chat-input__approval-chip--default {
+  /* --text-secondary, not --text-muted: at 10px this is normal text and needs
+     4.5:1; --text-muted measured 3.95:1 over --accent-subtle. */
+  color: var(--text-secondary);
+  background: var(--accent-subtle);
+}
+
+.chat-input__meta .chat-input__approval-chip--default:hover {
+  background: var(--accent-light);
+}
+
+.chat-input__meta .chat-input__approval-chip--override {
+  color: var(--accent-yellow-text);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
+}
+
+/* Inert, and it has to LOOK inert (#1010 item 3). No fill and a dashed
+   outline read as "not a button" in both skins, `--text-disabled` matches the
+   disabled treatment used elsewhere, and `cursor: default` removes the last
+   cue that suggested a click would do something. Distinct from --pending,
+   which is dashed but yellow, filled and italic. */
+.chat-input__meta .chat-input__approval-chip--readonly {
+  /* --text-tertiary, not --text-disabled: this renders `role="note"`, which is
+     content, so the "inactive controls are WCAG-exempt" rationale attached to
+     --text-disabled does not transfer. It measured 3.97:1 in dark. */
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px dashed var(--border-dashed);
+  cursor: default;
+}
+
+/* The fill stays derived from the SAME yellow as this chip's border and text —
+   a brand-tinted fill under yellow text read as two unrelated signals. The old
+   rule hardcoded `rgba(212, 160, 23, 0.1)`, which is neither theme's actual
+   `--accent-yellow` (#c9a854 dark / #ca8a04 light); color-mix keeps the tint
+   tied to the token in both skins. */
+.chat-input__meta .chat-input__approval-chip--pending {
+  border: 1px dashed var(--accent-yellow);
+  color: var(--accent-yellow-text);
+  background: color-mix(in srgb, var(--accent-yellow) 10%, transparent);
+  font-style: italic;
+}
+
+/* Shared fixed-position popover shell for the composer's two dialog-layer
+   popovers (docs/design/chat-composer.md §3.2/§3.3): the Model picker and
+   the grouped "+" actions menu. Escapes any local stacking context — the
+   fix for the pointer-interception the MCP-passthrough spike found. */
+.composer-popover-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 12px;
+}
+/* Horizontal alignment variants (previously inline overlayStyle overrides —
+   moved to CSS classes per the repo's classes-over-inline-styles rule; this
+   also lets the mobile media query below correctly win on small viewports,
+   which an inline style always overrode regardless of specificity). */
+.composer-popover-overlay--end {
+  justify-content: flex-end;
+}
+.composer-popover-overlay--start {
+  justify-content: flex-start;
+}
+/* The shell owns the panel surface, not each individual popover (#992).
+   Every panel that opted in by hand got one; the two that never did shipped
+   fully transparent — `.composer-mode-sheet` (#999) and, until this change,
+   `.chat-dock__mobile-overflow-panel`, whose menu items floated over the page
+   with `background-color: rgba(0, 0, 0, 0)`. Opaque is now the default a new
+   popover inherits, so the failure mode is a redundant surface, not an
+   invisible one. */
+.composer-popover-panel {
+  /* Shared with the anchored clamp bounds below so the two can't drift
+     independently of the panel's actual width. */
+  --composer-popover-width: 380px;
+  width: min(var(--composer-popover-width), calc(100vw - 24px));
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+/* The single opt-out: this panel is a frame around `SessionModelPicker`, which
+   is a self-contained surface with its own border, radius, and mobile
+   edge-docked geometry. Stacking the shell's surface behind it would draw a
+   second border ring around the picker. Compounded deliberately: at equal
+   specificity this would win only by being written later, so a rule-sorting
+   formatter or a hoist could silently restore the double ring. */
+.composer-popover-panel.chat-input__model-popover-panel {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+}
+.chat-input__model-popover-panel .session-model-picker {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+}
+.composer-actions-menu__panel {
+  width: min(320px, calc(100vw - 24px));
+}
+/* Desktop: an anchored popover, not a sheet (#999). The overlay stays
+   fixed-inset for stacking escape and click-away, but carries no scrim; the
+   panel positions itself against the trigger geometry the surface exposes via
+   `data-anchored` + `--responsive-anchor-*`. These popovers always open
+   upward — their triggers live in the composer at the bottom of the dock. */
+.composer-popover-overlay[data-anchored] .composer-popover-panel {
+  position: fixed;
+  bottom: calc(100dvh - var(--responsive-anchor-top, 100dvh) + 8px);
+  /* Floored: a trigger within 24px of the viewport top would otherwise
+     compute a negative (clamped-to-zero, invisible) panel height. */
+  max-height: max(120px, calc(var(--responsive-anchor-top, 100dvh) - 24px));
+  overflow-y: auto;
+}
+.composer-popover-overlay--start[data-anchored] .composer-popover-panel {
+  left: clamp(
+    12px,
+    var(--responsive-anchor-left, 12px),
+    calc(100vw - var(--composer-popover-width) - 12px)
+  );
+}
+.composer-popover-overlay--end[data-anchored] .composer-popover-panel {
+  right: clamp(
+    12px,
+    var(--responsive-anchor-right, 12px),
+    calc(100vw - var(--composer-popover-width) - 12px)
+  );
+}
+.composer-popover-overlay[data-anchored]
+  .chat-input__model-popover-panel
+  .session-model-picker {
+  max-height: max(120px, calc(var(--responsive-anchor-top, 100dvh) - 24px));
+}
+/* Mobile: the #972 bottom sheet — full-viewport scrim, edge-docked panel.
+   Scoped here so desktop never inherits it (#999). */
+/* Composer grouped secondary-actions "+" menu: Delegate / Commands / Files /
+   Task-context collapse into this one affordance next to attach + mic. */
+.composer-actions-menu__trigger {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1;
+}
+.composer-actions-menu__list {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  gap: 2px;
+}
+.composer-actions-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.composer-actions-menu__item:hover:not(:disabled),
+.composer-actions-menu__item:focus-visible {
+  background: var(--bg-hover);
+}
+.composer-actions-menu__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.composer-actions-menu__item-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.chat-controls {
+  position: relative;
+}
+
+/* Waiting detection badge (ACP stale output) */
+.message__waiting-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin-top: 8px;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: #e5534b;
+  background: rgba(229, 83, 75, 0.1);
+  border-radius: 4px;
+  animation: pulse-waiting var(--motion-status-breathe) var(--ease-standard)
+    infinite;
+}
+
+@keyframes pulse-waiting {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The MCP-UI block's three borders read --border-subtle until station#1254.
+   No such token exists — the ramp is --border-primary (the subtle line) and
+   --border-secondary (the strong one) — so the card had no outline, its table
+   rows had no rules between them, and its form inputs had no edge. */
+.ui-block {
+  margin: 0.85rem 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 14px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+  overflow: hidden;
+}
+
+.ui-block__header,
+.ui-block--card {
+  padding: 0.9rem 1rem;
+}
+
+.ui-block__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.ui-block__body,
+.ui-block__caption {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.ui-block__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+  margin: 0.9rem 0 0;
+}
+
+.ui-block__field dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.ui-block__field dd {
+  margin: 0.2rem 0 0;
+  font-weight: 600;
+}
+
+.ui-block--tone-success {
+  border-color: rgba(32, 180, 96, 0.35);
+}
+
+.ui-block--tone-warning {
+  border-color: rgba(230, 168, 52, 0.4);
+}
+
+.ui-block--tone-danger {
+  border-color: rgba(209, 72, 54, 0.4);
+}
+
+.ui-block__table-wrap {
+  overflow-x: auto;
+}
+
+.ui-block__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ui-block__table th,
+.ui-block__table td {
+  padding: 0.7rem 0.9rem;
+  border-top: 1px solid var(--border-primary);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ui-block__table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+}
+
+.ui-block__code-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.ui-block__code-lang {
+  margin-left: auto;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.ui-block__code-body {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.ui-block__code-body code {
+  font-family: inherit;
+  white-space: pre;
+}
+
+.ui-block--form {
+  padding: 0.9rem 1rem;
+  display: block;
+}
+
+.ui-block__form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.6rem 0 0;
+}
+
+.ui-block__form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ui-block__form-field label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.ui-block__form-field input,
+.ui-block__form-field textarea,
+.ui-block__form-field select {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.ui-block__form-field textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.ui-block__form-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.ui-block__form-required {
+  color: var(--accent-danger, #d14836);
+}
+
+.ui-block__form-error {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: var(--accent-danger, #d14836);
+}
+
+.ui-block__form-actions {
+  margin: 0.85rem 0 0;
+}
+
+.ui-block__form-submit {
+  padding: 0.5rem 1.1rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-primary, #3b82f6);
+  color: var(--text-on-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ui-block__form-submit:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ── Mobile responsive ── */
+/* Recovery affordance on a failed-turn system marker (#797). */
+.system-event__action {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-style: normal;
+}
+
+.system-event__action:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
+/* One quiet meta row under a settled answer (station#2652 redesign): the
+   provenance disclosure leads and the share control sits beside it, both
+   text-weight and muted — the answer above stays the loudest thing in the
+   reading column. */
+.turn-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 12px;
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.turn-footer .turn-provenance {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.turn-footer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+/* Footer controls participate in the flow; no absolute hit target may cover
+   an adjacent trace, provenance disclosure, or Task action. */
+.turn-footer__actions .message__copy-btn,
+.turn-footer__actions .message__rating,
+.turn-footer__actions .message__trace {
+  position: static;
+}
+
+.turn-footer__actions .message__copy-btn {
+  padding: 3px 6px;
+}
+
+.turn-footer__actions .message__rating {
+  opacity: 0.6;
+  min-height: 44px;
+}
+
+/* The footer's controls are nested inside their own components, so the
+   inventory-wide direct-child 44px floor cannot reach them — apply it
+   explicitly on touch viewports. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .app-toolbar__action--secondary.app-toolbar__action--secondary {
+    display: none;
+  }
+  .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
+    display: flex;
+  }
+  /* Touch targets: shared toolbar controls must clear 44x44px on mobile. */
+  .app-toolbar__icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .app-toolbar__conn-name,
+  .app-toolbar__conn-note {
+    display: none;
+  }
+  /* station#3311: the toolbar chip stays compact on mobile — dot only while
+     healthy; the state text appears exactly when it carries news
+     (reconnecting / disconnected / credential required). `idle` stays
+     dot-only too, and that is not a guess about the health status: the chip
+     carries `--idle` only when `hasRealSavedConnection` is false AND nothing
+     is blocked, failed, or connected — a strict subset of the condition that
+     renders MobileConnectionBanner (OnboardingGate). So this suppresses the
+     toolbar copy only where the banner is already announcing it, and every
+     news-carrying state keeps its text. */
+  .app-toolbar__conn--connected .app-toolbar__conn-state,
+  .app-toolbar__conn--idle .app-toolbar__conn-state {
+    display: none;
+  }
+  /* The state text that DOES survive here sits in a `flex-shrink: 0` cluster
+     beside three 44px controls, so its width is the one thing here that can
+     grow the cluster. Bounded, like the identity beside it. Measured, not
+     assumed: station#4512 review (L3) re-checked this against the reserved
+     116px `min-width` above — "Credential required" was never a string this
+     chip actually shows (`connStateLabel` in `HeaderActions.tsx` has no such
+     value; this comment predated a rename). The longest copy TODAY is
+     "Awaiting approval" at ~102px (measured the same way as the min-width
+     reservation: real Chromium, the app's self-hosted DM Sans, this exact
+     font-size/weight, at a 320px viewport), comfortably inside this 120px
+     ceiling — this remains a bound on a string that a larger text scale, a
+     translation, or a new state could grow, not a fix for an overflow that
+     reproduces today. */
+  .app-toolbar__conn-state {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .composer-popover-overlay {
+    justify-content: stretch;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.32);
+  }
+  .composer-popover-panel,
+  .composer-popover-overlay[data-anchored] .composer-popover-panel {
+    width: 100%;
+    /* The surface drops the anchor when the mobile query matches, but that
+       happens in a matchMedia callback one paint later than the browser's own
+       style recalc — the [data-anchored] variant here makes sheet geometry
+       win during that crossing paint too, by specificity instead of timing. */
+    position: static;
+    max-height: none;
+  }
+
+  .chat-settings-modal {
+    min-width: unset;
+    width: 90vw;
+  }
+
+  .chat-dock__header-actions button {
+    padding: 6px 8px;
+    font-size: var(--text-sm);
+  }
+
+  .chat-input textarea {
+    min-height: 40px;
+    font-size: var(--text-xl); /* prevents iOS zoom on focus */
+  }
+
+  .app-toolbar__icon-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .app-toolbar__actions {
+    gap: 4px;
+  }
+
+  .app-toolbar__icon-btn--help {
+    display: none;
+  }
+
+  .app-toolbar__conn-name,
+  .app-toolbar__conn-note {
+    display: none;
+  }
+
+  .message__rating-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+
+  .message__copy-btn {
+    padding: 10px;
+  }
+
+  .message__fork-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ── Dock chrome: simplify + un-nest for touch ── */
+
+  /* Keyboard-shortcut hints are meaningless on touch and crowd the chrome.
+     Drop every subtitle/shortcut glyph throughout the dock so the header and
+     tab-action buttons collapse to a single, legible line. */
+  .chat-dock__title .chat-dock__subtitle,
+  .chat-dock__new .chat-dock__subtitle,
+  .chat-dock__maximize-btn .chat-dock__subtitle {
+    display: none;
+  }
+
+  /* Header: tighten padding, keep title from overflowing 390px, and give the
+     interactive controls real 44x44 tap targets. */
+  .chat-dock__header {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+    cursor: ns-resize;
+    touch-action: none;
+  }
+  .chat-dock__title {
+    flex: 1;
+    min-width: 0;
+  }
+  .chat-dock__title > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-dock__title > .chat-dock__icon-btn,
+  .chat-dock__counter {
+    display: none;
+  }
+  .chat-dock__header-actions {
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .chat-dock__icon-btn,
+  .chat-dock__maximize-btn {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .mobile-task-switcher__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: var(--space-2);
+    background: rgba(0, 0, 0, 0.55);
+  }
+  .mobile-task-switcher__panel {
+    width: min(100%, 520px);
+    max-height: calc(var(--responsive-visual-viewport-height) - var(--space-4));
+    overflow: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md)
+      var(--radius-md);
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-lg);
+  }
+  .mobile-task-switcher__header {
+    /* The panel is the scroll container; keep the dismiss affordance pinned
+       while the list scrolls (#1051). */
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg-primary);
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-secondary);
+  }
+  .mobile-task-switcher__header p,
+  .mobile-task-switcher__header h2 {
+    margin: 0;
+  }
+  .mobile-task-switcher__header p {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .mobile-task-switcher__header h2 {
+    font-size: var(--text-base);
+  }
+  .mobile-task-switcher__list {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+  }
+  /* Composer two-row stack: at phone width the desktop layout (textarea +
+     a right-hand controls column) squeezes the textarea and pushes the
+     model/approval/context chips off the right edge of the viewport.
+     Instead: row 1 is the full-width textarea; row 2 is a horizontal strip
+     (attach, mic, Send, model chip, approval chip, context %). Pure CSS
+     wrap — DOM order unchanged. The mic (#729) lives inside
+     .chat-controls-row next to Send on every viewport, so no mobile-only
+     reorder is needed here anymore. */
+  .chat-input {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .chat-input__textarea-wrapper {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .chat-input__textarea-wrapper > textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+  .chat-controls {
+    flex: 0 0 auto;
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .chat-controls-row {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  /* These carry the `.chat-input__meta` scope so they still WIN against the
+     desktop pill rules above, which had to be raised to (0,2,0) to escape
+     `.chat-input button`'s clobber. Dropping the scope here would silently
+     hand the 44px touch floor back to a 24px desktop value on a phone. */
+  .chat-input__meta .chat-input__model-btn {
+    flex: 1 1 0;
+    /* 44px for the same reason as the approval chip below: this scoped rule
+       (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
+       `min-width: 0` silently removes it. Not reachable today — the button
+       bottoms out at 120px in every measured state — but with a third chip in
+       the row it collapses to 14px, and the asymmetry of pinning one control
+       and not its neighbour is exactly how the floor was lost the first time. */
+    min-width: 44px;
+    max-width: 100%;
+  }
+  .chat-input__meta {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .chat-input__meta .chat-input__agent-btn,
+  .chat-input__meta .chat-input__model-btn,
+  .chat-input__meta .chat-input__approval-chip {
+    flex: 1 1 12rem;
+    max-width: 100%;
+  }
+  .chat-input__meta .chat-input__agent-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .chat-input__model-identity {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-input__model-source {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-input__meta .chat-input__approval-chip {
+    /* 44px, not 0. The old `min-width: 0` was harmless only because the long
+       label made the chip 152px wide anyway; with the short label it measures
+       40px, and this scoped rule now outranks the `.chat-input button` touch
+       floor that used to guarantee the width. Both dimensions are pinned here
+       so the floor cannot be lost again — the inert chip is a <span> and never
+       had the floor at all, which also left the row ragged (44px pill beside a
+       32px one). */
+    min-width: 44px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 44px;
+  }
+  .chat-input__send-btn,
+  .chat-input__cancel-btn {
+    min-height: 44px;
+  }
+  .chat-input__meta .chat-input__model-btn {
+    min-height: 44px;
+  }
+  .chat-input__meta .chat-input__model-reset {
+    min-height: 44px;
+  }
+
+  .turn-footer .turn-provenance__summary,
+  .turn-footer .share-answer__button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

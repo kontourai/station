@@ -1,0 +1,120 @@
+.path-autocomplete {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.path-autocomplete__input {
+  padding-right: 2.75rem;
+}
+
+.path-autocomplete__dropdown {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  z-index: var(--layer-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-primary) 92%, white 8%),
+    var(--bg-secondary)
+  );
+  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border-radius: 14px;
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  max-height: min(16rem, calc(100dvh - 7rem));
+  overflow-y: auto;
+  max-width: 100%;
+  overscroll-behavior: contain;
+}
+
+.path-autocomplete__option {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.path-autocomplete__option:hover,
+.path-autocomplete__option--selected {
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+}
+
+.path-autocomplete__option:hover {
+  transform: translateY(-1px);
+}
+
+.path-autocomplete__icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.path-autocomplete__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.path-autocomplete__label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.path-autocomplete__label {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path-autocomplete__badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-tertiary) 86%, white 14%);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.path-autocomplete__path {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .path-autocomplete__dropdown {
+    position: static;
+    margin-top: 0.35rem;
+    max-height: min(11rem, calc(100dvh - 12rem));
+  }
+
+  .path-autocomplete__option {
+    min-height: 44px;
+  }
+}

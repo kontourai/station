@@ -1,0 +1,20 @@
+{
+  "id": "survey-mcp",
+  "kind": "mcp",
+  "displayName": "Survey Review Card (MCP Apps / SEP-1865)",
+  "icon": "📋",
+  "description": "Kontour Survey review MCP server (stdio): inspects a review-queue session and serves the review card as a declared MCP Apps (SEP-1865) `ui://survey/review-card/queue` resource (mimeType text/html;profile=mcp-app), readable by Station's MCP-UI host via resources/read. Tools inspect the queue and append accept/hold/reject decisions back to the session file atomically. Reference it as an `mcp-tool-ui` layout component once installed. Replace the <session path> placeholder with a Survey review-session JSON file (the durable decision store).",
+  "transport": "stdio",
+  "command": "npx",
+  "args": [
+    "-y",
+    "-p",
+    "@kontourai/survey",
+    "survey-review-mcp",
+    "<session path>"
+  ],
+  "timeouts": {
+    "startupMs": 15000,
+    "requestMs": 60000
+  }
+}

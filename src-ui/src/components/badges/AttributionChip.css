@@ -1,0 +1,40 @@
+/* Shared pill primitive (station#1424 review fix N1) for the row-attribution
+   badge family — `OwnerChip` and `PermissionPostureBadge` were near-identical
+   copies of `EngineChip`'s pill; consolidated here with a tone modifier
+   instead of two duplicated stylesheets. `EngineChip` deliberately keeps its
+   own file/classes unchanged: it has pre-existing external consumers with
+   their own overrides (e.g. index.css's `.session-item__meta > .engine-chip`
+   margin override) across several surfaces outside this diff's visual-QA
+   reach, so folding it into this shared primitive was judged too high-risk
+   for this pass. */
+.attribution-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  min-width: 0;
+}
+
+.attribution-chip__pill {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  line-height: 1.4;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  /* station#1424 review fix S6: a long owner display name must truncate
+     inside the message bubble's own 70%-width cap on a narrow dock, not
+     overflow it — `flex-shrink: 0` (the previous rule) prevented exactly
+     that shrink. */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attribution-chip__pill--posture {
+  background: var(--warning-bg, rgba(255, 165, 0, 0.1));
+  color: var(--warning-primary, orange);
+}

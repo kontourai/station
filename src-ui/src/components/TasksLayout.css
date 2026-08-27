@@ -1,0 +1,15 @@
+.tasks-layout {
+  min-width: 0;
+  padding: var(--space-5, 20px);
+}
+
+.tasks-layout :focus-visible {
+  outline: 2px solid var(--color-accent, #5b8cff);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .tasks-layout {
+    padding: var(--space-3, 12px);
+  }
+}

@@ -1,0 +1,12 @@
+// The negative control: user-facing copy in every scanned attribute shape,
+// none of it using a retired noun.
+export function CleanView() {
+  return (
+    <section className="clean-view">
+      <h2>Engines</h2>
+      <button title="Engine settings" aria-label="Open engine settings">
+        Configure
+      </button>
+    </section>
+  );
+}

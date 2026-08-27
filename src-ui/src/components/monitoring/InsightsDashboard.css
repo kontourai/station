@@ -1,0 +1,317 @@
+/* InsightsDashboard styles */
+
+.insights-dashboard {
+  color: var(--text-primary);
+}
+
+.insights-tab-row,
+.insights-pill-row,
+.insights-stat-grid,
+.insights-two-col,
+.insights-hourly-bars,
+.insights-tool-header,
+.insights-agent-row {
+  display: flex;
+}
+
+.insights-tab-row,
+.insights-pill-row {
+  gap: 0.5rem;
+}
+.insights-tab,
+.insights-pill {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+}
+.insights-tab.is-active,
+.insights-pill.is-active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+.insights-stat-grid {
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.insights-stat-cell {
+  flex: 1;
+  padding: 0.875rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  background: var(--bg-secondary);
+}
+.insights-section-label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.insights-stat-value {
+  margin-top: 0.25rem;
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.insights-hourly {
+  margin: 1.25rem 0;
+}
+.insights-hourly-bars {
+  align-items: end;
+  gap: 0.25rem;
+  height: 10rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  background: var(--bg-secondary);
+}
+.insights-hourly-bar {
+  flex: 1;
+  min-width: 0.25rem;
+  background: var(--accent-primary);
+  border-radius: 0.2rem 0.2rem 0 0;
+}
+.insights-hourly-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+}
+.insights-two-col {
+  gap: 1.5rem;
+}
+.insights-two-col > * {
+  flex: 1;
+  min-width: 0;
+}
+.insights-tool-row {
+  margin-top: 0.75rem;
+}
+.insights-tool-header,
+.insights-agent-row {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.insights-bar-track {
+  height: 0.4rem;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  background: var(--border-primary);
+  border-radius: 999px;
+}
+.insights-bar-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: inherit;
+}
+.insights-bar-fill.has-errors {
+  background: var(--error-text);
+}
+.insights-agent-row {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+.insights-mono-sm {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.insights-muted {
+  color: var(--text-secondary);
+}
+.insights-text-primary {
+  color: var(--text-primary);
+}
+.insights-empty {
+  padding: 1rem 0;
+  color: var(--text-secondary);
+}
+
+/* ── Mobile (<=768px) ──
+   The dashboard ships without desktop layout CSS — its containers fall back to
+   default block flow, so multi-"column" groupings (insights-two-col,
+   feedback-grid) already stack naturally. These rules only harden the mobile
+   experience: tab/filter strips scroll instead of clipping, primary controls
+   meet the 44px tap target, and nothing overflows a 390px viewport. Desktop
+   (>=769px) is intentionally left untouched. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .insights-dashboard {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Tab + filter pill strips: single horizontally-scrollable row instead of
+     clipping or forcing a horizontal page scroll. */
+  .insights-tab-row,
+  .insights-pill-row,
+  .feedback-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0.5rem;
+    max-width: 100%;
+  }
+
+  .insights-tab-row::-webkit-scrollbar,
+  .insights-pill-row::-webkit-scrollbar,
+  .feedback-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .insights-tab,
+  .insights-pill {
+    flex-shrink: 0;
+    white-space: nowrap;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Behavior header can stack so the action pills aren't squeezed. */
+  .feedback-behaviors-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  /* Force single-column for any grouping that may be styled as a grid in a
+     parent/global sheet, and prevent text/preview blocks from overflowing. */
+  .insights-two-col,
+  .insights-stat-grid,
+  .feedback-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+  }
+
+  .feedback-card,
+  .feedback-preview,
+  .feedback-reason,
+  .feedback-analysis,
+  .feedback-behavior-item {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* The 24-bar hourly chart should fill the width without overflowing. */
+  .insights-hourly-bars {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Delete affordance on feedback cards stays tappable. */
+  .feedback-delete-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* station#3075/#3076: filter chips, the selectable agent row, and the
+   affordance that hands the user the rows behind a number. */
+.insights-filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3, 12px);
+}
+
+.insights-agent-row.is-selectable {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.insights-agent-row.is-selectable:hover,
+.insights-agent-row.is-selectable.is-active {
+  background: var(--surface-hover, rgba(127, 127, 127, 0.12));
+}
+
+.insights-agent-row.is-selectable:focus-visible {
+  outline: 2px solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+
+.insights-inline-action {
+  margin-left: var(--space-2, 8px);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--text-muted, currentColor);
+  text-decoration: underline;
+}
+
+.insights-inline-action:focus-visible {
+  outline: 2px solid var(--focus-ring, currentColor);
+  outline-offset: 2px;
+}
+
+/* The export refuses rather than writing a file that misrepresents itself;
+   this is where it says why. role="alert" — it answers a click. */
+.insights-export-note {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--warning-text);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* The Feedback tab drifted from its own stylesheet (station#3157). Two
+   classes were renamed on one side only — fixed by pointing the TSX at the
+   names defined here — and three had never been written at all. */
+
+/* An EMPTY span: with no rule it has no size, so the "analyzing" indicator
+   could never be seen. It is the only signal that analysis is running. */
+.feedback-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  /* Perpetual status (docs/design/motion.md): tokens, not literals, so this
+     pulse shares its cadence with every equivalent one. The global
+     reduced-motion contract caps it at one near-instant iteration. */
+  animation: feedback-status-pulse var(--motion-status-pulse)
+    var(--ease-standard) infinite;
+}
+
+@keyframes feedback-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* "Behaviors to Reinforce" and "Behaviors to Avoid" rendered identically:
+   both modifiers were dead, leaving the glyph as the only differentiator. */
+.feedback-behaviors-header.positive,
+.feedback-reason.positive {
+  color: var(--success-text);
+}
+
+.feedback-behaviors-header.negative,
+.feedback-reason.negative {
+  color: var(--error-text);
+}

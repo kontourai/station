@@ -1,0 +1,643 @@
+.split-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg-primary);
+}
+
+.split-pane__left {
+  display: none;
+  width: 100%;
+  flex-shrink: 0;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  min-height: 0;
+}
+
+.split-pane__left--visible {
+  display: flex;
+}
+
+.split-pane__right {
+  flex: 1;
+  min-width: 0;
+  display: none;
+  background: var(--bg-primary);
+  overflow: auto;
+}
+
+/* The stable portal root returns here on desktop/closed mobile. This host has
+   no box of its own, so reparenting the root does not change split-pane layout. */
+.split-pane__detail-inline-host {
+  display: contents;
+}
+
+.split-pane__right--visible {
+  display: flex;
+  flex-direction: column;
+}
+
+.split-pane__back {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  min-height: var(--split-pane-mobile-back-height);
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  border: none;
+  width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.split-pane__back:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.split-pane__reopen {
+  display: none;
+}
+
+.split-pane__divider {
+  display: none;
+}
+
+@media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
+  .split-pane {
+    flex-direction: row;
+    gap: 0;
+  }
+
+  .split-pane__left {
+    display: flex !important;
+    min-width: 220px;
+    max-width: 420px;
+    border-right: 1px solid var(--border-primary);
+  }
+
+  .split-pane--collapsed .split-pane__left {
+    display: none !important;
+  }
+
+  .split-pane__right {
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  .split-pane__back {
+    display: none !important;
+  }
+
+  .split-pane__divider {
+    display: block;
+    width: 9px;
+    margin-left: -5px;
+    margin-right: -4px;
+    border: 0;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    background: transparent;
+    cursor: col-resize;
+    flex: 0 0 9px;
+    z-index: 3;
+  }
+
+  .split-pane__divider:hover,
+  .split-pane__divider:focus-visible {
+    border-left-color: var(--accent-primary);
+    border-right-color: var(--accent-primary);
+    background: var(--accent-hover);
+    outline: none;
+  }
+
+  .split-pane__reopen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    border: 0;
+    border-right: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    flex: 0 0 28px;
+  }
+
+  .split-pane__reopen:hover,
+  .split-pane__reopen:focus-visible {
+    color: var(--accent-primary);
+    background: var(--bg-tertiary);
+    outline: none;
+  }
+}
+
+.split-pane__header {
+  padding: 0.8rem 0.75rem 0.6rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.split-pane__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: start;
+  margin-bottom: 0.55rem;
+}
+
+/* Framed: the pane's own heading block is gone (the page header owns the
+   collection's title), so the filter input and the collapse control share one
+   row instead of stacking under a title that is no longer there. */
+.split-pane__filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.split-pane__filter-row .list-filter-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.split-pane__label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 0.22rem;
+}
+
+.split-pane__label-link {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.split-pane__label-link:hover {
+  opacity: 0.7;
+  text-decoration: underline;
+}
+
+.split-pane__label-sep {
+  color: var(--text-muted);
+}
+
+.split-pane__title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.split-pane__title--clickable {
+  cursor: pointer;
+}
+
+.split-pane__title--clickable:hover {
+  color: var(--accent-primary);
+}
+
+.split-pane__subtitle {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin: 0.25rem 0 0;
+  line-height: 1.25;
+}
+
+.split-pane__collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Desktop keeps the compact 24px control. Touch-sized controls belong only
+     to the coarse/mobile branch below, so dense desktop lists retain their
+     established vertical rhythm. */
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.split-pane__collapse:hover,
+.split-pane__collapse:focus-visible {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  outline: none;
+}
+
+/*
+ * The search field's own styling now lives in `index.css` as the shared
+ * `.list-filter-input` class (NOT `.search-input`, which is a different
+ * rule in MonitoringWidgets.css): this stylesheet only reaches the bundle through
+ * SplitPaneLayout's side-effect import, and every importer is lazy, so any
+ * surface that styled its filter from here rendered an unstyled native input
+ * until the user happened to visit a split-pane view first.
+ */
+
+.split-pane__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.3rem 0;
+}
+
+.split-pane__item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  /* Desktop retains its dense 38px rows. The coarse/mobile branch below owns
+     the 44px touch-target minimum; consumers must not add page-local sizing. */
+  min-height: 38px;
+  padding: 0.3rem 0.55rem 0.3rem 0.75rem;
+  margin: 0 0.35rem 1px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  width: calc(100% - 0.7rem);
+  color: inherit;
+}
+
+/* station#3305: --bg-tertiary (panel-raised) is nearly this list's own
+   panel background in dark mode — an invisible hover. --bg-hover-panel is
+   the token derived for exactly this surface (index.css). */
+.split-pane__item:hover {
+  background: var(--bg-hover-panel);
+}
+
+.split-pane__item--selected {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  /* --text-on-accent, not --bg-primary: dark mode's --bg-primary is
+     near-black, which read as dark-on-accent text (station#3305). */
+  color: var(--text-on-accent);
+}
+
+.split-pane__item-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  font-size: 0.85rem;
+}
+
+.split-pane__item--selected .split-pane__item-icon {
+  background: color-mix(in srgb, var(--text-on-accent) 24%, transparent);
+}
+
+.split-pane__item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.split-pane__item-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.15;
+}
+
+.split-pane__item--selected .split-pane__item-name,
+.split-pane__item--selected .split-pane__item-subtitle {
+  color: var(--text-on-accent);
+}
+
+.split-pane__item-subtitle {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.08rem;
+  line-height: 1.15;
+}
+
+/*
+ * Only rendered for a row that supplies `trailing`. The row button keeps its
+ * own background/selected treatment and shrinks to make room; the trailing
+ * slot is a sibling so it may hold a control (a button inside a button is
+ * invalid and unreachable by keyboard in the right order).
+ */
+.split-pane__item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding-right: 0.2rem;
+}
+
+.split-pane__item-row .split-pane__item {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  margin-right: 0;
+  /* The standalone item's own right padding (0.55rem) exists to keep a
+     row's content off the pane's edge. Inside a trailing row that edge is
+     already the row's own gap + padding-right above, so the item's copy
+     doubled the reserved space between the name and the action button and
+     ellipsized names ("Claude Code", "Station") well before the pane ran
+     out of width (2026-08-26 audit F6). */
+  padding-right: 0;
+}
+
+/*
+ * The row's NAME keeps priority. Capping the trailing slot at a fraction of
+ * the row means a long trailing label (an ambiguous project naming several
+ * candidates) ellipsizes itself instead of squeezing the title down to two
+ * characters or overflowing the pane — both observed before this cap existed.
+ */
+.split-pane__item-trailing {
+  /*
+   * Never shrinks: a trailing label is short and cannot ellipsize gracefully
+   * mid-token, whereas the row's own name is a block that ellipsizes cleanly.
+   * So the ROW BUTTON absorbs all the shrink and the cap below is what keeps a
+   * long trailing label from starving it.
+   */
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 38%;
+}
+
+.split-pane__section-header {
+  font-family: var(--font-mono);
+  font-size: 0.57rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0.55rem 0.75rem 0.18rem;
+}
+
+.split-pane__group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin: 0.25rem 0.75rem 0.15rem;
+}
+
+.split-pane__group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.28rem 0;
+  padding-right: 0.2rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.split-pane__group-toggle:hover,
+.split-pane__group-toggle:focus-visible {
+  /* No outline suppression: keyboard users keep the focus-visible ring
+     (focus-visible ratchet — new code conforms, it does not inventory
+     an exception). */
+  color: var(--accent-primary);
+}
+
+.split-pane__group-member {
+  margin-left: 0.25rem;
+  border-left: 1px solid var(--border-primary);
+}
+
+.split-pane__add {
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.split-pane__add-btn {
+  width: 100%;
+  padding: 0.4rem 0.65rem;
+  min-height: 34px;
+  background: transparent;
+  border: 1px dashed var(--border-secondary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+
+.split-pane__add-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-hover);
+}
+
+.split-pane__add-btn--secondary {
+  border-style: solid;
+  border-color: var(--border-primary);
+  color: var(--text-secondary);
+}
+
+.split-pane__empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  opacity: 0.5;
+}
+
+.split-pane__list-empty-icon {
+  font-size: 1.4rem;
+  opacity: 0.5;
+}
+
+/* station#4463 slice 2 fix round (M1, delta review round 3): the shared
+   SkeletonList row's default padding (10px 12px, Skeleton.css) sits on top
+   of its content height (icon/text column, ~26.8px), landing at ~46.8px —
+   visibly taller than a real `.split-pane__item` row. A `min-height: 38px`
+   here would not have fixed that on its own: the row's OWN content already
+   clears 38px at ANY padding this large, so the constraint never binds —
+   which is why Skeleton.css no longer carries one (a floor that never
+   applies is not a real constraint, just stylesheet text). Scoped here, not
+   in Skeleton.css, so the ~50 other SkeletonList consumers keep their own
+   default rhythm; only the split-pane list row's padding is tuned so its
+   OWN content-driven height lands within measurement tolerance of a real
+   item row — proven with a real Chromium measurement, not grepped CSS text
+   (SplitPaneLayout.skeleton-geometry.test.tsx). */
+.split-pane__list .skeleton-list__item {
+  padding: 6px 12px;
+}
+
+.split-pane__detail-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.split-pane__detail-skeleton-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.split-pane__detail-skeleton-title {
+  width: min(18rem, 60%);
+}
+
+.split-pane__detail-skeleton-meta {
+  width: min(12rem, 42%);
+}
+
+.split-pane__detail-skeleton-blocks {
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* The shared `.skeleton--block` default (120px, @kontourai/ui/react/styles.css)
+   is a generic card height; this context's blocks stand in for the detail
+   pane's own content rhythm, which the bespoke skeleton this replaced sized
+   at 5rem (80px). Scoped to this context only — SkeletonBlock's shared
+   default is unchanged everywhere else it's used (station#4463 slice 2 fix
+   round, M1). */
+.split-pane__detail-skeleton-blocks .skeleton--block {
+  height: 5rem;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .split-pane {
+    overflow: hidden;
+  }
+
+  .split-pane__left {
+    flex: 1 1 auto;
+    overflow: hidden;
+    background: var(--bg-secondary);
+  }
+
+  /* The sidebar footer (`sidebarActions` + the add block) must SHRINK when
+     the pane's fixed parts exceed the height the shell leaves above the dock
+     (--dock-bottom-clearance). Its automatic minimum size made it
+     unshrinkable, so the whole left pane overflowed the route's dock
+     clearance and the footer's bottom controls rendered inside the band the
+     dock overlays — unreachable by any scroller (epic #4142 M3: surfaced on
+     a Pixel 7 when /activity's stacked page header grew by one action row).
+     When space is short the footer scrolls internally; when it fits, this
+     changes nothing. */
+  .split-pane__add {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .split-pane__right--sheet {
+    --split-pane-mobile-back-height: 44px;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: var(--bg-primary);
+    box-shadow: 0 -12px 28px
+      color-mix(in srgb, var(--bg-primary) 70%, transparent);
+    animation: split-pane-sheet-in 0.16s ease-out;
+    scroll-padding-top: var(--split-pane-mobile-back-height);
+  }
+
+  /* Only a framed sheet is portaled outside the route entrance transform. */
+  .split-pane__right--portaled {
+    position: fixed;
+    top: calc(
+      var(--app-toolbar-total-height, 46px) +
+      var(--banner-stack-height, 0px)
+    );
+    right: 0;
+    bottom: calc(
+      var(--dock-slot-size, var(--chat-dock-header-height, 38px)) +
+      var(--safe-bottom, 0px) +
+      var(--visual-viewport-bottom-inset, 0px)
+    );
+    left: 0;
+    z-index: var(--layer-sticky);
+  }
+
+  /* A mobile detail sheet scrolls as one surface with its back affordance;
+     a sticky item header inside it would pin independently and steal that
+     clearance. Desktop detail headers keep their ordinary sticky treatment. */
+  .split-pane__right--sheet .detail-header {
+    position: static;
+  }
+
+  .split-pane__header {
+    padding: 1.2rem 1rem 0.8rem;
+  }
+
+  .split-pane__heading {
+    margin-bottom: 0.65rem;
+  }
+
+  .split-pane__title {
+    font-size: 1.25rem;
+    margin-bottom: 0;
+  }
+
+  .split-pane__label {
+    font-size: 0.62rem;
+  }
+
+  .split-pane__subtitle {
+    font-size: 0.82rem;
+  }
+
+  .split-pane__item {
+    /* Shared mobile/coarse-pointer touch-target contract. */
+    min-height: 44px;
+    margin-inline: 0.5rem;
+    width: calc(100% - 1rem);
+  }
+
+  .split-pane__add-btn {
+    min-height: 42px;
+  }
+}
+
+@keyframes split-pane-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

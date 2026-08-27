@@ -1,0 +1,435 @@
+{
+  "name": "station",
+  "kind": "repo-map",
+  "policy": {
+    "defaultFalsePositiveReview": "unknown",
+    "defaultPromotionCandidate": false,
+    "defaultExceptionAllowed": false
+  },
+  "graph": {
+    "version": 1,
+    "defaultResolution": {
+      "phase": "Phase S1 (The Wedge)",
+      "workstream": "Kontour-native agent workspace",
+      "matchedArtifacts": ["docs/strategy/roadmap.md"]
+    },
+    "nonSliceableInvariants": [
+      "CLI/API/UI parity",
+      "SDK contract integrity",
+      "plugin/core boundary protection",
+      "mandatory CI coverage",
+      "Veritas evidence before promotion"
+    ],
+    "resolverPrecedence": [
+      "explicit roadmap task or issue reference in prompt/branch/PR title",
+      "matching initiative plan under docs/plans/**",
+      "matching Veritas governance artifact under .veritas/**",
+      "active initiative from docs/strategy/roadmap.md",
+      "multi-workstream fallback suppresses promotion"
+    ],
+    "resolutionRules": [
+      {
+        "id": "initiative-plan",
+        "match": {
+          "patterns": ["docs/plans/"]
+        },
+        "resolution": {
+          "phase": "Phase S1 (The Wedge)",
+          "workstream": "Kontour-native agent workspace",
+          "matchedArtifacts": ["docs/plans/**"]
+        }
+      },
+      {
+        "id": "veritas-governance",
+        "match": {
+          "patterns": [".veritas/"]
+        },
+        "resolution": {
+          "phase": "Phase S1 (The Wedge)",
+          "workstream": "Veritas 1.5 governance dogfood",
+          "matchedArtifacts": [".veritas/**"]
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "id": "product.src-server",
+        "kind": "product-area",
+        "label": "src-server",
+        "patterns": ["src-server/"],
+        "owners": ["station-runtime"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "product.src-ui",
+        "kind": "product-area",
+        "label": "src-ui",
+        "patterns": ["src-ui/"],
+        "owners": ["station-frontend"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "product.src-ui.trust-surfaces",
+        "kind": "product-area",
+        "label": "src-ui trust & provenance surfaces",
+        "patterns": [
+          "src-ui/src/components/trust/",
+          "src-ui/src/components/readiness/",
+          "src-ui/src/components/flow/",
+          "src-ui/src/components/badges/",
+          "src-ui/src/components/chat/message-bubble/",
+          "src-ui/src/components/chat/TurnProvenanceCard.tsx",
+          "src-ui/src/components/chat/MessageBubble.tsx",
+          "src-ui/src/components/chat/StreamingMessage.tsx",
+          "src-ui/src/components/chat/ChatMessageList.tsx",
+          "src-ui/src/components/ProvenanceBadge.tsx",
+          "src-ui/src/utils/ownerAttribution.ts",
+          "src-ui/src/views/settings/BuildProvenance.tsx"
+        ],
+        "owners": ["station-frontend"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "product.src-server.evidence-services",
+        "kind": "product-area",
+        "label": "src-server evidence & flow services",
+        "patterns": [
+          "src-server/services/evidence/",
+          "src-server/services/flow/"
+        ],
+        "owners": ["station-runtime"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "product.src-shared",
+        "kind": "product-area",
+        "label": "src-shared",
+        "patterns": ["src-shared/"],
+        "owners": ["station-runtime"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "product.src-desktop",
+        "kind": "product-area",
+        "label": "src-desktop",
+        "patterns": ["src-desktop/"],
+        "owners": ["station-desktop"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "package.cli",
+        "kind": "shared-package-area",
+        "label": "packages/cli",
+        "patterns": ["packages/cli/"],
+        "owners": ["station-architecture"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "package.connect",
+        "kind": "shared-package-area",
+        "label": "packages/connect",
+        "patterns": ["packages/connect/"],
+        "owners": ["station-architecture"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "package.contracts",
+        "kind": "shared-contract-area",
+        "label": "packages/contracts",
+        "patterns": ["packages/contracts/"],
+        "owners": ["station-architecture"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "package.sdk",
+        "kind": "shared-contract-area",
+        "label": "packages/sdk",
+        "patterns": ["packages/sdk/"],
+        "owners": ["station-architecture"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "package.shared",
+        "kind": "shared-package-area",
+        "label": "packages/shared",
+        "patterns": ["packages/shared/"],
+        "owners": ["station-architecture"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "example.catalog",
+        "kind": "example-area",
+        "label": "examples/**",
+        "patterns": ["examples/"],
+        "owners": ["shared"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "delivery.github",
+        "kind": "delivery-area",
+        "label": ".github/**",
+        "patterns": [".github/"],
+        "owners": ["repo-core"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "tooling.scripts",
+        "kind": "tooling-area",
+        "label": "scripts/**",
+        "patterns": ["scripts/"],
+        "owners": ["repo-core"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "documentation.general",
+        "kind": "product-area",
+        "label": "docs/**",
+        "patterns": ["docs/"],
+        "owners": ["docs-team"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "governance.veritas",
+        "kind": "protected-area",
+        "label": ".veritas/**",
+        "governance-locked": true,
+        "patterns": [".veritas/"],
+        "owners": ["repo-core"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "governance.strategy",
+        "kind": "protected-area",
+        "label": "docs/strategy/**",
+        "patterns": ["docs/strategy/"],
+        "owners": ["repo-core"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "governance.plans",
+        "kind": "protected-area",
+        "label": "docs/plans/**",
+        "patterns": ["docs/plans/"],
+        "owners": ["repo-core"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "verification.tests",
+        "kind": "verification-area",
+        "label": "tests/**",
+        "patterns": ["tests/"],
+        "owners": ["shared"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "governance.root-manifests",
+        "kind": "protected-area",
+        "label": "root manifests",
+        "patterns": [
+          "package.json",
+          "package-lock.json",
+          "README.md",
+          "AGENTS.md",
+          "CLAUDE.md",
+          "SECURITY.md",
+          "veritas.claims.json",
+          "biome.json",
+          "tsconfig.json",
+          "vite.config.ts",
+          "vitest.config.ts",
+          "vitest.setup.ts",
+          "playwright.config.ts",
+          "esbuild.config.mjs",
+          ".gitignore"
+        ],
+        "owners": ["repo-core"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "governance.flow",
+        "kind": "protected-area",
+        "label": ".flow/**",
+        "patterns": [".flow/"],
+        "owners": ["repo-core"],
+        "boundary": "advisory"
+      },
+      {
+        "id": "product.delivery",
+        "kind": "product-area",
+        "label": "delivery/**",
+        "patterns": ["delivery/"]
+      },
+      {
+        "id": "product.deploy",
+        "kind": "product-area",
+        "label": "deploy/**",
+        "patterns": ["deploy/"]
+      },
+      {
+        "id": "product.fallow.baselines",
+        "kind": "product-area",
+        "label": "fallow-baselines/**",
+        "patterns": ["fallow-baselines/"]
+      },
+      {
+        "id": "product.gallery",
+        "kind": "product-area",
+        "label": "gallery/**",
+        "patterns": ["gallery/"]
+      },
+      {
+        "id": "product.kits",
+        "kind": "product-area",
+        "label": "kits/**",
+        "patterns": ["kits/"]
+      },
+      {
+        "id": "product.monitoring",
+        "kind": "product-area",
+        "label": "monitoring/**",
+        "patterns": ["monitoring/"]
+      },
+      {
+        "id": "product.ops",
+        "kind": "product-area",
+        "label": "ops/**",
+        "patterns": ["ops/"]
+      },
+      {
+        "id": "product.schemas",
+        "kind": "product-area",
+        "label": "schemas/**",
+        "patterns": ["schemas/"]
+      },
+      {
+        "id": "product.seed",
+        "kind": "product-area",
+        "label": "seed/**",
+        "patterns": ["seed/"]
+      }
+    ]
+  },
+  "evidence": {
+    "artifactDir": ".kontourai/veritas/evidence",
+    "reportTransport": "github-step-summary",
+    "uncoveredPathPolicy": "warn",
+    "evidenceChecks": [
+      {
+        "id": "repo-governance",
+        "command": "npm run proof:repo-governance",
+        "method": "validation",
+        "summary": "Required governance family: Veritas 1.5 artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions."
+      },
+      {
+        "id": "verification-policy",
+        "command": "npm run verification:policy:gate",
+        "method": "validation",
+        "summary": "Default readiness check for selector-first verification guidance and exact coordinated lane policy."
+      },
+      {
+        "id": "repo-guardrails",
+        "command": "npm run proof:repo-guardrails",
+        "method": "validation",
+        "summary": "Transitional compatibility aggregator for the former convergence checks. Not the required gate."
+      },
+      {
+        "id": "architecture-boundaries",
+        "command": "npm run proof:architecture-boundaries",
+        "method": "validation",
+        "summary": "Candidate family lane for package/import and architecture-boundary checks while catch evidence is measured."
+      },
+      {
+        "id": "ui-data-access",
+        "command": "npm run proof:ui-data-access",
+        "method": "validation",
+        "summary": "Candidate family lane for SDK hook/raw-fetch guidance while product tests absorb behavior checks."
+      },
+      {
+        "id": "runtime-contracts",
+        "command": "npm run proof:runtime-contracts",
+        "method": "validation",
+        "summary": "Advisory move-to-test family lane for runtime/ACP/Codex structure; connected-agents is the behavioral proof."
+      },
+      {
+        "id": "retired-surfaces",
+        "command": "npm run proof:retired-surfaces",
+        "method": "validation",
+        "summary": "Candidate family lane for deleted-surface tombstones with explicit expiry/review requirements."
+      },
+      {
+        "id": "migration-tombstones",
+        "command": "npm run proof:migration-tombstones",
+        "method": "validation",
+        "summary": "Advisory family lane for low-severity refactor-shape tombstones that should be retired or softened."
+      },
+      {
+        "id": "connected-agents",
+        "command": "npm run test:connected-agents",
+        "method": "validation",
+        "summary": "Provider and orchestration integration tests for connected agent runtimes (behavioral proof for runtime-contracts)."
+      },
+      {
+        "id": "static-verification",
+        "command": "npm run verify:static",
+        "method": "validation",
+        "summary": "Biome, TypeScript, and unit tests. Runs in ci:fast; declared here for coverage, not routed into readiness."
+      },
+      {
+        "id": "sdk-builds",
+        "command": "npm run proof:sdk-builds",
+        "method": "validation",
+        "summary": "Builds shared SDK and connect packages. Runs in ci:fast; declared here for coverage, not routed into readiness."
+      },
+      {
+        "id": "app-builds",
+        "command": "npm run proof:app-builds",
+        "method": "validation",
+        "summary": "Builds server and UI artifacts. Runs in ci:fast; declared here for coverage, not routed into readiness."
+      },
+      {
+        "id": "fallow-advisory",
+        "command": "npm run veritas:fallow:advisory",
+        "method": "auditability",
+        "summary": "Baseline-aware Fallow audit as advisory codebase-intelligence evidence. Requires the fallow CLI; not a default check.",
+        "externalTool": {
+          "tool": "fallow",
+          "format": "work-agent-fallow-advisory-v1",
+          "blocking": false,
+          "artifactPath": ".kontourai/veritas/external/fallow-audit.json"
+        }
+      }
+    ],
+    "requiredEvidenceCheckIds": ["repo-governance"],
+    "defaultEvidenceCheckIds": ["repo-governance", "verification-policy"],
+    "evidenceCheckRoutes": [
+      {
+        "nodeIds": [
+          "product.src-server",
+          "product.src-server.evidence-services"
+        ],
+        "evidenceCheckIds": ["connected-agents"],
+        "componentIds": [
+          "product.src-server",
+          "product.src-server.evidence-services"
+        ]
+      }
+    ],
+    "evidenceInventoryManifests": [
+      ".veritas/proof-families/repo-guardrails.families.json"
+    ]
+  },
+  "activation": {
+    "aiInstructionFiles": [
+      {
+        "path": "AGENTS.md",
+        "tool": "codex",
+        "required": true
+      },
+      {
+        "path": "CLAUDE.md",
+        "tool": "claude-code",
+        "required": true
+      }
+    ]
+  }
+}

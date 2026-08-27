@@ -1,0 +1,30 @@
+# Android requires native libraries to be 16 KB page aligned: Play rejects
+# apps targeting Android 15+ without it, and a 16 KB-page device (Pixel 9 and
+# newer) cannot load a 4 KB-aligned library at all. A debuggable build shows
+# the user an "Android App Compatibility" dialog naming the offending .so; a
+# release build simply fails to ship.
+#
+# NDK r28 makes this the default. We are on r27, which supports 16 KB but
+# still links at 4 KB unless asked, so every Android target opts in here.
+#
+# This file is the fallback for a bare `cargo build --target *-linux-android`.
+# It is NOT what fixes the packaged app: the tauri/cargo-mobile android build
+# exports its own RUSTFLAGS, and an environment RUSTFLAGS *replaces* these
+# target rustflags rather than merging with them. The real build therefore
+# carries the same flags in `npm run build:android`; changing them here alone
+# produces a clean build and an identically misaligned library.
+#
+# Verify the artefact, never the exit code:
+#   llvm-readelf -l libstation_ai_lib.so | grep LOAD   # want 0x4000
+
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+[target.armv7-linux-androideabi]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+[target.x86_64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+[target.i686-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]

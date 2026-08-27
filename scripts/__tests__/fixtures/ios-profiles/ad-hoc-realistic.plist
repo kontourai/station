@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AppIDName</key>
+	<string>Station</string>
+	<key>ApplicationIdentifierPrefix</key>
+	<array>
+	<string>ABCDE12345</string>
+	</array>
+	<key>CreationDate</key>
+	<date>2026-08-01T10:00:00Z</date>
+	<key>Platform</key>
+	<array>
+		<string>iOS</string>
+	</array>
+	<key>IsXcodeManaged</key>
+	<false/>
+	<key>DeveloperCertificates</key>
+	<array>
+		<data>MIIF2zCCBMOgAwIBAgIQZ0000000000000000000w==</data>
+	</array>
+	<key>DER-Encoded-Profile</key>
+	<data>MIIN2wYJKoZIhvcNAQcCoIINzDCCDcgCAQExDzANBglg</data>
+	<key>Entitlements</key>
+	<dict>
+		<key>application-identifier</key>
+		<string>ABCDE12345.ai.kontour.station</string>
+		<key>keychain-access-groups</key>
+		<array>
+			<string>ABCDE12345.*</string>
+		</array>
+		<key>get-task-allow</key>
+		<false/>
+		<key>com.apple.developer.team-identifier</key>
+		<string>ABCDE12345</string>
+		<key>aps-environment</key>
+		<string>production</string>
+	</dict>
+	<key>ProvisionedDevices</key>
+	<array>
+		<string>00008030-000000000000000000000000</string>
+		<string>00008101-111111111111111111111111</string>
+	</array>
+	<key>ExpirationDate</key>
+	<date>2027-08-01T10:00:00Z</date>
+	<key>Name</key>
+	<string>Station App Store Distribution</string>
+	<key>TeamIdentifier</key>
+	<array>
+		<string>ABCDE12345</string>
+	</array>
+	<key>TeamName</key>
+	<string>Kontour</string>
+	<key>TimeToLive</key>
+	<integer>365</integer>
+	<key>UUID</key>
+	<string>1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d</string>
+	<key>Version</key>
+	<integer>1</integer>
+</dict>
+</plist>

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "station.channel-agent-authorization/v1",
+  "authorizationId": "auth-triage-bot-1",
+  "channelId": "chan-design",
+  "ownerMemberId": "member-alex",
+  "agentKeyId": "key-triage-bot",
+  "capabilities": [],
+  "issuedAt": "2026-07-10T00:00:00.000Z",
+  "expiresAt": null
+}

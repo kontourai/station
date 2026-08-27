@@ -1,0 +1,292 @@
+{
+  "schemaVersion": 2,
+  "screens": [
+    {
+      "name": "agent-editor",
+      "width": 1440,
+      "height": 900,
+      "sha256": "c6377b5765747a22dde365e8974589fcbf63c7f507eec85e600db9dde18fb4b2"
+    },
+    {
+      "name": "agent-editor-not-runnable",
+      "width": 1440,
+      "height": 900,
+      "sha256": "9354842bdd4cac45b8471dae2dc2d37f25228ddaaed9a9a9fc3f31b51e27ab49"
+    },
+    {
+      "name": "agents",
+      "width": 1440,
+      "height": 900,
+      "sha256": "528836aee94c340868b3f4606e0a5e01dc742ba02c07fbf495b1bcfb480d3727"
+    },
+    {
+      "name": "agents-empty",
+      "width": 1440,
+      "height": 900,
+      "sha256": "910ea2ba90bfd3759b8c2a502cab1035cd8c0999ca7370a1093e99853b07bfad"
+    },
+    {
+      "name": "command-palette-empty",
+      "width": 1440,
+      "height": 900,
+      "sha256": "8cbb1cc40de65a34c45a04538e842b8087c01c54dc87813282c66453a6b62c74"
+    },
+    {
+      "name": "connections",
+      "width": 1440,
+      "height": 900,
+      "sha256": "2b62bc5a11b415cee4bb23de988c20692e619f497a8096c9605d79d6ebc925b6"
+    },
+    {
+      "name": "connections-agent-apps",
+      "width": 1440,
+      "height": 900,
+      "sha256": "3af2ce84b77f659ee2bc1d949db4a4d5776533f56058859a1f28ed9b1d5cebaa"
+    },
+    {
+      "name": "connections-knowledge",
+      "width": 1440,
+      "height": 900,
+      "sha256": "def3222892cba0316c8db2f03739c084827bc459e647b20c6f4e1b0083c83145"
+    },
+    {
+      "name": "connections-models",
+      "width": 1440,
+      "height": 900,
+      "sha256": "2b62bc5a11b415cee4bb23de988c20692e619f497a8096c9605d79d6ebc925b6"
+    },
+    {
+      "name": "connections-tools",
+      "width": 1440,
+      "height": 900,
+      "sha256": "cd0f129f061c1cdb20a7ebfa9012c83c66c0cd795fb04e737415da938464fc9f"
+    },
+    {
+      "name": "developer-telemetry",
+      "width": 1440,
+      "height": 900,
+      "sha256": "b3852eda1a447f86ad20576a700190c1afb53f9c3f4bf9f95bfb68e4b3251ce9"
+    },
+    {
+      "name": "home",
+      "width": 1440,
+      "height": 900,
+      "sha256": "a1ab626c37d2a23da4ce24c968144291efe6a5076846fca4ba4c1bf1e2f36615"
+    },
+    {
+      "name": "mobile-agent-editor",
+      "width": 390,
+      "height": 844,
+      "sha256": "e4fb3f1d627905cbcc64e71b59ae2626e258cc8d34ce9696ff3f397833b12e76"
+    },
+    {
+      "name": "mobile-agent-editor-save-footer",
+      "width": 390,
+      "height": 844,
+      "sha256": "d6a76765f0377663ad394ffd7f150bea5a69f8a01463cbda82eab8a9182e583e"
+    },
+    {
+      "name": "mobile-agents",
+      "width": 390,
+      "height": 844,
+      "sha256": "f3383f8975d43899d678a797d79efee1de698c366775e4d7a73ff600e154bc59"
+    },
+    {
+      "name": "mobile-chat-dock-header-320",
+      "width": 320,
+      "height": 568,
+      "sha256": "ca8930be7d9f95ba84dfca5daeb69c2ed59572eb3541d1628d9d317625e585de"
+    },
+    {
+      "name": "mobile-connections",
+      "width": 390,
+      "height": 844,
+      "sha256": "7acb5646a082556721d1d1d102530648270abd76f805ed24a8228caa5f57e8d3"
+    },
+    {
+      "name": "mobile-home",
+      "width": 390,
+      "height": 844,
+      "sha256": "a2d50bc6ea15da3b1f75afee7098ec59180a11a2ed74d4f8e01867e7158ad0ca"
+    },
+    {
+      "name": "mobile-onboarding-setup",
+      "volatile": true,
+      "reason": "Accepted disclosed gap, whole-screen volatile: ~30px (0.009%) sub-pixel rasterization noise at the SetupLauncher card's rounded border, surviving this project's deterministic-rendering Chromium flags. Three hypotheses tried and DISPROVED (a live /api/system/status race — closed by this screen's own waitSettled guard; a CSS animation on the card — it has none; a --dock-slot-size-driven layout race — measured byte-identical across 4 repeated captures, both the custom property and the card's own boundingBox()) before concluding host-dependent sub-pixel rasterization. Review MED-3 (fix round) independently RE-CONFIRMED the non-determinism still reproduces post-MED-1-leak-fix (9 standalone/mixed-order captures landed on two distinct stable sha256 values, 6-of-9 vs 3-of-9, no correlation to run order or anything under this suite's control) — see the screen's own afterGoto comment in tests/screenshots.spec.ts. A reference PNG is committed at tests/screenshots.baseline/mobile-onboarding-setup.png for human eyeballing only; screenshot-diff.mjs never stores or reads an image for a volatile entry (see runBaseline/runDiff), so the comparator always skips it. Follow-up if this recurs on another screen: a region-scoped comparison that excludes just the card's rounded-border pixels instead of exempting the whole tile."
+    },
+    {
+      "name": "mobile-settings-overview",
+      "width": 390,
+      "height": 844,
+      "sha256": "d8b8954dbca3bedcf01697e7d27111e9f298ef6268b0fe0d9f1c3dc09264e15e"
+    },
+    {
+      "name": "motion-reduced-mobile-chat",
+      "width": 390,
+      "height": 844,
+      "sha256": "d054929502a3c0fd7ecbd9e28da1c2a3e4ac1145ee3fd657e7fe9aee1abd1dd5"
+    },
+    {
+      "name": "motion-reduced-navigation",
+      "width": 1440,
+      "height": 900,
+      "sha256": "910ea2ba90bfd3759b8c2a502cab1035cd8c0999ca7370a1093e99853b07bfad"
+    },
+    {
+      "name": "motion-reduced-notification",
+      "width": 1440,
+      "height": 900,
+      "sha256": "fa230e61b7d1ac3bd1baea96b40fafab6ebe9e0567de1236b6b7eb30742d9c51"
+    },
+    {
+      "name": "motion-reduced-schedule-loading",
+      "width": 1440,
+      "height": 900,
+      "sha256": "d382e5a5de9e874fa55db7705d1d88284d3ff49e83c5e4308188a853c9e3e4b3"
+    },
+    {
+      "name": "motion-reduced-schedule-modal",
+      "width": 1440,
+      "height": 900,
+      "sha256": "e95d6da7c0272c6f07fdde4b53d932d528a234cdabc3584121ecc4647b404440"
+    },
+    {
+      "name": "overlay-add-job-modal",
+      "width": 1440,
+      "height": 900,
+      "sha256": "e95d6da7c0272c6f07fdde4b53d932d528a234cdabc3584121ecc4647b404440"
+    },
+    {
+      "name": "overlay-agent-actions-menu",
+      "width": 1440,
+      "height": 900,
+      "sha256": "574ef7cde061cde9fb11d941ece128251c0574bc75073de293439be2d72793d8"
+    },
+    {
+      "name": "overlay-command-palette-results",
+      "width": 1440,
+      "height": 900,
+      "sha256": "7dd0f4772e0d1c876a79b5534c62045017eca0852aa1e027c7b144e3c236c1a4"
+    },
+    {
+      "name": "overlay-confirm-dialog",
+      "width": 1440,
+      "height": 900,
+      "sha256": "8e9cb308dd9ea80affcf671fd52e0662ef5e9072454ef47773152ac399fe6961"
+    },
+    {
+      "name": "overlay-connection-banner",
+      "width": 390,
+      "height": 844,
+      "sha256": "09d3afe6618f4f003de3eab6055e7caf0c70d8095729d9d9de376fd01debf01b"
+    },
+    {
+      "name": "overlay-dock-picker",
+      "width": 1440,
+      "height": 900,
+      "sha256": "bcbe82cf3f4a0454f84e4d6ba60d40f36053a8c4d7504dff2f7fda9c85fd82be"
+    },
+    {
+      "name": "overlay-dock-project-bound",
+      "width": 1440,
+      "height": 900,
+      "sha256": "dea3b861436023005d2e424f4cf747983a3a9d3a3b6b95d3b0ab8b683703985a"
+    },
+    {
+      "name": "overlay-dock-project-mismatch",
+      "width": 1440,
+      "height": 900,
+      "sha256": "42caf85343fe6c9b1559616a2de85173d48552cfb65673be5fe644d54112ef2d"
+    },
+    {
+      "name": "overlay-mobile-sheet",
+      "width": 390,
+      "height": 844,
+      "sha256": "24f8c63df76ac68c7140974a352cac165feb46692894efa2fde32fde2e03ab34"
+    },
+    {
+      "name": "overlay-new-project-modal",
+      "width": 1440,
+      "height": 900,
+      "sha256": "1c99b972d933160c458e2f208b6faf1cbb9ce548eb07f7383abf926ff9c13ca5"
+    },
+    {
+      "name": "overlay-project-switcher-populated",
+      "width": 1440,
+      "height": 900,
+      "sha256": "4166b1c882e87097caa36d5415bc4c9e8503340cf6f6b75217f01e3ca42fb92a"
+    },
+    {
+      "name": "overlay-toast",
+      "width": 1440,
+      "height": 900,
+      "sha256": "eb7e747043646368455a67d281cd76916deff06b7230d87edf47bad4aaa7b731"
+    },
+    {
+      "name": "overlay-toast-action",
+      "width": 1440,
+      "height": 900,
+      "sha256": "4d78ead1089a6d3cd29612b8278571182023b3d39588a88f99dac292ff740c97"
+    },
+    {
+      "name": "plugins",
+      "width": 1440,
+      "height": 900,
+      "sha256": "7b0b372d90f60a27cd25d9e050315d99ce5573f419175f9e06c3761758559667"
+    },
+    {
+      "name": "profile",
+      "width": 1440,
+      "height": 900,
+      "sha256": "0a862b62f79debdefe61a7cf4eca85a0f8797e8ded6896569a25f27ed83aaf05"
+    },
+    {
+      "name": "registry",
+      "width": 1440,
+      "height": 900,
+      "sha256": "937519b2584ef1aea613e58f31eabbab82adb6d36e1fcdf4307f357853dbeeff"
+    },
+    {
+      "name": "review",
+      "width": 1440,
+      "height": 900,
+      "sha256": "5b2338bb1e9df03aa258511f3f9b645b05900a5d15b29ee7f59037588c952f3b"
+    },
+    {
+      "name": "schedule",
+      "width": 1440,
+      "height": 900,
+      "sha256": "46c324e7a27fde9b401ff4b3eb1d41d27a9d4452b7ed61333cc486c9bee1a963"
+    },
+    {
+      "name": "sessions",
+      "width": 1440,
+      "height": 900,
+      "sha256": "aed368c7ebe6ee19f2db2bbeba5b4d5605c07ec43f998879f8609c074cc0c8d0"
+    },
+    {
+      "name": "sessions-filtered-empty",
+      "width": 1440,
+      "height": 900,
+      "sha256": "cf8e252382cff307ca165a33c6403795d620f079ef1d6e594c88223c9197dffd"
+    },
+    {
+      "name": "settings",
+      "width": 1440,
+      "height": 900,
+      "sha256": "b819a9829841d4719a45bdec4aedfef538c845242df8f4f421abe76a27ab26e8"
+    },
+    {
+      "name": "settings-info-tip",
+      "width": 1440,
+      "height": 900,
+      "sha256": "57047194445271be97a84f39997c1202ddeaa05ec7402c62e546939cf1e0af54"
+    },
+    {
+      "name": "skills",
+      "width": 1440,
+      "height": 900,
+      "sha256": "33e89cf7ca4372a675cc6089e091667be13bb7253fd0a97fab431c960bbb7ae6"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+/* ErrorState is Empty with a fixed error affordance — only the icon needs
+   its own styling; layout is inherited from Console Kit's Empty. */
+.error-state__icon {
+  color: var(--color-error, #ef4444);
+  font-size: 1.5rem;
+  line-height: 1;
+}

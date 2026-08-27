@@ -1,0 +1,14 @@
+// KNOWN-BAD: a bespoke `*__empty` className instead of the canonical Empty
+// primitive. This is the violation `state-primitives:ratchet` exists to
+// prevent, and the shape that left `main` red in station#993 and #996
+// (MobileTaskSwitcher's bespoke __empty class).
+//
+// The file is not in ALREADY_CANONICAL_EXCLUSIONS or S4_DEFERRED_EXCLUSIONS,
+// so it must land in `untriaged`.
+export function BespokeEmptyView() {
+  return (
+    <section className="bespoke-empty-view">
+      <div className="bespoke-empty-view__empty">Nothing to show</div>
+    </section>
+  );
+}

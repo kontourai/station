@@ -1,0 +1,237 @@
+/* ── DetailHeader — shared sticky header for detail panels ── */
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.detail-header__left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.detail-header__identity {
+  min-width: 0;
+}
+
+.detail-header__icon {
+  flex-shrink: 0;
+}
+
+.detail-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detail-header__title {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.25;
+  font-weight: 680;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-header__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.detail-header__badge--success {
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+}
+
+.detail-header__badge--warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.detail-header__badge--info {
+  background: rgba(74, 158, 255, 0.1);
+  color: var(--accent-primary);
+}
+
+.detail-header__badge--muted {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.detail-header__subtitle {
+  max-width: 62ch;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.detail-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.detail-header__mobile-footer {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .detail-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .detail-header__actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .detail-header__actions > button,
+  .detail-header__actions > a {
+    min-height: 44px;
+  }
+}
+
+/*
+ * How much room a scrolling detail body must leave at its bottom edge: the
+ * chat dock always, plus this header's own sticky action bar where one is
+ * rendered. Declared here, beside the bar it measures, so a view never has to
+ * guess it — `.agent-inline-editor__body` used to hand-roll
+ * `calc(var(--dock-slot-size, 49px) + 16px)`, which cleared the dock and
+ * not the bar sitting on top of it.
+ *
+ * The dock half is `--dock-bottom-clearance` (index.css), not a second copy of
+ * the same sum: station#3902 found the SHELL reserving a strictly smaller
+ * number than the mobile block below derived, which is how a route that
+ * reserved nothing of its own still ended up under the dock. This file now
+ * adds only what is genuinely its own — this header's sticky bar, and the gap
+ * above it.
+ */
+:root {
+  --detail-header-mobile-footer-height: 0px;
+  --detail-body-bottom-clearance: calc(
+    var(--dock-bottom-clearance) +
+    var(--space-4)
+  );
+}
+
+/*
+ * The dock owns the bottom of a phone screen: `position: fixed`, its height
+ * published as `--dock-slot-size`, and `--layer-dock` (9200) in the layer
+ * scale. This bar carried a raw `z-index: 20` and `bottom: 0`, so the dock
+ * covered the lower 52px of its 57 and its own send button ate every tap
+ * aimed at Save (station#3738). The bar sits ON TOP of the dock and above it
+ * in the scale — the role `--layer-floating-action` already names, and the
+ * one the voice button and the onboarding prompt already use to stand clear
+ * of the dock.
+ */
+/*
+ * station#4521 MED-1: was `(max-width: 768px), (pointer: coarse)` — a WIDER
+ * match than `useIsMobile`'s `MOBILE_MEDIA_QUERY` (src-ui/src/hooks/
+ * useIsMobile.ts), which requires the coarse-pointer clause to ALSO be short
+ * (`(max-height: 540px) and (pointer: coarse)`), matching index.css's own
+ * mirror of that same literal a few thousand lines up. The mismatch was
+ * silent, not cosmetic: a wide coarse-pointer device (e.g. a touchscreen
+ * laptop) matched this file's query but not `useIsMobile()`, so it reserved
+ * `--detail-header-mobile-footer-height` (~76px) of bottom clearance for a
+ * footer AgentsViewEditorPane no longer mounts there (gated on `isMobile`)
+ * — dead space with nothing occupying it. Byte-identical to
+ * `useIsMobile.ts`'s `MOBILE_MEDIA_QUERY` now; see that file's docblock for
+ * why the coarse-pointer clause needs both conditions.
+ */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  :root {
+    /* One 44px tap target, its padding, and the rule above it. */
+    --detail-header-mobile-footer-height: calc(44px + var(--space-3) * 2 + 1px);
+    --detail-body-bottom-clearance: calc(
+      var(--detail-header-mobile-footer-height) +
+      var(--dock-bottom-clearance) +
+      var(--space-3)
+    );
+  }
+
+  .detail-header__mobile-footer {
+    position: fixed;
+    right: 0;
+    /*
+     * The dock does not sit at the layout viewport's bottom edge when the
+     * software keyboard or Android system chrome shortens the VISIBLE
+     * viewport — it re-anchors to that edge, and this bar has to move with it.
+     * That inset used to be published only onto the dock's own element, where
+     * a sibling could not read it, so with an editor input focused the dock
+     * rose above the keyboard and Save stayed behind it (sol review, MEDIUM).
+     * `installVisualViewportInset` publishes it on the document element, and
+     * `--dock-bottom-clearance` (index.css) is the one sum that reads it.
+     */
+    bottom: var(--dock-bottom-clearance);
+    left: 0;
+    z-index: var(--layer-floating-action);
+    box-sizing: border-box;
+    display: flex;
+    min-height: var(--detail-header-mobile-footer-height);
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: flex-end;
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-primary);
+    background: var(--bg-primary);
+  }
+
+  /* Standing mobile rule: every tap target on a touched surface is >= 44px. */
+  .detail-header__mobile-footer > button,
+  .detail-header__mobile-footer > a {
+    min-height: 44px;
+  }
+}
+
+/* Action buttons inside DetailHeader. Tokens, not literal rgba blues/reds:
+   the old values were fixed to one palette and had no theme variant
+   (station#3305). */
+.detail-header__actions .editor-btn--primary {
+  background: var(--accent-medium);
+  border-color: var(--accent-border);
+  color: var(--accent-primary);
+}
+
+.detail-header__actions .editor-btn--primary:hover {
+  background: var(--accent-light);
+  opacity: 1;
+}
+
+.detail-header__actions .editor-btn--danger {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.detail-header__actions .editor-btn--danger:hover {
+  color: var(--error-text);
+  background: color-mix(in srgb, var(--error-text) 10%, transparent);
+  border-color: color-mix(in srgb, var(--error-text) 30%, transparent);
+}

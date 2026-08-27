@@ -1,0 +1,304 @@
+{
+  "unguardedReads": [
+    {
+      "entry": "packages/sdk/src/query-domains/pullRequests.ts :: workingDirectory :: context.workingDirectory,",
+      "category": 1,
+      "reason": "Same cache-key construction (usePullRequestContextQuery). Never touches a filesystem."
+    },
+    {
+      "entry": "packages/sdk/src/query-domains/pullRequests.ts :: workingDirectory :: context?.workingDirectory ?? '',",
+      "category": 1,
+      "reason": "React Query cache-key array entry. Browser code with no filesystem access; a tilde-literal value is an opaque cache-key segment."
+    },
+    {
+      "entry": "packages/sdk/src/query-domains/pullRequests.ts :: workingDirectory :: if (context.workingDirectory)",
+      "category": 1,
+      "reason": "Existence check before adding a query-string param. Boolean only, no filesystem access."
+    },
+    {
+      "entry": "packages/sdk/src/query-domains/pullRequests.ts :: workingDirectory :: query.set('workingDirectory', context.workingDirectory);",
+      "category": 1,
+      "reason": "Builds a URLSearchParams value sent to the server, which re-derives and expands the value itself (see runtime-routes.ts's pull-request context resolver). The client never resolves it against a filesystem."
+    },
+    {
+      "entry": "src-server/domain/file-storage-adapter.ts :: workingDirectory :: hasWorkingDirectory: !!config.workingDirectory,",
+      "category": 1,
+      "reason": "Boolean existence flag for ProjectMetadata (API response DTO), consumed only by UI conditional rendering (chat-dock-utils.ts). Never reaches a filesystem call."
+    },
+    {
+      "entry": "src-server/domain/file-storage-adapter.ts :: workingDirectory :: workingDirectory: config.workingDirectory,",
+      "category": 1,
+      "reason": "Copies the raw value into ProjectMetadata for API/UI display (splitWorkingDirectoryPath in chat-dock-utils.ts just string-splits it for a breadcrumb). Never used for filesystem access downstream of this DTO."
+    },
+    {
+      "entry": "src-server/routes/orchestration/task-outputs.ts :: workingDirectory :: actual.workspaceBinding?.workingDirectory === originalWorkspace &&",
+      "category": 1,
+      "reason": "canKeepForTask()'s witness compare: both sides are workspaceBinding.workingDirectory read via readTask (see the row below for `const workspace = task?.workspaceBinding...`) -- `originalWorkspace` captured at request start, `actual` re-read here at witness time -- to detect the Task moving to a different workspace mid-request. Same-provenance immutable-witness comparison, not a path read."
+    },
+    {
+      "entry": "src-server/routes/orchestration/task-outputs.ts :: workingDirectory :: actualTask.workspaceBinding?.workingDirectory ===",
+      "category": 1,
+      "reason": "keepDeclaredPullRequest's isAuthorized callback: the same witness compare as canKeepForTask's `actual.workspaceBinding?.workingDirectory === originalWorkspace` in this file -- same-provenance immutable-witness comparison, not a path read."
+    },
+    {
+      "entry": "src-server/routes/orchestration/task-outputs.ts :: workingDirectory :: const workspace = task?.workspaceBinding?.workingDirectory;",
+      "category": 2,
+      "reason": "workspaceBinding.workingDirectory is only ever populated by TaskGraphService.deriveWorkspaceBinding, which stores realpathSync(resolve(expandTilde(...))) at Task-creation time (task-graph-service.ts's captureWorkspaceBinding/deriveWorkspaceBinding) -- never the project's raw stored value, an invariant held since the field's introduction (#521, feat(tasks): add durable Task workspace). Already expanded upstream at capture time. Flows to session-outputs-module.ts's keep() as `taskWorkspace`, which itself wraps its comparison in resolve()."
+    },
+    {
+      "entry": "src-server/routes/orchestration/tasks.ts :: workingDirectory :: left?.workingDirectory === right?.workingDirectory &&",
+      "category": 1,
+      "reason": "Compares two retained workspace bindings for exact currentness; it does not resolve, open, or otherwise use either value as a filesystem path."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: const supplied = body.config?.workingDirectory;",
+      "category": 1,
+      "reason": "Reads the REQUEST body's value, only to compare it by equality against the derived working directory in conflictingWorkingDirectory() (line 368). Never reaches the filesystem."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: const workingDirectory = project.workingDirectory?.trim();",
+      "category": 2,
+      "reason": "Expanded 7 lines later in the same function, projectWorkspacePaneContext: `const workspacePath = resolve(expandTilde(workingDirectory));` (line 299), then used in existsSync/findGitEntryOnPath. Outside the guard\u2019s \u00b12/+3 line window."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: return `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;",
+      "category": 1,
+      "reason": "Error-message template text. Never reaches the filesystem."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: return project?.workingDirectory ?? projectWorkingDirectory(slug);",
+      "category": 1,
+      "reason": "derivedLayoutWorkingDirectory's return value feeds withDerivedWorkingDirectory(), which projects it onto a layout's config for the JSON API response (layout-working-directory.ts). It is response payload, not a filesystem path in this file."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: return storageAdapter.getProject(slug).workingDirectory;",
+      "category": 1,
+      "reason": "projectWorkingDirectory() \u2014 used only by derivedLayoutWorkingDirectory (line 339/342) to build the response payload described above. No filesystem use."
+    },
+    {
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: return withDerivedWorkingDirectory(layout, project.workingDirectory);",
+      "category": 1,
+      "reason": "Same response-payload projection as line 339's caller, for the apply-catalog-layout route. Never touches the filesystem."
+    },
+    {
+      "entry": "src-server/services/execution-target/execution-target-resolver.ts :: workingDirectory :: if (!project?.workingDirectory) {",
+      "category": 1,
+      "reason": "Existence check before throwing \"no working directory configured\". No filesystem access."
+    },
+    {
+      "entry": "src-server/services/execution-target/execution-target-resolver.ts :: workingDirectory :: project.workingDirectory === access.verifiedProjectPath,",
+      "category": 4,
+      "reason": "Deliberate RAW byte-equality check for the projectDirectoryExactMatch diagnostic. Documented design (packages/contracts/src/orchestration.ts:145-160, station#1870): a match that only succeeds after tilde/normalization expansion must earn the weaker \"unverified-cross-machine\" label, not \"directory-corroborated\" \u2014 expanding this comparison would be a correctness regression, not a fix. Covered by station-control-delegation.test.ts:472 \"raw byte equality earns directory-corroborated\"."
+    },
+    {
+      "entry": "src-server/services/execution-target/execution-target-resolver.ts :: workingDirectory :: project.workingDirectory,",
+      "category": 2,
+      "reason": "Passed into matchVerifiedRemoteProjectPath() (line 175), which performs its own remote-home-aware tilde expansion internally (lines 184-203) \u2014 deliberately NOT the local expandTilde()/homedir(), because this path may name a directory on a remote SSH host (see file header comment, line ~171)."
+    },
+    {
+      "entry": "src-server/services/knowledge/knowledge-namespaces.ts :: storageDir :: const legacy = resolve(namespace.storageDir);",
+      "category": 4,
+      "reason": "Deliberately UNEXPANDED, and it does reach the filesystem: this computes the pre-#3155 resolution on purpose (existsSync(legacy), knowledge-namespaces.ts:88-93) to detect content orphaned in a literal `~` directory by the old bug and warn about it. Expanding it would make the check compare the expanded path against itself and silently stop finding orphaned content. Never used as the operative directory."
+    },
+    {
+      "entry": "src-server/services/knowledge/knowledge-namespaces.ts :: storageDir :: warnOnceAboutLegacyKnowledgeDir(namespace.storageDir, legacy, expanded);",
+      "category": 1,
+      "reason": "Passes the raw string only for display in the console.warn message (the function's `configured` parameter is pure string interpolation). Never reaches the filesystem itself."
+    },
+    {
+      "entry": "src-server/services/knowledge/knowledge-scan-utils.ts :: storageDir :: if (namespaceConfig?.storageDir) {",
+      "category": 2,
+      "reason": "Expanded 8 lines later in the same function, resolveKnowledgeScanPath: `const storageDir = resolve(expandTilde(namespaceConfig.storageDir));` (line 162, with its own comment explaining this mirrors resolveKnowledgeStorageDir). Outside the guard\u2019s window."
+    },
+    {
+      "entry": "src-server/services/knowledge/knowledge-storage.ts :: storageDir :: const files = new KnowledgeFileTransactions(input.storageDir);",
+      "category": 2,
+      "reason": "input.storageDir is a plain generic parameter (`{storageDir: string; ...}`), never a raw stored KnowledgeNamespaceConfig. Every production caller (knowledge-context.ts, knowledge-filesystem.ts, knowledge-documents.ts, and migrate-pre-index-knowledge.ts:298 -- whose storageDir is defaultKnowledgeStorageDir(dataDir, ...), built from Station's own data dir and carrying no stored tilde) supplies it via KnowledgeService.resolveStorageDir -> resolveKnowledgeStorageDir(), which already returns resolve(expandTilde(...)) (knowledge-namespaces.ts:79)."
+    },
+    {
+      "entry": "src-server/services/knowledge/knowledge-storage.ts :: storageDir :: const files = new KnowledgeFileTransactions(input.storageDir);",
+      "category": 2,
+      "reason": "Same as mutateKnowledgeDocuments above (readKnowledgeDocuments) \u2014 input.storageDir is always pre-expanded by the resolveKnowledgeStorageDir call chain."
+    },
+    {
+      "entry": "src-server/services/knowledge/knowledge-storage.ts :: storageDir :: input.storageDir,",
+      "category": 2,
+      "reason": "Forwarded into documentTransaction() as the already-expanded storageDir (see line 184 reasoning)."
+    },
+    {
+      "entry": "src-server/services/knowledge/knowledge-storage.ts :: storageDir :: input.storageDir,",
+      "category": 2,
+      "reason": "Forwarded into documentTransaction() as the already-expanded storageDir (see line 207 reasoning)."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-adoption.ts :: workingDirectory :: `The attached session workspace ${attribution.workingDirectory} is configured as more than one project (${attribution.candidates.join(', ')}). Continue it from the project you meant, or remove the duplicate project.`,",
+      "category": 1,
+      "reason": "Error-message template text. attribution.workingDirectory is also already canonical (see next rows), but this line itself never reaches a filesystem regardless. Row relocated from orchestration-service.ts when the teardown-seam epic extracted AttachedSessionAdoption (statement unchanged)."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-adoption.ts :: workingDirectory :: projectRoot: input.project.workingDirectory,",
+      "category": 2,
+      "reason": "input.project.workingDirectory originates from resolveAdoptionProject() -> resolveAttachedProjectRoot()\u2019s `attribution.workingDirectory`, which is canonicalPath()-derived (already resolve(expandTilde(...))\u2019d and realpath\u2019d) \u2014 never the raw stored ProjectConfig field. Row relocated from orchestration-service.ts when the teardown-seam epic extracted AttachedSessionAdoption (statement unchanged)."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-adoption.ts :: workingDirectory :: workingDirectory: attribution.workingDirectory,",
+      "category": 2,
+      "reason": "Same lineage as above: attribution.workingDirectory is resolveAttachedProjectRoot()\u2019s canonicalPath() output (attached-session-follow-service.ts:701/1030), already expanded before this assignment. Row relocated from orchestration-service.ts when the teardown-seam epic extracted AttachedSessionAdoption (statement unchanged)."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: (await resolvePath(project.slug)) ?? project.workingDirectory,",
+      "category": 2,
+      "reason": "The raw fallback is stored as AttachedProjectRoot.workingDirectory, which resolveAttachedProjectRoot() later passes through canonicalPath() (line 701 below), and canonicalPath expands tilde internally (`resolve(expandTilde(path))`, line 1030). Docblock above this function (lines 113-117) explicitly names this compat path."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: const root = canonicalPath(project.workingDirectory);",
+      "category": 2,
+      "reason": "canonicalPath() expands tilde internally: `const absolute = resolve(expandTilde(path));` (line 1030), documented in canonicalPath\u2019s own station#1462 docblock as the fix for exactly this raw-tilde hazard."
+    },
+    {
+      "entry": "src-server/services/orchestration/attached-session-follow-service.ts :: workingDirectory :: if (!project.workingDirectory) continue;",
+      "category": 1,
+      "reason": "Existence/skip check before the canonicalPath() call on the next line. No filesystem access itself."
+    },
+    {
+      "entry": "src-server/services/projects/project-manifest-store.ts :: workingDirectory :: const workingDirectory = project.workingDirectory?.trim();",
+      "category": 2,
+      "reason": "Expanded 7 lines later in the same function: `const absolute = resolve(expandTilde(workingDirectory));` (line 578), then existsSync/readRemotes use `absolute`. Outside the guard\u2019s window; the code even documents WHY expandTilde must run first (lines 573-577)."
+    },
+    {
+      "entry": "src-server/services/projects/project-resolution-view.ts :: workingDirectory :: Boolean(project.workingDirectory?.trim()) ||",
+      "category": 1,
+      "reason": "Truthiness/backing-state check (\"not-backing\" determination). No filesystem access."
+    },
+    {
+      "entry": "src-server/services/projects/project-resource-resolver.ts :: workingDirectory :: const workingDirectory = project.workingDirectory?.trim();",
+      "category": 2,
+      "reason": "Expanded later in the same function: `const absolute = resolvePath(expandTilde(workingDirectory));` (line 384). The file\u2019s own docblock (point 8, lines 87-90) states this rule explicitly. Outside the guard\u2019s window."
+    },
+    {
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: await assertProjectWorktreeDirectory(slug, config.workingDirectory);",
+      "category": 2,
+      "reason": "assertProjectWorktreeDirectory() -> checkWorktreeDirectory() expands internally: `resolve(expandTilde(workingDirectory))` at line 131 (the station#3155 fix site), before the `git -C` call."
+    },
+    {
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: await assertProjectWorktreeDirectory(slug, updated.workingDirectory);",
+      "category": 2,
+      "reason": "Same call chain and expansion site as line 240 (checkWorktreeDirectory, project-service.ts:131)."
+    },
+    {
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: const basename = config.workingDirectory.split('/').filter(Boolean).pop();",
+      "category": 1,
+      "reason": "Derives a display name from the last path segment for a new project. A leading `~` occupies its own segment and never affects the basename result, so tilde expansion is immaterial here; the value is never used as a filesystem path."
+    },
+    {
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: if ((!name || name === 'Untitled') && config.workingDirectory) {",
+      "category": 1,
+      "reason": "Existence check gating the basename-derivation above. No filesystem access."
+    },
+    {
+      "entry": "src-server/services/projects/task-graph-service.ts :: workingDirectory :: stored.workingDirectory === current.workingDirectory &&",
+      "category": 2,
+      "reason": "TaskWorkspaceBinding.workingDirectory is never the raw ProjectConfig field: it is only ever populated by deriveWorkspaceBinding() as `canonicalWorkingDirectory = realpathSync(workingDirectory)` (line 1594) after readProjectWorkingDirectory() resolves through the (tilde-expanding) project resource resolver. Both `stored` and `current` are always already-canonical by construction, so this equality compares two expanded values."
+    },
+    {
+      "entry": "src-server/services/projects/task-output-module.ts :: workingDirectory :: if (binding?.availability !== 'available' || !binding?.workingDirectory) {",
+      "category": 1,
+      "reason": "A presence check in assertTaskWorkspace \u2014 the value is tested for truthiness and never used as a path. The read that reaches the filesystem is the readWorkspaceSnapshot call, which passes resolve(expandTilde(...))."
+    },
+    {
+      "entry": "src-server/services/projects/task-tool-result-reference-read-adapter.ts :: workingDirectory :: a.workingDirectory === b.workingDirectory &&",
+      "category": 1,
+      "reason": "Compares immutable captured workspace-binding facts to reject changed task state; it does not consume a path."
+    },
+    {
+      "entry": "src-server/services/projects/task-tool-result-reference-read-adapter.ts :: workingDirectory :: const captured = (binding as TaskWorkspaceBinding).workingDirectory;",
+      "category": 2,
+      "reason": "Bound here and expanded on the next statement: bindingMatchesProjectWorkspace compares resolve(expandTilde(captured)) against the already-expanded resolveProjectWorkspacePath result."
+    },
+    {
+      "entry": "src-server/services/projects/worktree-provisioning-service.ts :: worktreeBaseDir :: ? policy.worktreeBaseDir.trim()",
+      "category": 1,
+      "reason": "String normalization inside validateWorktreePolicy (line 72-76): trims the free-text policy value before storing it on the validated policy object. No filesystem access; a tilde is carried through verbatim on purpose, and expanded at the point of use in resolveWorktreeBaseDir."
+    },
+    {
+      "entry": "src-server/services/projects/worktree-provisioning-service.ts :: worktreeBaseDir :: const worktreeBaseDir = canonicalizePath(input.worktreeBaseDir);",
+      "category": 2,
+      "reason": "canonicalizePath resolves and realpaths but deliberately does NOT expand; it never needs to, because both callers of assertWorktreePathPolicy supply an already-expanded value. Creation (line 536-543) passes resolveWorktreeBaseDir's output. Cleanup (line 478) passes dirname(canonicalizePath(metadata.path)), and metadata.path is persisted AFTER expansion at creation. A record written by a pre-fix Station holds a resolved literal-`~` path, not a tilde-prefixed one, so expandTilde would not help it either -- that is a data-repair question, not an expansion one."
+    },
+    {
+      "entry": "src-server/services/projects/worktree-provisioning-service.ts :: worktreeBaseDir :: policy.worktreeBaseDir,",
+      "category": 2,
+      "reason": "Passed into resolveWorktreeBaseDir (line 536-539), which does resolve(expandTilde(...)) -- the expansion added in this change. This is the single point where the free-text policy value becomes a real path."
+    },
+    {
+      "entry": "src-server/services/projects/worktree-provisioning-service.ts :: worktreeBaseDir :: policy.worktreeBaseDir.trim()",
+      "category": 1,
+      "reason": "The truthiness half of the same normalization guard (validateWorktreePolicy, line 74). No filesystem access."
+    },
+    {
+      "entry": "src-server/services/projects/worktree-provisioning-service.ts :: worktreeBaseDir :: typeof policy.worktreeBaseDir === 'string' &&",
+      "category": 1,
+      "reason": "Type check in validateWorktreePolicy (line 73). No filesystem access."
+    },
+    {
+      "entry": "src-server/services/pull-requests/native-declared-pull-request-resolver.ts :: workingDirectory :: { workingDirectory: input.workingDirectory },",
+      "category": 2,
+      "reason": "Expanded in the callee: PullRequestRepositoryContextResolver.resolveExactIdentity does realpathSync(resolve(expandTilde(...))) itself before touching the filesystem (pull-request-repository-context-resolver.ts). Both callers of readCurrent also already pass an expanded value -- NativeOutputCallFacts.workspaceRoot (read(), this file) and the Session .cwd passed by session-outputs-module.ts's keep() both trace back to resolve(expandTilde(...)) at session-start cwd resolution (orchestration-service.ts's resolveStartSessionCwd)."
+    },
+    {
+      "entry": "src-server/services/pull-requests/pull-request-repository-context-resolver.ts :: workingDirectory :: if (!input.workingDirectory)",
+      "category": 1,
+      "reason": "Presence check only. The following filesystem read explicitly uses resolve(expandTilde(input.workingDirectory))."
+    },
+    {
+      "entry": "src-server/services/work-item-providers/flow-agents-work-item-provider.ts :: workingDirectory :: context.workingDirectory,",
+      "category": 2,
+      "reason": "WorkItemProjectContext's own docblock (provider-interfaces.ts:135-137) documents the field as \"tilde-expanded workspace path\": every production construction site is runtime-routes.ts's `resolveWorkspacePath()` (line 1467-1474), which calls `expandTilde(wd)` before ever handing the context to this provider."
+    },
+    {
+      "entry": "src-server/services/work-item-providers/flow-agents-work-item-provider.ts :: workingDirectory :: context.workingDirectory,",
+      "category": 2,
+      "reason": "Same WorkItemProjectContext contract as above \u2014 pre-expanded at runtime-routes.ts:1467-1474."
+    },
+    {
+      "entry": "src-server/services/work-item-providers/flow-agents-work-item-provider.ts :: workingDirectory :: cwd: context.workingDirectory,",
+      "category": 2,
+      "reason": "Same WorkItemProjectContext contract as above \u2014 pre-expanded at runtime-routes.ts:1467-1474."
+    },
+    {
+      "entry": "src-server/services/work-item-providers/flow-agents-work-item-provider.ts :: workingDirectory :: { cwd: context.workingDirectory, timeoutMs: this.timeoutMs },",
+      "category": 2,
+      "reason": "Same WorkItemProjectContext contract as above \u2014 pre-expanded at runtime-routes.ts:1467-1474."
+    },
+    {
+      "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: if (!project?.workingDirectory) {",
+      "category": 1,
+      "reason": "Existence check (pinSshDispatchWorkspace) before throwing \"no working directory configured\". No filesystem access."
+    },
+    {
+      "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: if (!project?.workingDirectory) {",
+      "category": 1,
+      "reason": "Existence check (resolveProject), same pattern as line 1025. No filesystem access."
+    },
+    {
+      "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: project.workingDirectory === projectPath",
+      "category": 4,
+      "reason": "Deliberate RAW byte-equality check for the slugJoin diagnostic \u2014 the same corroboration-strictness design as execution-target-resolver.ts:323 (comment at lines 1108-1110: \"Keep corroboration stricter than the gate: the latter can accept normalized tilde expansion, while this label records raw byte equality\"). Covered by station-control-delegation.test.ts:472."
+    },
+    {
+      "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: project.workingDirectory,",
+      "category": 2,
+      "reason": "Passed as the `cwd` argument into assertVerifiedSshWorkspace(), which calls matchVerifiedRemoteProjectPath() internally \u2014 that function performs its own remote-home-aware tilde expansion (execution-target-resolver.ts:184-203), not local expandTilde()."
+    },
+    {
+      "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: project.workingDirectory,",
+      "category": 2,
+      "reason": "Passed directly into matchVerifiedRemoteProjectPath(), same internal remote-aware expansion as line 1030."
+    },
+    {
+      "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: projectPath ??= project.workingDirectory;",
+      "category": 4,
+      "reason": "Deliberately NOT locally expanded, by design: this value names a directory on a REMOTE Station (target.apiBase), documented at lines 1119-1126 (\"this resolves a project belonging to target.apiBase, which is routinely a remote Station... The remote Station applies its own check when it starts the session\"). Applying local expandTilde()/homedir() here would resolve against the WRONG (local operator's) home directory."
+    }
+  ]
+}

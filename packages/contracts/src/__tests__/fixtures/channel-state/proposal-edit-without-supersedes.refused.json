@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "station.channel-proposal/v1",
+  "proposalId": "prop-a04",
+  "channelId": "chan-design",
+  "author": {
+    "memberId": "member-alex",
+    "deviceId": "device-laptop",
+    "keyId": "key-laptop-1"
+  },
+  "kind": "edit",
+  "baseEpoch": 3,
+  "happenedAt": "2026-08-02T09:00:00.000Z",
+  "body": {
+    "text": "rewritten in place"
+  }
+}

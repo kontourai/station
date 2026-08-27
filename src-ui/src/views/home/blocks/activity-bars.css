@@ -1,0 +1,104 @@
+.home-heat__chart {
+  display: grid;
+  gap: 4px;
+}
+.home-heat__axis {
+  display: flex;
+  justify-content: space-between;
+  padding-left: calc(min(152px, 24%) + 12px);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.home-heat__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.home-heat__row {
+  display: grid;
+  grid-template-columns: minmax(72px, min(152px, 24%)) 1fr 28px;
+  align-items: end;
+  gap: 12px;
+}
+.home-heat__label {
+  align-self: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A row name is a control only when the row resolves to a real project —
+   see `ProjectLabel` in activity-bars.tsx. */
+.home-heat__label--link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-weight: inherit;
+}
+.home-heat__label--link:hover {
+  text-decoration: underline;
+}
+.home-heat__bars {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  align-items: end;
+  gap: 3px;
+  height: 26px;
+  /* The shared baseline every bar is measured from. Without it an all-empty
+     row would collapse and the axis above would describe nothing. */
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-muted) 22%, transparent);
+}
+.home-heat__bar {
+  height: calc(var(--bar, 0) * 100%);
+  min-height: 3px;
+  padding: 0;
+  border: none;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent-primary);
+  cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.home-heat__bar:hover {
+  opacity: 0.75;
+}
+/* station#3768: on a coarse pointer the bars render as spans, not controls. */
+span.home-heat__bar {
+  cursor: default;
+}
+.home-heat__bar--empty {
+  height: 3px;
+  min-height: 3px;
+  cursor: default;
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+}
+.home-heat__bar:focus-visible,
+.home-heat__label--link:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.home-heat__total-unit {
+  /* Read by assistive tech, not shown: the visible column is a bare number,
+     which is meaningless without the window it counts over. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.home-heat__total {
+  align-self: center;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  text-align: right;
+}

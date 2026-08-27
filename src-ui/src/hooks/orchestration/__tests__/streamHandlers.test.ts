@@ -1,0 +1,456 @@
+// @vitest-environment jsdom
+
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+// station#3117: `handleToolCompletedEvent` is the LIVE tool-outcome path —
+// reached from `handleOrchestrationEvent` for every foreground chat — unlike
+// the dead `ToolLifecycleHandler`/`handleStreamEvent` these tests replaced
+// (station#3168 finished removing both: `ToolLifecycleHandler.ts` and its
+// test file are deleted, and `useStreamingMessage.ts` no longer exposes
+// `handleStreamEvent`). A fresh, isolated store instance per test avoids
+// sessionStorage bleed between tests and sessions.
+let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
+let handleToolStartedEvent: typeof import('../streamHandlers').handleToolStartedEvent;
+let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompletedEvent;
+let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEvent;
+// station#3351: spies on the messageParts module (see the doMock in the
+// text-delta describe below) to prove the dedup actually removed the
+// duplicated per-token work.
+let upsertTextPartCalls = 0;
+
+const threadId = 'thread-tool-outcome-1';
+
+function toolCompleted(overrides: Record<string, unknown> = {}) {
+  return {
+    eventId: 'evt-1',
+    provider: 'station-agent',
+    threadId,
+    createdAt: '2026-08-15T00:00:00.000Z',
+    method: 'tool.completed',
+    itemId: 'tool-1',
+    toolCallId: 'tool-1',
+    toolName: 'write_file',
+    status: 'success',
+    ...overrides,
+  } as unknown as Parameters<typeof handleToolCompletedEvent>[0];
+}
+
+describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)', () => {
+  beforeEach(async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {},
+    });
+    vi.resetModules();
+
+    vi.doMock('../../../contexts/active-chats-store', async () => {
+      const actual = await vi.importActual<
+        typeof import('../../../contexts/active-chats-store')
+      >('../../../contexts/active-chats-store');
+      const store = new actual.ActiveChatsStore({
+        storage: { getItem: () => null, setItem: () => {} },
+      });
+      return { ...actual, activeChatsStore: store };
+    });
+
+    ({ activeChatsStore } = await import(
+      '../../../contexts/active-chats-store'
+    ));
+    ({ handleToolStartedEvent, handleToolCompletedEvent } = await import(
+      '../streamHandlers'
+    ));
+
+    activeChatsStore.initChat(threadId, {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock('../../../contexts/active-chats-store');
+    vi.doUnmock('../messageParts');
+    vi.resetModules();
+  });
+
+  function toolPart() {
+    const parts =
+      activeChatsStore.getSnapshot()[threadId]?.streamingMessage
+        ?.contentParts ?? [];
+    return parts.find((part) => part.type === 'tool-invocation');
+  }
+
+  test('a successful tool call renders no error and no approval badge (negative control)', () => {
+    handleToolCompletedEvent(
+      toolCompleted({ status: 'success', output: { ok: true } }),
+    );
+
+    const part = toolPart();
+    expect(part).toMatchObject({ state: 'completed', isError: false });
+    expect(part?.sourceEventId).toBe('evt-1');
+    expect(part?.error).toBeUndefined();
+    expect(part?.approvalStatus).toBeUndefined();
+  });
+
+  test('keeps simultaneous terminal results with one call id distinct by source event id', () => {
+    handleToolCompletedEvent(
+      toolCompleted({
+        eventId: 'result-a',
+        output: { uiBlocks: [{ type: 'card', title: 'A', body: 'first' }] },
+      }),
+    );
+    handleToolCompletedEvent(
+      toolCompleted({
+        eventId: 'result-b',
+        output: { uiBlocks: [{ type: 'card', title: 'B', body: 'second' }] },
+      }),
+    );
+    const tools = (
+      activeChatsStore.getSnapshot()[threadId]?.streamingMessage
+        ?.contentParts ?? []
+    ).filter((part) => part.type === 'tool-invocation');
+    expect(tools).toHaveLength(2);
+    expect(tools.map((part) => part.sourceEventId)).toEqual([
+      'result-a',
+      'result-b',
+    ]);
+    const blocks = (
+      activeChatsStore.getSnapshot()[threadId]?.streamingMessage
+        ?.contentParts ?? []
+    ).filter((part) => part.type === 'ui-block');
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map((part) => part.sourceEventId)).toEqual([
+      'result-a',
+      'result-b',
+    ]);
+  });
+
+  test('keeps a corrupt result without an event id observable but does not pin its UI blocks', () => {
+    handleToolCompletedEvent(
+      toolCompleted({
+        eventId: undefined,
+        status: 'error',
+        error: 'result event identity missing',
+        output: {
+          uiBlocks: [{ type: 'card', title: 'Unpinnable', body: 'result' }],
+        },
+      }),
+    );
+
+    expect(toolPart()).toMatchObject({
+      state: 'error',
+      isError: true,
+      error: 'result event identity missing',
+    });
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        [threadId]?.streamingMessage?.contentParts?.filter(
+          (part) => part.type === 'ui-block',
+        ),
+    ).toEqual([]);
+  });
+
+  test('does not revive a settled call when the provider reuses its call id', () => {
+    const started = (eventId: string, args: unknown) =>
+      ({
+        eventId,
+        provider: 'station-agent',
+        threadId,
+        createdAt: '2026-08-15T00:00:00.000Z',
+        method: 'tool.started',
+        itemId: eventId,
+        toolCallId: 'reused-call',
+        toolName: 'shell',
+        arguments: args,
+      }) as unknown as Parameters<typeof handleToolStartedEvent>[0];
+    handleToolStartedEvent(started('start-a', { command: 'first' }));
+    handleToolCompletedEvent(
+      toolCompleted({
+        eventId: 'result-a',
+        toolCallId: 'reused-call',
+        toolName: 'shell',
+        output: { uiBlocks: [{ type: 'card', title: 'A', body: 'first' }] },
+      }),
+    );
+    handleToolStartedEvent(started('start-b', { command: 'second' }));
+    handleToolCompletedEvent(
+      toolCompleted({
+        eventId: 'result-b',
+        toolCallId: 'reused-call',
+        toolName: 'shell',
+        output: { uiBlocks: [{ type: 'card', title: 'B', body: 'second' }] },
+      }),
+    );
+    // Duplicate delivery updates only the exact second terminal result.
+    handleToolCompletedEvent(
+      toolCompleted({
+        eventId: 'result-b',
+        toolCallId: 'reused-call',
+        toolName: 'shell',
+        output: { uiBlocks: [{ type: 'card', title: 'B', body: 'second' }] },
+      }),
+    );
+    const parts =
+      activeChatsStore.getSnapshot()[threadId]?.streamingMessage
+        ?.contentParts ?? [];
+    const tools = parts.filter((part) => part.type === 'tool-invocation');
+    expect(tools).toHaveLength(2);
+    expect(tools.map((part) => [part.sourceEventId, part.args])).toEqual([
+      ['result-a', { command: 'first' }],
+      ['result-b', { command: 'second' }],
+    ]);
+    const blocks = parts.filter((part) => part.type === 'ui-block');
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map((part) => part.sourceEventId)).toEqual([
+      'result-a',
+      'result-b',
+    ]);
+  });
+
+  // #3113: an ordinary (non-policy) failed tool call must render as failed —
+  // and, since it carries no `policyDenied` marker, must NOT be labeled
+  // policy-denied. Absence of the marker means "we don't know why this
+  // failed", never "policy denied it" (the same discipline #3091 applied).
+  test('an ordinary failed tool call sets isError/error but no approvalStatus', () => {
+    handleToolCompletedEvent(
+      toolCompleted({ status: 'error', error: 'Tool call failed.' }),
+    );
+
+    const part = toolPart();
+    expect(part).toMatchObject({
+      state: 'error',
+      isError: true,
+      error: 'Tool call failed.',
+    });
+    expect(part?.approvalStatus).toBeUndefined();
+  });
+
+  // station#3167: cancelling is a correct user-initiated outcome, not a
+  // failure — `isError` must stay false so nothing downstream that counts
+  // failures starts counting cancellations (mirrored on the rehydrated
+  // side by runtime-event-projection.test.ts).
+  test('a cancelled tool call renders the cancelled state, not error or success, and isError is false', () => {
+    handleToolCompletedEvent(toolCompleted({ status: 'cancelled' }));
+
+    const part = toolPart();
+    expect(part).toMatchObject({ state: 'cancelled', isError: false });
+    expect(part?.approvalStatus).toBeUndefined();
+  });
+
+  // #3117: the live-path derivation this issue exists to add. Only ever set
+  // from the event's own `policyDenied` marker — never inferred from
+  // `status === 'error'` alone.
+  test('a policy-denied tool call sets approvalStatus to policy-denied on the LIVE path', () => {
+    const reason =
+      "Tool 'write_file' was blocked by the config-protection policy: writes require review";
+    handleToolCompletedEvent(
+      toolCompleted({ status: 'error', error: reason, policyDenied: true }),
+    );
+
+    const part = toolPart();
+    expect(part).toMatchObject({
+      approvalStatus: 'policy-denied',
+      error: reason,
+      state: 'error',
+      isError: true,
+    });
+  });
+
+  test('policyDenied overrides a call-time auto-approved label (config-protection runs before the auto-approve check)', () => {
+    handleToolStartedEvent({
+      eventId: 'evt-0',
+      provider: 'station-agent',
+      threadId,
+      createdAt: '2026-08-15T00:00:00.000Z',
+      method: 'tool.started',
+      itemId: 'tool-1',
+      toolCallId: 'tool-1',
+      toolName: 'write_file',
+    } as unknown as Parameters<typeof handleToolStartedEvent>[0]);
+    // Simulate an optimistic auto-approved label set upstream of the
+    // tool-result event (this handler itself never sets one — see
+    // approvalHandlers.ts for the real request.opened/resolved source).
+    const chat = activeChatsStore.getSnapshot()[threadId]!;
+    activeChatsStore.updateChat(threadId, {
+      streamingMessage: {
+        ...chat.streamingMessage!,
+        contentParts: chat.streamingMessage!.contentParts!.map((part) =>
+          part.type === 'tool-invocation'
+            ? { ...part, approvalStatus: 'auto-approved' as const }
+            : part,
+        ),
+      },
+    });
+    expect(toolPart()?.approvalStatus).toBe('auto-approved');
+
+    handleToolCompletedEvent(
+      toolCompleted({
+        status: 'error',
+        error: 'blocked by policy',
+        policyDenied: true,
+      }),
+    );
+
+    expect(toolPart()?.approvalStatus).toBe('policy-denied');
+  });
+
+  // Pin station#1834's existing behaviour: a genuine user decline (set by
+  // useToolApproval.ts's optimistic click handler, upstream of any
+  // tool-result event) is untouched when the result carries no policyDenied
+  // marker — #3117 must not weaken it.
+  test('a pre-existing user-denied approvalStatus is left alone when the result carries no policyDenied marker', () => {
+    handleToolStartedEvent({
+      eventId: 'evt-0',
+      provider: 'station-agent',
+      threadId,
+      createdAt: '2026-08-15T00:00:00.000Z',
+      method: 'tool.started',
+      itemId: 'tool-1',
+      toolCallId: 'tool-1',
+      toolName: 'fs_write',
+    } as unknown as Parameters<typeof handleToolStartedEvent>[0]);
+    const chat = activeChatsStore.getSnapshot()[threadId]!;
+    activeChatsStore.updateChat(threadId, {
+      streamingMessage: {
+        ...chat.streamingMessage!,
+        contentParts: chat.streamingMessage!.contentParts!.map((part) =>
+          part.type === 'tool-invocation'
+            ? {
+                ...part,
+                approvalStatus: 'user-denied' as const,
+                cancelled: true,
+              }
+            : part,
+        ),
+      },
+    });
+
+    handleToolCompletedEvent(
+      toolCompleted({
+        toolCallId: 'tool-1',
+        status: 'error',
+        error:
+          "Tool 'fs_write' was denied: the user declined the approval request.",
+      }),
+    );
+
+    expect(toolPart()?.approvalStatus).toBe('user-denied');
+  });
+});
+
+describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', () => {
+  const threadId = 'thread-text-delta-plan';
+
+  function textDelta(delta: string, createdAt = '2026-08-19T00:00:00.000Z') {
+    return {
+      eventId: 'evt',
+      provider: 'station-agent',
+      threadId,
+      createdAt,
+      method: 'content.text-delta',
+      delta,
+    } as unknown as Parameters<typeof handleTextDeltaEvent>[0];
+  }
+
+  beforeEach(async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {},
+    });
+    vi.resetModules();
+
+    vi.doMock('../../../contexts/active-chats-store', async () => {
+      const actual = await vi.importActual<
+        typeof import('../../../contexts/active-chats-store')
+      >('../../../contexts/active-chats-store');
+      const store = new actual.ActiveChatsStore({
+        storage: { getItem: () => null, setItem: () => {} },
+      });
+      return { ...actual, activeChatsStore: store };
+    });
+
+    upsertTextPartCalls = 0;
+    vi.doMock('../messageParts', async () => {
+      const actual =
+        await vi.importActual<typeof import('../messageParts')>(
+          '../messageParts',
+        );
+      return {
+        ...actual,
+        upsertTextPart: (...args: Parameters<typeof actual.upsertTextPart>) => {
+          upsertTextPartCalls += 1;
+          return actual.upsertTextPart(...args);
+        },
+      };
+    });
+
+    ({ activeChatsStore } = await import(
+      '../../../contexts/active-chats-store'
+    ));
+    ({ handleTextDeltaEvent } = await import('../streamHandlers'));
+
+    activeChatsStore.initChat(threadId, {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock('../../../contexts/active-chats-store');
+    vi.doUnmock('../messageParts');
+    vi.resetModules();
+  });
+
+  test('the plan artifact stays live while a plan streams: rawText and steps advance per delta', () => {
+    handleTextDeltaEvent(textDelta('Plan:\n- [ ] first'));
+    handleTextDeltaEvent(textDelta('\n- [ ] second'));
+
+    const chat = activeChatsStore.getSnapshot()[threadId]!;
+    expect(chat.planArtifact).toMatchObject({
+      source: 'assistant',
+      rawText: 'Plan:\n- [ ] first\n- [ ] second',
+      steps: [
+        { content: 'first', status: 'pending' },
+        { content: 'second', status: 'pending' },
+      ],
+    });
+    expect(chat.streamingMessage?.content).toBe(
+      'Plan:\n- [ ] first\n- [ ] second',
+    );
+  });
+
+  // station#3351: the pre-dedup handler built the accumulated
+  // streaming message twice per token — once for the store update and once
+  // verbatim inside the planArtifact argument — so upsertTextPart ran twice
+  // per delta. This is the discriminating assertion for the dedup: the value
+  // assertions in the tests above were already identical pre-fix.
+  test('handleTextDeltaEvent builds the streaming message parts exactly once per delta', () => {
+    upsertTextPartCalls = 0;
+
+    handleTextDeltaEvent(textDelta('Plan:\n- [ ] first'));
+    expect(upsertTextPartCalls).toBe(1);
+
+    handleTextDeltaEvent(textDelta('\n- [ ] second'));
+    expect(upsertTextPartCalls).toBe(2);
+  });
+
+  test('non-plan text keeps the cached artifact by reference (no new identity per token)', () => {
+    const cached: import('../../../utils/planArtifacts').PlanArtifact = {
+      source: 'assistant',
+      rawText: '- settled plan',
+      steps: [{ content: 'settled plan', status: 'pending' }],
+      updatedAt: '2026-08-18T00:00:00.000Z',
+    };
+    activeChatsStore.updateChat(threadId, { planArtifact: cached });
+
+    handleTextDeltaEvent(textDelta('just a plain sentence'));
+    handleTextDeltaEvent(textDelta(' continuing'));
+
+    const chat = activeChatsStore.getSnapshot()[threadId]!;
+    expect(chat.planArtifact).toBe(cached);
+  });
+});

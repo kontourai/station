@@ -1,0 +1,31 @@
+.browser-preview-pane__address {
+  align-items: center;
+  display: flex;
+  gap: 0.375rem;
+}
+
+.browser-preview-pane__address input {
+  flex: 1;
+  min-width: 0;
+}
+
+.browser-preview-pane__favicon {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 1rem;
+  height: 1rem;
+  justify-content: center;
+  width: 1rem;
+}
+
+.browser-preview-pane__favicon-image {
+  height: 1rem;
+  object-fit: contain;
+  width: 1rem;
+}
+
+.browser-preview-pane__favicon-glyph {
+  color: var(--text-muted);
+  height: 1rem;
+  width: 1rem;
+}

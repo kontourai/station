@@ -1,0 +1,23 @@
+name: Docs Issue
+description: Report missing, incorrect, or outdated documentation.
+title: "docs: "
+labels:
+  - documentation
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Documentation Location
+      description: File path or page URL.
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested Fix

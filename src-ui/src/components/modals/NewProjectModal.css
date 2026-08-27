@@ -1,0 +1,392 @@
+.new-project-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(7, 10, 16, 0.68);
+  backdrop-filter: blur(10px);
+}
+
+.new-project-modal {
+  width: min(720px, 100%);
+  max-height: min(92vh, 920px);
+  overflow: auto;
+  padding: 1.5rem;
+  background:
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--accent-primary) 16%, transparent),
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bg-primary) 92%, white 8%),
+      var(--bg-primary)
+    );
+  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border-radius: 20px;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.new-project-modal__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.new-project-modal__eyebrow {
+  margin: 0 0 0.45rem;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.new-project-modal__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.new-project-modal__subtitle {
+  margin: 0.55rem 0 0;
+  max-width: 42rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.new-project-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.new-project-modal__draft-fields {
+  display: flex;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.new-project-modal__recovery {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.new-project-modal__hero {
+  display: block;
+}
+
+.new-project-modal__panel {
+  padding: 1rem;
+  background: color-mix(in srgb, var(--bg-secondary) 88%, white 12%);
+  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border-radius: 16px;
+}
+
+.new-project-modal__panel--featured {
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent-primary) 9%, var(--bg-secondary)),
+    color-mix(in srgb, var(--bg-secondary) 88%, white 12%)
+  );
+}
+
+.new-project-modal__panel-title {
+  margin: 0 0 0.35rem;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.new-project-modal__panel-copy {
+  margin: 0 0 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.new-project-modal__working-dir-input {
+  min-height: 3.2rem;
+  padding: 0.95rem 1rem;
+  font-size: 0.98rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-primary) 88%, white 12%);
+}
+
+.new-project-modal__identity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.new-project-modal__identity-icon {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.new-project-modal__name-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.new-project-modal__icon-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+
+.new-project-modal__icon-choice-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.new-project-modal__icon-choice-header > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.new-project-modal__icon-choice-header strong {
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.new-project-modal__icon-choice-header span {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.new-project-modal__artwork-list {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0.15rem 0 0.35rem;
+}
+
+.new-project-modal__artwork-choice {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  padding: 3px;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  cursor: pointer;
+}
+
+.new-project-modal__artwork-choice--selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--accent-primary) 24%, transparent);
+}
+
+.new-project-modal__artwork-choice img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.new-project-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.new-project-modal__error {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--error-border);
+  border-radius: 12px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-size: 0.88rem;
+}
+
+/* Field-level refusal (4-HOME-007/008): sits under the input it belongs to,
+   not in the form-wide error block, so the message names the field. */
+.new-project-modal__field-error {
+  margin: 0.35rem 0 0;
+  color: var(--error-text);
+  font-size: 0.82rem;
+}
+
+/* The cached duplicate suspicion (4-HOME-007 review): a warning the user can
+   proceed past, not the red refusal above. */
+.new-project-modal__field-advisory {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.new-project-modal__starter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--bg-secondary) 88%, white 12%);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+}
+
+.new-project-modal__starter-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.new-project-modal__starter-heading .new-project-modal__panel-copy {
+  margin-bottom: 0;
+}
+
+.new-project-modal__none {
+  display: grid;
+  width: 100%;
+  min-height: 56px;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.new-project-modal__none:hover,
+.new-project-modal__none--selected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-primary));
+}
+
+.new-project-modal__none:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.new-project-modal__none > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.new-project-modal__none strong {
+  font-size: 0.9rem;
+}
+
+.new-project-modal__none small,
+.new-project-modal__starter-label {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.new-project-modal__starter-group {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.new-project-modal__starter-label {
+  margin: 0;
+  font-weight: 600;
+}
+
+.new-project-layout-browser__overlay {
+  z-index: calc(var(--layer-dialog) + 1);
+  padding: 1rem;
+}
+
+.new-project-layout-browser {
+  width: min(680px, 100%);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  padding: 1.25rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 18px;
+  background: var(--bg-primary);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42);
+}
+
+.new-project-layout-browser__header {
+  margin-bottom: 1rem;
+}
+
+.new-project-layout-browser__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+@media (max-width: 780px) {
+  .new-project-modal {
+    padding: 1.1rem;
+  }
+
+  .new-project-modal__header {
+    align-items: flex-start;
+  }
+
+  .new-project-modal__icon-choice-header {
+    align-items: flex-start;
+  }
+
+  .new-project-modal__starter-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .new-project-modal__starter-heading .editor-btn {
+    align-self: flex-start;
+  }
+
+  .new-project-layout-browser {
+    width: 100%;
+    max-height: 100%;
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .new-project-modal__overlay,
+  .new-project-layout-browser__overlay {
+    padding: 0.5rem;
+  }
+
+  .new-project-modal,
+  .new-project-layout-browser {
+    padding: 0.85rem;
+    border-radius: 14px;
+  }
+}

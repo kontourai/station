@@ -1,0 +1,101 @@
+.brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  border-radius: 25%;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  line-height: 1;
+}
+.brand-icon svg {
+  width: 72%;
+  height: 72%;
+  fill: currentColor;
+}
+.brand-icon svg .brand-icon__inverse {
+  fill: #fff;
+}
+.brand-icon svg .brand-icon__ink {
+  fill: #000;
+}
+.brand-icon svg .brand-icon__muted {
+  fill: var(--text-muted);
+}
+.brand-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.brand-icon__glyph {
+  font-size: 70%;
+}
+.brand-icon__initials {
+  /* station#1424 review fix (round 3 NEW-4): a bare percentage font-size
+     resolves against the INHERITED ambient text size, not this element's
+     own icon box — the original `font-size: 42%` never actually scaled
+     with the icon's `size` prop (a 48px "large" icon and a 20px avatar
+     rendered initials at roughly the same few px, whatever the ambient
+     text size happened to be). `--icon-size` (set inline by BrandIcon.tsx
+     from its own `size` prop) is the real icon dimension, so this now
+     genuinely scales; `max(…, 9px)` is a legibility floor for a very small
+     icon where 42% of it would still be too small to read. */
+  font-size: max(calc(var(--icon-size, 24px) * 0.42), 9px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.brand-icon--claude {
+  color: #d97757;
+}
+.brand-icon--codex {
+  color: #10a37f;
+}
+.brand-icon--pi {
+  color: #000;
+}
+.brand-icon--kiro {
+  color: #9046ff;
+}
+.brand-icon--opencode {
+  color: var(--text-primary);
+}
+/* Deterministic identicon fallback (station#1424): a seed-derived hue swatch
+   for agents with no uploaded artwork and no recognized brand mark, so two
+   different unbranded agents read as visually distinct rather than the same
+   flat --bg-tertiary tile. Saturation/lightness are theme-scoped tokens
+   (station#1424 review fix S4).
+
+   station#1424 review round 3 (NEW-3): the ORIGINAL light-theme pair
+   (50%/42%) failed WCAG AA for white initials text at the yellow-green part
+   of the hue wheel (h=60 measured ~2.7-3.3:1 against the required 4.5:1;
+   this repo has prior history here, #1125/#1167, and nothing previously
+   gated it). Both pairs below are chosen so white-on-swatch stays >= 4.5:1
+   at EVERY hue — verified analytically for h=0/60/120/180/240/300 (the only
+   possible local extrema of relative luminance over the hue wheel at fixed
+   S/L; h=60 is the global worst case) and pinned by
+   `__tests__/identicon-contrast.test.ts`, which reads these exact values
+   out of this file (not a hardcoded duplicate) and computes real WCAG
+   contrast for h=60/120/180 — the change class this class of bug belongs to
+   now has a gate. Dark and light ended up close in value (30% lightness
+   either way) because that is where the contrast margin actually is; a
+   lighter swatch that still passes was not found with an acceptable
+   margin, so this is deliberately NOT a strong visual differentiation
+   between themes — only the safe amount. */
+:root,
+[data-theme="dark"] {
+  --identicon-saturation: 45%;
+  --identicon-lightness: 30%;
+}
+[data-theme="light"] {
+  --identicon-saturation: 42%;
+  --identicon-lightness: 30%;
+}
+.brand-icon--identicon {
+  background: hsl(
+    var(--identicon-hue) var(--identicon-saturation) var(--identicon-lightness)
+  );
+  border-color: transparent;
+  color: #fff;
+}

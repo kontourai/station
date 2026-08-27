@@ -1,0 +1,332 @@
+/* Shared form controls used by dialogs, settings, and inline editors.
+   This stylesheet is loaded with the application shell so a control never
+   depends on a lazy route having been visited first. */
+
+/*
+ * ONE vertical rhythm and ONE type hierarchy for every form in the app
+ * (DESIGN.md §6, and the DRY rule: it lives in the primitive, never in a
+ * page's own stylesheet). The scale is the 8px step of `tokens.css`:
+ * group gap 2 steps (16px), label -> field 1 step (8px), field -> helper
+ * half a step (4px).
+ *
+ * The type sizes fix an inversion that reached every editor in the product
+ * (Y4): `.editor-label` was 12px while `.editor-hint` had NO font-size rule
+ * at all, so every helper paragraph inherited the document's 16px and
+ * out-sized the label it belonged to. A label is 13/500 and its helper
+ * 12/400 muted, so the label always reads first.
+ */
+.editor-field {
+  margin-bottom: var(--space-8);
+}
+
+.editor-field--row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.editor-field:last-child {
+  margin-bottom: 0;
+}
+
+.editor-label {
+  display: block;
+  margin-bottom: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+.editor-label--inline {
+  margin-bottom: 0;
+}
+
+.editor-hint,
+.editor-field-hint {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: var(--leading-normal);
+}
+
+/* A hint INSIDE a label is part of the label line, not a helper under it. */
+.editor-label .editor-hint {
+  display: inline;
+  margin-top: 0;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.editor-input,
+.editor-textarea,
+.editor-select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  outline: none;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-lg);
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+.editor-input:focus,
+.editor-textarea:focus,
+.editor-select:focus {
+  border-color: var(--accent-primary);
+}
+
+.editor-input::placeholder,
+.editor-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/*
+ * A value this editor states but does not own — rendered in line with the
+ * fields above it, without a control implying it can be changed here.
+ * Deliberately NOT a disabled input: disabled means "not right now", and this
+ * is "not from this screen".
+ */
+.editor-readonly {
+  display: block;
+  padding: 8px 0;
+  font-size: var(--text-md);
+}
+
+.editor-input:disabled,
+.editor-select:disabled,
+.editor-textarea:disabled {
+  cursor: not-allowed;
+  background: var(--bg-tertiary, var(--bg-secondary));
+  opacity: 0.5;
+}
+
+.editor-textarea {
+  min-height: 80px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.editor-textarea--tall {
+  min-height: 200px;
+}
+
+.editor-textarea--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+}
+
+.editor-select {
+  padding-right: 28px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.editor-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-icon-preview {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  font-size: var(--text-2xl);
+}
+
+.editor-icon-row .editor-input {
+  flex: 1;
+}
+
+.editor-error {
+  margin-top: 4px;
+  color: var(--error-text);
+  font-size: var(--text-sm);
+}
+
+/* A connection health check's verdict was carried by its wording alone —
+   "Healthy" and "Unavailable" rendered in the same neutral `.editor-help`
+   tone. These reuse the already contrast-measured semantic foregrounds
+   rather than introducing a colour. Measured on the detail pane's
+   --bg-primary: success 14.89:1 dark / 4.66:1 light; error 6.97:1 dark /
+   5.94:1 light. */
+/* The base tone the comment above refers to — it was never written. 19 call
+   sites across the agent-connection and skill editors rendered inline help
+   at full body weight, visually equal to the content they describe, while the
+   two health modifiers below (which DO exist) coloured their text. So the
+   only help text that looked subordinate was the health text
+   (station#3157). */
+.editor-help {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.editor-help--healthy {
+  color: var(--success-text);
+}
+
+.editor-help--unhealthy {
+  color: var(--error-text);
+}
+
+.editor-field-hint {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.editor-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.editor-label-row .editor-label {
+  margin-bottom: 0;
+}
+
+.editor-enrich-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.editor-enrich-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.editor-enrich-btn:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.editor-btn {
+  padding: 7px 16px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.editor-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+/*
+ * A disabled `.editor-btn` looked exactly like an enabled one: this file gave
+ * `:disabled` treatment to every input, select and textarea, and to
+ * `.editor-enrich-btn`, but never to the button family itself. Live
+ * verification of the New Project modal (4-HOME-007/008) showed a Create
+ * button that WAS disabled — no POST on click — while still rendering as the
+ * full-strength primary action, which is a refusal the user cannot see.
+ * Same opacity/cursor pair the inputs above already use.
+ */
+.editor-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* The hover rules below would otherwise still light up a dead control. */
+.editor-btn:disabled:hover {
+  opacity: 0.5;
+  border-color: var(--border-primary);
+  color: var(--text-secondary);
+}
+
+.editor-btn--primary {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.editor-btn--primary:hover {
+  opacity: 0.9;
+}
+
+.editor-btn--primary:disabled:hover {
+  opacity: 0.5;
+  border-color: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.editor-btn--danger {
+  border-color: transparent;
+  color: var(--error-text);
+}
+
+.editor-btn--danger:hover {
+  border-color: var(--error-text);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.editor-btn--small {
+  padding: 4px 10px;
+  font-size: var(--text-base);
+}
+
+/*
+ * station#3783: the 44px touch floor belongs to the PRIMITIVE.
+ *
+ * `.editor-btn` computes ~31-35px from its padding alone, and the floor lived
+ * in `views/editor-layout.css` — a route stylesheet only the lazy editor views
+ * import. Home imports none of them, so `.editor-btn--primary "Set up Station"`
+ * inside `.home-view` measured 121x34 on a live instance at 390x844, with no
+ * floor in the document at all. Two more route stylesheets carried their own
+ * copy of the same rule (`PluginManagementView.css`, `KnowledgeConnectionView`),
+ * which is what a floor declared per page looks like on the way to being
+ * missing on the next one.
+ *
+ * `@media (pointer: coarse)` unqualified, not the width-first mobile query:
+ * a tablet at 834x1112 matches neither `max-width: 768px` nor
+ * `(max-height: 540px) and (pointer: coarse)` while its user still has a
+ * thumb. Same form as `WorkspacePaneAvailabilityList.css` and `chat.css` use
+ * for their own targets (WCAG 2.5.5). `--icon` keeps its own width floor
+ * because a 32px square needs both dimensions raised.
+ */
+@media (pointer: coarse) {
+  .editor-btn,
+  .editor-btn--small {
+    min-height: 44px;
+  }
+
+  .editor-btn--icon {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

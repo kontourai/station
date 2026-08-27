@@ -1,0 +1,84 @@
+/*
+ * RegistryView mobile refinements.
+ *
+ * Desktop (>=769px) is intentionally untouched — every rule here is scoped
+ * under .registry-view AND the mobile breakpoint so the install/detail surface
+ * and cards stay tappable and overflow-free at <=390px wide. Shared layout
+ * concerns (card grid collapsing to one column, tab strip scrolling, header
+ * stacking) are already handled in page-layout.css.
+ */
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* The dock and the device safe area are reserved once, by the shell's route
+     outlet (--dock-bottom-clearance, station#3902). This is the catalog's own
+     bottom gutter. */
+  .registry-view .page__section-stack {
+    padding-bottom: 1.5rem;
+  }
+
+  .registry-view .page__tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    gap: 0.5rem;
+  }
+
+  .registry-view .page__tab {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  /* Nothing in the registry should be able to push past the viewport edge. */
+  .registry-view,
+  .registry-view .page__card-grid,
+  .registry-view .page__card-loose,
+  .registry-view .page__card-text {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .registry-view .page__card-loose {
+    padding: 1.1rem 1rem;
+  }
+
+  /* The shared desktop grid has a 320px minimum. Inside the mobile page's
+     horizontal padding that minimum is wider than a 320px viewport, so use
+     the available content width instead of clipping the card and its action. */
+  .registry-view .page__card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Stack the source pill and the install/remove action so the button is
+     full-width and reaches a 44px touch target instead of being squeezed. */
+  .registry-view .page__card-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  /* The retired `.page__btn-*` family is now the shared `.button`; the
+     full-width + 44px mobile floor follows it. */
+  .registry-view .page__card-footer .button,
+  .registry-view .button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* The header "Manage Installed Skills" action also needs a real tap target. */
+  .registry-view .page__header-actions-inline .button {
+    min-height: 44px;
+  }
+
+  /* Long descriptions / ids must wrap rather than force horizontal scroll. */
+  .registry-view .page__card-name,
+  .registry-view .page__card-desc {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+.registry-catalog__version {
+  margin-top: 0.75rem;
+}

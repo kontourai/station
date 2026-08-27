@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "station.channel-home/v1",
+  "channelId": "chan-solo",
+  "epoch": 1,
+  "homeRef": "station://alex-desktop",
+  "leaseRef": "lease-chan-solo-epoch-1",
+  "leaseExpiresAt": "2026-08-02T09:05:00.000Z",
+  "witnessRef": null,
+  "policyRevision": "policy-rev-1",
+  "previousEpochCloseCheckpoint": null
+}

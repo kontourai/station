@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "documents": [
+    {
+      "source": "user/getting-started.md",
+      "section": "Start Here"
+    },
+    {
+      "source": "user/concepts.md",
+      "section": "Understand Station"
+    },
+    {
+      "source": "user/native-recovery.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "user/work-board.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "user/contributing.md",
+      "section": "Contribute"
+    },
+    {
+      "source": "guides/contributing.md",
+      "section": "Contribute"
+    },
+    {
+      "source": "guides/keyboard-shortcuts.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "guides/product-law-authoring.md",
+      "section": "Build Station"
+    },
+    {
+      "source": "reference/product-laws.md",
+      "section": "Reference"
+    },
+    {
+      "source": "reference/contributor-commands.md",
+      "section": "Reference"
+    }
+  ]
+}

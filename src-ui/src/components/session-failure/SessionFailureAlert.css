@@ -1,0 +1,50 @@
+/*
+ * station#3213: the failure banner's one appearance, lifted verbatim from
+ * `.sessions-detail__failure` (SessionsView.css) when the chat dock became a
+ * second consumer. Both surfaces render this component, so neither can drift
+ * into its own error styling for the same fact.
+ *
+ * Clamp policy — the cause WRAPS and is bounded to four lines of its own
+ * stated line-height, then SCROLLS inside the banner:
+ *   - `overflow-wrap: anywhere` + `min-width: 0` so an unbreakable token
+ *     (`ECONNREFUSED host:8443`, a long absolute path — the #3203 case) breaks
+ *     inside the banner instead of widening its flex/grid column and scrolling
+ *     the document sideways at 390px;
+ *   - a bounded height because the dock renders this in a resizable pane
+ *     directly above the composer, and an unbounded reason would push that
+ *     composer off a 390x844 screen;
+ *   - scroll rather than `-webkit-line-clamp`, because the whole recorded
+ *     cause must stay readable on the surface reporting it. Nothing is hidden.
+ *
+ * The banner carries no action, so there is no 44px touch target to meet; it
+ * inherits the global mobile wrap floor in index.css like every other block.
+ */
+.session-failure {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--status-error, var(--border-primary));
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--status-error, var(--text-primary));
+  font-size: 0.82rem;
+  min-width: 0;
+}
+
+.session-failure__cause {
+  margin: 0;
+  /* Stated explicitly: the four-line bound below is expressed in this
+     line-height, and inheriting `normal` would leave the clamp policy
+     unstated and untestable. */
+  line-height: 1.4;
+  max-height: 5.6em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.session-failure__note {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.95em;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}

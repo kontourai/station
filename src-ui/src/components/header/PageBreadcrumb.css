@@ -1,0 +1,56 @@
+/* Eyebrow-style page breadcrumb — matches .page__label / .split-pane__label
+   (monospace, small, uppercase) so deep page headers read as one system. */
+.page-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs, 11px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.page-breadcrumb__link {
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.page-breadcrumb__link:hover,
+.page-breadcrumb__link:focus,
+.page-breadcrumb__link:focus-visible {
+  border-color: transparent;
+  background: transparent;
+}
+
+.page-breadcrumb__link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.page-breadcrumb__link:focus-visible {
+  color: var(--text-primary);
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+  text-decoration: underline;
+}
+
+.page-breadcrumb__current {
+  color: var(--text-primary);
+}
+
+.page-breadcrumb__sep {
+  color: var(--text-faint, var(--text-muted));
+  opacity: 0.6;
+}

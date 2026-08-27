@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "labels": [
+    { "name": "P1", "color": "d73a4a", "description": "Priority 1 — do next" },
+    { "name": "P2", "color": "fbca04", "description": "Priority 2 — do soon" },
+    { "name": "P3", "color": "c2e0c6", "description": "Priority 3 — backlog" },
+    {
+      "name": "acceptance-needed",
+      "color": "0E8A16",
+      "description": "Implementation landed; remaining work is user, device, or environment acceptance"
+    },
+    {
+      "name": "agent:claimed",
+      "color": "5319E7",
+      "description": "Work item currently claimed by an agent session"
+    },
+    {
+      "name": "blocked",
+      "color": "BFDADC",
+      "description": "Not currently actionable until a named dependency or condition clears"
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working"
+    },
+    {
+      "name": "decision-needed",
+      "color": "FBCA04",
+      "description": "Requires an owner or product decision before implementation"
+    },
+    {
+      "name": "dependencies",
+      "color": "0366d6",
+      "description": "Pull requests that update a dependency file"
+    },
+    {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Improvements or additions to documentation"
+    },
+    {
+      "name": "duplicate",
+      "color": "cfd3d7",
+      "description": "This issue or pull request already exists"
+    },
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "New feature or request"
+    },
+    {
+      "name": "epic",
+      "color": "5319E7",
+      "description": "Strategic container; order executable child issues separately"
+    },
+    {
+      "name": "github_actions",
+      "color": "000000",
+      "description": "Pull requests that update GitHub Actions code"
+    },
+    {
+      "name": "good first issue",
+      "color": "7057ff",
+      "description": "Good for newcomers"
+    },
+    {
+      "name": "help wanted",
+      "color": "008672",
+      "description": "Extra attention is needed"
+    },
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": "This doesn't seem right"
+    },
+    {
+      "name": "javascript",
+      "color": "168700",
+      "description": "Pull requests that update javascript code"
+    },
+    {
+      "name": "needs:maintainer",
+      "color": "D4C5F9",
+      "description": "Awaiting a maintainer triage or response"
+    },
+    {
+      "name": "needs:reporter",
+      "color": "FBCA04",
+      "description": "Awaiting a substantive reply from the issue reporter"
+    },
+    {
+      "name": "needs-regrounding",
+      "color": "D4C5F9",
+      "description": "Premise or remaining scope must be checked against current main"
+    },
+    {
+      "name": "question",
+      "color": "d876e3",
+      "description": "Further information is requested"
+    },
+    {
+      "name": "rust",
+      "color": "000000",
+      "description": "Pull requests that update rust code"
+    },
+    {
+      "name": "security",
+      "color": "B60205",
+      "description": "Security vulnerability or hardening work"
+    },
+    {
+      "name": "stage:preview",
+      "color": "fbca04",
+      "description": "Available through the preview delivery stage"
+    },
+    {
+      "name": "stage:source",
+      "color": "0366d6",
+      "description": "Available from source only"
+    },
+    {
+      "name": "stage:stable",
+      "color": "0E8A16",
+      "description": "Available through the stable delivery stage"
+    },
+    {
+      "name": "wontfix",
+      "color": "ffffff",
+      "description": "This will not be worked on"
+    }
+  ]
+}

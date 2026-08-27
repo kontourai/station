@@ -1,0 +1,60 @@
+/* ═══ Route entrance ═══
+ * One entrance for every route, applied at the `AppViewContent` seam rather
+ * than per view, so the split-pane surfaces (Agents, Guidance, Plugins,
+ * Review, Activity, Providers, Tools) inherit the same entrance the `.page`
+ * routes used to own privately — they are not `.page` descendants and had no
+ * page-level entrance at all.
+ *
+ * The layout properties mirror what `.content-view` already gives its direct
+ * children, so inserting this wrapper does not change how a route sizes:
+ * `flex-grow: 1` is what lets `.page--full` fill the viewport, and the absence
+ * of `min-height: 0` keeps a tall route (Settings is ~8,600 px) at its
+ * automatic minimum size so `.content-view` scrolls it instead of clipping it.
+ */
+.route-transition {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  animation: route-enter var(--motion-base) var(--ease-out);
+}
+
+/* A FILL frame's contract is "the body is the viewport slice above the dock
+   clearance; inner regions scroll". `.page-frame--fill > .page-frame__body`
+   already declares `min-height: 0` to propagate that constraint — but this
+   wrapper sits between the body and the route, and its deliberate automatic
+   minimum (right for tall FLOW routes, above) re-breaks the chain: the route
+   then sizes to content and overflows past the dock clearance into the band
+   the dock overlays, where the dock takes its taps (epic #4142 M3: surfaced
+   on a Pixel 7 when /activity's stacked page header grew by one action row —
+   the sessions sidebar's pinned footer rendered under the dock with no
+   scroller able to reach it). Scoped to fill frames so flow routes keep the
+   automatic minimum that lets `.content-view` scroll them. */
+.page-frame--fill > .page-frame__body > .route-transition {
+  min-height: 0;
+}
+
+/* Entrance/exit category: opacity AND transform. The retired `page-fade-in`
+   was named for a fade it never performed — it animated an 8 px slide only, so
+   every route popped in at full opacity. */
+@keyframes route-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The global reduced-motion rule in `tokens.css` already collapses every
+   animation to 0.01 ms, which lands this entrance on its `to` frame. Stating
+   the end state here as well means a route can never be left at `opacity: 0`
+   if that global rule is ever scoped down. */
+@media (prefers-reduced-motion: reduce) {
+  .route-transition {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

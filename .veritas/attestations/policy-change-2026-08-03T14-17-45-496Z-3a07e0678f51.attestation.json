@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-08-03T14-17-45-496Z-3a07e0678f51",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-08-03T14:17:45.496Z",
+  "repoStandardsHash": "sha256:626ff97d3f92697a8ce1de8ddc64a205ecfa7e0cee9ff95915bea0cc4b7123b1",
+  "repoMapHash": "sha256:830f704cc89388f1aafd66a600666c169c7234314973f037559589424e03a87d",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad",
+  "validUntilDays": 90,
+  "notes": "Promote verification-conduct-sentinels-and-fault-injection Guide -> Require per the owner decision on station#1480, after narrowing its match.artifacts from seven entries to five. Dropped: scripts/ and tests/ (existsSync on a directory is true while any file remains, so neither could ever fail); scripts/run-verification.mjs, scripts/vitest-resource-manifest.mjs and tests/e2e-manifest.mjs (each has many importers and the lane reds loudly the moment one goes missing); docs/strategy/local-merge-readiness.md (its retirement when provider-hosted CI returns is foreseeable and correct, and a rule that reds on a planned removal teaches bypass — retained as a contextLink). Kept/added: docs/strategy/multi-agent-delivery-protocol.md plus scripts/__tests__/{guardrail-known-bad-fixtures,verification-receipt,vitest-worktree-exclusion,catch-log}.test.ts. Verified the repo passes the tightened rule before arming (readiness PASS on all five). evidence-claims-anchor-to-executed-commands and read-paths-join-exactly-and-never-write stay at Guide, with the ~2026-08-15 date gate replaced by an evidence trigger in each explain.summary: assess for Require on the first in-scope catch in docs/strategy/catches/catches.jsonl dated on or after 2026-08-01. The evidence-claims trigger has already fired (station#1763). The label-versus-derivation gap these required-artifacts rules carry is filed as station#1762.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-08-03T03-46-04-878Z-bc7fcdc624ad",
+    "approvalRef": "kontourai/station#1480",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-08-03T14-17-45-496Z-3a07e0678f51",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "4dde93db61bc4e83aac19eba6ef1bf9f9b74a8d714334396c45d1e4de5330880",
+        "validUntil": "2026-11-01T14:17:45.496Z"
+      },
+      "createdAt": "2026-08-03T14:17:45.496Z",
+      "updatedAt": "2026-08-03T14:17:45.496Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-08-03T14-17-45-496Z-3a07e0678f51",
+      "claimId": "veritas.attestation.policy-change-2026-08-03T14-17-45-496Z-3a07e0678f51",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Promote verification-conduct-sentinels-and-fault-injection Guide -> Require per the owner decision on station#1480, after narrowing its match.artifacts from seven entries to five. Dropped: scripts/ and tests/ (existsSync on a directory is true while any file remains, so neither could ever fail); scripts/run-verification.mjs, scripts/vitest-resource-manifest.mjs and tests/e2e-manifest.mjs (each has many importers and the lane reds loudly the moment one goes missing); docs/strategy/local-merge-readiness.md (its retirement when provider-hosted CI returns is foreseeable and correct, and a rule that reds on a planned removal teaches bypass — retained as a contextLink). Kept/added: docs/strategy/multi-agent-delivery-protocol.md plus scripts/__tests__/{guardrail-known-bad-fixtures,verification-receipt,vitest-worktree-exclusion,catch-log}.test.ts. Verified the repo passes the tightened rule before arming (readiness PASS on all five). evidence-claims-anchor-to-executed-commands and read-paths-join-exactly-and-never-write stay at Guide, with the ~2026-08-15 date gate replaced by an evidence trigger in each explain.summary: assess for Require on the first in-scope catch in docs/strategy/catches/catches.jsonl dated on or after 2026-08-01. The evidence-claims trigger has already fired (station#1763). The label-versus-derivation gap these required-artifacts rules carry is filed as station#1762.",
+      "observedAt": "2026-08-03T14:17:45.496Z",
+      "collectedBy": "brian",
+      "integrityRef": "4dde93db61bc4e83aac19eba6ef1bf9f9b74a8d714334396c45d1e4de5330880",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-08-03T14:17:45.496Z",
+        "validUntil": "2026-11-01T14:17:45.496Z",
+        "contentHash": "4dde93db61bc4e83aac19eba6ef1bf9f9b74a8d714334396c45d1e4de5330880"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-08-03T14-17-45-496Z-3a07e0678f51.verified",
+      "claimId": "veritas.attestation.policy-change-2026-08-03T14-17-45-496Z-3a07e0678f51",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-08-03T14-17-45-496Z-3a07e0678f51"
+      ],
+      "createdAt": "2026-08-03T14:17:45.496Z",
+      "verifiedAt": "2026-08-03T14:17:45.496Z"
+    }
+  }
+}

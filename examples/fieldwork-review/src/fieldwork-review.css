@@ -1,0 +1,245 @@
+.fieldwork-review {
+  color: var(--k-text);
+  display: grid;
+  gap: var(--k-space-4);
+  min-height: 100%;
+  padding: var(--k-space-4);
+}
+
+.fieldwork-review--empty {
+  align-content: center;
+  max-width: 42rem;
+}
+
+.fieldwork-review__intro,
+.fieldwork-review__section-heading,
+.fieldwork-review__actions {
+  align-items: center;
+  display: flex;
+  gap: var(--k-space-3);
+  justify-content: space-between;
+}
+
+.fieldwork-review__intro h2,
+.fieldwork-review__card h3,
+.fieldwork-review__intro p,
+.fieldwork-review__card p {
+  margin: 0;
+}
+
+.fieldwork-review__eyebrow {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fieldwork-review__project {
+  background: var(--k-panel-raised);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text-muted);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  padding: var(--k-space-1) var(--k-space-2);
+}
+
+.fieldwork-review__card {
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-4);
+}
+
+.fieldwork-review__form {
+  align-items: end;
+  display: grid;
+  gap: var(--k-space-3);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  margin-top: var(--k-space-3);
+}
+
+.fieldwork-review label {
+  color: var(--k-text-muted);
+  display: grid;
+  font-size: var(--k-text-sm);
+  gap: var(--k-space-1);
+}
+
+.fieldwork-review label span {
+  color: var(--k-text-faint);
+}
+
+.fieldwork-review input {
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text);
+  font: inherit;
+  min-width: 0;
+  padding: var(--k-space-2);
+}
+
+.fieldwork-review button {
+  background: var(--k-brand);
+  border: 1px solid var(--k-brand);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-brand-contrast);
+  cursor: pointer;
+  font: inherit;
+  padding: var(--k-space-2) var(--k-space-3);
+}
+
+.fieldwork-review button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.fieldwork-review button:focus-visible,
+.fieldwork-review input:focus-visible {
+  outline: 2px solid var(--k-brand);
+  outline-offset: 2px;
+}
+
+.fieldwork-review button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.fieldwork-review__secondary,
+.fieldwork-review__text-button {
+  background: var(--k-panel-raised) !important;
+  border-color: var(--k-line) !important;
+  color: var(--k-text) !important;
+}
+
+.fieldwork-review__text-button {
+  font-size: var(--k-text-sm);
+  padding: var(--k-space-1) var(--k-space-2);
+}
+
+.fieldwork-review__notice,
+.fieldwork-review__error {
+  border-radius: var(--k-radius-sm);
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+}
+
+.fieldwork-review__notice {
+  background: var(--k-positive-soft);
+  border: 1px solid var(--k-positive);
+}
+
+.fieldwork-review__error {
+  background: var(--k-negative-soft);
+  border: 1px solid var(--k-negative);
+}
+
+.fieldwork-review__workspace {
+  display: grid;
+  gap: var(--k-space-4);
+  grid-template-columns: minmax(14rem, 0.38fr) minmax(0, 1fr);
+  min-height: 32rem;
+}
+
+.fieldwork-review__runs,
+.fieldwork-review__review {
+  min-width: 0;
+}
+
+.fieldwork-review__run-list {
+  display: grid;
+  gap: var(--k-space-2);
+  list-style: none;
+  margin: var(--k-space-3) 0 0;
+  padding: 0;
+}
+
+.fieldwork-review__run {
+  align-items: start;
+  background: var(--k-panel-raised) !important;
+  border-color: var(--k-line) !important;
+  color: var(--k-text) !important;
+  display: grid;
+  gap: var(--k-space-1);
+  text-align: left;
+  width: 100%;
+}
+
+.fieldwork-review__run--selected {
+  border-color: var(--k-brand) !important;
+}
+
+.fieldwork-review__run small,
+.fieldwork-review__muted {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.fieldwork-review__review {
+  display: grid;
+  gap: var(--k-space-3);
+  grid-template-rows: auto minmax(20rem, 1fr);
+}
+
+.fieldwork-review__frame,
+.fieldwork-review__frame-placeholder {
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  height: 100%;
+  min-height: 20rem;
+  width: 100%;
+}
+
+.fieldwork-review__frame-placeholder {
+  align-items: center;
+  color: var(--k-text-muted);
+  display: grid;
+  justify-items: center;
+  padding: var(--k-space-4);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .fieldwork-review {
+    padding: var(--k-space-3);
+  }
+
+  .fieldwork-review__intro,
+  .fieldwork-review__section-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .fieldwork-review__form,
+  .fieldwork-review__workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .fieldwork-review__workspace {
+    min-height: 0;
+  }
+
+  .fieldwork-review__review {
+    min-height: 28rem;
+  }
+
+  .fieldwork-review__actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
+
+/* Screen-reader-only label (repo idiom, cf. src-ui/src/index.css station#1301):
+   the badge's visual context implies "selected project"; assistive tech gets
+   it as real text since aria-label is unsupported on a generic span role. */
+.fieldwork-review__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

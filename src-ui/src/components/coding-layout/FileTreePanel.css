@@ -1,0 +1,202 @@
+.file-tree-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.file-tree-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.file-tree-panel__title {
+  flex: 1 1 auto;
+}
+
+.file-tree-panel__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.file-tree-panel__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.file-tree-panel__action:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.file-tree-panel__search {
+  padding: 2px 8px 6px;
+}
+
+.file-tree-panel__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-input, var(--bg-secondary));
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  outline: none;
+}
+
+.file-tree-panel__search-input:focus {
+  border-color: var(--accent-primary, var(--border-focus));
+}
+
+.file-tree-panel__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.file-tree-panel__hint,
+.file-tree-panel__error {
+  padding: 8px;
+  font-size: 12px;
+}
+
+.file-tree-panel__hint {
+  color: var(--text-muted);
+}
+
+.file-tree-panel__error {
+  color: var(--error-text);
+}
+
+/* Rows. Indentation is driven by the --depth custom property so the markup
+   stays free of inline padding math. */
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 3px 8px;
+  padding-left: calc(8px + var(--depth, 0) * 12px);
+  font-size: 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.file-tree-row--dir {
+  color: var(--text-primary);
+}
+
+.file-tree-row--file {
+  padding-left: calc(20px + var(--depth, 0) * 12px);
+}
+
+.file-tree-row:hover {
+  background: var(--bg-hover);
+}
+
+.file-tree-row--selected {
+  background: var(--bg-selected, var(--bg-hover));
+  color: var(--text-primary);
+}
+
+.file-tree-row__chevron,
+.file-tree-row__bullet {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.file-tree-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-row__attached {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 6px;
+  font-size: 9px;
+  color: var(--accent-primary, var(--color-brand, #34d399));
+}
+
+/* Right-click / long-press menu. The scrim is a full-viewport click-catcher
+   that must be invisible. It is a <button> (for keyboard/AT dismissal), so it
+   inherits the global `button {}` chrome — override every visible property with
+   !important so the app-wide button background/border can never paint over the
+   layout while the menu is open. */
+.file-tree-context-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  cursor: default;
+}
+
+.file-tree-context-menu {
+  position: fixed;
+  z-index: 61;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--bg-elevated, var(--bg-secondary));
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.4));
+}
+
+.file-tree-context-menu__item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.file-tree-context-menu__item:hover {
+  background: var(--bg-hover);
+}
+
+.file-tree-context-menu__item--danger {
+  color: var(--error-text);
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .file-tree-row {
+    min-height: 40px;
+  }
+
+  .file-tree-context-menu__item {
+    padding: 10px 12px;
+  }
+}

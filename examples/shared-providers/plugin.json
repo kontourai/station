@@ -1,0 +1,45 @@
+{
+  "name": "shared-providers",
+  "version": "1.0.0",
+  "displayName": "Shared Providers",
+  "description": "Shared infrastructure providers: auth, user identity, user directory, registries",
+  "build": "npx tsc",
+  "settings": [
+    {
+      "key": "authDomain",
+      "label": "Auth Domain",
+      "type": "text",
+      "default": "login.example.com",
+      "description": "SSO/OAuth domain for authentication"
+    },
+    {
+      "key": "debug",
+      "label": "Debug Logging",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable verbose provider logging"
+    },
+    {
+      "key": "disablePublicRegistries",
+      "label": "Disable Public Registries",
+      "type": "boolean",
+      "default": false,
+      "description": "Hide public registries. Use when only internal registries should be available."
+    }
+  ],
+  "providers": [
+    { "type": "auth", "module": "./providers/oauth-auth.js" },
+    { "type": "userIdentity", "module": "./providers/ldap-user.js" },
+    { "type": "userDirectory", "module": "./providers/ldap-directory.js" },
+    { "type": "integrationRegistry", "module": "./providers/npm-registry.js" },
+    { "type": "agentRegistry", "module": "./providers/agent-registry.js" }
+  ],
+  "links": [
+    {
+      "label": "Admin Dashboard",
+      "href": "https://admin.example.com/dashboard",
+      "icon": "/admin-icon.png",
+      "placement": "achievements"
+    }
+  ]
+}

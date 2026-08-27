@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian.anderson1222@gmail.com",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-06-12T23:18:53.704Z",
+  "repoStandardsHash": "sha256:d3a9715507dae17b629112220e85d76e592b76e05aeaa17c3fb47a08835371c2",
+  "repoMapHash": "sha256:3961fa3922fb2dcfe2ab7b28bad5d5f1589a67cd4fb7c32527f0caad84aac0b2",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066",
+  "validUntilDays": 90,
+  "notes": "Phase S4 rename: forbid-shared-root-imports rule updated to the @kontourai/station-* package scope (legacy @stallion-ai/shared root still forbidden). No weakening — the rule now also matches the renamed scope.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-06-12T05-50-26-569Z-185c8b0e9066",
+    "approvalRef": "roadmap-S4-the-rename-user-decisions",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "surface": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "5372bb426c45f8135534d505659bb05837ca8a5df6b2cf3decf2ff8a09cac7c5",
+        "validUntil": "2026-09-10T23:18:53.704Z"
+      },
+      "createdAt": "2026-06-12T23:18:53.704Z",
+      "updatedAt": "2026-06-12T23:18:53.704Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b",
+      "claimId": "veritas.attestation.policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Phase S4 rename: forbid-shared-root-imports rule updated to the @kontourai/station-* package scope (legacy @stallion-ai/shared root still forbidden). No weakening — the rule now also matches the renamed scope.",
+      "observedAt": "2026-06-12T23:18:53.704Z",
+      "collectedBy": "brian.anderson1222@gmail.com",
+      "integrityRef": "5372bb426c45f8135534d505659bb05837ca8a5df6b2cf3decf2ff8a09cac7c5",
+      "metadata": {
+        "actor": {
+          "id": "brian.anderson1222@gmail.com",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-06-12T23:18:53.704Z",
+        "validUntil": "2026-09-10T23:18:53.704Z",
+        "contentHash": "5372bb426c45f8135534d505659bb05837ca8a5df6b2cf3decf2ff8a09cac7c5"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b.verified",
+      "claimId": "veritas.attestation.policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b",
+      "status": "verified",
+      "actor": "brian.anderson1222@gmail.com",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-06-12T23-18-53-704Z-d4c7f0115e5b"
+      ],
+      "createdAt": "2026-06-12T23:18:53.704Z",
+      "verifiedAt": "2026-06-12T23:18:53.704Z"
+    }
+  }
+}

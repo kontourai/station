@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "station.channel-proposal/v1",
+  "proposalId": "prop-a02",
+  "channelId": "chan-design",
+  "author": {
+    "memberId": "member-alex",
+    "deviceId": "device-laptop",
+    "keyId": "key-laptop-1"
+  },
+  "kind": "agent-action",
+  "baseEpoch": 3,
+  "happenedAt": "2026-08-02T09:00:00.000Z",
+  "body": {
+    "text": "the log is the product"
+  },
+  "onBehalfOf": {
+    "ownerMemberId": "member-alex",
+    "authorizationId": "auth-triage-bot-1",
+    "grant": {
+      "capabilities": ["message", "agent-action", "moderation"]
+    }
+  }
+}

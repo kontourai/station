@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "station.channel-sequence/v1",
+  "channelId": "chan-design",
+  "epoch": 3,
+  "seq": 41,
+  "proposal": {
+    "schemaVersion": "station.channel-proposal/v1",
+    "proposalId": "prop-0001",
+    "channelId": "chan-design",
+    "author": {
+      "memberId": "member-alex",
+      "deviceId": "device-laptop",
+      "keyId": "key-laptop-1"
+    },
+    "kind": "message",
+    "baseEpoch": 3,
+    "happenedAt": "2026-08-02T09:00:00.000Z",
+    "body": {
+      "text": "the log is the product"
+    }
+  },
+  "proposalDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "committedAt": "2026-08-02T09:00:01.000Z",
+  "prevEnvelopeDigest": null,
+  "policyRevision": "policy-rev-17",
+  "leaseRef": "lease-chan-design-epoch-3"
+}

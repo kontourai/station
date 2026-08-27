@@ -1,0 +1,76 @@
+.unsent-messages {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+}
+
+.unsent-messages__label {
+  margin-bottom: 6px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.unsent-messages__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.unsent-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+
+.unsent-message__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.unsent-message__text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.unsent-message__reason {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.unsent-message__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.unsent-message__action {
+  padding: 2px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.unsent-message__action:hover {
+  background: var(--overlay-bg);
+  color: var(--text-primary);
+}
+
+/* Mobile touch targets: `.unsent-message__actions` matches the shared
+   `[class*="__actions"] > button` rule in index.css, so both buttons get the
+   44px floor there without a local override. */

@@ -1,0 +1,65 @@
+/*
+ * Pill geometry follows the existing chip precedents (`.sessions-detail__meta
+ * span`, `.sessions-coordinator__count`): mono, small, bordered, tinted. The
+ * one deliberate difference is that this pill is FULLY rounded and carries the
+ * accent colour, because station#3027's whole point was that the project stops
+ * being a heading and has to be findable at a glance on a dense row.
+ */
+.session-project-pill {
+  /*
+   * `inline-block`, NOT `inline-flex`: `text-overflow: ellipsis` needs a block
+   * formatting context for its text, and on a flex container the label becomes
+   * an anonymous flex item that clips mid-glyph with no ellipsis instead
+   * (observed: "station" rendering as "statio" hard against the pane edge).
+   */
+  display: inline-block;
+  /* The row's own trailing slot owns the width budget (see
+     `.split-pane__item-trailing`); the pill just fills what it is given and
+     ellipsizes, with the full label on `title`. */
+  max-width: 100%;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.session-project-pill {
+  cursor: pointer;
+  /* Tokens, not literals (docs/design/motion.md). 0.15s is --motion-fast
+     exactly, so this is the same cadence expressed the way the contract
+     requires — bounded state feedback on colour, no layout animation. */
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+button.session-project-pill:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+button.session-project-pill:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.session-project-pill--active {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+/* An ambiguous attribution is not a control; make it read as a statement. */
+.session-project-pill--static {
+  border-style: dashed;
+  color: var(--text-muted);
+}

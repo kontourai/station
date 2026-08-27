@@ -1,0 +1,17 @@
+{
+  "id": "station-sessions-mcp",
+  "kind": "mcp",
+  "displayName": "Station Sessions (MCP-UI)",
+  "icon": "🗂️",
+  "description": "Standalone MCP-UI server that renders Station's own orchestration sessions as a sandboxed panel (sessions_panel): state, provider, project, and last activity for every live session. Reads Station's local REST API (GET /orchestration/sessions); set STATION_API_BASE if Station is not on http://localhost:3141. Reference <serverId>/sessions_panel as an mcp-tool-ui layout component with mcpUiHost enabled.",
+  "transport": "stdio",
+  "command": "node",
+  "args": ["examples/station-sessions-mcp/server.mjs"],
+  "env": {
+    "STATION_API_BASE": "http://localhost:3141"
+  },
+  "timeouts": {
+    "startupMs": 15000,
+    "requestMs": 60000
+  }
+}

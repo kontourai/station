@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-07-20T21:35:25.281Z",
+  "repoStandardsHash": "sha256:4064246a9e27908811dcf7ebab706339350ebe988abd5f39d236b92232521773",
+  "repoMapHash": "sha256:5932d4fb241ca88bba168b930cf122adea50a1b82ff347bc8ba65eacdc04c3c5",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-07-19T13-21-51-443Z-52efc7e94282",
+  "validUntilDays": 90,
+  "notes": "Reviewed additive Station context routing from deterministic explore; existing governance remains preserved.",
+  "authorizing": {
+    "kind": "explicit-statement",
+    "statement": "Brian authorized driving the governance dogfood epic to completion and continued after proposal review."
+  },
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-07-19T13-21-51-443Z-52efc7e94282",
+    "approvalRef": "github:kontourai/station#625",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "3ec235b0bf947e6b0b368c588b698bcbf1c285e5a7ebfee65a2311d40fa61a3d",
+        "validUntil": "2026-10-18T21:35:25.281Z"
+      },
+      "createdAt": "2026-07-20T21:35:25.281Z",
+      "updatedAt": "2026-07-20T21:35:25.281Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891",
+      "claimId": "veritas.attestation.policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Reviewed additive Station context routing from deterministic explore; existing governance remains preserved.",
+      "observedAt": "2026-07-20T21:35:25.281Z",
+      "collectedBy": "brian",
+      "integrityRef": "3ec235b0bf947e6b0b368c588b698bcbf1c285e5a7ebfee65a2311d40fa61a3d",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-07-20T21:35:25.281Z",
+        "validUntil": "2026-10-18T21:35:25.281Z",
+        "contentHash": "3ec235b0bf947e6b0b368c588b698bcbf1c285e5a7ebfee65a2311d40fa61a3d"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891.verified",
+      "claimId": "veritas.attestation.policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-07-20T21-35-25-281Z-6d0f5b45c891"
+      ],
+      "createdAt": "2026-07-20T21:35:25.281Z",
+      "verifiedAt": "2026-07-20T21:35:25.281Z"
+    }
+  }
+}

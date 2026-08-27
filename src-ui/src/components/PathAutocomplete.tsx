@@ -1,0 +1,375 @@
+import { useFileSystemBrowseQuery } from '@kontourai/station-sdk';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
+import { FolderGlyph } from './icons/Glyph';
+import './PathAutocomplete.css';
+
+const MAX_SUGGESTIONS = 8;
+
+function resolveBrowsePath(value: string): string | undefined {
+  const shouldSuggest = value.startsWith('/') || value.startsWith('~');
+  if (!shouldSuggest) return undefined;
+
+  if (value === '~') return '~';
+  if (value === '/') return '/';
+
+  const endsWithSlash = value.endsWith('/');
+  if (endsWithSlash) {
+    return value === '/' ? '/' : value.replace(/\/$/, '');
+  }
+
+  const lastSlash = value.lastIndexOf('/');
+  if (value.startsWith('~/') && lastSlash === 1) {
+    return '~';
+  }
+  if (lastSlash <= 0) {
+    return value.startsWith('~') ? '~' : '/';
+  }
+  return value.substring(0, lastSlash);
+}
+
+function buildSuggestionPath(basePath: string, entryName: string): string {
+  if (basePath === '/' || basePath === '') {
+    return `/${entryName}`;
+  }
+  if (basePath === '~') {
+    return `~/${entryName}`;
+  }
+  return `${basePath.replace(/\/$/, '')}/${entryName}`;
+}
+
+function normalizePathValue(value: string): string {
+  if (value === '/' || value === '~') return value;
+  return value.replace(/\/+$/, '');
+}
+
+function getPathLabel(path: string): string {
+  if (path === '/' || path === '~') return path;
+  return path.split('/').filter(Boolean).pop() ?? path;
+}
+
+export function PathAutocomplete({
+  value,
+  onChange,
+  onSubmit,
+  onBlur,
+  placeholder,
+  disabled,
+  apiBase: _apiBase,
+  className,
+  id,
+  autoFocus = true,
+  suggestionsInitiallyOpen = true,
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': ariaDescribedBy,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit?: () => void;
+  onBlur?: () => void;
+  placeholder?: string;
+  disabled?: boolean;
+  apiBase: string;
+  className?: string;
+  id?: string;
+  autoFocus?: boolean;
+  suggestionsInitiallyOpen?: boolean;
+  /** Set when the host has a field-level error to bind to this input. */
+  'aria-invalid'?: boolean | undefined;
+  'aria-describedby'?: string | undefined;
+}) {
+  const [selectedIdx, setSelectedIdx] = useState(-1);
+  const [userDismissed, setUserDismissed] = useState(false);
+  const [active, setActive] = useState(suggestionsInitiallyOpen);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const pickingRef = useRef(false);
+  const outsidePointerRef = useRef(false);
+  const pickingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
+
+  const shouldSuggest = value.startsWith('/') || value.startsWith('~');
+  const endsWithSlash = value.endsWith('/');
+  const browsePath = resolveBrowsePath(value);
+  const normalizedValue = normalizePathValue(value);
+  const prefix = !shouldSuggest
+    ? ''
+    : endsWithSlash
+      ? ''
+      : value.substring(value.lastIndexOf('/') + 1).toLowerCase();
+
+  const { data } = useFileSystemBrowseQuery(browsePath, {
+    enabled: shouldSuggest,
+  });
+
+  const suggestions = useMemo(() => {
+    if (!shouldSuggest || !browsePath) {
+      return [];
+    }
+    const items: Array<{
+      badge: string;
+      label: string;
+      path: string;
+      variant: 'exact' | 'directory';
+    }> = [];
+    const seen = new Set<string>();
+    const hasExactParentMatch =
+      !endsWithSlash &&
+      !!prefix &&
+      (data?.entries ?? []).some(
+        (entry) => entry.isDirectory && entry.name.toLowerCase() === prefix,
+      );
+
+    if (hasExactParentMatch) {
+      const exactPath = normalizedValue;
+      if (exactPath && !seen.has(exactPath)) {
+        seen.add(exactPath);
+        items.push({
+          path: exactPath,
+          label: getPathLabel(exactPath),
+          badge: 'folder',
+          variant: 'exact',
+        });
+      }
+    }
+
+    for (const entry of data?.entries ?? []) {
+      if (!entry.isDirectory) continue;
+      // Prefix match (not substring): typing "de" must surface `dev`/`Desktop`
+      // but never `.codex`/`.claude`, which only *contain* "de".
+      if (prefix && !entry.name.toLowerCase().startsWith(prefix)) continue;
+
+      const path = buildSuggestionPath(browsePath, entry.name);
+      if (seen.has(path)) continue;
+      seen.add(path);
+      items.push({
+        path,
+        label: entry.name,
+        badge: entry.name.toLowerCase() === prefix ? 'folder' : 'match',
+        variant: 'directory',
+      });
+    }
+
+    // Exact match first, then prefix matches alphabetically; cap the list so
+    // a wide directory does not flood the dropdown.
+    items.sort((a, b) => {
+      if (a.variant === 'exact' && b.variant !== 'exact') return -1;
+      if (b.variant === 'exact' && a.variant !== 'exact') return 1;
+      const aExact = a.label.toLowerCase() === prefix;
+      const bExact = b.label.toLowerCase() === prefix;
+      if (aExact !== bExact) return aExact ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+
+    return items.slice(0, MAX_SUGGESTIONS);
+  }, [
+    browsePath,
+    data?.entries,
+    endsWithSlash,
+    normalizedValue,
+    prefix,
+    shouldSuggest,
+  ]);
+
+  const show = active && !userDismissed && suggestions.length > 0;
+
+  const dismiss = useCallback(() => {
+    setSelectedIdx(-1);
+    setUserDismissed(true);
+    setActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (!show) return;
+    const isInside = (target: EventTarget | null) =>
+      target instanceof Node && !!rootRef.current?.contains(target);
+    const onPointerDown = (event: PointerEvent) => {
+      outsidePointerRef.current = !isInside(event.target);
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      // A pointer press moves focus before the ensuing click. On mobile the
+      // suggestion list participates in layout, so removing it here would
+      // move the intended target out from under the pointer. Let the click
+      // complete, then dismiss the list.
+      if (!outsidePointerRef.current && !isInside(event.target)) dismiss();
+    };
+    const onClick = (event: MouseEvent) => {
+      if (outsidePointerRef.current && !isInside(event.target)) dismiss();
+      outsidePointerRef.current = false;
+    };
+    const onPointerCancel = () => {
+      if (outsidePointerRef.current) dismiss();
+      outsidePointerRef.current = false;
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('focusin', onFocusIn, true);
+    document.addEventListener('click', onClick);
+    document.addEventListener('pointercancel', onPointerCancel, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+      document.removeEventListener('click', onClick);
+      document.removeEventListener('pointercancel', onPointerCancel, true);
+    };
+  }, [dismiss, show]);
+
+  useEffect(
+    () => () => {
+      if (pickingTimerRef.current) clearTimeout(pickingTimerRef.current);
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    },
+    [],
+  );
+
+  // Keyed on `value` (what the user actually typed), not `suggestions` (the
+  // async-arriving browse-query data derived from it) — an explicit Escape
+  // dismissal (`setUserDismissed(true)`) must stay dismissed for that same
+  // value even if the in-flight filesystem browse query for it resolves
+  // afterwards; only the user typing something new should re-open the
+  // dropdown. Discovered via s202 Wave 4's full Playwright run: a delayed
+  // `useFileSystemBrowseQuery` resolution after Escape was silently
+  // re-opening the dropdown over whatever button sat below it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: value is an intentional trigger, not read in the body.
+  useEffect(() => {
+    setSelectedIdx(-1);
+    setUserDismissed(false);
+  }, [value]);
+
+  const pick = (path: string) => {
+    pickingRef.current = true;
+    onChange(`${path}/`);
+    setUserDismissed(false);
+    setActive(true);
+    inputRef.current?.focus();
+    if (pickingTimerRef.current) clearTimeout(pickingTimerRef.current);
+    pickingTimerRef.current = setTimeout(() => {
+      pickingRef.current = false;
+    }, 300);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    // Escape is also meaningful while the browse request is still in flight.
+    // Mark the current value dismissed before suggestions exist so a late
+    // response cannot open the dropdown over the next control.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      dismiss();
+      inputRef.current?.blur();
+      return;
+    }
+    if (!show || suggestions.length === 0) {
+      if (e.key === 'Enter' && !isComposingKeyEvent(e)) {
+        onSubmit?.();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const exactSuggestion = suggestions.find(
+        (suggestion) => suggestion.variant === 'exact',
+      );
+      if (exactSuggestion) {
+        pick(exactSuggestion.path);
+      } else if (suggestions.length === 1) {
+        pick(suggestions[0].path);
+      } else if (suggestions.length > 1) {
+        setSelectedIdx((i) => (i + 1) % suggestions.length);
+      }
+    } else if (e.key === 'Enter' && !isComposingKeyEvent(e)) {
+      if (selectedIdx >= 0) {
+        e.preventDefault();
+        pick(suggestions[selectedIdx].path);
+      } else {
+        const exactSuggestion = suggestions.find(
+          (suggestion) => suggestion.variant === 'exact',
+        );
+        if (exactSuggestion) {
+          e.preventDefault();
+          pick(exactSuggestion.path);
+        } else if (suggestions.length === 1) {
+          e.preventDefault();
+          pick(suggestions[0].path);
+        } else {
+          dismiss();
+          onSubmit?.();
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="path-autocomplete" ref={rootRef}>
+      <input
+        id={id}
+        ref={inputRef}
+        className={className ?? 'editor-input path-autocomplete__input'}
+        type="text"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setUserDismissed(false);
+          setActive(true);
+        }}
+        onKeyDown={onKeyDown}
+        onBlur={() => {
+          if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+          blurTimerRef.current = setTimeout(() => {
+            if (!pickingRef.current) {
+              dismiss();
+              onBlur?.();
+            }
+          }, 200);
+        }}
+        onFocus={() => {
+          setUserDismissed(false);
+          setActive(true);
+        }}
+        placeholder={placeholder}
+        disabled={disabled}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+      />
+      {show && (
+        <div className="path-autocomplete__dropdown">
+          {suggestions.map((suggestion, i) => (
+            <button
+              key={suggestion.path}
+              className={`path-autocomplete__option${
+                i === selectedIdx ? ' path-autocomplete__option--selected' : ''
+              }`}
+              onPointerDown={() => pick(suggestion.path)}
+              type="button"
+            >
+              <span className="path-autocomplete__icon">
+                <FolderGlyph />
+              </span>
+              <span className="path-autocomplete__content">
+                <span className="path-autocomplete__label-row">
+                  <span className="path-autocomplete__label">
+                    {suggestion.label}
+                  </span>
+                  <span className="path-autocomplete__badge">
+                    {suggestion.badge}
+                  </span>
+                </span>
+                <span className="path-autocomplete__path">
+                  {suggestion.path}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

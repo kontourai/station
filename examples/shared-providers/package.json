@@ -1,0 +1,17 @@
+{
+  "name": "@kontourai/station-example-shared-providers",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "npx tsc && npx biome check --fix providers"
+  },
+  "dependencies": {
+    "@kontourai/station-shared": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

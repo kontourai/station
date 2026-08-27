@@ -1,0 +1,53 @@
+{
+  "name": "@kontourai/station-basis-pane",
+  "version": "0.3.0",
+  "description": "First-party Station Basis Workspace Pane on published contracts",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./task-basis-collection-view": "./src/task-basis-collection-view.ts",
+    "./workspace-basis-mcp-pane": "./src/workspace-basis-mcp-pane.ts",
+    "./workspace-basis-pane": "./src/workspace-basis-pane.ts",
+    "./session-inventory-view": "./src/session-inventory-view.ts",
+    "./session-inventory": "./src/SessionInventory.tsx",
+    "./station-basis-pane": "./src/StationBasisPane.tsx",
+    "./answer-basis-affordance": "./src/AnswerBasisAffordance.tsx",
+    "./task-basis-mcp-app": "./src/task-basis-mcp-app.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "files": [
+    "src",
+    "!src/__tests__",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@kontourai/station-contracts": "^0.7.0",
+    "@kontourai/station-sdk": "^0.7.0",
+    "@kontourai/surface": "^3.0.0",
+    "@kontourai/ui": "^1.12.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.18",
+    "esbuild": "^0.28.1",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10"
+  }
+}

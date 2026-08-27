@@ -1,0 +1,132 @@
+name: Build Android verification artifact
+
+# This is the only CI signal for Android-breaking changes: android/ios-device
+# in .github/workflows/release.yml only run on a `v*` tag push, so without
+# this lane a Rust/Gradle break on Android is invisible until a real
+# release. Path-filtered rather than unconditional: an unscoped Android
+# cross-compile (4 rustc targets + Gradle assembly) is not fast, and running
+# it on every PR regardless of whether mobile/native code changed would be
+# wasted cost for no signal. Scoped to the files that can plausibly break
+# this build, mirroring desktop-rust.yml's convention.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-android.yml'
+      - 'src-desktop/**'
+      - 'scripts/check-android-16kb-alignment.mjs'
+      - 'scripts/read-android-build-provenance.mjs'
+      - 'scripts/reclaim-android-runner-disk.sh'
+      - 'scripts/resolve-android-build-run.mjs'
+      - 'scripts/write-android-build-manifest.mjs'
+      - 'scripts/lib/android-build-manifest.mjs'
+      - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android-verification:
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "9"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - run: sdkmanager "ndk;27.0.12077973"
+      - run: npm run dependencies:ci && npm run build:sdk && npm run build:connect && npm run build:desktop:resources
+      # Run from the app directory, not the repo root. Without a cwd inside
+      # it the CLI DISCOVERS an app by walking the tree, and
+      # `experiments/browser-host/*/tauri.conf.json` sorts before
+      # `src-desktop/`. Those spike configs declare `"version": "0.0.0"`, which
+      # the Android packager rejects, and even supplying --config does not
+      # help: the config sets the VALUES while the discovered directory still
+      # sets the ROOT, so `frontendDist: ../dist-ui` resolved against
+      # `experiments/browser-host/`. This lane produced no APK for four days
+      # because of it (station#2306).
+      - name: Initialize Tauri Android project
+        working-directory: src-desktop
+        run: npx tauri android init --ci --skip-targets-install --config tauri.conf.json
+      - name: Apply Dev Android launcher, splash, and label resources
+        run: node scripts/apply-android-channel-icons.mjs dev
+      - name: Apply native credential bootstrap to the generated namespace
+        run: node scripts/apply-android-native-bootstrap.mjs
+      # Must run AFTER init (which generates gen/android) and BEFORE the build
+      # that packages its assets. The desktop bundle has stamped its origin
+      # since #1085; without this the APK's only version signal is a
+      # versionName that never changes, so a live device cannot say which
+      # commit it carries (station#3592).
+      - name: Stage Android build provenance
+        run: node scripts/write-android-build-manifest.mjs
+      - name: Reclaim disk for four Android Rust targets
+        run: bash scripts/reclaim-android-runner-disk.sh
+      - name: Report disk headroom before Android build
+        run: df -h /
+      - name: Build Android debug APK and AAB
+        working-directory: src-desktop
+        run: RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json
+        env:
+          NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
+          # Optional secret-free Dev backend origin supplied by repository or
+          # environment configuration; absent leaves the pairing UI unchanged.
+          STATION_MOBILE_DEFAULT_ENDPOINT: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_DEV }}
+      # Observational only: runs even when the build failed so the hosted log
+      # reveals post-build/failure headroom. It never affects job outcome.
+      - name: Report disk headroom after Android build
+        if: always()
+        continue-on-error: true
+        run: df -h /
+      # Check the artefact, not the exit code: the build succeeds either way,
+      # and an environment RUSTFLAGS silently replaces the .cargo config.
+      # Check ELF p_align/congruence and stored ZIP data offsets; either can
+      # fail Android's 16 KB native-library requirement.
+      - run: node scripts/check-android-16kb-alignment.mjs src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+      # Read the stamp back out of the artefact, for the same reason the
+      # alignment check above reads the artefact: the staging step can succeed
+      # and still not reach the APK. This is the only thing that derives "this
+      # APK can say where it came from" rather than asserting it.
+      - name: Verify the APK carries its build provenance
+        run: node scripts/read-android-build-provenance.mjs src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+      # Name matches what android-test.yml's `Android Tests` workflow_run
+      # chain downloads (two `download-artifact` steps, name:
+      # station-android-debug) — this workflow's completion is what triggers
+      # that chain. The two names had drifted apart (this job previously
+      # uploaded as station-android-unsigned-verification): the chain was
+      # wired but silently unexercised, so the mismatch was never observed.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: station-android-debug
+          path: |
+            src-desktop/gen/android/app/build/outputs/apk/universal/debug/*.apk
+            src-desktop/gen/android/app/build/outputs/bundle/debug/*.aab
+          if-no-files-found: error
+          # ~169 MB per push. At the 90-day default this alone held 3.8 GB of
+          # the org's storage across 23 runs and filled the quota. A debug APK
+          # is worth days, not a quarter. `if-no-files-found: error` stays:
+          # a downstream chain consumes this artifact, so a missing one is a
+          # real failure, unlike the diagnostics below.
+          retention-days: 5

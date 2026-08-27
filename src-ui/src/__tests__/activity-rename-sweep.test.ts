@@ -1,0 +1,111 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
+import {
+  getLegacyPathRedirect,
+  getPathForView,
+  resolveViewFromPath,
+} from '../app-shell/routing';
+import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+
+/**
+ * station#3280: Activity owns the canonical `activity` identity and
+ * `/activity` route. Prior `/sessions` URLs are a permanent redirect boundary:
+ * persisted notifications and old Discord messages remain reachable without a
+ * store migration, while every current producer mints the canonical path.
+ */
+describe('Activity rename sweep', () => {
+  const surface = APP_SURFACE_REGISTRY.get('activity');
+
+  test('the surface is labeled Activity, on the sidebar and on the palette', () => {
+    expect(surface).not.toBeNull();
+    expect(surface!.label()).toBe('Activity');
+    // SHELL-08 / lane 7's open question, decided yes: Home's lanes were the
+    // only advertised way in, and Activity was one of five surfaces that
+    // resolved but appeared in no navigation at all. It now leads the
+    // sidebar's flat `primary` band with Agents and Connections.
+    expect(surface!.sidebar).toEqual({ section: 'primary', order: 30 });
+    expect(
+      APP_SURFACE_REGISTRY.getSidebar().map((entry) => entry.label()),
+    ).toContain('Activity');
+    // The palette keeps the surface one keystroke away on every device, and
+    // still answers to the old name.
+    const palette = APP_SURFACE_REGISTRY.getPalette().find(
+      (entry) => entry.id === 'activity',
+    );
+    expect(palette).toBeDefined();
+    expect(palette!.keywords).toContain('sessions');
+  });
+
+  test('Activity owns the canonical route and legacy deep links redirect with their query', () => {
+    expect(surface!.route).toBe('/activity');
+    expect(resolveViewFromPath('/activity')).toEqual({ type: 'activity' });
+    expect(resolveViewFromPath('/activity?session=thread-1')).toEqual({
+      type: 'activity',
+      sessionId: 'thread-1',
+    });
+    expect(getPathForView({ type: 'activity', sessionId: 'thread-1' })).toBe(
+      '/activity?session=thread-1',
+    );
+    // This assertion reds if routing.ts loses the permanent redirect entry.
+    expect(
+      getLegacyPathRedirect('/sessions?session=thread-1&source=push'),
+    ).toBe('/activity?session=thread-1&source=push');
+  });
+
+  const CANONICAL_DEEP_LINK_PRODUCERS = [
+    '../../../src-server/services/notifications/notification-deep-link.ts',
+    '../../../src-server/services/projects/attention-projection.ts',
+    '../../../src-server/services/discord/discord-gateway-service.ts',
+  ] as const;
+
+  test.each(CANONICAL_DEEP_LINK_PRODUCERS)(
+    '%s mints the canonical Activity deep link',
+    (relative) => {
+      const source = readFileSync(join(__dirname, relative), 'utf8');
+      // This assertion reds if any current producer reintroduces /sessions.
+      expect(source).toContain('/activity?session=');
+      expect(source).not.toMatch(/\/sessions\?session=/);
+    },
+  );
+
+  /**
+   * Every file that renders an affordance INTO the surface, plus the surface
+   * itself. A new "… Sessions" affordance added to one of these files reds
+   * this test; a new file linking to the surface should be added here when it
+   * links by the surface's name.
+   */
+  const RENAMED_SOURCES = [
+    'views/SessionsView.tsx',
+    'views/home/HomeSurface.tsx',
+    'components/home/HomeRecentWorkSection.tsx',
+    'views/project-page/ProjectLiveWorkSection.tsx',
+    'app-shell/surface-registry.ts',
+  ] as const;
+
+  /**
+   * The old surface name in an affordance or label position. Lowercase
+   * "session(s)" (the item noun) and identifiers like `useDerivedSessions`
+   * stay legitimate; these patterns target the capitalized surface name the
+   * rename retired.
+   */
+  const BANNED = [
+    /\b(?:View|Open|All)\s+Sessions\b/,
+    /sessions --all/,
+    /label:\s*\(\)\s*=>\s*'Sessions'/,
+    /(?:title|label)="Sessions"/,
+  ] as const;
+
+  test.each(RENAMED_SOURCES)(
+    '%s carries no "Sessions" affordance',
+    (relative) => {
+      const source = readFileSync(join(__dirname, '..', relative), 'utf8');
+      for (const pattern of BANNED) {
+        expect(
+          pattern.test(source),
+          `${relative} still matches ${pattern} — the Activity rename must be complete`,
+        ).toBe(false);
+      }
+    },
+  );
+});

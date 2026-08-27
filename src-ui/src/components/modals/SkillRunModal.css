@@ -1,0 +1,52 @@
+/* ═══ Prompt Run Modal ═══ */
+
+.skill-run__var-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.skill-run__preview {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.skill-run__section-label {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.skill-run__dialog {
+  max-width: min(560px, calc(100vw - 32px));
+}
+
+.skill-run__agent-field {
+  margin-top: 16px;
+}
+
+.skill-run__error {
+  margin: 0 0 8px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--error-text);
+  font-size: var(--text-base);
+}
+
+.skill-run__error code {
+  font-family: var(--font-mono);
+}

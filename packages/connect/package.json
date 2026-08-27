@@ -1,0 +1,70 @@
+{
+  "name": "@kontourai/station-connect",
+  "version": "0.5.1",
+  "description": "Environment identity, access, pairing, and reconnect contracts for Station",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./health-probe": {
+      "types": "./dist/core/healthProbe.d.ts",
+      "default": "./dist/core/healthProbe.js"
+    },
+    "./device-pairing": "./src/core/devicePairing.ts",
+    "./local-self-provision": "./src/core/localSelfProvision.ts",
+    "./known-environment": "./src/core/knownEnvironmentRegistry.ts",
+    "./node-storage": "./src/core/nodeStorage.ts"
+  },
+  "scripts": {
+    "build": "tsc && npm run copy-assets && node ../../scripts/write-dist-stamp.mjs",
+    "copy-assets": "node -e \"const fs=require('fs'),path=require('path');const src='src/react',dst='dist/react';fs.readdirSync(src).filter(f=>f.endsWith('.css')).forEach(f=>fs.copyFileSync(path.join(src,f),path.join(dst,f)))\"",
+    "watch": "tsc --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
+  },
+  "keywords": [
+    "station",
+    "connect",
+    "environment",
+    "ssh",
+    "pairing",
+    "qr"
+  ],
+  "author": "Station",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/station.git",
+    "directory": "packages/connect"
+  },
+  "homepage": "https://github.com/kontourai/station/tree/main/packages/connect#readme",
+  "bugs": {
+    "url": "https://github.com/kontourai/station/issues"
+  },
+  "dependencies": {
+    "@kontourai/station-contracts": "^0.7.0",
+    "@kontourai/station-shared": "^0.7.0",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.18",
+    "jsdom": "^29.1.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10"
+  }
+}

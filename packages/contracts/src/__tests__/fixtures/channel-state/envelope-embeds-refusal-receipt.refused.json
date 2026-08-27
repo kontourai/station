@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "station.channel-sequence/v1",
+  "channelId": "chan-design",
+  "epoch": 3,
+  "seq": 41,
+  "proposal": {
+    "schemaVersion": "station.channel-refusal-receipt/v1",
+    "channelId": "chan-design",
+    "proposalId": "prop-0001",
+    "reasonCode": "membership-revoked",
+    "policyRevision": "policy-rev-17",
+    "observedAt": "2026-08-02T09:00:01.000Z"
+  },
+  "proposalDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "committedAt": "2026-08-02T09:00:01.000Z",
+  "prevEnvelopeDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "policyRevision": "policy-rev-17",
+  "leaseRef": "lease-chan-design-epoch-3"
+}

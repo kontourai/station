@@ -1,0 +1,851 @@
+.sidebar {
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+  transition:
+    width 0.15s ease,
+    min-width 0.15s ease,
+    max-width 0.15s ease;
+}
+
+.sidebar--collapsed {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+}
+
+/* Header */
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.sidebar--collapsed .sidebar__header {
+  justify-content: center;
+  flex-direction: column;
+  padding: 12px 4px;
+  cursor: pointer;
+  gap: 4px;
+  text-align: center;
+}
+
+.sidebar--collapsed .sidebar__logo {
+  width: 32px;
+  height: 32px;
+}
+
+/* Desktop shell (macOS overlay title bar): the native traffic lights float
+   over the top-left of the window, so inset the sidebar header around them.
+   Collapsed, the sidebar (48px) is narrower than the traffic-light cluster
+   (~72px) — drop the logo below the lights and pad the toolbar so its content
+   clears them too. */
+:root.is-desktop-mac .sidebar__header {
+  padding-left: 78px;
+}
+
+:root.is-desktop-mac .sidebar--collapsed .sidebar__header {
+  padding-left: 4px;
+  padding-top: 36px;
+}
+
+:root.is-desktop-mac .sidebar--collapsed ~ .app__main .app-toolbar {
+  padding-left: 34px;
+}
+
+/* Mobile/column layout (station#3316): a closed drawer also carries
+   `sidebar--collapsed`, but there is no 48px rail occupying the corner —
+   the toolbar sits at the window edge, so the 34px rail offset above left
+   its first control under the traffic lights. Same specificity, later in
+   this file, so it wins at mobile widths; --titlebar-inset-left is stamped
+   by PlatformBootstrap on the macOS desktop shell only. */
+.sidebar__brand-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar--collapsed .sidebar__brand-name {
+  display: none;
+}
+
+.sidebar__logo {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.sidebar__home-button,
+.sidebar__collapse-button,
+.sidebar__mobile-close {
+  border: none;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.sidebar__home-button {
+  display: inline-flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0;
+  color: inherit;
+}
+
+.sidebar__collapse-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.sidebar__collapse-button:hover,
+.sidebar__collapse-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.sidebar--collapsed .sidebar__collapse-button {
+  width: 36px;
+  height: 36px;
+  margin-left: 0;
+}
+
+.sidebar__home-button:hover,
+.sidebar__home-button:focus-visible {
+  background: var(--bg-hover);
+}
+
+.sidebar__mobile-close {
+  margin-left: auto;
+  color: var(--text-muted);
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar__mobile-close:hover,
+.sidebar__mobile-close:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Section labels — group the rail into Projects / Workspace zones */
+.sidebar__section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sidebar--collapsed .sidebar__section-label {
+  display: none;
+}
+
+/* #3314: Open chats / Drafts disclosure headers — the nav groups' toggle
+   anatomy (aria-expanded button + chevron) in section-label clothing, plus a
+   hover/focus-revealed remove affordance. */
+.sidebar__section-label--disclosure {
+  padding: 0 4px 0 0;
+}
+
+.sidebar__section-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 4px 4px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar__section-toggle:hover,
+.sidebar__section-toggle:focus-visible {
+  color: var(--text-primary);
+}
+
+.sidebar__section-remove {
+  display: inline-flex;
+  flex-shrink: 0;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.sidebar__section-label--disclosure:hover .sidebar__section-remove,
+.sidebar__section-label--disclosure:focus-within .sidebar__section-remove {
+  opacity: 1;
+}
+
+.sidebar__section-remove:hover,
+.sidebar__section-remove:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar--collapsed .sidebar__open-chats {
+  display: none;
+}
+
+.sidebar__recent-more span {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* The Projects header carries the "New Project" action (station#1300), so
+   unlike the other (purely decorative) section labels it stays reachable
+   when the sidebar is collapsed — icon-only, matching how every other
+   collapsed row keeps its button and drops only its text label. */
+.sidebar--collapsed .sidebar__section-label--projects {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.sidebar--collapsed .sidebar__section-label-text {
+  display: none;
+}
+
+.sidebar__section-add {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.sidebar__section-add:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Cold-start placeholder rows — mirror a project row's icon + label. */
+.sidebar__project-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.sidebar__project-skeleton-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.sidebar__project-skeleton-label {
+  width: 60%;
+  height: 0.7rem;
+}
+
+.sidebar--collapsed .sidebar__project-skeleton {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+/* Scrollable body */
+.sidebar__body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 4px;
+}
+
+.sidebar--collapsed .sidebar__body {
+  padding: 8px 2px;
+}
+
+/* Project row */
+.sidebar__project-row {
+  position: relative;
+}
+
+.sidebar__project-row-main {
+  position: relative;
+}
+
+.sidebar__project-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-md);
+  text-align: left;
+  border-radius: 4px;
+}
+
+.sidebar__project-accent {
+  width: 3px;
+  height: 22px;
+  flex: 0 0 3px;
+  border-radius: 999px;
+}
+
+.sidebar--collapsed .sidebar__project-accent {
+  position: absolute;
+  left: 2px;
+  height: 28px;
+}
+
+.sidebar__project-btn:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar__project-btn--active {
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
+  border-left: 2px solid var(--accent-primary);
+}
+
+.sidebar--collapsed .sidebar__project-btn {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.sidebar__project-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__project-live-count {
+  flex: 0 0 auto;
+  min-width: 1.25rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+.sidebar__project-live-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* station#2673: in the collapsed rail the badge must not participate in the
+   button's centered flex row — as an in-flow item it widens the centered
+   content group past the rail, displacing the tile (accent bar and label
+   clip off the rail's left edge) and overflowing the badge past the right
+   edge. Overlay it on the tile's corner instead; `.sidebar__project-row-main`
+   is the positioned ancestor. */
+.sidebar--collapsed .sidebar__project-live-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 1rem;
+  padding: 0 0.25rem;
+  font-size: 0.65rem;
+  line-height: 1rem;
+}
+
+.sidebar--collapsed .sidebar__project-name,
+.sidebar--collapsed .sidebar__chevron {
+  display: none;
+}
+
+.sidebar__chevron {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+}
+
+.sidebar__chevron:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar__chevron--open {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+/* station#3315: drag/keyboard reorder handle. Hidden until the row is hovered
+   or the handle itself is focused, so the rail stays quiet; it is still in the
+   tab order either way, which is what keeps keyboard reorder reachable. */
+.sidebar__reorder-handle {
+  position: absolute;
+  top: 50%;
+  right: 30px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  opacity: 0;
+  touch-action: none;
+}
+
+.sidebar__project-row-main:hover .sidebar__reorder-handle,
+.sidebar__reorder-handle:focus-visible {
+  opacity: 1;
+}
+
+.sidebar__reorder-handle:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+/* station#3331: a coarse pointer has neither hover nor focus-visible, so the
+   handle above was permanently invisible AND permanently active — a finger
+   starting a sidebar scroll inside that 20px zone had its scroll suppressed by
+   `touch-action: none` and could commit a reorder it never asked for. Touch
+   gets the affordance rather than losing the capability: the handle is visible,
+   its hit area reaches the 44px floor the rest of this file uses, and the row
+   button reserves both the width and the height so a project name never runs
+   underneath it and adjacent handles never overlap. */
+@media (pointer: coarse) {
+  .sidebar__reorder-handle {
+    opacity: 1;
+    width: 28px;
+    height: 44px;
+    right: 34px;
+  }
+
+  /* The handle's 44px target must not exceed the row that contains it. The
+     default row pitch is 34px (6px button padding + a 22px accent), so a 44px
+     handle centred on it overhung 5px at each end and ADJACENT handles
+     overlapped by 10px — a tap low in row N's handle column grabbed row N+1.
+     Raising the row to 44px is the fix that keeps the target at the a11y floor
+     the rest of this file uses; shrinking the handle to the row would have
+     traded an overlap defect for a below-floor touch target. Rows are taller
+     on touch, which is ordinary.
+
+     Note what this does NOT claim: the `touch-action: none` band is still
+     continuous down the handle column, because a drag handle has to own its
+     gesture. What #3331 fixed is that the column is now VISIBLE, so a finger
+     landing there is a choice rather than an ambush; it is 28px of a ~250px
+     rail and scrolling anywhere else is unaffected.
+
+     Collapsed rows render no handle and centre their icon, so they keep the
+     symmetric padding above. */
+  .sidebar:not(.sidebar--collapsed) .sidebar__project-btn {
+    min-height: 44px;
+    padding-right: 66px;
+  }
+
+  /* station#3346: the row's OTHER control. #3331 raised the handle beside it to
+     the 44px floor and left this one at 20x20, so a row had one control at the
+     floor and one under half of it. The hit area grows; the glyph does not —
+     the 12px `<svg>` stays centred and the box keeps its centre exactly where
+     the 20px one was (`right: 8px` + 20px wide and `right: 4px` + 28px wide
+     both centre at 18px from the row's right edge), so nothing moves visually.
+     28px is the widest this can be without reaching the handle: the handle
+     occupies 34-62px from that edge, the chevron now occupies 4-32px, leaving
+     2px between them, and the row's 66px text reservation still clears the
+     handle by 4px. The row is already `min-height: 44px` here, so the 44px
+     target does not overhang it. */
+  .sidebar:not(.sidebar--collapsed) .sidebar__chevron {
+    width: 28px;
+    height: 44px;
+    right: 4px;
+  }
+}
+
+/* Visually-hidden live region for keyboard moves. Same clip technique as
+   `.background-tasks-banner__sr-status` in index.css. */
+.sidebar__reorder-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.sidebar__project-row--dragging {
+  opacity: 0.5;
+}
+
+.sidebar__project-row--dragging .sidebar__reorder-handle {
+  opacity: 1;
+  cursor: grabbing;
+}
+
+/* The marker is drawn on the edge the dragged row will actually land against —
+   top for an upward drag, bottom for a downward one, because the dragged row
+   is removed from above the target first. See `dropEdgeFor`. */
+.sidebar__project-row--drop-before {
+  box-shadow: 0 -2px 0 0 var(--accent-primary);
+}
+
+.sidebar__project-row--drop-after {
+  box-shadow: 0 2px 0 0 var(--accent-primary);
+}
+
+.sidebar__collapsed-chats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  margin: 0 auto 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.sidebar__collapsed-chats:hover,
+.sidebar__collapsed-chats:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Layout rows */
+.sidebar__layouts {
+  padding-left: 12px;
+}
+
+.sidebar--collapsed .sidebar__layouts {
+  display: none;
+}
+
+.sidebar__layout-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-md);
+  text-align: left;
+  border-radius: 4px;
+}
+
+.sidebar__layout-btn:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar__layout-btn--active {
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: var(--accent-primary);
+  border-left: 2px solid var(--accent-primary);
+  font-weight: 500;
+}
+
+.sidebar__layout-btn--active:hover {
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+
+/* Global nav */
+.sidebar__nav {
+  border-top: 1px solid var(--border-primary);
+  padding: 8px 4px;
+  flex-shrink: 0;
+  max-height: 55%;
+  overflow-y: auto;
+}
+
+.sidebar--collapsed .sidebar__nav {
+  padding: 8px 2px;
+}
+
+.sidebar__nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-md);
+  text-align: left;
+  border-radius: 4px;
+}
+
+.sidebar__nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__nav-btn--active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sidebar__nav-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+/* SHELL-05: the clicked row stays marked while its route outlet is suspended.
+   `aria-busy` is set from the same derivation, so this is a rendering of the
+   pending state rather than a second, independent claim about it. Perpetual
+   status category: the spin is not the only signal (`aria-busy` is), and the
+   global reduced-motion rule stops it after one iteration. */
+.sidebar__nav-btn--pending {
+  color: var(--text-primary);
+}
+
+.sidebar__nav-spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  margin-left: auto;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: sidebar-nav-spin var(--motion-status-spin) var(--ease-linear)
+    infinite;
+}
+
+@keyframes sidebar-nav-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sidebar--collapsed .sidebar__nav-btn {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.sidebar--collapsed .sidebar__nav-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar__nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__nav-group-toggle {
+  min-height: 44px;
+}
+.sidebar__nav-chevron {
+  margin-left: auto;
+}
+.sidebar--collapsed .sidebar__nav-chevron {
+  display: none;
+}
+
+.sidebar__nav-group-items {
+  margin: 2px 0 6px 13px;
+  padding-left: 5px;
+  border-left: 1px solid var(--border-primary);
+}
+
+.sidebar--collapsed .sidebar__nav-group-items {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.sidebar__recent-task {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar__recent-task:hover {
+  background: var(--bg-hover);
+}
+.sidebar__recent-task span,
+.sidebar__recent-task small {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar__recent-task span {
+  /* Row size — station#1300: this had no rule at all and inherited the
+     root default, rendering as the largest text in the sidebar. */
+  font-size: var(--text-md);
+}
+.sidebar__recent-task small {
+  /* Metadata size, matching the status line's session count. */
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.sidebar--collapsed .sidebar__recent-task {
+  display: none;
+}
+
+.sidebar--collapsed .sidebar__nav-label {
+  display: none;
+}
+
+/* Mobile: sidebar is an overlay drawer */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  :root.is-desktop-mac .sidebar--collapsed ~ .app__main .app-toolbar {
+    padding-left: max(14px, var(--titlebar-inset-left, 0px));
+  }
+
+  /* No hover on touch: the remove affordance is always visible, at the
+     44px floor the rest of the mobile sidebar controls use. */
+  .sidebar__section-remove {
+    min-width: 44px;
+    min-height: 44px;
+    opacity: 1;
+  }
+
+  .sidebar__nav-btn {
+    min-height: 44px;
+  }
+
+  .sidebar {
+    display: none;
+    min-width: 0;
+    flex-basis: 0;
+    width: 0;
+  }
+
+  .sidebar--expanded {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    /* Navigation temporarily owns the shell: above notices, the chat dock and
+       floating actions, but below notifications and modal/system surfaces. */
+    z-index: var(--layer-navigation);
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+    /* The drawer slides over content from the top edge, so its header would sit
+       under the device status bar without this inset. env()-backed vars are 0px
+       on desktop/web, so this only reserves space where a real inset exists. */
+    padding-top: var(--safe-top);
+    padding-left: var(--safe-left);
+  }
+
+  /* Backdrop overlay */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: calc(var(--layer-navigation) - 1);
+  }
+
+  .sidebar__nav {
+    padding-bottom: 8px;
+  }
+
+  /* Touch targets: the drawer's nav rows and project/layout rows are shared
+     navigation chrome — raise to a 44px target. Labels are already visible in
+     the expanded drawer (it is not the icon-only --collapsed rail). */
+  .sidebar__nav-btn,
+  .sidebar__project-btn,
+  .sidebar__layout-btn {
+    min-height: 44px;
+  }
+
+  /* Hide the old edge-tab toggle */
+  .sidebar__mobile-toggle {
+    display: none;
+  }
+}
+
+/* Desktop: hide mobile-only elements */
+@media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
+  .sidebar-backdrop {
+    display: none;
+  }
+
+  .sidebar__mobile-toggle {
+    display: none;
+  }
+}

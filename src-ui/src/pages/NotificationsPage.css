@@ -1,0 +1,394 @@
+/* ═══ Notifications Page ═══ */
+
+/* No `margin: 0 auto`. Centring a flex item that also shrinks to fit-content
+   is what put this page's 350px column at x=665 with a 400px empty gutter
+   beside it (SHELL-11) while every other page started at x=264. The frame
+   owns the column now; the page owns nothing about its own placement. */
+
+.notifications-page__header {
+  align-items: center;
+}
+
+.notifications-page__clear-btn {
+  min-height: 36px;
+}
+
+.notifications-page__filters {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+}
+
+.notifications-page__filters-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.notifications-page__filters-heading h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.notifications-page__filters-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.notifications-page__reset-filters {
+  flex: 0 0 auto;
+  min-height: 36px;
+}
+
+.notifications-page__filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.notifications-page__category-filter {
+  min-width: 0;
+  margin: 1rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.notifications-page__category-filter legend {
+  margin-bottom: 0.4rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.notifications-page__category-chips {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
+}
+
+.notifications-page__category-chip {
+  min-height: 36px;
+  flex: 0 0 auto;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.notifications-page__category-chip:hover {
+  border-color: var(--border-secondary);
+  transform: translateY(-1px);
+}
+
+.notifications-page__category-chip[aria-pressed="true"] {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--bg-tertiary));
+  color: var(--accent-primary);
+}
+
+.notifications-page__date-filter {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 28rem;
+  margin-top: 0.75rem;
+}
+
+.notifications-page__date-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  color-scheme: dark;
+  font: inherit;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+.notifications-page__date-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.notifications-page__date-input[aria-invalid="true"] {
+  border-color: var(--error-text);
+}
+
+.notifications-page__filter-error {
+  margin: 0.5rem 0 0;
+  color: var(--error-text);
+  font-size: var(--text-sm);
+}
+
+.notifications-page__result-summary {
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.notifications-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notifications-page__section-title {
+  margin: 2rem 0 0.75rem;
+  font-size: 1rem;
+}
+
+/*
+ * Attention-item styling (the "Needs attention" section's cards, including
+ * `.attention-*` action affordances) moved to
+ * `components/attention/AttentionCard.css` (station#1170) — that component
+ * is now also rendered from SessionsView, which doesn't load this
+ * lazy-loaded page chunk. `.notification-card*` below stays here: it's
+ * still owned by the plain notification list (NotificationCard.tsx),
+ * which only ever renders from this page.
+ */
+
+.notification-card {
+  padding: 20px;
+  background: linear-gradient(
+    135deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 100%
+  );
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  transition:
+    border-color var(--motion-slow) var(--ease-standard),
+    transform var(--motion-slow) var(--ease-standard),
+    box-shadow var(--motion-slow) var(--ease-standard),
+    opacity var(--motion-slow) var(--ease-standard),
+    filter var(--motion-slow) var(--ease-standard);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: notification-slide-in 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.notification-card--focused:focus {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+@keyframes notification-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.notification-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    var(--accent-primary),
+    var(--accent-secondary, var(--accent-primary))
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.notification-card:hover {
+  border-color: var(--border-secondary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.notification-card:hover::before {
+  opacity: 1;
+}
+
+.notification-card--dismissed,
+.notification-card--actioned,
+.notification-card--expired {
+  opacity: 0.5;
+  transform: scale(0.98);
+  filter: grayscale(0.3);
+}
+
+.notification-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.notification-card__content {
+  flex: 1;
+}
+
+.notification-card__type {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.notification-card__message {
+  font-size: var(--text-lg);
+  margin-bottom: 8px;
+}
+
+.notification-card__detail {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+
+.notification-card__time {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: 16px;
+}
+
+.notification-card__footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.notification-card__status {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.notification-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notification-card__action {
+  font-family: var(--font-sans);
+  min-height: 44px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  font-weight: 600;
+  transition:
+    transform var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.notification-card__action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--border-secondary);
+}
+
+.notification-card__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notification-card__action--primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.notification-card__action--danger {
+  /* --error-fill, not the --status-error foreground alias: white on
+     dark's #ff6b6b is 2.78:1 (station#1125's defect via the alias). */
+  background: var(--error-fill);
+  border-color: var(--error-fill);
+  color: white;
+}
+
+.notification-card__action--ghost {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* ── Mobile touch targets ── */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .notifications-page {
+    /* Horizontal and top insets belong to the frame, and the dock's footprint
+       to the shell (station#3902 — this re-derivation hardcoded the COLLAPSED
+       header height, so an open dock covered the last card). This is the
+       page's own bottom gutter. */
+    padding-bottom: 1.5rem;
+  }
+
+  .notifications-page__clear-btn {
+    min-height: 44px;
+  }
+
+  .notifications-page__filters-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notifications-page__reset-filters,
+  .notifications-page__category-chip,
+  .notifications-page__date-input,
+  .notifications-page__filter-field .page__search-input {
+    min-height: 44px;
+  }
+
+  .notification-card__footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notification-card__actions {
+    justify-content: flex-start;
+  }
+}
+
+/* station#1780: the same observation line the popover row renders. */
+.notification-card__answerability {
+  font-style: italic;
+  overflow-wrap: anywhere;
+}

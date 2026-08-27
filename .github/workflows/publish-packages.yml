@@ -1,0 +1,673 @@
+name: Publish Packages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A push-triggered VERSION run and a dispatched PUBLISH run are different
+# operations, and sharing one concurrency group meant the routine one silently
+# evicted the deliberate one. GitHub keeps at most one PENDING run per group
+# regardless of `cancel-in-progress`, so on a busy main every push to main
+# cancelled a queued `workflow_dispatch` before it ever reached a runner.
+#
+# Observed live 2026-08-03, immediately after this job moved to the private
+# fleet: the single `heavy-host` listener was continuously occupied (CI
+# full-regression, container smoke, Android tests, Secret Scan and the Android
+# build artifact all contend for it), and five consecutive dispatches were
+# cancelled while still pending, each by the next push's own publish run. The
+# documented instruction "run the workflow manually to publish deliberately"
+# was therefore unreachable — not slow, unreachable — and it failed as a
+# cancellation, which reads like a human stopped it on purpose.
+#
+# Keying the group on the event keeps the property that actually matters (push
+# runs stay mutually exclusive with each other; only the newest version PR is
+# useful) while letting a deliberate publish hold its place in the queue. The
+# trade is that a version run and a publish run are no longer mutually
+# exclusive. That is the right trade here: they are serialized in practice by
+# the single Linux listener, and a rare interleave is a far smaller defect than
+# a publish path that cannot be invoked at all.
+concurrency:
+  group: publish-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+# `id-token: write` is what makes npm trusted publishing reachable. GitHub only
+# exports ACTIONS_ID_TOKEN_REQUEST_TOKEN/_URL when this permission is granted,
+# and changesets/action selects its auth path off exactly those two variables
+# (NPM_TOKEN first, else OIDC, else "assuming npm is already authenticated" —
+# which is an unauthenticated publish that fails). Without this line the action
+# took the third branch, so `changeset publish` could never authenticate.
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  publish:
+    # Provider-hosted runners are unavailable to this private repo during the
+    # account-level Actions billing outage: the job terminated in seconds having
+    # executed ZERO steps, so nothing here — not even the preflight — had ever
+    # run. Every other Linux job in this repo already targets the private fleet;
+    # this file was the last `ubuntu-latest` holdout.
+    #
+    # Label choice: `heavy-host`, not `fast-feedback`. `fast-feedback` is a
+    # dedicated single-purpose listener and `scripts/actionlint-gate.mjs`
+    # (`runnerPartitionFindings`) hard-reserves it for ci.yml's `fast-checks`
+    # job alone — routing anything else there is a gate failure, not a
+    # preference. `docs/guides/private-runner-partition.md` states the same
+    # contract from the ops side: every other Linux job that takes a
+    # physical-host lease requests `heavy-host`. That partition exists so a
+    # queued heavyweight cannot occupy bounded feedback capacity before its own
+    # lease is admitted, and this job is a heavyweight by that definition — it
+    # runs `npm run dependencies:ci` plus four package builds and then, on a real publish, an
+    # irreversible registry write. It is not a five-minute feedback lane.
+    #
+    # SECURITY POSTURE, stated rather than skipped: publishing now authenticates
+    # on the owner's own machine. What executes there is an OIDC id-token minted
+    # per job for audience `npm:registry.npmjs.org`, exchanged for a
+    # registry token that is short-lived and scoped to the individual package
+    # being published. No long-lived npm credential exists in this repo (it has
+    # no Actions secrets at all) and none is created here, so the blast radius
+    # of the fleet is one publish window for three named packages, not a
+    # standing token.
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    # ci.yml's heavy jobs budget 90; a ceiling that lands inside
+    # `changeset publish` produces a partial publish, so keep the headroom.
+    timeout-minutes: 60
+    env:
+      # Single source for "this run intends to publish". The preflight below and
+      # the changesets step's `publish:` input must stay coextensive: if only one
+      # of them thinks this is a publish run, the assertion stops guarding the
+      # thing it exists to guard.
+      PUBLISH_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      # `persist-credentials: false` is mandatory on the persistent fleet (the
+      # runner's workspace outlives the job, so a stored git credential outlives
+      # it too) and is enforced by scripts/actionlint-gate.mjs. It removes the
+      # credential a git-CLI push would need — which is fine: the changesets
+      # step below pushes through the GitHub API (action v2's default;
+      # `push-with-git-cli` stays false), authenticated by its `github-token`
+      # input, so no git credential ever needs to exist in this workspace.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          # Full history, fetched while checkout still holds its ephemeral
+          # token. Changesets CLI v3's changelog generation looks up the
+          # commit that added each changeset and DEEPENS a shallow clone to
+          # find it (@changesets/git `deepenCloneBy`) — a `git fetch` that
+          # runs after credentials are removed, which fails with "could not
+          # read Username" (run 32598339585, the first paired v2+v3 run).
+          # Fetching everything up front removes the post-checkout fetch
+          # entirely; on the persistent fleet the workspace already carries
+          # most history, so the incremental cost is small.
+          fetch-depth: 0
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      # The fleet is one physical host with a 10-unit budget. This job is
+      # `npm run dependencies:ci` + four package builds — heavier than the 1-unit scan lanes,
+      # lighter than ci.yml's 6-unit full-regression corpus or the 9-unit
+      # container/Android builds. 4 leaves room for the reserved feedback unit
+      # and a concurrent mid-weight lane.
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "4"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
+      # DO NOT add `registry-url:` here without also supplying a real
+      # NODE_AUTH_TOKEN. setup-node writes the literal line
+      # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into a runner
+      # .npmrc and points NPM_CONFIG_USERCONFIG at it (setup-node v7.0.0
+      # src/authutil.ts:44,48). It does NOT export a value for that variable
+      # unless the caller already set one (authutil.ts:49-52), and npm's config
+      # layer leaves an unresolvable `${VAR}` as the literal string rather than
+      # erroring. npm then sends `Bearer ${NODE_AUTH_TOKEN}` — those 18
+      # characters, verbatim — as the credential on registry requests.
+      #
+      # That does NOT break the publish's authentication: npm >= 11.5.1 runs the
+      # OIDC exchange unconditionally and overwrites the registry's `_authToken`
+      # with the token it gets back, before it ever reads configured credentials
+      # (npm/cli v11.16.0 lib/commands/publish.js:145 calls oidc(), :147 reads
+      # getCredentialsByURI). It breaks the READS that happen first: changesets
+      # runs `npm info` per package to decide what is unpublished, and exits 1 on
+      # an unrecognised error. So the failure lands before the publish, wearing a
+      # "cannot read package" costume. registry-url buys nothing here anyway —
+      # npm defaults to registry.npmjs.org and `access: public` already lives in
+      # each package's own `publishConfig`. Preflight check 4 fails the job if a
+      # registry credential is configured but unresolvable.
+      #
+      # `cache: npm` is deliberately absent and is a gate rule on this fleet:
+      # the persistent runner already keeps npm's content-addressed cache in its
+      # service-account home, so setup-node's remote cache would download and
+      # extract the same multi-gigabyte archive once per job while adding
+      # nothing to `npm run dependencies:ci`'s clean-install guarantees.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Absence of credentials must be LOUD, and it must be proven against npm
+      # rather than inferred. changesets/action's third auth branch logs "No
+      # NPM_TOKEN or OIDC available - assuming npm is already authenticated" and
+      # then runs `changeset publish` anyway: a publish that authenticates as
+      # nobody, in a run that reads like every other run.
+      #
+      # Minting a GitHub id-token proves nothing about npm — GitHub mints one
+      # whenever `id-token: write` is granted, whether or not a trusted publisher
+      # exists. So this step performs the real exchange npm itself performs
+      # (npm/cli lib/utils/oidc.js:120, POST /-/npm/v1/oidc/token/exchange/
+      # package/<name>) for every package this repo publishes. A token coming
+      # back proves a trusted publisher exists for that package and accepts this
+      # job's identity claim. It does NOT prove the publisher's allowed actions
+      # include `npm publish` — a stage-only publisher exchanges a token and then
+      # refuses the publish (see the prerequisite block below) — and npm evaluates
+      # the workflow-filename match server-side, so this job cannot observe which
+      # claim was matched. What it does close is the failure that is otherwise
+      # silent: no publisher configured at all.
+      #
+      # It runs before `npm run dependencies:ci` and the builds: a credential misconfiguration is
+      # the cheapest thing to detect and should not cost a full build first.
+      - name: Assert npm trusted publishing is configured and authenticating
+        if: env.PUBLISH_RUN == 'true'
+        env:
+          NPM_REGISTRY: https://registry.npmjs.org
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/npm-auth-preflight.XXXXXX")"
+          trap 'rm -rf "$probe_dir"' EXIT
+
+          # 0. A dispatch runs the workflow definition as it exists AT THE
+          #    DISPATCHED REF, and npm's trusted-publisher configuration has no ref
+          #    field to constrain it — it matches on repository + workflow filename.
+          #    This is therefore an operator-error guard, not a security control:
+          #    it stops a publish from a stale or in-progress branch, but it cannot
+          #    stop someone who can push a branch, because their copy of this file
+          #    is the one that runs and they would simply delete this check. Real
+          #    branch restriction has to come from something the pushed ref does not
+          #    control — a GitHub Environment protected to main, named in each
+          #    package's trusted-publisher configuration.
+          if [ "${GITHUB_REF:-}" != "refs/heads/main" ]; then
+            fail "Refusing to publish from ${GITHUB_REF:-<unset>}. Publishing is only permitted from refs/heads/main; npm's trusted publisher cannot enforce this itself, so this job does."
+          fi
+
+          # 1. npm floor. The OIDC-to-registry token exchange that backs trusted
+          #    publishing landed in npm 11.5.1; older npm skips it and publishes
+          #    with whatever credentials it happens to find, or none.
+          required=11.5.1
+          actual="$(npm --version)"
+          if [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n1)" != "$required" ]; then
+            fail "npm $actual is below the $required trusted-publishing floor. Bump .nvmrc to a Node whose bundled npm is >= $required, or add an explicit pinned 'npm install -g npm@<version>' step."
+          fi
+          echo "npm $actual >= $required"
+
+          # 2. The id-token permission is actually in force. GitHub exports these
+          #    two only when `id-token: write` is granted; changesets checks for
+          #    exactly these before choosing its OIDC branch.
+          [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || fail "ACTIONS_ID_TOKEN_REQUEST_URL is unset: the job has no id-token permission, so changesets would fall through to its unauthenticated 'assuming npm is already authenticated' branch. Restore 'id-token: write' in this workflow's permissions."
+          [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || fail "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset: the job has no id-token permission. Restore 'id-token: write' in this workflow's permissions."
+
+          # 3. Mint the id-token, for the same audience npm uses. Nothing about
+          #    the token is ever echoed — only its HTTP status and a structural
+          #    check performed inside node.
+          # Normalise: a trailing slash would build .../org//-/npm/...
+          NPM_REGISTRY="${NPM_REGISTRY%/}"
+          audience="npm:$(printf '%s' "$NPM_REGISTRY" | sed -e 's|^https\{0,1\}://||' -e 's|/.*$||')"
+          status="$(curl -sS --max-time 30 --retry 3 --retry-connrefused \
+            -o "$probe_dir/id-token.json" -w '%{http_code}' \
+            -H 'Accept: application/json' \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
+          if [ "$status" != "200" ]; then
+            fail "OIDC id-token request returned HTTP $status: this runner cannot mint an id-token for $audience, so the publish could not authenticate."
+          fi
+          node -e '
+            const fs = require("node:fs");
+            let value;
+            try {
+              value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).value;
+            } catch {
+              console.log("::error::OIDC id-token response was not valid JSON; trusted publishing cannot authenticate.");
+              process.exit(1);
+            }
+            if (typeof value !== "string" || value.split(".").length !== 3) {
+              console.log("::error::OIDC endpoint returned no usable JWT in .value; trusted publishing cannot authenticate.");
+              process.exit(1);
+            }
+            fs.writeFileSync(process.argv[2], value);
+          ' "$probe_dir/id-token.json" "$probe_dir/id-token.jwt"
+          # Insurance against a future edit adding `-v` or dumping a response body:
+          # nothing prints the token today, but masking costs nothing.
+          echo "::add-mask::$(cat "$probe_dir/id-token.jwt")"
+          echo "Minted an OIDC id-token for audience $audience"
+
+          # 4. No registry credential that npm cannot resolve. This checked-in
+          # verifier owns candidate identity, filesystem safety, parsing, and
+          # redaction; do not recreate a shell grep/sed fallback here.
+          node scripts/check-publish-npmrc-credentials.mjs
+
+          # The original defect was a phantom `secrets.NPM_TOKEN`. These two lines
+          # are its tripwire: this workflow authenticates by OIDC, so a token in
+          # the environment means someone changed the auth model without updating
+          # this file. Scope limit, stated plainly: a step-level `env:` on the
+          # changesets step is NOT visible here, and changesets writes its own
+          # token npmrc at run time, after this step — so check 4 above cannot see
+          # that either. These catch the workflow- and job-level cases only.
+          [ -z "${NPM_TOKEN:-}" ] || fail "NPM_TOKEN is set. changesets reads exactly this variable to choose its token auth path over OIDC, and it has no other use here. Remove it, or change this workflow's auth model deliberately."
+          # NODE_AUTH_TOKEN is NOT a hard failure: npm documents it as the way to
+          # supply a read-only token for private dependencies alongside trusted
+          # publishing, so a real value here is legitimate and OIDC still governs
+          # the publish. An unresolvable one is the failure, and check 4 above
+          # already catches that. Both states are defensible, so this names the
+          # ambiguity instead of guessing which one it is.
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::notice::NODE_AUTH_TOKEN is set. That is legitimate only as a read-only token for private dependencies; the publish itself still authenticates via OIDC. If nobody added it deliberately, something re-introduced token auth."
+          fi
+
+          # 5. The exchange npm itself will perform, for every package this repo
+          #    publishes. This is the only check that proves a trusted publisher
+          #    exists and matches this repo + workflow file.
+          #    The set comes from the root `workspaces` array — the same list
+          #    `changeset publish` walks — and not from a directory scan, so the two
+          #    cannot drift. Today that includes examples/*, all `private: true` and
+          #    therefore skipped by both.
+          #
+          #    Known limitation: a brand-new package name has no npm settings page to
+          #    configure a publisher on, so this check would block the very publish
+          #    that creates it. Publish the first version by another route, then
+          #    configure the publisher and use this workflow from then on.
+          packages="$(node -e '
+            const { readFileSync, existsSync } = require("node:fs");
+            const root = JSON.parse(readFileSync("package.json", "utf8"));
+            const workspaces = root.workspaces;
+            if (!Array.isArray(workspaces) || workspaces.length === 0) {
+              console.error("root package.json declares no workspaces array");
+              process.exit(1);
+            }
+            const names = [];
+            for (const dir of workspaces) {
+              if (dir.includes("*")) {
+                console.error("workspace glob " + dir + " is not supported by this preflight; list workspaces explicitly or extend this enumeration");
+                process.exit(1);
+              }
+              const manifest = dir + "/package.json";
+              if (!existsSync(manifest)) {
+                console.error("workspace " + dir + " has no package.json");
+                process.exit(1);
+              }
+              const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+              if (pkg.private) continue;
+              names.push(pkg.name);
+            }
+            if (names.length === 0) {
+              console.error("no publishable workspace found; nothing to authenticate for");
+              process.exit(1);
+            }
+            console.log(names.join(" "));
+          ')"
+
+          for pkg in $packages; do
+            escaped="$(printf '%s' "$pkg" | sed 's|/|%2f|')"
+            status="$(curl -sS --max-time 30 --retry 3 --retry-connrefused \
+              -o "$probe_dir/exchange.json" -w '%{http_code}' \
+              -X POST \
+              -H 'Accept: application/json' \
+              -H "Authorization: Bearer $(cat "$probe_dir/id-token.jwt")" \
+              "$NPM_REGISTRY/-/npm/v1/oidc/token/exchange/package/$escaped")"
+            detail="$(node -e '
+              const fs = require("node:fs");
+              try {
+                const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                process.stdout.write(typeof body.message === "string" ? body.message : "");
+              } catch { process.stdout.write(""); }
+            ' "$probe_dir/exchange.json")"
+            # Accept any 2xx. npm answers this exchange with 201 Created, and
+            # pinning equality to 200 turned a WORKING trusted publisher into
+            # "no trusted publisher is configured" — observed live on run
+            # 31523902617, which failed on `@kontourai/station-contracts` with
+            # HTTP 201 while the exchange had in fact succeeded. The status is a
+            # proxy; the fact is whether npm returned a usable token, which the
+            # structural check immediately below establishes and which is what
+            # the publish actually depends on.
+            case "$status" in
+              2[0-9][0-9]) ;;
+              *)
+              # Lead with what npm actually said. The endpoint returns 400 for
+              # auth-shaped failures and 404 for others, and a truncated id-token,
+              # an expired one, a moved route or a 429 all land here too — so state
+              # the status and npm's own message as the fact, and the publisher
+              # configuration as the likeliest cause rather than the diagnosis.
+              fail "npm refused the OIDC token exchange for $pkg: HTTP $status${detail:+, npm said: $detail}. Most often this means no trusted publisher is configured for $pkg — configure one on npmjs.com for repository $GITHUB_REPOSITORY, workflow file publish-packages.yml, allowed actions including 'npm publish'. If one already exists, the status and message above are the fault, not the configuration."
+              ;;
+            esac
+            node -e '
+              const fs = require("node:fs");
+              let token;
+              try {
+                token = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).token;
+              } catch {
+                console.log("::error::npm returned a non-JSON body for the " + process.argv[2] + " token exchange.");
+                process.exit(1);
+              }
+              if (typeof token !== "string" || token.length === 0) {
+                console.log("::error::npm accepted the exchange for " + process.argv[2] + " but returned no token; the publish would proceed unauthenticated.");
+                process.exit(1);
+              }
+            ' "$probe_dir/exchange.json" "$pkg"
+            echo "Trusted publisher confirmed for $pkg"
+          done
+
+      - run: npm run dependencies:ci
+
+      - name: Verify generated plugin dependencies resolve on public npm
+        run: npm run plugin-scaffold:public-deps
+
+      - name: Build shared
+        run: cd packages/shared && npm run build --if-present
+
+      - name: Build SDK
+        run: cd packages/sdk && npm run build
+
+      - name: Build Connect
+        run: cd packages/connect && npm run build
+
+      # STATION_CLI_BUILD_CHANNEL=stable, read by build-metadata.mjs's
+      # deriveCliBundleMetadata and baked into the bundle's
+      # globalThis.__STATION_CLI_BUNDLE__ (what `station --version` reports).
+      # This job's `changeset publish` (below) is what puts a build under the
+      # `latest` npm dist-tag, which docs/reference/cli.md and
+      # packages/cli/README.md both document as the tag for a STABLE Station
+      # — the vocabulary is `packages/shared/src/runtime-path-resolver.ts`'s
+      # `StationRuntimeChannel` ('stable' | 'beta' | 'nightly' | 'dev'), reused
+      # rather than invented. Unset before this change: every published build
+      # (this path and nightly.yml's, before its own fix) silently reported
+      # the `development` fallback channel instead — the exact
+      # "which Station am I running" ambiguity this issue exists to remove.
+      - name: Build CLI
+        env:
+          STATION_CLI_BUILD_CHANNEL: stable
+        run: cd packages/cli && npm run build --if-present
+
+      # Publishing requires an explicit manual dispatch. On push to main this
+      # action only versions (opening/updating the "chore: version packages"
+      # PR); it never publishes. Without this guard, an empty `.changeset/`
+      # makes changesets skip the Release-PR path and run `changeset publish`
+      # directly, so ANY push to main would publish every package whose version
+      # is not yet on npm — a first publish is irreversible (name burn, 72h
+      # unpublish window). Run the workflow manually to publish deliberately.
+      #
+      # A dispatch does NOT always publish. changesets/action only reaches its
+      # publish branch when `.changeset/` holds no pending changesets; while any
+      # are pending it opens/updates the version PR instead and publishes
+      # nothing. The full cycle is therefore: land changesets -> version PR ->
+      # merge it -> dispatch to publish. The summary step below names which of
+      # those two things a given run actually did, because both are green.
+      #
+      # PREREQUISITE for the dispatch path — each published package needs a
+      # trusted publisher configured on npmjs.com:
+      #
+      #   packages: @kontourai/station-contracts, @kontourai/station-sdk,
+      #             @kontourai/station-shared, @kontourai/station-cli
+      #   org/repo: kontourai/station
+      #   workflow: publish-packages.yml
+      #   allowed actions: must include `npm publish`. Per npm's trusted-publishers
+      #     doc, configurations created after 2026-05-20 require selecting at least
+      #     one action explicitly. `changeset publish` shells out to plain
+      #     `npm publish` (@changesets/cli 2.31.1), so a stage-only publisher would
+      #     exchange a token — the preflight would go green — and then refuse the
+      #     publish. The preflight cannot see this; only the label on npmjs.com can.
+      #
+      #   @kontourai/station-cli (station#4536) is a BRAND-NEW package name as
+      #   of the change that made it non-private: npmjs.com has no settings
+      #   page to configure a publisher on until the name exists on the
+      #   registry, so the "known limitation" noted below applies to it
+      #   directly. The first `workflow_dispatch` after that change merges
+      #   WILL fail the preflight loop below on this exact package — for
+      #   EVERY package in this run, not just the new one, because the loop
+      #   exits on the first failure — until a human completes the standard
+      #   npm trusted-publishing bootstrap for a first-ever publish:
+      #     1. Publish v0.6.0 once from an authenticated maintainer machine —
+      #        `npm run build:cli && cd packages/cli && npm publish --access
+      #        public` (requires an npm account with publish rights to the
+      #        @kontourai org and a classic auth token or `npm login`; this is
+      #        the one-time, manual, human-authenticated exception to "CI is
+      #        the only publisher"). The explicit `build:cli` first is not
+      #        optional: this repo's root `.npmrc` sets `ignore-scripts=true`
+      #        (dependency lifecycle code starts disabled by design), which
+      #        silently suppresses `packages/cli`'s `prepack` hook for any
+      #        `npm pack`/`publish` run from inside this checkout — `npm
+      #        publish` alone would exit 0 and pack a 3-file tarball with a
+      #        `bin` pointing at a `dist/station.mjs` that isn't in it,
+      #        publishing that broken version PERMANENTLY (npm never lets a
+      #        version number be reused). Verified live: deleting
+      #        `packages/cli/dist` and running `npm pack --dry-run` from
+      #        `packages/cli` in this checkout produces exactly that 3-file
+      #        tarball at exit 0, no error. CI's own "Build CLI" step above
+      #        does not depend on this hook at all — it runs `npm run build`
+      #        as an explicit workflow step, unaffected by `.npmrc` — so only
+      #        the MANUAL bootstrap path needed this correction.
+      #     2. On npmjs.com, the package's Settings -> Trusted Publisher:
+      #        add a GitHub Actions publisher for org/repo kontourai/station,
+      #        workflow filename publish-packages.yml, and select `npm
+      #        publish` under allowed actions (required for configurations
+      #        created after 2026-05-20).
+      #   Only after both steps does this preflight — and every subsequent
+      #   automated dispatch — go green for @kontourai/station-cli. This is
+      #   intentional fail-closed behavior, not a bug: merging the code change
+      #   never publishes anything (see the guard above), so the failure is
+      #   visible only on a deliberate dispatch, and it fails LOUD rather than
+      #   publishing unauthenticated or falling back to a token.
+      #
+      # THE WORKFLOW FIELD IS THE TOP-LEVEL CALLER — the entry in
+      # `.github/workflows/` that GitHub triggered, never a reusable workflow it
+      # calls via `uses:`. Naming a callee E404s every publish and the error does
+      # not say why. Source: observed across the Kontour org on 2026-07-24 (an
+      # npm OIDC publish through a release-please reusable workflow); npm's own
+      # docs specify only "the filename of your workflow" and do not address the
+      # reusable case, so treat this as field-observed, not documented. This file
+      # is top-level today; if the publish step ever moves into a reusable
+      # workflow, npm's configuration must still say `publish-packages.yml`.
+      #
+      # packages/connect and both examples/* are `private: true` and are
+      # skipped by `changeset publish`. packages/cli (station#4536) is public
+      # and IS published by this step — see the trusted-publisher bootstrap
+      # note above.
+      # `changeset publish` tags each published version with `git tag <t> -m <t>`
+      # (@changesets/git dist/changesets-git.cjs.js:51) — an ANNOTATED tag, which
+      # git refuses to create without a committer identity. changesets/action
+      # normally supplies one via its `setupGitUser` input, but that call returns
+      # early in `github-api` commit mode (changesets/action src/git.ts
+      # `setupUser`), and a persistent runner's service account is not guaranteed
+      # to carry a global identity. Set it explicitly and repo-locally so the
+      # tag step cannot depend on host state. Nothing is pushed with this
+      # identity: commits and tags both travel over the API below.
+      - name: Configure a git identity for changeset tags
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Create Release PR or Publish
+        id: changesets
+        # v2.1.1, NOT v1.x (station#3710): v1.9.0's API-commit path bundles
+        # @changesets/ghcommit v2, whose commitChangesFromRepo walks
+        # TREE+WORKDIR with isomorphic-git — over a working tree that at this
+        # point contains a full `npm run dependencies:ci` node_modules. That walk allocated
+        # without bound: it exhausted the 4GB default heap on every run since
+        # 2026-08-20, and after the 8GB mitigation it exhausted 8GB the same
+        # way (run 32596250214 — linear growth to the ceiling, not a working
+        # set). ghcommit v3 replaced the walk with `git diff`/`git ls-files`
+        # (changesets/ghcommit#108), and action v2 bundles ghcommit ^3.0.0.
+        # v2 pushes via the GitHub API BY DEFAULT (push-with-git-cli: false),
+        # which is the same no-persisted-credentials model commitMode:
+        # github-api gave us on v1 — the fleet checkout still persists none.
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          # v2 requires the token as an INPUT; the GITHUB_TOKEN env var is
+          # explicitly not a substitute (v2.0.0 release notes).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          publish-script: ${{ env.PUBLISH_RUN == 'true' && 'npm run publish-packages' || '' }}
+          version-script: npm run version-packages
+          pr-title: 'chore: version packages'
+          commit-message: 'chore: version packages'
+        # No step `env:` at all, deliberately — each absence below is a
+        # decision:
+        #
+        # No GITHUB_TOKEN: v2 takes the token through the `github-token`
+        # input and errors when an env var of that name disagrees with it —
+        # and nothing this step runs reads the env form (the changelog
+        # generator is `@changesets/cli/changelog`, not changelog-github).
+        #
+        # No NODE_OPTIONS heap raise any more either: the 8GB mitigation
+        # (#3715) proved the v1 path's allocation was unbounded — it ate the
+        # doubled ceiling exactly as it ate the default — and v2's ghcommit
+        # v3 replaces the allocating walk outright. If this step OOMs again,
+        # that is NEW evidence; reopen station#3710 rather than re-raising.
+        #
+        # No NPM_TOKEN / NODE_AUTH_TOKEN by design. This repo has no Actions
+        # secrets at all (`gh api repos/kontourai/station/actions/secrets`
+        # returns total_count 0), so `${{ secrets.NPM_TOKEN }}` had always
+        # expanded to the empty string — a phantom reference that made the
+        # workflow read as token-authenticated while authenticating as nobody.
+        # Authentication is the job's OIDC id-token, exchanged by npm with the
+        # registry against the trusted publishers named above.
+        #
+        # NPM_CONFIG_PROVENANCE is deliberately NOT set. npm generates
+        # provenance automatically under trusted publishing, but only behind two
+        # gates (npm/cli lib/utils/oidc.js:145-165): the id-token must report
+        # `repository_visibility === "public"`, AND `libaccess.getVisibility()`
+        # must report the npm package public. Setting the env var makes
+        # `config.isDefault('provenance')` false, which bypasses both and forces
+        # generation from this PRIVATE repo — npm documents provenance as
+        # unsupported for private repositories even when the package is public
+        # (github.blog changelog 2023-07-25, cited from npm's trusted-publishers
+        # doc). Leaving it unset is what makes provenance switch itself on once
+        # the repo AND the package are public; hardcoding either value cannot do
+        # that. NOT VERIFIED: whether the registry rejects such a publish or
+        # merely produces a useless attestation — the removal stands either way.
+
+      # Deploy ledger (station#4572), recorded only when this run actually
+      # published (`published == 'true'` — a version-only run or a
+      # pending-changesets dispatch records nothing, because nothing
+      # shipped). One entry per published package: each package@version is
+      # its own deploy with its own version identity. Only the FIRST entry
+      # of a same-sha batch carries the changelog slice — the appender gives
+      # same-sha companions an omission note referencing it, honest since
+      # there are no commits between them.
+      #
+      # published-packages is a COMPACT SINGLE-LINE JSON ARRAY (changesets
+      # action at the pinned SHA, action.yml + src/index.ts:94-97):
+      # [{"name":"@scope/pkg","version":"1.2.0"},...] — NOT newline
+      # name@version lines. It is parsed by
+      # scripts/lib/parse-published-packages.mjs, unit-tested against the
+      # real shape; text-splitting it here once fabricated a version field
+      # carrying quotes and the JSON tail while dropping every other
+      # package (this branch's review, HIGH-1). The ledger's own version
+      # validation also refuses such values.
+      #
+      # The commit-back (with bounded re-derive-and-retry against
+      # concurrent ledger writers) lives in
+      # scripts/lib/deploy-ledger-commit.mjs — checked-in text so it can be
+      # unit-tested; shell in YAML cannot be. Publish-first-then-ledger:
+      # this step runs after the changesets step, so its failure can never
+      # block the publish itself; a failure here reddens the job (an
+      # unrecorded ship must be visible) while the retain-artifact step
+      # below still uploads the recorded files. The sha is GITHUB_SHA: the
+      # dispatched main commit every published package was built from.
+      - name: Record published npm packages in the deploy ledger
+        if: env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
+        run: |
+          set -euo pipefail
+          specs="$(node scripts/lib/parse-published-packages.mjs "$PUBLISHED_PACKAGES")"
+          while IFS=$'\t' read -r name version; do
+            [ -n "$name" ] || continue
+            node scripts/lib/deploy-ledger-commit.mjs \
+              --commit-subject "docs(ledger): record stable-npm $name@$version from run $GITHUB_RUN_ID" \
+              --summary-line "- recorded: \`stable-npm $name@$version\` at \`$GITHUB_SHA\`" \
+              -- node scripts/deploy-ledger.mjs \
+                --channel stable-npm \
+                --version "$version" \
+                --sha "$GITHUB_SHA" \
+                --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+                --gate-result "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main ($GITHUB_SHA)" \
+                --github-repo "$GITHUB_REPOSITORY" \
+                --artifact "npm:$name@$version (dist-tag latest)"
+          done <<< "$specs"
+
+      # Durable belt-and-braces copy (station#2218: storage failure is not a
+      # verdict); the commit inside the record step above is the record of
+      # authority. Runs on failure too, so a push that never succeeded still
+      # leaves the recorded ledger files in an artifact.
+      - name: Retain this run's deploy ledger files
+        if: ${{ always() && env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deploy-ledger-npm-${{ github.run_id }}
+          path: |
+            docs/reference/deploy-ledger.json
+            docs/reference/deploy-ledger.md
+          if-no-files-found: error
+          retention-days: 14
+
+      # Several distinct things above exit green-looking, and they mean different
+      # things: a dispatch that published, a dispatch that versioned instead
+      # because changesets were pending, and a dispatch that had nothing to do
+      # because every version is already on npm. This step names which one
+      # happened — and, on a red job, says so instead of explaining an outcome
+      # that never occurred. It must never infer a cause it cannot see: `always()`
+      # also runs it when the step ahead failed or never started at all.
+      - name: Report what this run did
+        if: always()
+        env:
+          OUTCOME: ${{ steps.changesets.outcome }}
+          # v2 renamed the outputs to kebab-case; the old camelCase names
+          # would silently evaluate to empty strings here, and this report is
+          # exactly the surface that must not lie about what the run did.
+          PUBLISHED: ${{ steps.changesets.outputs.published }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
+          HAS_CHANGESETS: ${{ steps.changesets.outputs.has-changesets }}
+          PR_NUMBER: ${{ steps.changesets.outputs.pr-number }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Publish Packages"
+            echo
+            echo "- intent: ${PUBLISH_RUN} (workflow_dispatch means publish; a push to main only versions)"
+            echo "- changesets/action step: ${OUTCOME:-did not run}"
+            echo "- pending changesets: ${HAS_CHANGESETS:-unavailable}"
+
+            # Failure paths first, and they explain nothing. A red job's cause is
+            # in the failing step's own log; guessing here is how a preflight
+            # failure got reported as "merge the version PR".
+            if [ -z "${OUTCOME:-}" ]; then
+              echo "- outcome: **the publish step never ran** — an earlier step failed or was cancelled. Read that step's log; nothing below this line is known."
+            elif [ "$OUTCOME" = "failure" ] || [ "$OUTCOME" = "cancelled" ]; then
+              if [ "$OUTCOME" = "failure" ]; then verb="failed"; else verb="was cancelled"; fi
+              if [ "${PUBLISHED:-}" = "true" ]; then
+                echo "- outcome: **PARTIAL PUBLISH** — the step $verb after publishing ${PUBLISHED_PACKAGES:-<unavailable>}. Some packages are on npm and some are not; reconcile against the registry before retrying."
+              else
+                echo "- outcome: **the publish step $verb**. Read its log for the cause; no package is known to have been published."
+              fi
+            elif [ "${PUBLISHED:-}" = "true" ]; then
+              echo "- outcome: **published** ${PUBLISHED_PACKAGES:-<unavailable>}"
+            elif [ "${PUBLISH_RUN}" != "true" ]; then
+              echo "- outcome: versioned only${PR_NUMBER:+ (version PR #$PR_NUMBER)}. A push to main never publishes; dispatch this workflow to publish."
+            elif [ "${HAS_CHANGESETS:-}" = "true" ]; then
+              echo "- outcome: **nothing was published** — changesets are still pending, so the run opened or updated the version PR${PR_NUMBER:+ (#$PR_NUMBER)} instead. Merge it, then dispatch again."
+            elif [ "${HAS_CHANGESETS:-}" = "false" ]; then
+              echo "- outcome: **nothing was published** — no changesets are pending, so every workspace version already exists on npm. This is the expected steady state after a successful publish."
+            else
+              echo "- outcome: **nothing was published**, and this step cannot tell why: the changesets step reported no \`has-changesets\` output. Read its log."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"

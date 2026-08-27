@@ -1,0 +1,52 @@
+{
+  "name": "@kontourai/station-cli",
+  "version": "0.6.0",
+  "description": "Command-line client for Station hosts: chat, agents, sessions, and fleet management",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "bin": {
+    "station": "./dist/station.mjs"
+  },
+  "files": [
+    "dist/station.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node esbuild.config.mjs && node ../../scripts/write-dist-stamp.mjs",
+    "prepack": "node esbuild.config.mjs"
+  },
+  "author": "Station",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/station.git",
+    "directory": "packages/cli"
+  },
+  "peerDependencies": {
+    "esbuild": "^0.28.1"
+  },
+  "peerDependenciesMeta": {
+    "esbuild": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@kontourai/station-connect": "^0.5.1",
+    "@kontourai/station-contracts": "^0.7.0",
+    "@kontourai/station-sdk": "^0.7.0",
+    "@kontourai/station-shared": "^0.7.0",
+    "commander": "^11.1.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.23.12"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "1.3.0",
+    "qrcode": "^1.5.4"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "station.channel-member-key/v1",
+  "memberId": "member-alex-2",
+  "keyId": "key-alex-identity",
+  "publicKey": "bWVtYmVyLWlkZW50aXR5LXB1YmxpYw==",
+  "algorithm": "ed25519",
+  "enrolledAt": "2026-07-01T00:00:00.000Z",
+  "previousMemberId": "member-alex"
+}

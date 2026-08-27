@@ -1,0 +1,16 @@
+{
+  "_note": "repo-guardrails remains advisory: it currently passes with 104 baselined violations, but no Station lane consumes its exit status (station#2299). Promoting it to enforced is a separate decision that also depends on the station#2765 burn-down.",
+  "repo-governance": "enforced",
+  "verification-policy": "enforced",
+  "repo-guardrails": "advisory",
+  "architecture-boundaries": "candidate",
+  "ui-data-access": "candidate",
+  "runtime-contracts": "candidate",
+  "retired-surfaces": "candidate",
+  "migration-tombstones": "candidate",
+  "connected-agents": "enforced",
+  "static-verification": "enforced",
+  "sdk-builds": "enforced",
+  "app-builds": "enforced",
+  "fallow-advisory": "advisory"
+}

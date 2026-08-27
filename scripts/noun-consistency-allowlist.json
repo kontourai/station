@@ -1,0 +1,20 @@
+[
+  {
+    "file": "src-ui/src/components/conversation-stats/ConversationStatsModal.tsx",
+    "line": 314,
+    "snippet": "Prompt total",
+    "reason": "LLM-prompt sense (station#4196 cache-honest totals): the tokens actually put in front of the model (input + cache read + cache write). A token-accounting term of art, not the retired Prompts/Skills authoring noun the #190 rename removed."
+  },
+  {
+    "file": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
+    "line": 129,
+    "snippet": "Prompt Total",
+    "reason": "LLM-prompt sense (station#4196 cache-honest model drilldown): the declared-disjoint cache-inclusive input total, not the retired Prompts/Skills authoring noun."
+  },
+  {
+    "file": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
+    "line": 162,
+    "snippet": "Prompt Total/Turn",
+    "reason": "LLM-prompt sense (station#4196 cache-honest model drilldown): the per-turn form of the declared-disjoint cache-inclusive input total, not the retired Prompts/Skills authoring noun."
+  }
+]

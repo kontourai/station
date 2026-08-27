@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson1222@gmail.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-08-01T06:19:51.050Z",
+  "repoStandardsHash": "sha256:4064246a9e27908811dcf7ebab706339350ebe988abd5f39d236b92232521773",
+  "repoMapHash": "sha256:1ab8f83f6775d14215863cb9c1859acd5088a647e171eb83f5d18f707a228b55",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6",
+  "validUntilDays": 90,
+  "notes": "Approve the Station test-feedback architecture: executable selector-first policy, host-wide coordinated verification, repo-map evidence routing, bounded receipts, and platform-specific verification boundaries.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-07-31T21-13-13-740Z-0af11f2052d6",
+    "approvalRef": "kontourai/station#1363",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "97631524ece4832594179230d65449720560ee102ed1a73ed4ad462a41964e03",
+        "validUntil": "2026-10-30T06:19:51.050Z"
+      },
+      "createdAt": "2026-08-01T06:19:51.050Z",
+      "updatedAt": "2026-08-01T06:19:51.050Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048",
+      "claimId": "veritas.attestation.policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Approve the Station test-feedback architecture: executable selector-first policy, host-wide coordinated verification, repo-map evidence routing, bounded receipts, and platform-specific verification boundaries.",
+      "observedAt": "2026-08-01T06:19:51.050Z",
+      "collectedBy": "brian",
+      "integrityRef": "97631524ece4832594179230d65449720560ee102ed1a73ed4ad462a41964e03",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-08-01T06:19:51.050Z",
+        "validUntil": "2026-10-30T06:19:51.050Z",
+        "contentHash": "97631524ece4832594179230d65449720560ee102ed1a73ed4ad462a41964e03"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048.verified",
+      "claimId": "veritas.attestation.policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-08-01T06-19-51-050Z-54a62d6a9048"
+      ],
+      "createdAt": "2026-08-01T06:19:51.050Z",
+      "verifiedAt": "2026-08-01T06:19:51.050Z"
+    }
+  }
+}

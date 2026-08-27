@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "station.channel-proposal/v1",
+  "proposalId": "prop-a07",
+  "channelId": "chan-design",
+  "author": {
+    "memberId": "member-alex",
+    "deviceId": "device-laptop",
+    "keyId": "key-laptop-1"
+  },
+  "kind": "message",
+  "baseEpoch": 3,
+  "happenedAt": "2026-08-02T09:00:00.000Z",
+  "body": {
+    "text": "the log is the product"
+  },
+  "bodyRef": {
+    "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}

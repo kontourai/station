@@ -1,0 +1,6 @@
+{
+  "ceilings": {},
+  "total": 0,
+  "recordedAt": "2026-08-24T10:13:36Z",
+  "recordedBy": "station#3932 structurally resolved the two reviewed dynamic-role false positives: ResponsiveDialogSurface now renders literal dialog and alertdialog branches over one shared panel-props contract. Both roles retain aria-modal, focus, keyboard containment, Escape, styles, and responsive geometry. The Biome accessibility ceiling is now zero, so any new violation fails. Counts are measured over the lint:check source roots only, never generated output or signed attestations."
+}

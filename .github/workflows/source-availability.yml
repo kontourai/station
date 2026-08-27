@@ -1,0 +1,22 @@
+name: Source availability
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+jobs:
+  project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 257
+      - name: Project source availability
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/source-availability-driver.mjs

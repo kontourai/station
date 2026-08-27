@@ -1,0 +1,1643 @@
+/* ── Project Page ──────────────────────────────────────────────── */
+
+.project-page {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.project-page__inner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2.5rem 2rem 3rem;
+}
+
+/* ── Header ─────────────────────────────────────────────────────── */
+
+.project-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.project-page__identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
+}
+
+.project-page__identity-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-page__icon {
+  font-size: var(--text-6xl);
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.project-page__name {
+  font-size: var(--text-4xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.project-page__desc {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+
+.project-page__git-badge .git-badge {
+  font-size: var(--text-sm);
+  margin-top: 4px;
+}
+
+/* ── Git Section ── */
+.project-page__git-section {
+  margin-bottom: 24px;
+}
+.project-page__git-section--empty {
+  opacity: 0.75;
+}
+.project-page__git-section-muted {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+.project-page__git-section-dirty {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+.project-page__git-section-remote {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+.project-page__git-log {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.project-page__git-commit {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  font-size: var(--text-base);
+}
+.project-page__git-sha {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--accent-primary);
+  opacity: 0.8;
+}
+.project-page__git-msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+.project-page__git-meta {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.project-page__settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.project-page__settings-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* ── Working Directory (in header) ──────────────────────────────── */
+
+.project-page__dir-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  min-width: 0;
+}
+
+.project-page__dir-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.project-page__dir-display:hover .project-page__dir-edit-icon {
+  color: var(--text-primary);
+}
+
+.project-page__dir-display:hover .project-page__dir-path {
+  color: var(--text-primary);
+}
+
+.project-page__dir-path {
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  transition: color 0.15s;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Middle/parent truncates; the leaf never does. rtl puts the ellipsis at the
+   START of the parent; the inner ltr isolate keeps character order (#304 —
+   same treatment as .chat-dock__project-dir-parent). */
+.project-page__dir-parent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.project-page__dir-parent-text {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.project-page__dir-leaf {
+  flex-shrink: 0;
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+
+.project-page__dir-path--unset {
+  font-style: italic;
+}
+
+.project-page__dir-edit-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.project-page__dir-copy {
+  background: none;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.project-page__dir-copy:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.project-page__dir-copy--failed {
+  border-color: var(--status-error);
+  color: var(--status-error);
+}
+
+/* Visually-hidden live region carrying the copy outcome — the button's own
+   accessible name is fixed, so its label change announces nothing. Same clip
+   technique as `.background-tasks-banner__sr-status` in index.css. */
+.project-page__dir-copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.project-page__dir-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.project-page__dir-input {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.project-page__dir-save,
+.project-page__dir-cancel {
+  background: none;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: var(--text-base);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+  flex-shrink: 0;
+}
+
+.project-page__dir-save:hover {
+  border-color: var(--success-text, #22c55e);
+  color: var(--success-text, #22c55e);
+}
+
+.project-page__dir-cancel:hover {
+  border-color: var(--error-text);
+  color: var(--error-text);
+}
+
+/* ── Shared section styles ──────────────────────────────────────── */
+
+.project-page__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.project-page__section-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.project-page__section-explainer,
+.project-page__subsection-label {
+  color: var(--text-muted);
+}
+
+.project-page__section-explainer {
+  margin: -4px 0 16px;
+  font-size: var(--text-sm);
+}
+
+.project-page__pane-subsection {
+  margin-top: 20px;
+}
+
+.project-page__subsection-label {
+  margin-bottom: 8px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.project-page__section-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.project-page__add-btn {
+  background: none;
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.project-page__add-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.project-page__add-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.project-page__add-btn--danger {
+  color: var(--error-text);
+  border-color: var(--error-text);
+}
+
+.project-page__add-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--error-text);
+  color: var(--error-text);
+}
+
+.project-page__add-btn--primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.project-page__add-btn--primary:hover {
+  opacity: 0.9;
+  border-color: var(--accent-primary);
+  color: #fff;
+}
+
+/* ── Layout Cards ───────────────────────────────────────────────── */
+
+.project-page__layouts {
+  margin-bottom: 2rem;
+}
+
+.project-page__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.project-page__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
+  text-align: left;
+  color: inherit;
+}
+
+.project-page__card:hover {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 4%, var(--bg-secondary));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.project-page__card-icon {
+  font-size: var(--text-5xl);
+  line-height: 1;
+}
+.project-page__card-name {
+  font-size: var(--text-15);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.project-page__card-desc {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.project-page__card-type {
+  font-size: var(--text-xs);
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  align-self: flex-start;
+}
+
+.project-page__empty-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  border: 2px dashed var(--border-secondary);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+  grid-column: 1 / -1;
+}
+
+.project-page__empty-card:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* ── Tasks & Relation Graph ─────────────────────────────────────── */
+
+.project-page__tasks {
+  margin-bottom: 2rem;
+}
+
+.project-page__task-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.project-page__task-input {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  outline: none;
+}
+
+.project-page__task-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.project-page__task-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr);
+  gap: 12px;
+}
+
+.project-page__task-list,
+.project-page__task-detail {
+  min-height: 180px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.project-page__task-list {
+  overflow: hidden;
+}
+
+.project-page__task-row {
+  width: 100%;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border-primary);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-page__task-row:hover,
+.project-page__task-row--active {
+  background: var(--bg-tertiary);
+}
+
+.project-page__task-row:focus-visible,
+.project-page__task-detail-actions .project-page__add-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.project-page__task-row-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-page__task-row-meta,
+.project-page__task-detail-meta {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.project-page__task-detail {
+  padding: 14px;
+}
+
+.project-page__task-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.project-page__task-detail-title {
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.project-page__task-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-page__task-binding {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0 0 12px;
+}
+
+.project-page__task-binding > div {
+  min-width: 0;
+}
+
+.project-page__task-binding dt {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.project-page__task-binding dd {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.project-page__relation-timeline {
+  display: grid;
+  gap: 8px;
+}
+
+.project-page__relation-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.project-page__relation-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+}
+
+.project-page__task-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+
+.project-page__task-row-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 760px) {
+  .project-page__task-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-page__task-binding {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Knowledge & Documents ──────────────────────────────────────── */
+
+.project-page__knowledge {
+  margin-bottom: 2rem;
+}
+
+.project-page__knowledge-header {
+  margin-bottom: 14px;
+}
+
+.project-page__knowledge-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.project-page__knowledge-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-page__knowledge-stats {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+
+/* ── Namespace tabs ── */
+
+.project-page__ns-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.project-page__ns-tab {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.project-page__ns-tab:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.project-page__ns-tab--active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+/* ── Rules editor ── */
+
+.project-page__rules-editor {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.project-page__rules-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.project-page__rules-hint code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.project-page__rules-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.project-page__rules-textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+/* ── Namespace config bar ── */
+
+.project-page__ns-config {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  font-size: var(--text-sm);
+}
+
+.project-page__ns-config-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.project-page__ns-config-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.project-page__ns-config-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.project-page__ns-config-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.project-page__scan-result {
+  font-size: var(--text-base);
+  color: var(--success-text, #22c55e);
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--success-text, #22c55e) 8%, transparent);
+  border-radius: 5px;
+}
+
+/* ── Clickable document rows ── */
+
+.project-page__doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.project-page__doc:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ── Document Viewer Modal ── */
+
+.project-page__doc-viewer {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.project-page__doc-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.project-page__doc-viewer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.project-page__doc-viewer-icon {
+  font-size: var(--text-xl);
+  flex-shrink: 0;
+}
+
+.project-page__doc-viewer-name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-page__doc-viewer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+.project-page__doc-viewer-content {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.project-page__doc-viewer-markdown {
+  font-size: var(--text-md);
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.project-page__doc-viewer-markdown h1,
+.project-page__doc-viewer-markdown h2,
+.project-page__doc-viewer-markdown h3 {
+  margin: 1em 0 0.5em;
+  color: var(--text-primary);
+}
+
+.project-page__doc-viewer-markdown h1 {
+  font-size: 1.4em;
+}
+.project-page__doc-viewer-markdown h2 {
+  font-size: 1.2em;
+}
+.project-page__doc-viewer-markdown h3 {
+  font-size: 1.05em;
+}
+
+.project-page__doc-viewer-markdown p {
+  margin: 0.5em 0;
+}
+
+.project-page__doc-viewer-markdown ul,
+.project-page__doc-viewer-markdown ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.project-page__doc-viewer-markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+}
+
+.project-page__doc-viewer-markdown pre {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  overflow-x: auto;
+}
+
+.project-page__doc-viewer-markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.project-page__doc-viewer-empty {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 32px 0;
+}
+
+/* ── Collapsible document groups ────────────────────────────────── */
+
+.project-page__doc-group {
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.project-page__doc-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: var(--text-md);
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.project-page__doc-group-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.project-page__doc-group-chevron {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.project-page__doc-group-icon {
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+}
+
+.project-page__doc-group-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.project-page__doc-group-count {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.project-page__doc-group-check {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.project-page__doc-group-body {
+  border-top: 1px solid var(--border-primary);
+  padding: 8px;
+}
+
+.project-page__doc-group-meta {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding: 4px 8px 8px;
+  font-family: var(--font-mono);
+}
+
+/* ── Drop zone ──────────────────────────────────────────────────── */
+
+.project-page__dropzone {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 2px dashed var(--border-secondary);
+  border-radius: 10px;
+  padding: 24px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  margin-bottom: 6px;
+}
+
+.project-page__dropzone:hover {
+  border-color: var(--accent-primary);
+}
+
+.project-page__dropzone--active {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-primary));
+}
+
+.project-page__dropzone-icon {
+  font-size: var(--text-5xl);
+  margin-bottom: 6px;
+}
+.project-page__dropzone-text {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+}
+.project-page__dropzone--active .project-page__dropzone-text {
+  color: var(--accent-primary);
+}
+.project-page__dropzone-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+/* ── Document list items ────────────────────────────────────────── */
+
+.project-page__doc-check {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.project-page__doc-name {
+  flex: 1;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.project-page__doc-badge {
+  font-size: var(--text-xs);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.project-page__doc-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xl);
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.project-page__doc:hover .project-page__doc-remove {
+  opacity: 1;
+}
+
+.project-page__doc-remove:hover {
+  color: var(--error-text);
+}
+
+/* ── Scan confirmation dialog ───────────────────────────────────── */
+
+.project-page__scan-warning {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent-yellow, #eab308) 8%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--accent-yellow, #eab308) 25%, transparent);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.project-page__scan-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+
+.project-page__scan-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.project-page__scan-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.project-page__scan-hint {
+  font-weight: 400;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.project-page__scan-input {
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.project-page__scan-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.project-page__scan-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Recent Conversations ───────────────────────────────────────── */
+
+.project-page__conversations {
+  margin-bottom: 2rem;
+}
+
+.project-page__conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-page__conversation-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+  text-align: left;
+  color: inherit;
+  width: 100%;
+}
+
+.project-page__conversation-item:hover {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 4%, var(--bg-secondary));
+}
+
+.project-page__conversation-title {
+  flex: 1;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-page__conversation-agent {
+  font-size: var(--text-xs);
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.project-page__conversation-time {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ── Live work (station#3202) ───────────────────────────────────────
+   What is in flight in this project, above everything else on the page.
+
+   The two lanes must be tellable apart WITHOUT reading: each row carries a
+   left rail whose weight and colour come from its lane, a state chip that is
+   filled for a request that is yours and a quiet outline for work merely in
+   flight, and its own call to action. Every value here is an existing token —
+   no new colours, no gradients. */
+
+.project-page__live-work {
+  margin-bottom: 2rem;
+}
+
+.project-page__live-work-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.project-page__live-work-eyebrow {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* The lane that is owed something speaks with the accent; the lane that is
+   merely busy stays quiet. This is the first of the three at-a-glance
+   signals. */
+.project-page__live-work-lane--needsYou .project-page__live-work-eyebrow {
+  color: var(--accent-primary);
+}
+
+.project-page__live-work-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-page__live-work-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--border-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.project-page__live-work-presence {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--event-agent-health);
+  align-self: start;
+  margin-top: 0.45rem;
+}
+
+.project-page__live-work-working-on {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.project-page__live-work-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--accent-primary);
+  font-size: var(--text-xs);
+}
+
+.project-page__live-work-row--room {
+  cursor: default;
+}
+
+.project-page__live-work-row-actions {
+  flex: 1 0 100%;
+  justify-content: flex-end;
+}
+
+.project-page__live-work-row-actions button {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.project-page__live-work-row-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.project-page__live-work-row:hover {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 4%, var(--bg-secondary));
+}
+
+.project-page__live-work-row:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.project-page__live-work-lane--needsYou .project-page__live-work-row {
+  border-left-color: var(--accent-primary);
+}
+
+.project-page__live-work-icon {
+  flex: 0 0 auto;
+}
+
+/* `1 1 12rem` rather than `1 1 0`: the body keeps a readable minimum before
+   the chip and the call to action wrap below it, which is what happens at
+   390px. `min-width: 0` is what lets the title's ellipsis engage instead of
+   the row growing to fit a long one. */
+.project-page__live-work-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.project-page__live-work-title {
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-page__live-work-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-page__live-work-trailing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.project-page__live-work-state {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.project-page__live-work-lane--needsYou .project-page__live-work-state {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+/* The row IS the control, so this is a label on it rather than a nested
+   button — it must not be a second tab stop or a button inside a button. It
+   is `aria-hidden` in the markup for the same reason: the row's own name
+   already says what it is. */
+.project-page__live-work-cta {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.project-page__live-work-row:hover .project-page__live-work-cta {
+  color: var(--accent-primary);
+}
+
+.project-page__live-work-lane--needsYou .project-page__live-work-cta {
+  color: var(--accent-primary);
+}
+
+/* `-actions` is the vocabulary index.css's shared mobile rule and
+   responsive-surface-ratchet.mjs both key on: the row wraps and its direct
+   controls take the 44px floor under the mobile breakpoint automatically. */
+.project-page__live-work-actions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  /* Keep the whole row tappable. Nothing else changes: `flex: 1 1 12rem` on
+     the body already keeps the icon and the title on one line at 390px and
+     lets only the chip and the call to action drop below, and the title's own
+     ellipsis (with `min-width: 0`) clamps a long one instead of widening the
+     page. */
+  .project-page__live-work-row {
+    min-height: 44px;
+  }
+
+  .project-page__live-work-row-actions button {
+    min-height: 44px;
+  }
+}
+
+/* ── Modals ─────────────────────────────────────────────────────── */
+
+.project-page__modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--layer-dialog);
+}
+
+.project-page__modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.project-page__modal-title {
+  font-size: var(--text-15);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.project-page__modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.project-page__modal-description {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+
+.project-page__modal-cancel {
+  margin-top: 14px;
+  text-align: right;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .project-page__doc-viewer-header {
+    padding: 8px 12px;
+  }
+
+  .project-page__settings-btn,
+  .project-page__dir-display,
+  .project-page__dir-copy,
+  .project-page__add-btn,
+  .project-page__ns-tab,
+  .project-page__doc-group-header {
+    min-height: 44px;
+  }
+
+  .project-page__add-btn,
+  .project-page__ns-tab {
+    min-width: 44px;
+  }
+
+  /* Tighter gutters so content does not overflow narrow screens */
+  .project-page__inner {
+    padding: 1.5rem 1rem 2rem;
+  }
+
+  /* Header stays a row: Settings collapses to an icon-only button pinned
+     top-right beside the identity block instead of stacking below it. */
+  .project-page__header {
+    gap: 12px;
+  }
+
+  .project-page__settings-btn {
+    min-width: 44px;
+    padding: 6px;
+    margin-top: 0;
+  }
+
+  .project-page__settings-label {
+    display: none;
+  }
+
+  /* Single-column cards: drop the 240px min so nothing forces horizontal scroll */
+  .project-page__cards {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stack git commit rows; let the sha/meta wrap under the message */
+  .project-page__git-commit {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 4px;
+  }
+  .project-page__git-meta {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+
+  /* Stack the chat CTA so the button is full-width and tappable */
+  .project-page__chat-cta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .project-page__chat-cta-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Namespace config bar: stack label/input/checkbox vertically */
+  .project-page__ns-config {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Keep the conversation rows comfortably tappable */
+  .project-page__conversation-item {
+    min-height: 44px;
+  }
+}
+
+.project-page__chat-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-elevated, var(--bg-secondary));
+  border: 1px solid var(--accent-primary);
+  border-radius: 10px;
+}
+
+.project-page__chat-cta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.project-page__chat-cta-text strong {
+  color: var(--text-primary);
+  font-size: var(--text-md);
+}
+
+.project-page__chat-cta-text span {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.project-page__chat-cta-btn {
+  flex-shrink: 0;
+  padding: 0.55rem 1.1rem;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 8px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.project-page__chat-cta-btn:hover {
+  background: var(--accent-hover-fill);
+}

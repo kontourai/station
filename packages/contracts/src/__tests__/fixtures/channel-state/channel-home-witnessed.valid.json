@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "station.channel-home/v1",
+  "channelId": "chan-design",
+  "epoch": 3,
+  "homeRef": "station://alex-desktop",
+  "leaseRef": "lease-chan-design-epoch-3",
+  "leaseExpiresAt": "2026-08-02T09:05:00.000Z",
+  "witnessRef": "witness://kontour-cloud",
+  "policyRevision": "policy-rev-17",
+  "previousEpochCloseCheckpoint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+}

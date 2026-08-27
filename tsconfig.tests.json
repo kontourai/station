@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src-server/**/*",
+    "src-shared/**/*",
+    "scripts/project-resource-shadow-report.ts",
+    "scripts/__tests__/project-resource-shadow-report.test.ts"
+  ],
+  "exclude": ["node_modules", "dist-server"]
+}

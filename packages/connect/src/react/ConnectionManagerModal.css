@@ -1,0 +1,643 @@
+/* Connection manager modal. Ships with @kontourai/station-connect and themes
+   against the host app's tokens, so every var() carries a standalone fallback. */
+
+.station-connect-modal-overlay {
+  --responsive-visual-viewport-height: 100dvh;
+  --responsive-visual-viewport-top: 0px;
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-dialog, 10000);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(7, 10, 16, 0.68);
+  backdrop-filter: blur(10px);
+}
+
+.station-connect-modal-panel {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-secondary, #1a1a1a) 94%, white 6%),
+    var(--bg-secondary, #1a1a1a)
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--border-primary, #333) 82%, white 18%);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #e5e5e5);
+}
+
+.station-connect-modal-panel :focus-visible {
+  outline: 2px solid var(--accent-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Header */
+
+.station-connect-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.station-connect-modal-title {
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.station-connect-modal-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Mirrors src-ui's .responsive-dialog-close contract (PR #575): 44px target,
+   SVG glyph, radius-md, border/hover treatment. Duplicated here because this
+   package ships independently and must not import src-ui. */
+.station-connect-modal-close {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-secondary, #1a1a1a);
+  color: var(--text-secondary, #999);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast, 0.15s) ease,
+    color var(--motion-fast, 0.15s) ease,
+    border-color var(--motion-fast, 0.15s) ease;
+}
+
+.station-connect-modal-close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.station-connect-modal-close:hover {
+  color: var(--text-primary, #e5e5e5);
+  border-color: var(--accent-primary, #3b82f6);
+  background: var(--bg-hover, #252525);
+}
+
+/* Connection list */
+
+.station-connect-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.station-connect-empty {
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+}
+
+.station-connect-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px 10px 14px;
+  background: var(--bg-primary, #0a0a0a);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast, 0.15s) ease,
+    background var(--motion-fast, 0.15s) ease;
+}
+
+/* The row-selection control is a sibling of the row's secondary controls, so
+   keyboard users get the native button behavior without nesting buttons. */
+.station-connect-row__select {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.station-connect-row__select:focus-visible {
+  outline: 2px solid var(--accent-primary, #3b82f6);
+  outline-offset: -2px;
+}
+
+.station-connect-row__status {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.station-connect-row:hover {
+  border-color: color-mix(in srgb, var(--border-primary, #333) 55%, white 45%);
+}
+
+.station-connect-row--active {
+  border-color: var(--accent-primary, #3b82f6);
+  background: color-mix(
+    in srgb,
+    var(--accent-primary, #3b82f6) 7%,
+    var(--bg-primary, #0a0a0a)
+  );
+}
+
+.station-connect-row__body {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.station-connect-row__body button {
+  pointer-events: auto;
+}
+
+.station-connect-row__name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.station-connect-row__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.station-connect-chip {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-primary, #3b82f6);
+  background: color-mix(
+    in srgb,
+    var(--accent-primary, #3b82f6) 15%,
+    transparent
+  );
+}
+
+.station-connect-row__url {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+}
+
+.station-connect-row__meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+}
+
+.station-connect-row__meta--warning {
+  margin-top: 4px;
+  color: var(--warning-text, #fbbf24);
+}
+
+/* The desktop-supervised local server, listed while it is not running: it is
+   not a selectable base, so the row is inert and shows its lifecycle state in
+   place of a URL. */
+.station-connect-row--inactive {
+  cursor: default;
+}
+
+.station-connect-row--inactive:hover {
+  border-color: var(--border-primary, #333);
+}
+
+.station-connect-row__state {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+}
+
+.station-connect-row__actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  opacity: 0.6;
+  transition: opacity var(--motion-fast, 0.15s) ease;
+}
+
+.station-connect-row:hover .station-connect-row__actions,
+.station-connect-row:focus-within .station-connect-row__actions {
+  opacity: 1;
+}
+
+/* Paired devices */
+
+/*
+ * A row that presents a record rather than a target. Device rows carry their
+ * own controls and selecting one means nothing, so they drop the pointer and
+ * hover affordances the connection rows use to say "click me".
+ */
+.station-connect-row--static {
+  cursor: default;
+  align-items: flex-start;
+  /* Actions drop to their own line before they squeeze below a tap target. */
+  flex-wrap: wrap;
+}
+
+.station-connect-row--static:hover {
+  border-color: var(--border-primary, #333);
+}
+
+/*
+ * Device rows carry their controls permanently rather than on hover: a revoke
+ * button that appears only under a pointer is unreachable on a phone, which is
+ * the surface this list mostly exists for.
+ */
+.station-connect-row__actions--static {
+  align-self: center;
+  gap: 6px;
+  opacity: 1;
+}
+
+/* The row's own gap already spaces these; the chip's own margin would double it. */
+.station-connect-row__actions--static .station-connect-btn--inline {
+  margin-left: 0;
+}
+
+.station-connect-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #999);
+}
+
+.station-connect-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.station-connect-panel__intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary, #999);
+}
+
+/* Shared controls */
+
+.station-connect-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-secondary, #999);
+  cursor: pointer;
+  transition:
+    color var(--motion-fast, 0.15s) ease,
+    background var(--motion-fast, 0.15s) ease;
+}
+
+.station-connect-icon-btn:hover {
+  color: var(--text-primary, #e5e5e5);
+  background: color-mix(in srgb, var(--text-primary, #e5e5e5) 8%, transparent);
+}
+
+.station-connect-icon-btn--danger:hover {
+  color: var(--error-text, #ef4444);
+  background: color-mix(in srgb, var(--error-text, #ef4444) 12%, transparent);
+}
+
+.station-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 20px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast, 0.15s) ease,
+    border-color var(--motion-fast, 0.15s) ease,
+    color var(--motion-fast, 0.15s) ease;
+}
+
+.station-connect-btn--primary {
+  border: none;
+  background: var(--accent-primary, #3b82f6);
+  color: var(--text-on-accent);
+}
+
+.station-connect-btn--primary:hover:not(:disabled) {
+  background: var(
+    --accent-hover-fill,
+    color-mix(in srgb, var(--accent-primary, #3b82f6) 86%, white 14%)
+  );
+}
+
+.station-connect-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.station-connect-btn--secondary {
+  border: 1px solid var(--border-primary, #333);
+  background: transparent;
+  color: var(--text-primary, #e5e5e5);
+}
+
+.station-connect-btn--secondary:hover {
+  border-color: color-mix(in srgb, var(--border-primary, #333) 55%, white 45%);
+  background: color-mix(in srgb, var(--text-primary, #e5e5e5) 5%, transparent);
+}
+
+.station-connect-btn--secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.station-connect-btn--danger {
+  border: 1px solid var(--error-text, #ef4444);
+  background: transparent;
+  color: var(--error-text, #ef4444);
+}
+
+.station-connect-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error-text, #ef4444) 12%, transparent);
+}
+
+.station-connect-btn--danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.station-connect-btn--inline {
+  min-height: 32px;
+  margin-left: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.station-connect-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.station-connect-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--bg-primary, #0a0a0a);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  color: var(--text-primary, #e5e5e5);
+  outline: none;
+  transition: border-color var(--motion-fast, 0.15s) ease;
+}
+
+.station-connect-input:focus {
+  border-color: var(--accent-primary, #3b82f6);
+}
+
+/* Inline edit card */
+
+.station-connect-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-primary, #0a0a0a);
+  border: 1px solid var(--accent-primary, #3b82f6);
+  border-radius: 10px;
+}
+
+.station-connect-edit__label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+}
+
+.station-connect-edit__hint {
+  color: var(--text-secondary, #999);
+  line-height: 1.45;
+}
+
+.station-connect-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary, #999);
+}
+
+/* Blocking client/server version verdict, shown before a host is committed */
+
+.station-connect-compat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid
+    color-mix(in srgb, var(--error-text, #f87171) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(
+    in srgb,
+    var(--error-text, #f87171) 12%,
+    var(--bg-primary, #111827)
+  );
+}
+
+.station-connect-compat__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #f9fafb);
+}
+
+.station-connect-compat__reason {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary, #999);
+}
+
+/* Simple stacked form (manual add) */
+
+.station-connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Footer actions */
+
+.station-connect-footer {
+  display: grid;
+  gap: 8px;
+}
+
+.station-connect-footer__devices {
+  min-height: 44px;
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, #999);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.station-connect-footer__devices:hover {
+  color: var(--text-primary, #e5e5e5);
+}
+
+/* Mobile: pin to the visual viewport so the on-screen keyboard cannot hide
+   the dialog, and honor safe-area insets. */
+@media (max-width: 768px) {
+  .station-connect-modal-overlay {
+    top: var(--responsive-visual-viewport-top);
+    bottom: auto;
+    height: var(--responsive-visual-viewport-height);
+    box-sizing: border-box;
+    padding: max(8px, var(--safe-top, env(safe-area-inset-top, 0px)))
+      max(8px, var(--safe-right, env(safe-area-inset-right, 0px)))
+      max(8px, var(--safe-bottom, env(safe-area-inset-bottom, 0px)))
+      max(8px, var(--safe-left, env(safe-area-inset-left, 0px)));
+    overflow: hidden;
+  }
+
+  .station-connect-modal-panel {
+    max-height: 100%;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Android audit: every touch target holds the 44px floor on mobile,
+     including the inline endpoint-verify affordance that is compact on
+     pointer devices. */
+  .station-connect-btn--inline {
+    min-height: 44px;
+  }
+
+  .station-connect-row__actions {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-connect-modal-overlay,
+  .station-connect-modal-panel {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* station#3816 — the inline device scope editor. Full-width beneath the row
+   body (the row wraps), quiet like the rest of this ledger: only the
+   Elevated header carries emphasis, because elevation is the one decision
+   here that deserves a second look. */
+.station-connect-scope-editor {
+  border-top: 1px solid var(--border-primary, #333);
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 10px;
+}
+
+.station-connect-scope-editor__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.station-connect-scope-editor__option {
+  align-items: baseline;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.station-connect-scope-editor__detail {
+  display: block;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.station-connect-scope-editor__elevated-header {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.station-connect-scope-editor__notice {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.station-connect-scope-editor__elevated-tag {
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+  opacity: 0.75;
+  padding: 0 4px;
+  text-transform: uppercase;
+}

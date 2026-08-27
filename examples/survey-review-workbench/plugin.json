@@ -1,0 +1,11 @@
+{
+  "name": "survey-review-workbench",
+  "version": "1.0.0",
+  "displayName": "Survey Review Workbench",
+  "description": "Kontour Survey's Review Workbench as a Station layout: human review of extracted candidates with per-project persisted sessions and projection to a Surface trust bundle.",
+  "entrypoint": "src/index.tsx",
+  "serverModule": "./server/plugin.mjs",
+  "capabilities": ["navigation"],
+  "permissions": ["navigation.dock"],
+  "layout": { "slug": "survey-review", "source": "./layout.json" }
+}

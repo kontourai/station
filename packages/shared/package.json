@@ -1,0 +1,86 @@
+{
+  "name": "@kontourai/station-shared",
+  "version": "0.7.0",
+  "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "author": "Station",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/station.git",
+    "directory": "packages/shared"
+  },
+  "keywords": [
+    "station",
+    "plugin",
+    "shared"
+  ],
+  "files": [
+    "src",
+    "!src/__tests__",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./agent-validation": "./src/agent-validation.ts",
+    "./build": "./src/build.ts",
+    "./checkpoints": "./src/checkpoints.ts",
+    "./git": "./src/git.ts",
+    "./json-file-storage": "./src/json-file-storage.ts",
+    "./tool-server-credential-store": "./src/tool-server-credential-store.ts",
+    "./guidance-assets": "./src/guidance-assets.ts",
+    "./mcp": "./src/mcp.ts",
+    "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
+    "./node-runtime": "./src/node-runtime.ts",
+    "./parsers": "./src/parsers.ts",
+    "./portability": "./src/portability.ts",
+    "./ports": "./src/ports.ts",
+    "./redaction": "./src/redaction.ts",
+    "./return-focus": "./src/return-focus.ts",
+    "./temp-dir": "./src/temp-dir.ts",
+    "./fs-windows-compat": "./src/fs-windows-compat.ts",
+    "./runtime-events": "./src/runtime-events.ts",
+    "./runtime-path-resolver": "./src/runtime-path-resolver.ts",
+    "./conversation-message": "./src/conversation-message.ts",
+    "./runtime-event-projection": "./src/runtime-event-projection.ts",
+    "./usage-fold": "./src/usage-fold.ts",
+    "./usage-measurement": "./src/usage-measurement.ts",
+    "./usage-rollup": "./src/usage-rollup.ts",
+    "./turn-provenance-fold": "./src/turn-provenance-fold.ts",
+    "./lifecycle-events": "./src/lifecycle-events.ts",
+    "./process-identity": "./src/process-identity.mjs",
+    "./launch-path": "./src/launch-path.ts",
+    "./station-home-schema": "./src/station-home-schema.ts",
+    "./station-home-archive": "./src/station-home-archive.ts",
+    "./station-home-lifecycle": "./src/station-home-lifecycle.ts",
+    "./sqlite-integrity": "./src/sqlite-integrity.ts",
+    "./instance-registry": "./src/instance-registry.ts",
+    "./notification-priority": "./src/notification-priority.ts",
+    "./native-shell-origin": "./src/native-shell-origin.ts",
+    "./answer-share-projection": "./src/answer-share-projection.ts",
+    "./thread-projection": "./src/thread-projection.ts",
+    "./durable-json-file": "./src/durable-json-file.ts",
+    "./sqlite-corruption-marker": "./src/sqlite-corruption-marker.ts",
+    "./sqlite-corruption-watch": "./src/sqlite-corruption-watch.ts",
+    "./sqlite-store-integrity": "./src/sqlite-store-integrity.ts",
+    "./orchestration-store-quarantine": "./src/orchestration-store-quarantine.ts",
+    "./setup-import-bounds": "./src/setup-import-bounds.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@kontourai/station-contracts": "^0.7.0",
+    "@kontourai/thread": "0.5.0",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "esbuild": "^0.28.1"
+  }
+}

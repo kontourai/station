@@ -1,0 +1,308 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://station.kontourai.io/schemas/agent.schema.json",
+  "title": "Agent Specification",
+  "description": "Agent configuration defining behavior, model, and tool access",
+  "type": "object",
+  "required": ["name", "prompt"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable agent name",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "prompt": {
+      "type": "string",
+      "description": "System instructions for the agent"
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Human-readable description of the agent"
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["origin", "engineId", "detectedAt"],
+      "properties": {
+        "origin": { "const": "engine-detection" },
+        "engineId": { "type": "string", "minLength": 1 },
+        "detectedAt": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "model": {
+      "type": ["string", "null"],
+      "description": "Bedrock model ID (optional, falls back to defaultModel)"
+    },
+    "project": {
+      "type": "string",
+      "description": "Owning project slug; absent = global scope (agent-engine-unification.md 3.3)",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "region": {
+      "type": ["string", "null"],
+      "description": "AWS region override (optional)",
+      "pattern": "^[a-z]{2}-[a-z]+-[0-9]{1}$"
+    },
+    "icon": {
+      "type": ["string", "null"],
+      "description": "Icon emoji or identifier (optional, falls back to name abbreviation)"
+    },
+    "maxSteps": {
+      "type": ["integer", "null"],
+      "description": "Maximum conversation steps (optional, falls back to global default)",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "guardrails": {
+      "type": ["object", "null"],
+      "description": "Model inference parameters",
+      "properties": {
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "topP": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "stopSequences": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tools": {
+      "type": ["object", "null"],
+      "description": "Tool configuration",
+      "properties": {
+        "mcpServers": {
+          "type": "array",
+          "description": "MCP server IDs to load from catalog, or inline integration objects",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "required": ["id", "kind"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "kind": { "type": "string", "enum": ["mcp"] },
+                  "displayName": { "type": "string" },
+                  "transport": {
+                    "type": "string",
+                    "enum": [
+                      "stdio",
+                      "sse",
+                      "streamable-http",
+                      "process",
+                      "ws",
+                      "tcp"
+                    ]
+                  },
+                  "command": { "type": "string" },
+                  "args": { "type": "array", "items": { "type": "string" } },
+                  "requiredEnv": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "permissions": { "type": "object" }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "env": {
+          "type": "object",
+          "description": "Agent-level env var overrides for MCP servers",
+          "additionalProperties": { "type": "string" }
+        },
+        "available": {
+          "type": "array",
+          "description": "Tools agent can invoke (supports wildcards, defaults to ['*'])",
+          "items": {
+            "type": "string"
+          }
+        },
+        "autoApprove": {
+          "type": "array",
+          "description": "Tools that execute without user confirmation in chat mode",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": ["object", "null"],
+      "description": "Runtime execution configuration",
+      "properties": {
+        "agentConnectionId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Engine connection this Agent runs on. Absent means Station's own engine (station#3662)."
+        },
+        "modelConnectionId": {
+          "type": ["string", "null"]
+        },
+        "modelId": {
+          "type": ["string", "null"]
+        },
+        "credentialProfileRef": {
+          "type": ["string", "null"],
+          "description": "Credential profile (account) of the bound engine this agent runs on. Absent uses the connection's active profile."
+        },
+        "runtimeOptions": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "modelOptions": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "streaming": {
+      "type": ["object", "null"],
+      "description": "Streaming pipeline configuration",
+      "properties": {
+        "useNewPipeline": {
+          "type": "boolean",
+          "description": "Enable new streaming architecture (default: false)"
+        },
+        "enableThinking": {
+          "type": "boolean",
+          "description": "Send thinking blocks to client (default: true)"
+        },
+        "debugStreaming": {
+          "type": "boolean",
+          "description": "Enable debug logging (default: false)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "description": "UI customization metadata for desktop application",
+      "properties": {
+        "component": {
+          "type": "string",
+          "description": "Identifier for the React workspace component to mount",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "quickPrompts": {
+          "type": "array",
+          "description": "Predefined prompts rendered as quick action buttons",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "prompt"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique identifier for the quick prompt",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "label": {
+                "type": "string",
+                "description": "Button label shown in the UI",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Plain-text prompt content submitted to the agent",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "workflowShortcuts": {
+          "type": "array",
+          "description": "Subset of workflows exposed as quick action buttons",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "array",
+      "description": "Skill names to enable for this agent",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands": {
+      "type": "object",
+      "description": "Custom slash commands for the agent",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "description", "prompt"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Command name (without slash)",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "description": "Command description shown in help",
+            "minLength": 1
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Prompt template to execute",
+            "minLength": 1
+          },
+          "parameters": {
+            "type": "string",
+            "description": "Optional parameter description"
+          },
+          "params": {
+            "type": "array",
+            "description": "Command parameters",
+            "items": {
+              "type": "object",
+              "required": ["name", "description"],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "default": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

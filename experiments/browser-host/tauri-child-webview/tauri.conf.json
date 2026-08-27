@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Station browser-host child experiment",
+  "version": "0.0.0",
+  "identifier": "io.kontourai.station.browser-host-child-experiment",
+  "build": { "frontendDist": "../fixture" },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Station browser-host child experiment",
+        "width": 640,
+        "height": 480
+      }
+    ]
+  },
+  "bundle": { "active": false, "icon": ["../../../src-desktop/icons/icon.png"] }
+}

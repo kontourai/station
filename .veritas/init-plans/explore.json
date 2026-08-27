@@ -1,0 +1,1431 @@
+{
+  "schema_version": 1,
+  "mode": "explore",
+  "target_root": "/Users/brian/dev/github/kontourai/governance-rollout-worktrees/station",
+  "project_name": "station",
+  "evidenceCheck": "npm run verify",
+  "repo_insights": {
+    "repoKind": "workspace",
+    "sourceRoots": [
+      "src-server/",
+      "src-ui/",
+      "src-shared/",
+      "packages/",
+      "docs/"
+    ],
+    "toolingRoots": [
+      "scripts/"
+    ],
+    "testRoots": [
+      "tests/"
+    ],
+    "productRoots": [
+      "delivery/",
+      "deploy/",
+      "examples/",
+      "fallow-baselines/",
+      "gallery/",
+      "kits/",
+      "monitoring/",
+      "ops/",
+      "schemas/",
+      "seed/",
+      "src-desktop/"
+    ],
+    "externalBoundaries": [],
+    "hasWorkflows": true,
+    "evidenceCheck": "npm run verify",
+    "enableWorkAreaEvidenceRouting": true,
+    "baseRef": "chore/veritas-governance-rollout",
+    "packageManager": "npm",
+    "matchedScripts": [
+      "ci:fast",
+      "verify",
+      "test",
+      "build"
+    ],
+    "evidenceCheckConfidence": "medium",
+    "evidenceCheckSource": "repo-declared AI instructions",
+    "existingVerification": {
+      "detected": true,
+      "items": [
+        {
+          "kind": "package-script",
+          "id": "verify:static:bootstrap",
+          "command": "node scripts/node-runtime-contract.mjs && npx biome check scripts/prepare-verify-static.mjs scripts/__tests__/prepare-verify-static.test.ts && npm run prepare:verify-static",
+          "recommendedDisposition": "candidate",
+          "reason": "Existing custom verification-shaped package script detected during brownfield init."
+        },
+        {
+          "kind": "package-script",
+          "id": "preverify:static",
+          "command": "npm run verify:static:bootstrap",
+          "recommendedDisposition": "candidate",
+          "reason": "Existing custom verification-shaped package script detected during brownfield init."
+        },
+        {
+          "kind": "package-script",
+          "id": "proof:repo-guardrails",
+          "command": "node scripts/proof-repo-guardrails.mjs",
+          "recommendedDisposition": "advisory",
+          "reason": "Existing custom verification-shaped package script detected during brownfield init."
+        },
+        {
+          "kind": "package-script",
+          "id": "verify:static",
+          "command": "npm run node-runtime:gate && npm run rename:inventory && npm run noun-consistency:gate && npm run unsaved-guard:gate && npm run state-primitives:ratchet && npm run responsive-surface:ratchet && npm run focus-visible:ratchet && npm run shell-conformance:ratchet && npm run knowledge-kit-import:gate && npx biome check src-server/ src-ui/ packages/ && npx biome check scripts/node-runtime-contract.mjs scripts/__tests__/node-runtime-contract.test.ts scripts/ui-bundle-budget.mjs scripts/ui-bundle-budget.json scripts/__tests__/ui-bundle-budget.test.ts scripts/run-e2e-suite.mjs scripts/lib/e2e-runner-options.mjs scripts/__tests__/e2e-manifest.test.ts scripts/__tests__/trust-reconcile-manifest.test.ts scripts/__tests__/veritas-repo-map.test.ts scripts/__tests__/noun-consistency-gate.test.ts scripts/noun-consistency-gate.mjs scripts/unsaved-guard-gate.mjs scripts/__tests__/unsaved-guard-gate.test.ts scripts/state-primitives-ratchet.mjs scripts/__tests__/state-primitives-ratchet.test.ts scripts/responsive-surface-ratchet.mjs scripts/__tests__/responsive-surface-ratchet.test.ts scripts/focus-visible-ratchet.mjs scripts/__tests__/focus-visible-ratchet.test.ts scripts/shell-conformance-ratchet.mjs scripts/__tests__/shell-conformance-ratchet.test.ts scripts/knowledge-kit-import-gate.mjs scripts/__tests__/knowledge-kit-import-gate.test.ts scripts/dependency-advisory-policy.mjs scripts/dependency-advisory-exceptions.json scripts/__tests__/dependency-advisory-policy.test.ts scripts/__tests__/vite-loopback-default.test.ts scripts/station-dogfood-reconcile.mjs scripts/station-dogfood-health.mjs scripts/station-agent-smoke.mjs scripts/__tests__/station-agent-smoke.test.ts scripts/__tests__/station-dogfood-reconcile.shared.ts scripts/__tests__/station-dogfood-reconcile/ scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts scripts/__tests__/station-dogfood-reconcile.test.ts scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts scripts/__tests__/station-dogfood-reconcile.installer-static-launchd-rollback.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-0.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-1.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-2.test.ts scripts/__tests__/vitest-worktree-exclusion.test.ts scripts/__tests__/station-dogfood-health.test.ts scripts/__tests__/station-dogfood-runtime-recovery.integration.test.ts scripts/__tests__/fixtures/dogfood-runtime-fixture.mjs tests/e2e-manifest.mjs && npx tsc --noEmit && npx tsc -p tsconfig.tests.json --noEmit && npx tsc -p packages/cli/tsconfig.json --noEmit && npx tsc -p packages/contracts/tsconfig.json --noEmit && npx tsc -p packages/connect/tsconfig.tests.json --noEmit && npx tsc -p packages/sdk/tsconfig.tests.json --noEmit && npx tsc -p packages/shared/tsconfig.json --noEmit && npx tsc -p src-ui/tsconfig.json --noEmit && npm test",
+          "recommendedDisposition": "candidate",
+          "reason": "Existing custom verification-shaped package script detected during brownfield init."
+        },
+        {
+          "kind": "package-script",
+          "id": "verify:e2e:full",
+          "command": "npm run test:e2e:product && npm run test:e2e:first-run && npm run test:e2e:smoke-live && npm run test:e2e:extended && npm run test:e2e:audit && npm run test:e2e:screenshot && npm run test:android",
+          "recommendedDisposition": "candidate",
+          "reason": "Existing custom verification-shaped package script detected during brownfield init."
+        },
+        {
+          "kind": "package-script",
+          "id": "verify:cli-e2e",
+          "command": "node scripts/cli-agent-e2e.mjs",
+          "recommendedDisposition": "candidate",
+          "reason": "Existing custom verification-shaped package script detected during brownfield init."
+        },
+        {
+          "kind": "instruction-file-verification",
+          "id": "AGENTS.md:11",
+          "command": "npm run verify",
+          "recommendedDisposition": "candidate",
+          "reason": "Authoritative repository-declared verification command detected during brownfield init.",
+          "provenance": {
+            "path": "AGENTS.md",
+            "line": 11,
+            "signal": "pre-merge",
+            "authority": "repo-declared-ai-instructions"
+          }
+        },
+        {
+          "kind": "instruction-file-verification",
+          "id": "CLAUDE.md:11",
+          "command": "npm run verify",
+          "recommendedDisposition": "candidate",
+          "reason": "Authoritative repository-declared verification command detected during brownfield init.",
+          "provenance": {
+            "path": "CLAUDE.md",
+            "line": 11,
+            "signal": "pre-merge",
+            "authority": "repo-declared-ai-instructions"
+          }
+        }
+      ],
+      "authoritativeCommands": [
+        "npm run verify"
+      ],
+      "selectedAuthoritativeCommand": "npm run verify",
+      "provenance": [
+        {
+          "command": "npm run verify",
+          "path": "AGENTS.md",
+          "line": 11,
+          "signal": "pre-merge",
+          "authority": "repo-declared-ai-instructions"
+        },
+        {
+          "command": "npm run verify",
+          "path": "CLAUDE.md",
+          "line": 11,
+          "signal": "pre-merge",
+          "authority": "repo-declared-ai-instructions"
+        }
+      ],
+      "conflicts": [
+        {
+          "kind": "package-script-disagreement",
+          "command": "npm run ci:fast",
+          "instructionCommand": "npm run verify",
+          "reason": "The package-script priority and authoritative AI instruction command differ."
+        }
+      ],
+      "recommendedEvidenceInventoryDefaults": {
+        "unknownCatchEvidenceDefault": "candidate",
+        "requiredNeedsOwner": true,
+        "requiredNeedsReviewTrigger": true,
+        "productBehaviorNeedsReplacementTest": true
+      }
+    }
+  },
+  "artifact_payloads": {
+    ".veritas/README.md": "# Veritas For Station\n\nStation is governed by `@kontourai/veritas` 1.5: a Repo Map (`repo-map.json`) describing work areas and evidence checks, Repo Standards (`repo-standards/default.repo-standards.json`) as executable requirements, authority settings, and attestations for Protected Standards. Durable governance remains under `.veritas/`; generated evidence, claim inputs, standards feedback, recommendations, and conformance output live under `.kontourai/veritas/`. The current contract inventory is in `docs/strategy/veritas/migration-1.5-record.md`; the 0.3-to-0.5 history remains in `migration-0.5-record.md` beside it.\n\n## Gate\n\n```bash\nnpm run veritas:shadow          # alias: veritas readiness --working-tree\nnpm run veritas:readiness       # same, explicit name\nnpm run veritas:readiness:diff  # veritas readiness --changed-from main --changed-to HEAD\nnpm run veritas:coverage        # veritas readiness --check coverage --working-tree\n```\n\nExit 0 = ready; 1 = an evidence check or blocking requirement failed (report still produced); >=2 = config error. `veritas explain <ruleId>` or `veritas explain --file <path>` prints targeted guidance.\n\nReadiness reports are generated under `.kontourai/veritas/evidence/`; Surface read models remain under `.surface/runs/`.\n\n## Evidence Checks\n\n- `repo-governance` (required, default): Veritas artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions.\n- `architecture-boundaries` (routed for packages/**): candidate package/import boundary lane.\n- `ui-data-access` (routed for src-ui/**): candidate SDK-hook/raw-fetch guidance lane.\n- `runtime-contracts` + `connected-agents` (routed for src-server/**): advisory source-shape lane plus the behavioral integration suite.\n- `repo-guardrails`: transitional compatibility aggregator from the old convergence checks; not routed, not required.\n- `retired-surfaces` / `migration-tombstones`: candidate/advisory tombstone lanes with expiry requirements.\n- `static-verification` / `sdk-builds` / `app-builds`: declared for coverage; they run in `ci:fast`, not inside readiness.\n- `fallow-advisory`: external-tool advisory evidence; requires the `fallow` CLI and is not a default check.\n\nCheck-family dispositions live in `.veritas/proof-families/repo-guardrails.families.json`, declared to Veritas through `evidence.evidenceInventoryManifests` so `veritas readiness --check coverage` reports verification weight and freshness.\n\n## Brownfield Rule\n\nIf Veritas does not support a real Station verification need cleanly, record it in `docs/strategy/veritas/brownfield-gap-log.md` instead of hiding it in a one-off workaround.\n\n## Promotion Rule\n\nDo not promote a candidate or advisory family to required because it \"feels safer.\" Promotion needs catch evidence (a real regression caught, a mutation normal tests miss, or repeated agent regressions with low false-positive noise). See `docs/strategy/veritas/proof-family-promotion-workflow.md`.\n",
+    ".veritas/GOVERNANCE.md": "# Veritas Governance Surface\n\nStation governs itself with Veritas 1.5 (Repo Map + Repo Standards + readiness). The gate is `npm run veritas:shadow` (an alias for `veritas readiness --working-tree`); use `veritas explain <ruleId|--file path>` for targeted guidance.\n\nZone 1 is human-owned Protected Standards and must not be weakened without review and a `veritas attest policy-change` record:\n\n- `.veritas/repo-map.json`\n- `.veritas/repo-standards/`\n- `.veritas/authority/`\n- `veritas.claims.json`\n- `AGENTS.md` / `CLAUDE.md` (governance block)\n\nZone 2 is additive policy growth. Agents may add:\n\n- new work areas for real repo boundaries,\n- new evidence checks for independently runnable validation,\n- advisory or recommend-stage requirements,\n- brownfield gap-log entries when Veritas lacks a useful abstraction (`docs/strategy/veritas/brownfield-gap-log.md`).\n\nZone 3 is generated output and is not committed (see `docs/strategy/veritas/evidence-retention-policy.md`):\n\n- `.kontourai/veritas/evidence/`, `.kontourai/veritas/external/`, `.kontourai/veritas/claims/`\n- `.kontourai/veritas/standards-feedback-drafts/`, `.kontourai/veritas/standards-feedback/`\n- `.kontourai/veritas/recommendations/`, `.kontourai/veritas/repo-conformance/`\n- `.surface/runs/`\n\nReviewed setup plans under `.veritas/init-plans/` are repo-local intent, not disposable evidence; commit them only when they are deliberately part of a governance change.\n\nCheck-family dispositions (required/candidate/advisory/move-to-test/retire) live in `.veritas/proof-families/repo-guardrails.families.json` and are explained in `docs/strategy/veritas/migration-0.5-record.md`. Do not promote a family to required without catch evidence (`docs/strategy/veritas/proof-family-promotion-workflow.md`).\n",
+    ".veritas/repo-map.json": "{\n  \"name\": \"station\",\n  \"kind\": \"repo-map\",\n  \"policy\": {\n    \"defaultFalsePositiveReview\": \"unknown\",\n    \"defaultPromotionCandidate\": false,\n    \"defaultExceptionAllowed\": false\n  },\n  \"graph\": {\n    \"version\": 1,\n    \"defaultResolution\": {\n      \"phase\": \"Phase S1 (The Wedge)\",\n      \"workstream\": \"Kontour-native agent workspace\",\n      \"matchedArtifacts\": [\n        \"docs/strategy/roadmap.md\"\n      ]\n    },\n    \"nonSliceableInvariants\": [\n      \"CLI/API/UI parity\",\n      \"SDK contract integrity\",\n      \"plugin/core boundary protection\",\n      \"mandatory CI coverage\",\n      \"Veritas evidence before promotion\"\n    ],\n    \"resolverPrecedence\": [\n      \"explicit roadmap task or issue reference in prompt/branch/PR title\",\n      \"matching initiative plan under docs/plans/**\",\n      \"matching Veritas governance artifact under .veritas/**\",\n      \"active initiative from docs/strategy/roadmap.md\",\n      \"multi-workstream fallback suppresses promotion\"\n    ],\n    \"resolutionRules\": [\n      {\n        \"id\": \"initiative-plan\",\n        \"match\": {\n          \"patterns\": [\n            \"docs/plans/\"\n          ]\n        },\n        \"resolution\": {\n          \"phase\": \"Phase S1 (The Wedge)\",\n          \"workstream\": \"Kontour-native agent workspace\",\n          \"matchedArtifacts\": [\n            \"docs/plans/**\"\n          ]\n        }\n      },\n      {\n        \"id\": \"veritas-governance\",\n        \"match\": {\n          \"patterns\": [\n            \".veritas/\"\n          ]\n        },\n        \"resolution\": {\n          \"phase\": \"Phase S1 (The Wedge)\",\n          \"workstream\": \"Veritas 1.5 governance dogfood\",\n          \"matchedArtifacts\": [\n            \".veritas/**\"\n          ]\n        }\n      }\n    ],\n    \"nodes\": [\n      {\n        \"id\": \"product.src-server\",\n        \"kind\": \"product-area\",\n        \"label\": \"src-server\",\n        \"patterns\": [\n          \"src-server/\"\n        ],\n        \"owners\": [\n          \"station-runtime\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"product.src-ui\",\n        \"kind\": \"product-area\",\n        \"label\": \"src-ui\",\n        \"patterns\": [\n          \"src-ui/\"\n        ],\n        \"owners\": [\n          \"station-frontend\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"product.src-shared\",\n        \"kind\": \"product-area\",\n        \"label\": \"src-shared\",\n        \"patterns\": [\n          \"src-shared/\"\n        ],\n        \"owners\": [\n          \"station-runtime\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"product.src-desktop\",\n        \"kind\": \"product-area\",\n        \"label\": \"src-desktop\",\n        \"patterns\": [\n          \"src-desktop/\"\n        ],\n        \"owners\": [\n          \"station-desktop\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"package.cli\",\n        \"kind\": \"shared-package-area\",\n        \"label\": \"packages/cli\",\n        \"patterns\": [\n          \"packages/cli/\"\n        ],\n        \"owners\": [\n          \"station-architecture\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"package.connect\",\n        \"kind\": \"shared-package-area\",\n        \"label\": \"packages/connect\",\n        \"patterns\": [\n          \"packages/connect/\"\n        ],\n        \"owners\": [\n          \"station-architecture\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"package.contracts\",\n        \"kind\": \"shared-contract-area\",\n        \"label\": \"packages/contracts\",\n        \"patterns\": [\n          \"packages/contracts/\"\n        ],\n        \"owners\": [\n          \"station-architecture\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"package.sdk\",\n        \"kind\": \"shared-contract-area\",\n        \"label\": \"packages/sdk\",\n        \"patterns\": [\n          \"packages/sdk/\"\n        ],\n        \"owners\": [\n          \"station-architecture\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"package.shared\",\n        \"kind\": \"shared-package-area\",\n        \"label\": \"packages/shared\",\n        \"patterns\": [\n          \"packages/shared/\"\n        ],\n        \"owners\": [\n          \"station-architecture\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"example.catalog\",\n        \"kind\": \"example-area\",\n        \"label\": \"examples/**\",\n        \"patterns\": [\n          \"examples/\"\n        ],\n        \"owners\": [\n          \"shared\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"delivery.github\",\n        \"kind\": \"delivery-area\",\n        \"label\": \".github/**\",\n        \"patterns\": [\n          \".github/\"\n        ],\n        \"owners\": [\n          \"repo-core\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"tooling.scripts\",\n        \"kind\": \"tooling-area\",\n        \"label\": \"scripts/**\",\n        \"patterns\": [\n          \"scripts/\"\n        ],\n        \"owners\": [\n          \"repo-core\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"documentation.general\",\n        \"kind\": \"product-area\",\n        \"label\": \"docs/**\",\n        \"patterns\": [\n          \"docs/\"\n        ],\n        \"owners\": [\n          \"docs-team\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"governance.veritas\",\n        \"kind\": \"protected-area\",\n        \"label\": \".veritas/**\",\n        \"governance-locked\": true,\n        \"patterns\": [\n          \".veritas/\"\n        ],\n        \"owners\": [\n          \"repo-core\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"governance.strategy\",\n        \"kind\": \"protected-area\",\n        \"label\": \"docs/strategy/**\",\n        \"patterns\": [\n          \"docs/strategy/\"\n        ],\n        \"owners\": [\n          \"repo-core\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"governance.plans\",\n        \"kind\": \"protected-area\",\n        \"label\": \"docs/plans/**\",\n        \"patterns\": [\n          \"docs/plans/\"\n        ],\n        \"owners\": [\n          \"repo-core\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"verification.tests\",\n        \"kind\": \"verification-area\",\n        \"label\": \"tests/**\",\n        \"patterns\": [\n          \"tests/\"\n        ],\n        \"owners\": [\n          \"shared\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"governance.root-manifests\",\n        \"kind\": \"protected-area\",\n        \"label\": \"root manifests\",\n        \"patterns\": [\n          \"package.json\",\n          \"package-lock.json\",\n          \"README.md\",\n          \"AGENTS.md\",\n          \"CLAUDE.md\",\n          \"SECURITY.md\",\n          \"veritas.claims.json\",\n          \"biome.json\",\n          \"tsconfig.json\",\n          \"vite.config.ts\",\n          \"vitest.config.ts\",\n          \"vitest.setup.ts\",\n          \"playwright.config.ts\",\n          \"esbuild.config.mjs\",\n          \".gitignore\"\n        ],\n        \"owners\": [\n          \"repo-core\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"governance.flow\",\n        \"kind\": \"protected-area\",\n        \"label\": \".flow/**\",\n        \"patterns\": [\n          \".flow/\"\n        ],\n        \"owners\": [\n          \"repo-core\"\n        ],\n        \"boundary\": \"advisory\"\n      },\n      {\n        \"id\": \"product.delivery\",\n        \"kind\": \"product-area\",\n        \"label\": \"delivery/**\",\n        \"patterns\": [\n          \"delivery/\"\n        ]\n      },\n      {\n        \"id\": \"product.deploy\",\n        \"kind\": \"product-area\",\n        \"label\": \"deploy/**\",\n        \"patterns\": [\n          \"deploy/\"\n        ]\n      },\n      {\n        \"id\": \"product.fallow.baselines\",\n        \"kind\": \"product-area\",\n        \"label\": \"fallow-baselines/**\",\n        \"patterns\": [\n          \"fallow-baselines/\"\n        ]\n      },\n      {\n        \"id\": \"product.gallery\",\n        \"kind\": \"product-area\",\n        \"label\": \"gallery/**\",\n        \"patterns\": [\n          \"gallery/\"\n        ]\n      },\n      {\n        \"id\": \"product.kits\",\n        \"kind\": \"product-area\",\n        \"label\": \"kits/**\",\n        \"patterns\": [\n          \"kits/\"\n        ]\n      },\n      {\n        \"id\": \"product.monitoring\",\n        \"kind\": \"product-area\",\n        \"label\": \"monitoring/**\",\n        \"patterns\": [\n          \"monitoring/\"\n        ]\n      },\n      {\n        \"id\": \"product.ops\",\n        \"kind\": \"product-area\",\n        \"label\": \"ops/**\",\n        \"patterns\": [\n          \"ops/\"\n        ]\n      },\n      {\n        \"id\": \"product.schemas\",\n        \"kind\": \"product-area\",\n        \"label\": \"schemas/**\",\n        \"patterns\": [\n          \"schemas/\"\n        ]\n      },\n      {\n        \"id\": \"product.seed\",\n        \"kind\": \"product-area\",\n        \"label\": \"seed/**\",\n        \"patterns\": [\n          \"seed/\"\n        ]\n      }\n    ]\n  },\n  \"evidence\": {\n    \"artifactDir\": \".kontourai/veritas/evidence\",\n    \"reportTransport\": \"github-step-summary\",\n    \"uncoveredPathPolicy\": \"warn\",\n    \"evidenceChecks\": [\n      {\n        \"id\": \"repo-governance\",\n        \"command\": \"npm run proof:repo-governance\",\n        \"method\": \"validation\",\n        \"summary\": \"Required governance family: Veritas 1.5 artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions.\"\n      },\n      {\n        \"id\": \"repo-guardrails\",\n        \"command\": \"npm run proof:repo-guardrails\",\n        \"method\": \"validation\",\n        \"summary\": \"Transitional compatibility aggregator for the former convergence checks. Not the required gate.\"\n      },\n      {\n        \"id\": \"architecture-boundaries\",\n        \"command\": \"npm run proof:architecture-boundaries\",\n        \"method\": \"validation\",\n        \"summary\": \"Candidate family lane for package/import and architecture-boundary checks while catch evidence is measured.\"\n      },\n      {\n        \"id\": \"ui-data-access\",\n        \"command\": \"npm run proof:ui-data-access\",\n        \"method\": \"validation\",\n        \"summary\": \"Candidate family lane for SDK hook/raw-fetch guidance while product tests absorb behavior checks.\"\n      },\n      {\n        \"id\": \"runtime-contracts\",\n        \"command\": \"npm run proof:runtime-contracts\",\n        \"method\": \"validation\",\n        \"summary\": \"Advisory move-to-test family lane for runtime/ACP/Codex structure; connected-agents is the behavioral proof.\"\n      },\n      {\n        \"id\": \"retired-surfaces\",\n        \"command\": \"npm run proof:retired-surfaces\",\n        \"method\": \"validation\",\n        \"summary\": \"Candidate family lane for deleted-surface tombstones with explicit expiry/review requirements.\"\n      },\n      {\n        \"id\": \"migration-tombstones\",\n        \"command\": \"npm run proof:migration-tombstones\",\n        \"method\": \"validation\",\n        \"summary\": \"Advisory family lane for low-severity refactor-shape tombstones that should be retired or softened.\"\n      },\n      {\n        \"id\": \"connected-agents\",\n        \"command\": \"npm run test:connected-agents\",\n        \"method\": \"validation\",\n        \"summary\": \"Provider and orchestration integration tests for connected agent runtimes (behavioral proof for runtime-contracts).\"\n      },\n      {\n        \"id\": \"static-verification\",\n        \"command\": \"npm run verify:static\",\n        \"method\": \"validation\",\n        \"summary\": \"Biome, TypeScript, and unit tests. Runs in ci:fast; declared here for coverage, not routed into readiness.\"\n      },\n      {\n        \"id\": \"sdk-builds\",\n        \"command\": \"npm run proof:sdk-builds\",\n        \"method\": \"validation\",\n        \"summary\": \"Builds shared SDK and connect packages. Runs in ci:fast; declared here for coverage, not routed into readiness.\"\n      },\n      {\n        \"id\": \"app-builds\",\n        \"command\": \"npm run proof:app-builds\",\n        \"method\": \"validation\",\n        \"summary\": \"Builds server and UI artifacts. Runs in ci:fast; declared here for coverage, not routed into readiness.\"\n      },\n      {\n        \"id\": \"fallow-advisory\",\n        \"command\": \"npm run veritas:fallow:advisory\",\n        \"method\": \"auditability\",\n        \"summary\": \"Baseline-aware Fallow audit as advisory codebase-intelligence evidence. Requires the fallow CLI; not a default check.\",\n        \"externalTool\": {\n          \"tool\": \"fallow\",\n          \"format\": \"work-agent-fallow-advisory-v1\",\n          \"blocking\": false,\n          \"artifactPath\": \".kontourai/veritas/external/fallow-audit.json\"\n        }\n      }\n    ],\n    \"requiredEvidenceCheckIds\": [\n      \"repo-governance\"\n    ],\n    \"defaultEvidenceCheckIds\": [\n      \"repo-governance\"\n    ],\n    \"evidenceCheckRoutes\": [\n      {\n        \"nodeIds\": [\n          \"package.sdk\",\n          \"package.contracts\",\n          \"package.connect\",\n          \"package.shared\",\n          \"package.cli\"\n        ],\n        \"evidenceCheckIds\": [\n          \"architecture-boundaries\"\n        ],\n        \"componentIds\": [\n          \"package.sdk\",\n          \"package.contracts\",\n          \"package.connect\",\n          \"package.shared\",\n          \"package.cli\"\n        ]\n      },\n      {\n        \"nodeIds\": [\n          \"product.src-ui\"\n        ],\n        \"evidenceCheckIds\": [\n          \"ui-data-access\"\n        ],\n        \"componentIds\": [\n          \"product.src-ui\"\n        ]\n      },\n      {\n        \"nodeIds\": [\n          \"product.src-server\"\n        ],\n        \"evidenceCheckIds\": [\n          \"runtime-contracts\",\n          \"connected-agents\"\n        ],\n        \"componentIds\": [\n          \"product.src-server\"\n        ]\n      }\n    ],\n    \"evidenceInventoryManifests\": [\n      \".veritas/proof-families/repo-guardrails.families.json\"\n    ]\n  },\n  \"activation\": {\n    \"aiInstructionFiles\": [\n      {\n        \"path\": \"AGENTS.md\",\n        \"tool\": \"codex\",\n        \"required\": true\n      },\n      {\n        \"path\": \"CLAUDE.md\",\n        \"tool\": \"claude-code\",\n        \"required\": true\n      }\n    ]\n  }\n}\n",
+    ".veritas/repo-standards/default.repo-standards.json": "{\n  \"version\": 1,\n  \"name\": \"station-default\",\n  \"description\": \"Veritas 1.5 Repo Standards for Station. Originally migrated from the 0.3 policy pack; product-specific structural checks remain npm proof lanes until they prove reusable. See docs/strategy/veritas/migration-0.5-record.md for the historical dispositions.\",\n  \"rules\": [\n    {\n      \"id\": \"required-station-governance-artifacts\",\n      \"kind\": \"required-artifacts\",\n      \"classification\": \"hard-invariant\",\n      \"stage\": \"block\",\n      \"message\": \"Required Station governance, CI, and Veritas artifacts must exist.\",\n      \"owner\": \"repo-core\",\n      \"rollback_switch\": null,\n      \"explain\": {\n        \"summary\": \"Keep the repository trust contract present: Veritas 1.5 governance baseline, CI workflows, issue/PR templates, security and contract docs.\",\n        \"mustDo\": [\"Restore any missing governance, CI, or Veritas artifact before finishing.\"],\n        \"mustNotDo\": [\"Do not delete or weaken governance files to make a readiness run pass.\"],\n        \"exampleGood\": \"Update .veritas/repo-map.json and this standards file together when the repo layout changes.\",\n        \"exampleBad\": \"Remove .github/workflows/ci.yml or .veritas/repo-standards/default.repo-standards.json.\",\n        \"contextLinks\": [\".veritas/GOVERNANCE.md\", \"docs/strategy/veritas/migration-0.5-record.md\"]\n      },\n      \"match\": {\n        \"artifacts\": [\n          \".github/dependabot.yml\",\n          \".github/workflows/ci.yml\",\n          \".github/workflows/ci-extended.yml\",\n          \".github/ISSUE_TEMPLATE/bug-report.yml\",\n          \".github/ISSUE_TEMPLATE/feature-request.yml\",\n          \".github/ISSUE_TEMPLATE/docs-issue.yml\",\n          \".github/ISSUE_TEMPLATE/config.yml\",\n          \".github/pull_request_template.md\",\n          \".veritas/GOVERNANCE.md\",\n          \".veritas/README.md\",\n          \".veritas/repo-map.json\",\n          \".veritas/repo-standards/default.repo-standards.json\",\n          \".veritas/authority/default.authority-settings.json\",\n          \".veritas/proof-families/repo-guardrails.families.json\",\n          \"veritas.claims.json\",\n          \"docs/reference/contracts.md\",\n          \"SECURITY.md\",\n          \"AGENTS.md\",\n          \"CLAUDE.md\"\n        ]\n      }\n    },\n    {\n      \"id\": \"ai-instruction-files-synced\",\n      \"kind\": \"governance-block\",\n      \"classification\": \"hard-invariant\",\n      \"stage\": \"warn\",\n      \"message\": \"Agent instruction files must include the Veritas governance block.\",\n      \"owner\": \"repo-maintainers\",\n      \"rollback_switch\": null,\n      \"explain\": {\n        \"summary\": \"AGENTS.md (and its CLAUDE.md symlink) must carry the canonical marker-bounded governance block.\",\n        \"mustDo\": [\"Reapply the governance block (veritas apply governance-blocks) after editing instruction files.\"],\n        \"mustNotDo\": [\"Do not hand-edit the marker-bounded block into a different meaning.\"],\n        \"exampleGood\": \"Keep Station-specific notes outside the marker block and regenerate the block.\",\n        \"exampleBad\": \"Delete the governance block from AGENTS.md.\",\n        \"contextLinks\": [\".veritas/GOVERNANCE.md\", \"AGENTS.md\"]\n      },\n      \"match\": {\n        \"governance-block\": [\"AGENTS.md\", \"CLAUDE.md\"]\n      }\n    },\n    {\n      \"id\": \"forbid-shared-root-imports\",\n      \"kind\": \"forbidden-pattern\",\n      \"classification\": \"promotable-policy\",\n      \"stage\": \"block\",\n      \"message\": \"New code must not import from the @kontourai/station-shared root; use @kontourai/station-contracts/* or explicit helper subpaths.\",\n      \"owner\": \"station-architecture\",\n      \"rollback_switch\": \"disable-shared-root-import-check\",\n      \"explain\": {\n        \"summary\": \"Contract types are owned by @kontourai/station-contracts; shared helpers are imported via explicit subpaths (e.g. @kontourai/station-shared/build).\",\n        \"mustDo\": [\"Import contract types from @kontourai/station-contracts/* and helpers from @kontourai/station-shared/<subpath>.\"],\n        \"mustNotDo\": [\"Do not import from the bare @kontourai/station-shared package root (nor the legacy @stallion-ai/shared root).\"],\n        \"exampleGood\": \"import { buildPlugin } from '@kontourai/station-shared/build';\",\n        \"exampleBad\": \"import { PluginManifest } from '@kontourai/station-shared';\",\n        \"contextLinks\": [\"docs/reference/contracts.md\"]\n      },\n      \"match\": {\n        \"files\": [\n          \"packages/cli/src/**/*.ts\",\n          \"packages/connect/src/**/*.ts\",\n          \"packages/contracts/src/**/*.ts\",\n          \"packages/sdk/src/**/*.ts\",\n          \"src-server/**/*.ts\",\n          \"src-ui/**/*.ts\",\n          \"src-ui/**/*.tsx\"\n        ],\n        \"pattern\": \"from ['\\\"](@kontourai/station-shared|@stallion-ai/shared)['\\\"]\"\n      }\n    },\n    {\n      \"id\": \"brownfield-gap-log-present\",\n      \"kind\": \"required-artifacts\",\n      \"classification\": \"promotable-policy\",\n      \"stage\": \"recommend\",\n      \"message\": \"Brownfield Veritas adoption should keep the gap log and migration record so local workarounds can become Veritas product improvements.\",\n      \"owner\": \"repo-maintainers\",\n      \"rollback_switch\": \"skip-brownfield-gap-log\",\n      \"explain\": {\n        \"summary\": \"Record Veritas product gaps and migration dispositions instead of hiding them in one-off workarounds.\",\n        \"mustDo\": [\"Append to the gap log when Veritas lacks a needed abstraction.\"],\n        \"mustNotDo\": [\"Do not silently drop a previously required protection without a recorded disposition.\"],\n        \"exampleGood\": \"Add a dated entry to docs/strategy/veritas/brownfield-gap-log.md.\",\n        \"exampleBad\": \"Delete the migration record after the migration lands.\",\n        \"contextLinks\": [\"docs/strategy/veritas/brownfield-gap-log.md\"]\n      },\n      \"match\": {\n        \"artifacts\": [\n          \"docs/strategy/veritas/brownfield-gap-log.md\",\n          \"docs/strategy/veritas/migration-0.5-record.md\"\n        ]\n      }\n    }\n  ]\n}\n",
+    ".veritas/authority/default.authority-settings.json": "{\n  \"version\": 1,\n  \"id\": \"station-default\",\n  \"name\": \"Station Default\",\n  \"description\": \"Conservative profile: observe first, learn from evidence, and only harden requirements after repeated catch evidence (see docs/strategy/veritas/proof-family-promotion-workflow.md).\",\n  \"defaults\": {\n    \"mode\": \"observe\",\n    \"new_rule_stage\": \"recommend\"\n  },\n  \"review_preferences\": {\n    \"human_signoff_required_for_stage_promotion\": true,\n    \"reviewer_confidence_scale\": [\"low\", \"medium\", \"high\"],\n    \"major_rewrite_definition\": \"A major rewrite replaces the main structure or control flow instead of making local edits.\"\n  },\n  \"promotion_preferences\": {\n    \"evidence_checks_required_before_require\": [\"npm run verify:static\"],\n    \"warnings_block_in_ci\": false,\n    \"require_consistent_feedback_before_promotion\": true\n  }\n}\n",
+    "AGENTS.md": "# Agent Notes\n\n> **This is Station** — Kontour's reference agent runtime: the agent workspace where work ships with receipts, built on the Kontour primitives (Surface, Flow, Veritas, Survey, Flow Agents, Console). It was refounded 2026-06-11 from the original `work-agent` codebase without history. Names are station-only: the CLI is `./station`, packages are `@kontourai/station-*`, the home dir is `~/.station`, env vars are `STATION_*`, the control server is `station-control`, and metrics are `station.*`. There are no legacy aliases or compat shims — `npm run rename:inventory` is a zero-tolerance gate (wired into `verify:static`) that fails the build if any old name reappears.\n\n## Strategy & Goals\n\n### Source Of Truth\n\n- Product/domain context: [CONTEXT.md](CONTEXT.md), delegating canonical vocabulary to [docs/glossary.md](docs/glossary.md).\n- Agent-facing repo instructions: [AGENTS.md](AGENTS.md).\n- Broad verification: `npm run verify`.\n- Docs/interface-only readiness: Markdown source inspection plus `npm run verify:static`.\n\nRead `docs/strategy/` before starting feature work. Key documents:\n\n- **[docs/strategy/constitution.md](docs/strategy/constitution.md)** — Project identity and non-negotiables\n- **[docs/strategy/differentiators.md](docs/strategy/differentiators.md)** — What makes Station different (tiered assessment)\n- **[docs/strategy/roadmap.md](docs/strategy/roadmap.md)** — Phased execution plan with tasks\n- **[docs/strategy/execution-pattern.md](docs/strategy/execution-pattern.md)** — How to pick up and progress work\n- **[docs/strategy/competitive-landscape.md](docs/strategy/competitive-landscape.md)** — Competitor analysis and steal list\n\nThe sibling Kontour product repos live alongside this one (`../surface`, `../flow`, `../veritas`, `../survey`, `../flow-agents`, `../console`, `../console-kit`). Station consumes them **only through their published contracts** (npm packages, MCP servers, file formats) — never reach into their internals (constitution non-negotiable #1).\n\n### Available Workflows\n\nThese workflows are defined in `.claude/commands/` (Claude Code picks them up as slash commands). Any AI agent can read and follow the instructions in those files directly.\n\n| Workflow | File | Purpose |\n|----------|------|---------|\n| Ideate | `.claude/commands/ideate.md` | Pull inspiration from competitor repos, suggest improvements |\n| Competitive Scan | `.claude/commands/competitive-scan.md` | Scan landscape for new tools and features |\n| Differentiation Check | `.claude/commands/differentiation-check.md` | Audit codebase against differentiators.md |\n| Adoption Blockers | `.claude/commands/adoption-blockers.md` | Walk through first-run experience, find friction |\n\n## Active Work\n\nThe current roadmap phase is **Phase S5: Extraction & Ecosystem** (see `docs/strategy/roadmap.md`) — by design mostly strategy: mature subsystems become standalone Kontour products *only on evidence of standalone demand*, so the autonomous work is preparing the extraction-evidence framework while the promotion calls stay with the user. Phases S0–S4 closed 2026-06-11/14: the wedge (Flow-gated sessions, Veritas readiness), the receipts surfaces (Survey workbench plugin, trust panel, run console, Console Kit tokens), native L3-grade enforcement (four policy classes, cross-runtime workflow sidecars, canonical skills, gated platform mutations; L3 spec staged for upstream filing), and suite convergence (Console emission with the DoD proven, convergence deferred-with-evidence, and the full rename to `station` / `@kontourai/station-*`, now a clean break with every compat shim removed in S5) are live product. **Code uses the `station` names only** — no legacy aliases anywhere, enforced by `npm run rename:inventory` (a zero-tolerance gate wired into `verify:static`). **Standing rule from the S1 verdict: substantive changes to Station ship through a gated `station-delivery` Flow run** (use `FlowRunService.attachCommandEvidence` + the readiness bridge; append the entry to `docs/strategy/s1c-dogfood-log.md`). Before implementing against any Kontour contract, read `docs/strategy/kontour-integration-surface.md` — it is the verified contract map (notably: Veritas has no MCP server; Flow's trustArtifact path rejects Surface shapes; Flow Agents' L3 tier is Station's upstream proposal). The MCP-UI host (`src-server/runtime/mcp-ui-resolver.ts`, `src-ui/src/components/mcp-ui/`) is landed and proven behind the `mcpUiHost` flag — SEP-1865 render + host bridge + tool/resource proxy, dedicated frame origin (`MCP_UI_FRAME_PORT`), a hostile-View security suite, and mcp-ui.dev embedded-dialect compat; see `docs/design/mcp-ui-host.md` (the contract for this area). The pre-pivot roadmap (Phases 0–4) is inherited as substantially complete; its verification lanes remain the regression floor. Keep `docs/design/entity-hierarchy.md` as the design contract for agent-type boundaries.\n\n### Vocabulary & entity hierarchy\n\n**Canonical vocabulary lives in [docs/glossary.md](docs/glossary.md) — read it first; it wins over older wording.** The agent model is **two** types (ACP is a connection detail, not a third type):\n\n- **Station agents** (Station runs them on its engine — VoltAgent/Strands — using a **Model** connection: Bedrock/OpenAI/Ollama): Station owns everything — prompt, skills, tools, commands, model.\n- **External agents** (run by an external **Agent app**: Claude Code, Codex, or an ACP CLI like Kiro): the app owns behavior and tools. Station owns only the abstraction it can set (model, effort, thinking). Whether an app is reached via its native SDK or via ACP is just *how it's connected*.\n- Agent editor tabs vary by type: Station agents get Basic|Skills|Tools|Commands; External agents get Basic|Connection (ACP-connected the same).\n- Skills and integrations are Station-agent capabilities only.\n- Projects scope which agents are available via `ProjectConfig.agents`.\n- \"Prompts\" renamed to \"Playbooks\" (`/api/playbooks`, `usePlaybooksQuery`). Old `/api/prompts` kept as compat alias.\n- Registry page (`/registry`) is the unified browse/install surface for agents, skills, integrations, plugins.\n- Sidebar: Projects, Agents, Playbooks, Registry, Connections, Plugins, Schedule, Monitoring.\n\n> **Vocab rename status (phased).** *Phase 1 shipped* — user-facing labels now read **Station / External agents**, **Models / Agent apps**, and \"runtime\" is retired from labels. *Phase 2 (scheduled)* — the **internal** identifiers are unchanged: code still uses `kind:'runtime'`, `executionMode: 'provider-managed'|'runtime'`, `runtimeConnectionId`, `__runtime:`/`__acp:` slugs, and the `managed`/`connected` execution classes. So **reading code you'll see the old names; writing user-facing strings, use the glossary terms.** `docs/design/entity-hierarchy.md` remains the boundary contract.\n\n### Connected agents (merged from feature/connected-agents-hardening)\n\n- `ConnectionService` manages model + runtime connections\n- Provider adapters: ACP, Bedrock, Claude, Codex, Ollama (in `src-server/providers/adapters/`)\n- `AgentExecutionConfig` on `AgentSpec` for runtime selection\n- Orchestration service for session lifecycle\n\n## Task Completion Requirements\n\nAll of the following must pass before a task is considered complete:\n\n1. `npx biome check src-server/ src-ui/ packages/` — no lint or format errors\n2. `npx tsc --noEmit` — no type errors\n3. `npm test` — all unit tests pass\n4. If UI changes: `npm run verify:e2e:full` unless the task is explicitly scoped to a narrower Playwright lane\n\nFor local pre-commit-style validation, `npm run verify:static` runs the lint,\nmanifest, typecheck, and unit-test gate without launching Station. `npm run\nverify` is the no-shortcuts gate and includes the full Playwright coverage\ncontract.\n\nNever skip these gates. If a gate fails, fix the issue before marking done.\n\n### Workflow sidecar (Flow Agents)\n\nThe sidecar writer ships inside `@kontourai/flow-agents` (pinned exact `3.3.0`): `npm run workflow:sidecar -- <subcommand>`. The repo vendors the Builder Kit FlowDefinitions at `kits/builder/flows/` — now **three** files (`build.flow.json`, `shape.flow.json`, `publish-learn.flow.json`; `build.flow.json`'s release-phase steps (`pr-open`/`merge-ready-ci`/`learn`) delegate their gates to `publish-learn` via `uses_flow: \"builder.publish-learn\"`, so vendor all three together, not just `build.flow.json`) — copied from the installed `@kontourai/flow-agents` package because the CLI resolves flows from the repo root, not `node_modules` (keep in sync when upgrading). Start delivery sessions with `ensure-session --task-slug <slug> --flow-id builder.build` **before** planning — gate claims (`record-gate-claim`) and positive release decisions (`record-release --decision merge|release`) require the active flow step `ensure-session` creates; `init-plan` alone does not. `init-plan`'s positional argument is the plan **artifact file path** (e.g. `<slug>--deliver.md`), never a bare directory — passing a directory throws `EISDIR`. To reach the pr-open gate step, advance with `--phase release --flow-definition builder.build`; this still resolves correctly through the `publish-learn` indirection. `record-evidence` refreshes `trust.bundle` + `state.json` but not `acceptance.json` — treat `trust.bundle` as the authoritative claim store. The `--verdict` (`record-evidence`/`record-critique`) vs `--status` (`record-gate-claim`) flag trap is unchanged: passing the wrong flag is silently ignored as unrecognized, and the command then dies on a missing-required-flag message that doesn't name what you actually passed.\n\nNew in 3.3.0 — read for behavior, not just for flags:\n- **Fail-closed release gates.** `record-release`, `advance-state --status delivered`, and `publish-delivery` now exit non-zero (not just a stderr warning) when `trust.bundle` fails the reconcile-preflight shape check or the session isn't the fresh assignment-lease holder. A session-local evidence check that isn't CI-reconcilable needs a non-`test_output` `kind` (e.g. `kind: \"policy\"`) or these commands will refuse to publish.\n- **`publish-delivery` is cwd-safe.** Repo root resolves strictly from the artifact dir's ancestry, never falls back to `process.cwd()`, and each session publishes to its own `delivery/<slug>/` instead of one shared `delivery/trust.bundle` — no more cross-session clobbering.\n- **`record-critique` reviewer-scoped supersession.** Re-recording the same `--id` with the same `--reviewer` marks the prior critique `superseded_by` instead of appending a second live one; a different reviewer does not supersede.\n- **`record-evidence` checks-replacement hazard.** A `--check-json` call replaces the active step's checks rather than merging with a prior `record-gate-claim`'s claim — sequencing `record-gate-claim` then a bare `record-evidence` at the same step can silently clobber the gate claim. Record gate claims after (or together with) the corroborating evidence, or re-record the claim afterward.\n- Legacy `.flow-agents/` roots are no longer scanned by the package's own hooks/steering — only `.kontourai/flow-agents/` is read (station's own back-compat wrapper for the old station-local `.flow-agents/` opt-in marker is unaffected — that's a station concept, not this package's).\n\nDelivery practice: when review and verify delegates run in parallel against one shared worktree, serialize mutation-bearing checks (negative controls, `git checkout --` probes) or give each delegate its own clone — parallel passes in a single worktree have produced observable mutation races. Full subcommand-by-subcommand audit (2.2.0 → 3.3.0, source-diffed and live-verified): `.kontourai/flow-agents/s218-flow-agents-3x/cli-audit-2.2.0-to-3.3.0.md`.\n\n## Station CLI\n\nAlways use `./station` to manage the app — never raw npm scripts, `node esbuild.config.mjs`, or `npx vite build` directly. The CLI handles build orchestration (server + UI) in the correct order.\n\n```bash\n./station --help\n./station start --instance=agent-smoke --temp-home --clean --force --port=3242 --ui-port=5274\n./station stop --instance=agent-smoke\n```\n\nThe CLI is `./station` only — there is no legacy alias.\n\nUse `--temp-home` for routine agent smoke runs so cleanup stays out of your main `~/.station` home. Deleting the default home now requires `--allow-default-home-clean` in addition to `--force`.\n\n### Port rules\n\nDefault ports (3141 server, 3000 UI) are **reserved for user testing**. Agents must always use unique ports and a stable instance name:\n\n```bash\n./station start --instance=agent-smoke --temp-home --clean --force --port=3242 --ui-port=5274\n```\n\nPick ports that won't collide with other agents running concurrently. Multiple Station instances may run from the same checkout at the same time as long as their reserved port ranges do not overlap.\n\nDo **not** stop or disturb a sibling instance from the same checkout just to satisfy that shared-build guard. If another agent-owned instance is live, prefer one of these paths instead:\n- start a new instance with a distinct instance name and non-overlapping ports\n- use targeted per-instance cleanup/start-clean flows on that instance only\n- reuse existing build artifacts for verification when that is enough\n\nStopping a sibling instance is only acceptable when the task is explicitly about that instance or the user specifically asks for it. The remaining truly shared-checkout lane is repo-wide mutation such as `station upgrade` (`git pull`, `npm install`, rebuilds), which still needs extra caution around sibling instances.\n\n### Playwright tests\n\nThe `playwright.config.ts` reads `PW_BASE_URL` from the environment. Run tests against your unique UI port:\n\n```bash\nPW_BASE_URL=http://localhost:<ui-port> npx playwright test tests/<feature>.spec.ts\n```\n\nThe full Playwright coverage contract is `npm run verify:e2e:full`. It runs the\nproduct, smoke-live, extended, audit, screenshot, and Android buckets. Every\ntop-level or Android Playwright spec must be assigned to exactly one bucket in\n`tests/e2e-manifest.mjs`; update that manifest when adding, moving, or deleting\nspecs.\n\nTests live in `tests/` and follow these conventions:\n- `import { test, expect } from '@playwright/test'`\n- Role-based selectors (`getByRole`, `getByText`, `getByPlaceholder`) over CSS\n- Seed state via `page.addInitScript` or `page.evaluate`\n- Route API calls with `page.route` to isolate from backend state\n\n### Code style\n\n- Prefer CSS classes over inline styles. The project uses `.css` files alongside components.\n- **Use `useQuery` / `useMutation` from `@tanstack/react-query` for all data fetching.** Never use raw `useState` + `useCallback(fetch)` + `useEffect` patterns. The SDK (`@kontourai/station-sdk`) exports domain-specific hooks (`useAgentsQuery`, `useProjectsQuery`, `useLayoutsQuery`, etc.) — prefer those over raw `useQuery` when available. For views, destructure `isLoading` and pass it to `SplitPaneLayout`'s `loading` prop. After mutations, call `queryClient.invalidateQueries()` instead of manual refetch functions.\n\n### Navigation\n\nProject layout navigation MUST go through `setLayout(projectSlug, layoutSlug)` from `useNavigation()` — never raw `navigate(`/projects/...`)`. `setLayout` persists `lastProject`/`lastProjectLayout` to localStorage so `/` can restore the user's last-viewed project on reload. Raw `navigate()` only pushes the URL without persisting, which breaks restore-on-reload.\n\n- `setLayout(projectSlug, layoutSlug)` — project layout navigation (persists + navigates)\n- `setStandaloneLayout(slug)` — standalone layout navigation\n- `navigate(path)` — everything else (settings, agents, plugins, etc.)\n\nThe root route (`/`) auto-selects in this priority: (1) last-viewed project+layout from localStorage, (2) first project's first layout, (3) the new-project creation prompt when no projects exist yet.\n\n### Code quality & pushing\n\nBefore pushing, run the full local CI pipeline (typecheck, biome lint, build, tests) and ensure the core stays vendor-neutral. Route handlers use `getBody(c)` and `param(c, 'name')` from `schemas.ts` for type safety. See [docs/guides/code-quality.md](docs/guides/code-quality.md) for details. See [docs/guides/testing.md](docs/guides/testing.md) for test patterns, shared utilities, and the new-feature testing checklist.\n\nFor the full CLI command and flag reference, see [docs/reference/cli.md](docs/reference/cli.md).\n\n### Unsaved changes guard\n\nAll editor views with dirty state MUST use the `useUnsavedGuard(dirty)` hook from `src-ui/src/hooks/useUnsavedGuard.tsx`. It provides:\n- `guard(cb)` — shows a ConfirmModal if dirty, else runs the callback. Wrap any navigation handler (select, new, back).\n- `<DiscardModal />` — render at the bottom of the view's JSX.\n- Automatic `beforeunload` protection for browser close/reload.\n\nNever use `window.confirm` for unsaved-changes prompts — always use this hook.\n\n### Known issues\n\nNone currently tracked.\n\n### State primitives\n\nEvery empty, loading, and error state renders through one canonical family under `src-ui/src/components/state/` — import `Empty`, `ErrorState`, `Skeleton`/`SkeletonList` from there, not directly from `@kontourai/ui/react` or `./Skeleton`:\n- `Empty` — Console Kit's own primitive (`variant: 'default'|'prominent'|'compact'`, `label`, `description`, `action`, `icon`), re-exported, not reinvented.\n- `ErrorState` — new (Console Kit ships no error primitive). `Empty` with a fixed error affordance (icon + retry `action` slot); used for genuine failures (a 404, a crash boundary), not \"no data yet.\"\n- `Skeleton`/`SkeletonList` — re-exported from the existing `../Skeleton` module for loading placeholders.\n\nThree recorded, reasoned exceptions (different concepts, not bespoke duplicates — see `docs/strategy` for the #192 shaping): `FullScreenLoader`/`FullScreenError` (`@kontourai/station-sdk`, `packages/sdk/src/components/Loading.tsx`) gate the whole app shell before `{children}` is even usable, and `LoadingDots` (`src-ui/src/components/LoadingDots.tsx`) is an active-generation/streaming indicator, not an empty state.\n\n`scripts/state-primitives-ratchet.mjs` (`npm run state-primitives:ratchet`, wired into `verify:static`) is a checked-in-baseline count-ratchet gate: the bespoke `*__empty`-classed file count and the ad-hoc \"No X\" string count (`scripts/state-primitives-baseline.json`) must only decrease, never regrow silently. `S4_DEFERRED_EXCLUSIONS` in that script names the files intentionally deferred to #193's shell-convergence ports — remove an entry only once that view has actually been migrated.\n\n### Shell skeletons\n\nEvery #193 view converges on exactly one of two canonical skeletons — see `docs/design/shell-skeletons.md` for the full rule, the six-view target mapping, and the recorded Knowledge deviation:\n- `SplitPaneLayout` (`src-ui/src/components/SplitPaneLayout.tsx`) — list+detail: a searchable left item list + a right detail pane, with S3 state primitives wired in. Proven instances: `ProviderSettingsView.tsx`, `AgentConnectionView.tsx`.\n- `page-layout.css` (`.page`/`.page--narrow`/`.page--full` root classes) + `DetailHeader` (`src-ui/src/components/DetailHeader.tsx`) — single-page: a fixed set of sections/cards for one subject, no navigable list. Proven instances: `SkillsView.tsx`, `SettingsView.tsx` (root wrapper); `ProjectSettingsView.tsx` (header pattern).\n\nThe decision rule: does the view present an arbitrary-cardinality, user-navigable collection where selecting an item changes a detail pane? Yes → `SplitPaneLayout`; no (a single subject with bounded sections) → page-layout + `DetailHeader`.\n\n`scripts/shell-conformance-ratchet.mjs` (`npm run shell-conformance:ratchet`, wired into `verify:static` right after `state-primitives:ratchet`) is a checked-in-baseline count-ratchet gate mirroring `state-primitives-ratchet.mjs`'s architecture: it classifies each of the six #193 views as conformant (renders `<SplitPaneLayout>` or a `page`-rooted wrapper) or bespoke, and `scripts/shell-conformance-baseline.json`'s `bespokeShellCeiling` must only decrease as each view ports. One exception, recorded in `docs/design/shell-skeletons.md` §3.1: `KnowledgeConnectionView.tsx` targets page-layout, not the steal-list's original `SplitPaneLayout` hypothesis, because it has no natural navigable list.\n\n### Notification system\n\nProvider pattern — plugins register `INotificationProvider` implementations that contribute notifications via `poll()`. `NotificationService` aggregates providers, manages lifecycle, persists to `~/.station/notifications.json`. Events flow through EventBus (`notification:delivered`) → SSE route → browser ToastStore. SDK: `useNotifications()` hook and `NotificationsAPI` class. Shared primitives: `cron.ts`, `json-store.ts`, `sse-broadcaster.ts` (SSEBroadcaster used by scheduler only, not notifications).\n\n### Feedback system\n\nTwo-tier feedback loop: user rates messages → mini-analysis per message → full-analysis aggregates into behavior guidelines → `routes/chat.ts` injects `reinforce`/`avoid` lists into chat system prompts via `getBehaviorGuidelines()`. Storage: `~/.station/feedback/feedback.json`. See [docs/kiroom-analysis/02-insights-feedback.md](docs/kiroom-analysis/02-insights-feedback.md) for design rationale.\n\n### Voice system\n\nSpeech-to-speech via WebSocket with plugin-extensible `IS2SProvider` interface. Built-in: Nova Sonic. Plugin examples: `examples/elevenlabs-voice/`, `examples/nova-sonic-voice/`. Voice prompt prefix auto-prepended. Agent MCP tools translated to S2S tool definitions.\n\n### ACP (Agent Communication Protocol)\n\nACP is a connection method for External agents, not a separate agent type — it drives an external agent runtime (e.g. `kiro-cli`) as a subprocess over stdio. Chats with ACP-connected agents ride the same orchestration session/event path as every other provider: the `acp` provider adapter (`ProviderAdapterShape`, `src-server/providers/adapters/acp-adapter.ts`) translates ACP session updates and extension notifications into canonical runtime events (`plan.updated`, `extension.notification`, etc.); no separate chat-SSE bridge remains. Plugins contribute ACP connections via the additive provider pattern. See [docs/guides/acp.md](docs/guides/acp.md) for the full architecture and integration guide.\n\n### Knowledge / LanceDB\n\nPer-project vector knowledge base using LanceDB for embeddings. `KnowledgeService` manages document ingestion, chunking, and semantic search. Plugins can contribute knowledge namespaces. Embedding provider is configurable (Bedrock built-in).\n\n### Scheduler (Boo)\n\nCron-based job scheduler. `BuiltinScheduler` runs jobs locally, `SchedulerService` manages CRUD + SSE streaming of job output. Jobs invoke agent prompts on a schedule. REST API at `/schedule`. Uses `SSEBroadcaster` for real-time output streaming to UI.\n\n### Plugin architecture\n\nPlugins are the product — core provides the foundation. A plugin can contribute layouts, agents, MCP integrations, providers, knowledge namespaces, and ACP connections. Manifest-driven with `plugin.json`. See [docs/guides/plugins.md](docs/guides/plugins.md) for development guide.\n\n### Windows compatibility\n\nAll `spawn()` and `execSync()` calls MUST include `windowsHide: true` to prevent console windows flashing on Windows. Use `where` instead of `which` for command lookups (`process.platform === 'win32'`).\n\n### Observability (OTel)\n\nEvery new feature MUST include OpenTelemetry instrumentation. Import instruments from `src-server/telemetry/metrics.ts` and record counters/histograms for meaningful operations (CRUD, lifecycle events, durations). If a new metric instrument is needed, add it to `metrics.ts` following the existing `station.<domain>.<metric>` naming convention.\n\n<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.\nAfter changes, run `veritas readiness` and address any FAIL lines before finishing.\n<!-- veritas:governance-block:end -->\n\nStation notes on the gate (Veritas 1.5): the canonical invocation is `npm run veritas:shadow` (alias for `veritas readiness --working-tree`; `npm run veritas:readiness` is the explicit name, `npm run veritas:readiness:diff` checks `main..HEAD`). Exit 0 = ready; exit 1 = an evidence check or blocking requirement failed and must be fixed; exit >=2 = governance config error. For guidance on a specific failure, run `veritas explain <ruleId>` or `veritas explain --file <path>`. Generated evidence lives under `.kontourai/veritas/`; durable governance remains under `.veritas/`. Check-family dispositions and the historical 0.3→0.5 migration record live in `docs/strategy/veritas/migration-0.5-record.md`. Protected Standards (`.veritas/repo-map.json`, `.veritas/repo-standards/**`, `.veritas/authority/**`, `veritas.claims.json`) require a `veritas attest policy-change` record when changed.\n",
+    "CLAUDE.md": "# Agent Notes\n\n> **This is Station** — Kontour's reference agent runtime: the agent workspace where work ships with receipts, built on the Kontour primitives (Surface, Flow, Veritas, Survey, Flow Agents, Console). It was refounded 2026-06-11 from the original `work-agent` codebase without history. Names are station-only: the CLI is `./station`, packages are `@kontourai/station-*`, the home dir is `~/.station`, env vars are `STATION_*`, the control server is `station-control`, and metrics are `station.*`. There are no legacy aliases or compat shims — `npm run rename:inventory` is a zero-tolerance gate (wired into `verify:static`) that fails the build if any old name reappears.\n\n## Strategy & Goals\n\n### Source Of Truth\n\n- Product/domain context: [CONTEXT.md](CONTEXT.md), delegating canonical vocabulary to [docs/glossary.md](docs/glossary.md).\n- Agent-facing repo instructions: [AGENTS.md](AGENTS.md).\n- Broad verification: `npm run verify`.\n- Docs/interface-only readiness: Markdown source inspection plus `npm run verify:static`.\n\nRead `docs/strategy/` before starting feature work. Key documents:\n\n- **[docs/strategy/constitution.md](docs/strategy/constitution.md)** — Project identity and non-negotiables\n- **[docs/strategy/differentiators.md](docs/strategy/differentiators.md)** — What makes Station different (tiered assessment)\n- **[docs/strategy/roadmap.md](docs/strategy/roadmap.md)** — Phased execution plan with tasks\n- **[docs/strategy/execution-pattern.md](docs/strategy/execution-pattern.md)** — How to pick up and progress work\n- **[docs/strategy/competitive-landscape.md](docs/strategy/competitive-landscape.md)** — Competitor analysis and steal list\n\nThe sibling Kontour product repos live alongside this one (`../surface`, `../flow`, `../veritas`, `../survey`, `../flow-agents`, `../console`, `../console-kit`). Station consumes them **only through their published contracts** (npm packages, MCP servers, file formats) — never reach into their internals (constitution non-negotiable #1).\n\n### Available Workflows\n\nThese workflows are defined in `.claude/commands/` (Claude Code picks them up as slash commands). Any AI agent can read and follow the instructions in those files directly.\n\n| Workflow | File | Purpose |\n|----------|------|---------|\n| Ideate | `.claude/commands/ideate.md` | Pull inspiration from competitor repos, suggest improvements |\n| Competitive Scan | `.claude/commands/competitive-scan.md` | Scan landscape for new tools and features |\n| Differentiation Check | `.claude/commands/differentiation-check.md` | Audit codebase against differentiators.md |\n| Adoption Blockers | `.claude/commands/adoption-blockers.md` | Walk through first-run experience, find friction |\n\n## Active Work\n\nThe current roadmap phase is **Phase S5: Extraction & Ecosystem** (see `docs/strategy/roadmap.md`) — by design mostly strategy: mature subsystems become standalone Kontour products *only on evidence of standalone demand*, so the autonomous work is preparing the extraction-evidence framework while the promotion calls stay with the user. Phases S0–S4 closed 2026-06-11/14: the wedge (Flow-gated sessions, Veritas readiness), the receipts surfaces (Survey workbench plugin, trust panel, run console, Console Kit tokens), native L3-grade enforcement (four policy classes, cross-runtime workflow sidecars, canonical skills, gated platform mutations; L3 spec staged for upstream filing), and suite convergence (Console emission with the DoD proven, convergence deferred-with-evidence, and the full rename to `station` / `@kontourai/station-*`, now a clean break with every compat shim removed in S5) are live product. **Code uses the `station` names only** — no legacy aliases anywhere, enforced by `npm run rename:inventory` (a zero-tolerance gate wired into `verify:static`). **Standing rule from the S1 verdict: substantive changes to Station ship through a gated `station-delivery` Flow run** (use `FlowRunService.attachCommandEvidence` + the readiness bridge; append the entry to `docs/strategy/s1c-dogfood-log.md`). Before implementing against any Kontour contract, read `docs/strategy/kontour-integration-surface.md` — it is the verified contract map (notably: Veritas has no MCP server; Flow's trustArtifact path rejects Surface shapes; Flow Agents' L3 tier is Station's upstream proposal). The MCP-UI host (`src-server/runtime/mcp-ui-resolver.ts`, `src-ui/src/components/mcp-ui/`) is landed and proven behind the `mcpUiHost` flag — SEP-1865 render + host bridge + tool/resource proxy, dedicated frame origin (`MCP_UI_FRAME_PORT`), a hostile-View security suite, and mcp-ui.dev embedded-dialect compat; see `docs/design/mcp-ui-host.md` (the contract for this area). The pre-pivot roadmap (Phases 0–4) is inherited as substantially complete; its verification lanes remain the regression floor. Keep `docs/design/entity-hierarchy.md` as the design contract for agent-type boundaries.\n\n### Vocabulary & entity hierarchy\n\n**Canonical vocabulary lives in [docs/glossary.md](docs/glossary.md) — read it first; it wins over older wording.** The agent model is **two** types (ACP is a connection detail, not a third type):\n\n- **Station agents** (Station runs them on its engine — VoltAgent/Strands — using a **Model** connection: Bedrock/OpenAI/Ollama): Station owns everything — prompt, skills, tools, commands, model.\n- **External agents** (run by an external **Agent app**: Claude Code, Codex, or an ACP CLI like Kiro): the app owns behavior and tools. Station owns only the abstraction it can set (model, effort, thinking). Whether an app is reached via its native SDK or via ACP is just *how it's connected*.\n- Agent editor tabs vary by type: Station agents get Basic|Skills|Tools|Commands; External agents get Basic|Connection (ACP-connected the same).\n- Skills and integrations are Station-agent capabilities only.\n- Projects scope which agents are available via `ProjectConfig.agents`.\n- \"Prompts\" renamed to \"Playbooks\" (`/api/playbooks`, `usePlaybooksQuery`). Old `/api/prompts` kept as compat alias.\n- Registry page (`/registry`) is the unified browse/install surface for agents, skills, integrations, plugins.\n- Sidebar: Projects, Agents, Playbooks, Registry, Connections, Plugins, Schedule, Monitoring.\n\n> **Vocab rename status (phased).** *Phase 1 shipped* — user-facing labels now read **Station / External agents**, **Models / Agent apps**, and \"runtime\" is retired from labels. *Phase 2 (scheduled)* — the **internal** identifiers are unchanged: code still uses `kind:'runtime'`, `executionMode: 'provider-managed'|'runtime'`, `runtimeConnectionId`, `__runtime:`/`__acp:` slugs, and the `managed`/`connected` execution classes. So **reading code you'll see the old names; writing user-facing strings, use the glossary terms.** `docs/design/entity-hierarchy.md` remains the boundary contract.\n\n### Connected agents (merged from feature/connected-agents-hardening)\n\n- `ConnectionService` manages model + runtime connections\n- Provider adapters: ACP, Bedrock, Claude, Codex, Ollama (in `src-server/providers/adapters/`)\n- `AgentExecutionConfig` on `AgentSpec` for runtime selection\n- Orchestration service for session lifecycle\n\n## Task Completion Requirements\n\nAll of the following must pass before a task is considered complete:\n\n1. `npx biome check src-server/ src-ui/ packages/` — no lint or format errors\n2. `npx tsc --noEmit` — no type errors\n3. `npm test` — all unit tests pass\n4. If UI changes: `npm run verify:e2e:full` unless the task is explicitly scoped to a narrower Playwright lane\n\nFor local pre-commit-style validation, `npm run verify:static` runs the lint,\nmanifest, typecheck, and unit-test gate without launching Station. `npm run\nverify` is the no-shortcuts gate and includes the full Playwright coverage\ncontract.\n\nNever skip these gates. If a gate fails, fix the issue before marking done.\n\n### Workflow sidecar (Flow Agents)\n\nThe sidecar writer ships inside `@kontourai/flow-agents` (pinned exact `3.3.0`): `npm run workflow:sidecar -- <subcommand>`. The repo vendors the Builder Kit FlowDefinitions at `kits/builder/flows/` — now **three** files (`build.flow.json`, `shape.flow.json`, `publish-learn.flow.json`; `build.flow.json`'s release-phase steps (`pr-open`/`merge-ready-ci`/`learn`) delegate their gates to `publish-learn` via `uses_flow: \"builder.publish-learn\"`, so vendor all three together, not just `build.flow.json`) — copied from the installed `@kontourai/flow-agents` package because the CLI resolves flows from the repo root, not `node_modules` (keep in sync when upgrading). Start delivery sessions with `ensure-session --task-slug <slug> --flow-id builder.build` **before** planning — gate claims (`record-gate-claim`) and positive release decisions (`record-release --decision merge|release`) require the active flow step `ensure-session` creates; `init-plan` alone does not. `init-plan`'s positional argument is the plan **artifact file path** (e.g. `<slug>--deliver.md`), never a bare directory — passing a directory throws `EISDIR`. To reach the pr-open gate step, advance with `--phase release --flow-definition builder.build`; this still resolves correctly through the `publish-learn` indirection. `record-evidence` refreshes `trust.bundle` + `state.json` but not `acceptance.json` — treat `trust.bundle` as the authoritative claim store. The `--verdict` (`record-evidence`/`record-critique`) vs `--status` (`record-gate-claim`) flag trap is unchanged: passing the wrong flag is silently ignored as unrecognized, and the command then dies on a missing-required-flag message that doesn't name what you actually passed.\n\nNew in 3.3.0 — read for behavior, not just for flags:\n- **Fail-closed release gates.** `record-release`, `advance-state --status delivered`, and `publish-delivery` now exit non-zero (not just a stderr warning) when `trust.bundle` fails the reconcile-preflight shape check or the session isn't the fresh assignment-lease holder. A session-local evidence check that isn't CI-reconcilable needs a non-`test_output` `kind` (e.g. `kind: \"policy\"`) or these commands will refuse to publish.\n- **`publish-delivery` is cwd-safe.** Repo root resolves strictly from the artifact dir's ancestry, never falls back to `process.cwd()`, and each session publishes to its own `delivery/<slug>/` instead of one shared `delivery/trust.bundle` — no more cross-session clobbering.\n- **`record-critique` reviewer-scoped supersession.** Re-recording the same `--id` with the same `--reviewer` marks the prior critique `superseded_by` instead of appending a second live one; a different reviewer does not supersede.\n- **`record-evidence` checks-replacement hazard.** A `--check-json` call replaces the active step's checks rather than merging with a prior `record-gate-claim`'s claim — sequencing `record-gate-claim` then a bare `record-evidence` at the same step can silently clobber the gate claim. Record gate claims after (or together with) the corroborating evidence, or re-record the claim afterward.\n- Legacy `.flow-agents/` roots are no longer scanned by the package's own hooks/steering — only `.kontourai/flow-agents/` is read (station's own back-compat wrapper for the old station-local `.flow-agents/` opt-in marker is unaffected — that's a station concept, not this package's).\n\nDelivery practice: when review and verify delegates run in parallel against one shared worktree, serialize mutation-bearing checks (negative controls, `git checkout --` probes) or give each delegate its own clone — parallel passes in a single worktree have produced observable mutation races. Full subcommand-by-subcommand audit (2.2.0 → 3.3.0, source-diffed and live-verified): `.kontourai/flow-agents/s218-flow-agents-3x/cli-audit-2.2.0-to-3.3.0.md`.\n\n## Station CLI\n\nAlways use `./station` to manage the app — never raw npm scripts, `node esbuild.config.mjs`, or `npx vite build` directly. The CLI handles build orchestration (server + UI) in the correct order.\n\n```bash\n./station --help\n./station start --instance=agent-smoke --temp-home --clean --force --port=3242 --ui-port=5274\n./station stop --instance=agent-smoke\n```\n\nThe CLI is `./station` only — there is no legacy alias.\n\nUse `--temp-home` for routine agent smoke runs so cleanup stays out of your main `~/.station` home. Deleting the default home now requires `--allow-default-home-clean` in addition to `--force`.\n\n### Port rules\n\nDefault ports (3141 server, 3000 UI) are **reserved for user testing**. Agents must always use unique ports and a stable instance name:\n\n```bash\n./station start --instance=agent-smoke --temp-home --clean --force --port=3242 --ui-port=5274\n```\n\nPick ports that won't collide with other agents running concurrently. Multiple Station instances may run from the same checkout at the same time as long as their reserved port ranges do not overlap.\n\nDo **not** stop or disturb a sibling instance from the same checkout just to satisfy that shared-build guard. If another agent-owned instance is live, prefer one of these paths instead:\n- start a new instance with a distinct instance name and non-overlapping ports\n- use targeted per-instance cleanup/start-clean flows on that instance only\n- reuse existing build artifacts for verification when that is enough\n\nStopping a sibling instance is only acceptable when the task is explicitly about that instance or the user specifically asks for it. The remaining truly shared-checkout lane is repo-wide mutation such as `station upgrade` (`git pull`, `npm install`, rebuilds), which still needs extra caution around sibling instances.\n\n### Playwright tests\n\nThe `playwright.config.ts` reads `PW_BASE_URL` from the environment. Run tests against your unique UI port:\n\n```bash\nPW_BASE_URL=http://localhost:<ui-port> npx playwright test tests/<feature>.spec.ts\n```\n\nThe full Playwright coverage contract is `npm run verify:e2e:full`. It runs the\nproduct, smoke-live, extended, audit, screenshot, and Android buckets. Every\ntop-level or Android Playwright spec must be assigned to exactly one bucket in\n`tests/e2e-manifest.mjs`; update that manifest when adding, moving, or deleting\nspecs.\n\nTests live in `tests/` and follow these conventions:\n- `import { test, expect } from '@playwright/test'`\n- Role-based selectors (`getByRole`, `getByText`, `getByPlaceholder`) over CSS\n- Seed state via `page.addInitScript` or `page.evaluate`\n- Route API calls with `page.route` to isolate from backend state\n\n### Code style\n\n- Prefer CSS classes over inline styles. The project uses `.css` files alongside components.\n- **Use `useQuery` / `useMutation` from `@tanstack/react-query` for all data fetching.** Never use raw `useState` + `useCallback(fetch)` + `useEffect` patterns. The SDK (`@kontourai/station-sdk`) exports domain-specific hooks (`useAgentsQuery`, `useProjectsQuery`, `useLayoutsQuery`, etc.) — prefer those over raw `useQuery` when available. For views, destructure `isLoading` and pass it to `SplitPaneLayout`'s `loading` prop. After mutations, call `queryClient.invalidateQueries()` instead of manual refetch functions.\n\n### Navigation\n\nProject layout navigation MUST go through `setLayout(projectSlug, layoutSlug)` from `useNavigation()` — never raw `navigate(`/projects/...`)`. `setLayout` persists `lastProject`/`lastProjectLayout` to localStorage so `/` can restore the user's last-viewed project on reload. Raw `navigate()` only pushes the URL without persisting, which breaks restore-on-reload.\n\n- `setLayout(projectSlug, layoutSlug)` — project layout navigation (persists + navigates)\n- `setStandaloneLayout(slug)` — standalone layout navigation\n- `navigate(path)` — everything else (settings, agents, plugins, etc.)\n\nThe root route (`/`) auto-selects in this priority: (1) last-viewed project+layout from localStorage, (2) first project's first layout, (3) the new-project creation prompt when no projects exist yet.\n\n### Code quality & pushing\n\nBefore pushing, run the full local CI pipeline (typecheck, biome lint, build, tests) and ensure the core stays vendor-neutral. Route handlers use `getBody(c)` and `param(c, 'name')` from `schemas.ts` for type safety. See [docs/guides/code-quality.md](docs/guides/code-quality.md) for details. See [docs/guides/testing.md](docs/guides/testing.md) for test patterns, shared utilities, and the new-feature testing checklist.\n\nFor the full CLI command and flag reference, see [docs/reference/cli.md](docs/reference/cli.md).\n\n### Unsaved changes guard\n\nAll editor views with dirty state MUST use the `useUnsavedGuard(dirty)` hook from `src-ui/src/hooks/useUnsavedGuard.tsx`. It provides:\n- `guard(cb)` — shows a ConfirmModal if dirty, else runs the callback. Wrap any navigation handler (select, new, back).\n- `<DiscardModal />` — render at the bottom of the view's JSX.\n- Automatic `beforeunload` protection for browser close/reload.\n\nNever use `window.confirm` for unsaved-changes prompts — always use this hook.\n\n### Known issues\n\nNone currently tracked.\n\n### State primitives\n\nEvery empty, loading, and error state renders through one canonical family under `src-ui/src/components/state/` — import `Empty`, `ErrorState`, `Skeleton`/`SkeletonList` from there, not directly from `@kontourai/ui/react` or `./Skeleton`:\n- `Empty` — Console Kit's own primitive (`variant: 'default'|'prominent'|'compact'`, `label`, `description`, `action`, `icon`), re-exported, not reinvented.\n- `ErrorState` — new (Console Kit ships no error primitive). `Empty` with a fixed error affordance (icon + retry `action` slot); used for genuine failures (a 404, a crash boundary), not \"no data yet.\"\n- `Skeleton`/`SkeletonList` — re-exported from the existing `../Skeleton` module for loading placeholders.\n\nThree recorded, reasoned exceptions (different concepts, not bespoke duplicates — see `docs/strategy` for the #192 shaping): `FullScreenLoader`/`FullScreenError` (`@kontourai/station-sdk`, `packages/sdk/src/components/Loading.tsx`) gate the whole app shell before `{children}` is even usable, and `LoadingDots` (`src-ui/src/components/LoadingDots.tsx`) is an active-generation/streaming indicator, not an empty state.\n\n`scripts/state-primitives-ratchet.mjs` (`npm run state-primitives:ratchet`, wired into `verify:static`) is a checked-in-baseline count-ratchet gate: the bespoke `*__empty`-classed file count and the ad-hoc \"No X\" string count (`scripts/state-primitives-baseline.json`) must only decrease, never regrow silently. `S4_DEFERRED_EXCLUSIONS` in that script names the files intentionally deferred to #193's shell-convergence ports — remove an entry only once that view has actually been migrated.\n\n### Shell skeletons\n\nEvery #193 view converges on exactly one of two canonical skeletons — see `docs/design/shell-skeletons.md` for the full rule, the six-view target mapping, and the recorded Knowledge deviation:\n- `SplitPaneLayout` (`src-ui/src/components/SplitPaneLayout.tsx`) — list+detail: a searchable left item list + a right detail pane, with S3 state primitives wired in. Proven instances: `ProviderSettingsView.tsx`, `AgentConnectionView.tsx`.\n- `page-layout.css` (`.page`/`.page--narrow`/`.page--full` root classes) + `DetailHeader` (`src-ui/src/components/DetailHeader.tsx`) — single-page: a fixed set of sections/cards for one subject, no navigable list. Proven instances: `SkillsView.tsx`, `SettingsView.tsx` (root wrapper); `ProjectSettingsView.tsx` (header pattern).\n\nThe decision rule: does the view present an arbitrary-cardinality, user-navigable collection where selecting an item changes a detail pane? Yes → `SplitPaneLayout`; no (a single subject with bounded sections) → page-layout + `DetailHeader`.\n\n`scripts/shell-conformance-ratchet.mjs` (`npm run shell-conformance:ratchet`, wired into `verify:static` right after `state-primitives:ratchet`) is a checked-in-baseline count-ratchet gate mirroring `state-primitives-ratchet.mjs`'s architecture: it classifies each of the six #193 views as conformant (renders `<SplitPaneLayout>` or a `page`-rooted wrapper) or bespoke, and `scripts/shell-conformance-baseline.json`'s `bespokeShellCeiling` must only decrease as each view ports. One exception, recorded in `docs/design/shell-skeletons.md` §3.1: `KnowledgeConnectionView.tsx` targets page-layout, not the steal-list's original `SplitPaneLayout` hypothesis, because it has no natural navigable list.\n\n### Notification system\n\nProvider pattern — plugins register `INotificationProvider` implementations that contribute notifications via `poll()`. `NotificationService` aggregates providers, manages lifecycle, persists to `~/.station/notifications.json`. Events flow through EventBus (`notification:delivered`) → SSE route → browser ToastStore. SDK: `useNotifications()` hook and `NotificationsAPI` class. Shared primitives: `cron.ts`, `json-store.ts`, `sse-broadcaster.ts` (SSEBroadcaster used by scheduler only, not notifications).\n\n### Feedback system\n\nTwo-tier feedback loop: user rates messages → mini-analysis per message → full-analysis aggregates into behavior guidelines → `routes/chat.ts` injects `reinforce`/`avoid` lists into chat system prompts via `getBehaviorGuidelines()`. Storage: `~/.station/feedback/feedback.json`. See [docs/kiroom-analysis/02-insights-feedback.md](docs/kiroom-analysis/02-insights-feedback.md) for design rationale.\n\n### Voice system\n\nSpeech-to-speech via WebSocket with plugin-extensible `IS2SProvider` interface. Built-in: Nova Sonic. Plugin examples: `examples/elevenlabs-voice/`, `examples/nova-sonic-voice/`. Voice prompt prefix auto-prepended. Agent MCP tools translated to S2S tool definitions.\n\n### ACP (Agent Communication Protocol)\n\nACP is a connection method for External agents, not a separate agent type — it drives an external agent runtime (e.g. `kiro-cli`) as a subprocess over stdio. Chats with ACP-connected agents ride the same orchestration session/event path as every other provider: the `acp` provider adapter (`ProviderAdapterShape`, `src-server/providers/adapters/acp-adapter.ts`) translates ACP session updates and extension notifications into canonical runtime events (`plan.updated`, `extension.notification`, etc.); no separate chat-SSE bridge remains. Plugins contribute ACP connections via the additive provider pattern. See [docs/guides/acp.md](docs/guides/acp.md) for the full architecture and integration guide.\n\n### Knowledge / LanceDB\n\nPer-project vector knowledge base using LanceDB for embeddings. `KnowledgeService` manages document ingestion, chunking, and semantic search. Plugins can contribute knowledge namespaces. Embedding provider is configurable (Bedrock built-in).\n\n### Scheduler (Boo)\n\nCron-based job scheduler. `BuiltinScheduler` runs jobs locally, `SchedulerService` manages CRUD + SSE streaming of job output. Jobs invoke agent prompts on a schedule. REST API at `/schedule`. Uses `SSEBroadcaster` for real-time output streaming to UI.\n\n### Plugin architecture\n\nPlugins are the product — core provides the foundation. A plugin can contribute layouts, agents, MCP integrations, providers, knowledge namespaces, and ACP connections. Manifest-driven with `plugin.json`. See [docs/guides/plugins.md](docs/guides/plugins.md) for development guide.\n\n### Windows compatibility\n\nAll `spawn()` and `execSync()` calls MUST include `windowsHide: true` to prevent console windows flashing on Windows. Use `where` instead of `which` for command lookups (`process.platform === 'win32'`).\n\n### Observability (OTel)\n\nEvery new feature MUST include OpenTelemetry instrumentation. Import instruments from `src-server/telemetry/metrics.ts` and record counters/histograms for meaningful operations (CRUD, lifecycle events, durations). If a new metric instrument is needed, add it to `metrics.ts` following the existing `station.<domain>.<metric>` naming convention.\n\n<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.\nAfter changes, run `veritas readiness` and address any FAIL lines before finishing.\n<!-- veritas:governance-block:end -->\n\nStation notes on the gate (Veritas 1.5): the canonical invocation is `npm run veritas:shadow` (alias for `veritas readiness --working-tree`; `npm run veritas:readiness` is the explicit name, `npm run veritas:readiness:diff` checks `main..HEAD`). Exit 0 = ready; exit 1 = an evidence check or blocking requirement failed and must be fixed; exit >=2 = governance config error. For guidance on a specific failure, run `veritas explain <ruleId>` or `veritas explain --file <path>`. Generated evidence lives under `.kontourai/veritas/`; durable governance remains under `.veritas/`. Check-family dispositions and the historical 0.3→0.5 migration record live in `docs/strategy/veritas/migration-0.5-record.md`. Protected Standards (`.veritas/repo-map.json`, `.veritas/repo-standards/**`, `.veritas/authority/**`, `veritas.claims.json`) require a `veritas attest policy-change` record when changed.\n"
+  },
+  "artifact_hashes": {
+    ".veritas/README.md": "70c78f36986abe6461e4de3bb299e5832251a21364237d3b92782f1aef51bcbd",
+    ".veritas/GOVERNANCE.md": "7db422ec20e647443b017edf43aab11f3c9baa10aa8bcc271d248836b0f17b2f",
+    ".veritas/repo-map.json": "5932d4fb241ca88bba168b930cf122adea50a1b82ff347bc8ba65eacdc04c3c5",
+    ".veritas/repo-standards/default.repo-standards.json": "4064246a9e27908811dcf7ebab706339350ebe988abd5f39d236b92232521773",
+    ".veritas/authority/default.authority-settings.json": "b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+    "AGENTS.md": "2f51513b1dd03318eaab68b4d320feda26bb4a5a53a711bafcf62a89783dafa5",
+    "CLAUDE.md": "2f51513b1dd03318eaab68b4d320feda26bb4a5a53a711bafcf62a89783dafa5"
+  },
+  "recommended_repo_map": {
+    "name": "station",
+    "kind": "repo-map",
+    "policy": {
+      "defaultFalsePositiveReview": "unknown",
+      "defaultPromotionCandidate": false,
+      "defaultExceptionAllowed": false
+    },
+    "graph": {
+      "version": 1,
+      "defaultResolution": {
+        "phase": "Phase S1 (The Wedge)",
+        "workstream": "Kontour-native agent workspace",
+        "matchedArtifacts": [
+          "docs/strategy/roadmap.md"
+        ]
+      },
+      "nonSliceableInvariants": [
+        "CLI/API/UI parity",
+        "SDK contract integrity",
+        "plugin/core boundary protection",
+        "mandatory CI coverage",
+        "Veritas evidence before promotion"
+      ],
+      "resolverPrecedence": [
+        "explicit roadmap task or issue reference in prompt/branch/PR title",
+        "matching initiative plan under docs/plans/**",
+        "matching Veritas governance artifact under .veritas/**",
+        "active initiative from docs/strategy/roadmap.md",
+        "multi-workstream fallback suppresses promotion"
+      ],
+      "resolutionRules": [
+        {
+          "id": "initiative-plan",
+          "match": {
+            "patterns": [
+              "docs/plans/"
+            ]
+          },
+          "resolution": {
+            "phase": "Phase S1 (The Wedge)",
+            "workstream": "Kontour-native agent workspace",
+            "matchedArtifacts": [
+              "docs/plans/**"
+            ]
+          }
+        },
+        {
+          "id": "veritas-governance",
+          "match": {
+            "patterns": [
+              ".veritas/"
+            ]
+          },
+          "resolution": {
+            "phase": "Phase S1 (The Wedge)",
+            "workstream": "Veritas 1.5 governance dogfood",
+            "matchedArtifacts": [
+              ".veritas/**"
+            ]
+          }
+        }
+      ],
+      "nodes": [
+        {
+          "id": "product.src-server",
+          "kind": "product-area",
+          "label": "src-server",
+          "patterns": [
+            "src-server/"
+          ],
+          "owners": [
+            "station-runtime"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "product.src-ui",
+          "kind": "product-area",
+          "label": "src-ui",
+          "patterns": [
+            "src-ui/"
+          ],
+          "owners": [
+            "station-frontend"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "product.src-shared",
+          "kind": "product-area",
+          "label": "src-shared",
+          "patterns": [
+            "src-shared/"
+          ],
+          "owners": [
+            "station-runtime"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "product.src-desktop",
+          "kind": "product-area",
+          "label": "src-desktop",
+          "patterns": [
+            "src-desktop/"
+          ],
+          "owners": [
+            "station-desktop"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "package.cli",
+          "kind": "shared-package-area",
+          "label": "packages/cli",
+          "patterns": [
+            "packages/cli/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "package.connect",
+          "kind": "shared-package-area",
+          "label": "packages/connect",
+          "patterns": [
+            "packages/connect/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "package.contracts",
+          "kind": "shared-contract-area",
+          "label": "packages/contracts",
+          "patterns": [
+            "packages/contracts/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "package.sdk",
+          "kind": "shared-contract-area",
+          "label": "packages/sdk",
+          "patterns": [
+            "packages/sdk/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "package.shared",
+          "kind": "shared-package-area",
+          "label": "packages/shared",
+          "patterns": [
+            "packages/shared/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "example.catalog",
+          "kind": "example-area",
+          "label": "examples/**",
+          "patterns": [
+            "examples/"
+          ],
+          "owners": [
+            "shared"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "delivery.github",
+          "kind": "delivery-area",
+          "label": ".github/**",
+          "patterns": [
+            ".github/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "tooling.scripts",
+          "kind": "tooling-area",
+          "label": "scripts/**",
+          "patterns": [
+            "scripts/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "documentation.general",
+          "kind": "product-area",
+          "label": "docs/**",
+          "patterns": [
+            "docs/"
+          ],
+          "owners": [
+            "docs-team"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "governance.veritas",
+          "kind": "protected-area",
+          "label": ".veritas/**",
+          "governance-locked": true,
+          "patterns": [
+            ".veritas/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "governance.strategy",
+          "kind": "protected-area",
+          "label": "docs/strategy/**",
+          "patterns": [
+            "docs/strategy/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "governance.plans",
+          "kind": "protected-area",
+          "label": "docs/plans/**",
+          "patterns": [
+            "docs/plans/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "verification.tests",
+          "kind": "verification-area",
+          "label": "tests/**",
+          "patterns": [
+            "tests/"
+          ],
+          "owners": [
+            "shared"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "governance.root-manifests",
+          "kind": "protected-area",
+          "label": "root manifests",
+          "patterns": [
+            "package.json",
+            "package-lock.json",
+            "README.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "SECURITY.md",
+            "veritas.claims.json",
+            "biome.json",
+            "tsconfig.json",
+            "vite.config.ts",
+            "vitest.config.ts",
+            "vitest.setup.ts",
+            "playwright.config.ts",
+            "esbuild.config.mjs",
+            ".gitignore"
+          ],
+          "owners": [
+            "repo-core"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "governance.flow",
+          "kind": "protected-area",
+          "label": ".flow/**",
+          "patterns": [
+            ".flow/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
+          "boundary": "advisory"
+        },
+        {
+          "id": "product.delivery",
+          "kind": "product-area",
+          "label": "delivery/**",
+          "patterns": [
+            "delivery/"
+          ]
+        },
+        {
+          "id": "product.deploy",
+          "kind": "product-area",
+          "label": "deploy/**",
+          "patterns": [
+            "deploy/"
+          ]
+        },
+        {
+          "id": "product.fallow.baselines",
+          "kind": "product-area",
+          "label": "fallow-baselines/**",
+          "patterns": [
+            "fallow-baselines/"
+          ]
+        },
+        {
+          "id": "product.gallery",
+          "kind": "product-area",
+          "label": "gallery/**",
+          "patterns": [
+            "gallery/"
+          ]
+        },
+        {
+          "id": "product.kits",
+          "kind": "product-area",
+          "label": "kits/**",
+          "patterns": [
+            "kits/"
+          ]
+        },
+        {
+          "id": "product.monitoring",
+          "kind": "product-area",
+          "label": "monitoring/**",
+          "patterns": [
+            "monitoring/"
+          ]
+        },
+        {
+          "id": "product.ops",
+          "kind": "product-area",
+          "label": "ops/**",
+          "patterns": [
+            "ops/"
+          ]
+        },
+        {
+          "id": "product.schemas",
+          "kind": "product-area",
+          "label": "schemas/**",
+          "patterns": [
+            "schemas/"
+          ]
+        },
+        {
+          "id": "product.seed",
+          "kind": "product-area",
+          "label": "seed/**",
+          "patterns": [
+            "seed/"
+          ]
+        }
+      ]
+    },
+    "evidence": {
+      "artifactDir": ".kontourai/veritas/evidence",
+      "reportTransport": "github-step-summary",
+      "uncoveredPathPolicy": "warn",
+      "evidenceChecks": [
+        {
+          "id": "repo-governance",
+          "command": "npm run proof:repo-governance",
+          "method": "validation",
+          "summary": "Required governance family: Veritas 1.5 artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions."
+        },
+        {
+          "id": "repo-guardrails",
+          "command": "npm run proof:repo-guardrails",
+          "method": "validation",
+          "summary": "Transitional compatibility aggregator for the former convergence checks. Not the required gate."
+        },
+        {
+          "id": "architecture-boundaries",
+          "command": "npm run proof:architecture-boundaries",
+          "method": "validation",
+          "summary": "Candidate family lane for package/import and architecture-boundary checks while catch evidence is measured."
+        },
+        {
+          "id": "ui-data-access",
+          "command": "npm run proof:ui-data-access",
+          "method": "validation",
+          "summary": "Candidate family lane for SDK hook/raw-fetch guidance while product tests absorb behavior checks."
+        },
+        {
+          "id": "runtime-contracts",
+          "command": "npm run proof:runtime-contracts",
+          "method": "validation",
+          "summary": "Advisory move-to-test family lane for runtime/ACP/Codex structure; connected-agents is the behavioral proof."
+        },
+        {
+          "id": "retired-surfaces",
+          "command": "npm run proof:retired-surfaces",
+          "method": "validation",
+          "summary": "Candidate family lane for deleted-surface tombstones with explicit expiry/review requirements."
+        },
+        {
+          "id": "migration-tombstones",
+          "command": "npm run proof:migration-tombstones",
+          "method": "validation",
+          "summary": "Advisory family lane for low-severity refactor-shape tombstones that should be retired or softened."
+        },
+        {
+          "id": "connected-agents",
+          "command": "npm run test:connected-agents",
+          "method": "validation",
+          "summary": "Provider and orchestration integration tests for connected agent runtimes (behavioral proof for runtime-contracts)."
+        },
+        {
+          "id": "static-verification",
+          "command": "npm run verify:static",
+          "method": "validation",
+          "summary": "Biome, TypeScript, and unit tests. Runs in ci:fast; declared here for coverage, not routed into readiness."
+        },
+        {
+          "id": "sdk-builds",
+          "command": "npm run proof:sdk-builds",
+          "method": "validation",
+          "summary": "Builds shared SDK and connect packages. Runs in ci:fast; declared here for coverage, not routed into readiness."
+        },
+        {
+          "id": "app-builds",
+          "command": "npm run proof:app-builds",
+          "method": "validation",
+          "summary": "Builds server and UI artifacts. Runs in ci:fast; declared here for coverage, not routed into readiness."
+        },
+        {
+          "id": "fallow-advisory",
+          "command": "npm run veritas:fallow:advisory",
+          "method": "auditability",
+          "summary": "Baseline-aware Fallow audit as advisory codebase-intelligence evidence. Requires the fallow CLI; not a default check.",
+          "externalTool": {
+            "tool": "fallow",
+            "format": "work-agent-fallow-advisory-v1",
+            "blocking": false,
+            "artifactPath": ".kontourai/veritas/external/fallow-audit.json"
+          }
+        }
+      ],
+      "requiredEvidenceCheckIds": [
+        "repo-governance"
+      ],
+      "defaultEvidenceCheckIds": [
+        "repo-governance"
+      ],
+      "evidenceCheckRoutes": [
+        {
+          "nodeIds": [
+            "package.sdk",
+            "package.contracts",
+            "package.connect",
+            "package.shared",
+            "package.cli"
+          ],
+          "evidenceCheckIds": [
+            "architecture-boundaries"
+          ],
+          "componentIds": [
+            "package.sdk",
+            "package.contracts",
+            "package.connect",
+            "package.shared",
+            "package.cli"
+          ]
+        },
+        {
+          "nodeIds": [
+            "product.src-ui"
+          ],
+          "evidenceCheckIds": [
+            "ui-data-access"
+          ],
+          "componentIds": [
+            "product.src-ui"
+          ]
+        },
+        {
+          "nodeIds": [
+            "product.src-server"
+          ],
+          "evidenceCheckIds": [
+            "runtime-contracts",
+            "connected-agents"
+          ],
+          "componentIds": [
+            "product.src-server"
+          ]
+        }
+      ],
+      "evidenceInventoryManifests": [
+        ".veritas/proof-families/repo-guardrails.families.json"
+      ]
+    },
+    "activation": {
+      "aiInstructionFiles": [
+        {
+          "path": "AGENTS.md",
+          "tool": "codex",
+          "required": true
+        },
+        {
+          "path": "CLAUDE.md",
+          "tool": "claude-code",
+          "required": true
+        }
+      ]
+    }
+  },
+  "recommended_repo_standards": {
+    "version": 1,
+    "name": "station-default",
+    "description": "Veritas 1.5 Repo Standards for Station. Originally migrated from the 0.3 policy pack; product-specific structural checks remain npm proof lanes until they prove reusable. See docs/strategy/veritas/migration-0.5-record.md for the historical dispositions.",
+    "rules": [
+      {
+        "id": "required-station-governance-artifacts",
+        "kind": "required-artifacts",
+        "classification": "hard-invariant",
+        "stage": "block",
+        "message": "Required Station governance, CI, and Veritas artifacts must exist.",
+        "owner": "repo-core",
+        "rollback_switch": null,
+        "explain": {
+          "summary": "Keep the repository trust contract present: Veritas 1.5 governance baseline, CI workflows, issue/PR templates, security and contract docs.",
+          "mustDo": [
+            "Restore any missing governance, CI, or Veritas artifact before finishing."
+          ],
+          "mustNotDo": [
+            "Do not delete or weaken governance files to make a readiness run pass."
+          ],
+          "exampleGood": "Update .veritas/repo-map.json and this standards file together when the repo layout changes.",
+          "exampleBad": "Remove .github/workflows/ci.yml or .veritas/repo-standards/default.repo-standards.json.",
+          "contextLinks": [
+            ".veritas/GOVERNANCE.md",
+            "docs/strategy/veritas/migration-0.5-record.md"
+          ]
+        },
+        "match": {
+          "artifacts": [
+            ".github/dependabot.yml",
+            ".github/workflows/ci.yml",
+            ".github/workflows/ci-extended.yml",
+            ".github/ISSUE_TEMPLATE/bug-report.yml",
+            ".github/ISSUE_TEMPLATE/feature-request.yml",
+            ".github/ISSUE_TEMPLATE/docs-issue.yml",
+            ".github/ISSUE_TEMPLATE/config.yml",
+            ".github/pull_request_template.md",
+            ".veritas/GOVERNANCE.md",
+            ".veritas/README.md",
+            ".veritas/repo-map.json",
+            ".veritas/repo-standards/default.repo-standards.json",
+            ".veritas/authority/default.authority-settings.json",
+            ".veritas/proof-families/repo-guardrails.families.json",
+            "veritas.claims.json",
+            "docs/reference/contracts.md",
+            "SECURITY.md",
+            "AGENTS.md",
+            "CLAUDE.md"
+          ]
+        }
+      },
+      {
+        "id": "ai-instruction-files-synced",
+        "kind": "governance-block",
+        "classification": "hard-invariant",
+        "stage": "warn",
+        "message": "Agent instruction files must include the Veritas governance block.",
+        "owner": "repo-maintainers",
+        "rollback_switch": null,
+        "explain": {
+          "summary": "AGENTS.md (and its CLAUDE.md symlink) must carry the canonical marker-bounded governance block.",
+          "mustDo": [
+            "Reapply the governance block (veritas apply governance-blocks) after editing instruction files."
+          ],
+          "mustNotDo": [
+            "Do not hand-edit the marker-bounded block into a different meaning."
+          ],
+          "exampleGood": "Keep Station-specific notes outside the marker block and regenerate the block.",
+          "exampleBad": "Delete the governance block from AGENTS.md.",
+          "contextLinks": [
+            ".veritas/GOVERNANCE.md",
+            "AGENTS.md"
+          ]
+        },
+        "match": {
+          "governance-block": [
+            "AGENTS.md",
+            "CLAUDE.md"
+          ]
+        }
+      },
+      {
+        "id": "forbid-shared-root-imports",
+        "kind": "forbidden-pattern",
+        "classification": "promotable-policy",
+        "stage": "block",
+        "message": "New code must not import from the @kontourai/station-shared root; use @kontourai/station-contracts/* or explicit helper subpaths.",
+        "owner": "station-architecture",
+        "rollback_switch": "disable-shared-root-import-check",
+        "explain": {
+          "summary": "Contract types are owned by @kontourai/station-contracts; shared helpers are imported via explicit subpaths (e.g. @kontourai/station-shared/build).",
+          "mustDo": [
+            "Import contract types from @kontourai/station-contracts/* and helpers from @kontourai/station-shared/<subpath>."
+          ],
+          "mustNotDo": [
+            "Do not import from the bare @kontourai/station-shared package root (nor the legacy @stallion-ai/shared root)."
+          ],
+          "exampleGood": "import { buildPlugin } from '@kontourai/station-shared/build';",
+          "exampleBad": "import { PluginManifest } from '@kontourai/station-shared';",
+          "contextLinks": [
+            "docs/reference/contracts.md"
+          ]
+        },
+        "match": {
+          "files": [
+            "packages/cli/src/**/*.ts",
+            "packages/connect/src/**/*.ts",
+            "packages/contracts/src/**/*.ts",
+            "packages/sdk/src/**/*.ts",
+            "src-server/**/*.ts",
+            "src-ui/**/*.ts",
+            "src-ui/**/*.tsx"
+          ],
+          "pattern": "from ['\"](@kontourai/station-shared|@stallion-ai/shared)['\"]"
+        }
+      },
+      {
+        "id": "brownfield-gap-log-present",
+        "kind": "required-artifacts",
+        "classification": "promotable-policy",
+        "stage": "recommend",
+        "message": "Brownfield Veritas adoption should keep the gap log and migration record so local workarounds can become Veritas product improvements.",
+        "owner": "repo-maintainers",
+        "rollback_switch": "skip-brownfield-gap-log",
+        "explain": {
+          "summary": "Record Veritas product gaps and migration dispositions instead of hiding them in one-off workarounds.",
+          "mustDo": [
+            "Append to the gap log when Veritas lacks a needed abstraction."
+          ],
+          "mustNotDo": [
+            "Do not silently drop a previously required protection without a recorded disposition."
+          ],
+          "exampleGood": "Add a dated entry to docs/strategy/veritas/brownfield-gap-log.md.",
+          "exampleBad": "Delete the migration record after the migration lands.",
+          "contextLinks": [
+            "docs/strategy/veritas/brownfield-gap-log.md"
+          ]
+        },
+        "match": {
+          "artifacts": [
+            "docs/strategy/veritas/brownfield-gap-log.md",
+            "docs/strategy/veritas/migration-0.5-record.md"
+          ]
+        }
+      }
+    ]
+  },
+  "recommended_authority_settings": {
+    "version": 1,
+    "id": "station-default",
+    "name": "Station Default",
+    "description": "Conservative profile: observe first, learn from evidence, and only harden requirements after repeated catch evidence (see docs/strategy/veritas/proof-family-promotion-workflow.md).",
+    "defaults": {
+      "mode": "observe",
+      "new_rule_stage": "recommend"
+    },
+    "review_preferences": {
+      "human_signoff_required_for_stage_promotion": true,
+      "reviewer_confidence_scale": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "major_rewrite_definition": "A major rewrite replaces the main structure or control flow instead of making local edits."
+    },
+    "promotion_preferences": {
+      "evidence_checks_required_before_require": [
+        "npm run verify:static"
+      ],
+      "warnings_block_in_ci": false,
+      "require_consistent_feedback_before_promotion": true
+    }
+  },
+  "recommended_evidence_checks": [
+    {
+      "id": "required-evidence-check",
+      "command": "npm run verify",
+      "method": "validation",
+      "reason": "Conflicting package-script or authoritative instruction-file verification signals detected; review before promoting this check.",
+      "confidence": "medium",
+      "source": "repo-declared AI instructions"
+    }
+  ],
+  "recommended_evidence_inventory": [
+    {
+      "id": "verify-static-bootstrap",
+      "source_kind": "package-script",
+      "source": "node scripts/node-runtime-contract.mjs && npx biome check scripts/prepare-verify-static.mjs scripts/__tests__/prepare-verify-static.test.ts && npm run prepare:verify-static",
+      "default_disposition": "candidate",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Existing custom verification-shaped package script detected during brownfield init."
+    },
+    {
+      "id": "preverify-static",
+      "source_kind": "package-script",
+      "source": "npm run verify:static:bootstrap",
+      "default_disposition": "candidate",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Existing custom verification-shaped package script detected during brownfield init."
+    },
+    {
+      "id": "proof-repo-guardrails",
+      "source_kind": "package-script",
+      "source": "node scripts/proof-repo-guardrails.mjs",
+      "default_disposition": "advisory",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Existing custom verification-shaped package script detected during brownfield init."
+    },
+    {
+      "id": "verify-static",
+      "source_kind": "package-script",
+      "source": "npm run node-runtime:gate && npm run rename:inventory && npm run noun-consistency:gate && npm run unsaved-guard:gate && npm run state-primitives:ratchet && npm run responsive-surface:ratchet && npm run focus-visible:ratchet && npm run shell-conformance:ratchet && npm run knowledge-kit-import:gate && npx biome check src-server/ src-ui/ packages/ && npx biome check scripts/node-runtime-contract.mjs scripts/__tests__/node-runtime-contract.test.ts scripts/ui-bundle-budget.mjs scripts/ui-bundle-budget.json scripts/__tests__/ui-bundle-budget.test.ts scripts/run-e2e-suite.mjs scripts/lib/e2e-runner-options.mjs scripts/__tests__/e2e-manifest.test.ts scripts/__tests__/trust-reconcile-manifest.test.ts scripts/__tests__/veritas-repo-map.test.ts scripts/__tests__/noun-consistency-gate.test.ts scripts/noun-consistency-gate.mjs scripts/unsaved-guard-gate.mjs scripts/__tests__/unsaved-guard-gate.test.ts scripts/state-primitives-ratchet.mjs scripts/__tests__/state-primitives-ratchet.test.ts scripts/responsive-surface-ratchet.mjs scripts/__tests__/responsive-surface-ratchet.test.ts scripts/focus-visible-ratchet.mjs scripts/__tests__/focus-visible-ratchet.test.ts scripts/shell-conformance-ratchet.mjs scripts/__tests__/shell-conformance-ratchet.test.ts scripts/knowledge-kit-import-gate.mjs scripts/__tests__/knowledge-kit-import-gate.test.ts scripts/dependency-advisory-policy.mjs scripts/dependency-advisory-exceptions.json scripts/__tests__/dependency-advisory-policy.test.ts scripts/__tests__/vite-loopback-default.test.ts scripts/station-dogfood-reconcile.mjs scripts/station-dogfood-health.mjs scripts/station-agent-smoke.mjs scripts/__tests__/station-agent-smoke.test.ts scripts/__tests__/station-dogfood-reconcile.shared.ts scripts/__tests__/station-dogfood-reconcile/ scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts scripts/__tests__/station-dogfood-reconcile.test.ts scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts scripts/__tests__/station-dogfood-reconcile.installer-static-launchd-rollback.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-0.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-1.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-2.test.ts scripts/__tests__/vitest-worktree-exclusion.test.ts scripts/__tests__/station-dogfood-health.test.ts scripts/__tests__/station-dogfood-runtime-recovery.integration.test.ts scripts/__tests__/fixtures/dogfood-runtime-fixture.mjs tests/e2e-manifest.mjs && npx tsc --noEmit && npx tsc -p tsconfig.tests.json --noEmit && npx tsc -p packages/cli/tsconfig.json --noEmit && npx tsc -p packages/contracts/tsconfig.json --noEmit && npx tsc -p packages/connect/tsconfig.tests.json --noEmit && npx tsc -p packages/sdk/tsconfig.tests.json --noEmit && npx tsc -p packages/shared/tsconfig.json --noEmit && npx tsc -p src-ui/tsconfig.json --noEmit && npm test",
+      "default_disposition": "candidate",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Existing custom verification-shaped package script detected during brownfield init."
+    },
+    {
+      "id": "verify-e2e-full",
+      "source_kind": "package-script",
+      "source": "npm run test:e2e:product && npm run test:e2e:first-run && npm run test:e2e:smoke-live && npm run test:e2e:extended && npm run test:e2e:audit && npm run test:e2e:screenshot && npm run test:android",
+      "default_disposition": "candidate",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Existing custom verification-shaped package script detected during brownfield init."
+    },
+    {
+      "id": "verify-cli-e2e",
+      "source_kind": "package-script",
+      "source": "node scripts/cli-agent-e2e.mjs",
+      "default_disposition": "candidate",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Existing custom verification-shaped package script detected during brownfield init."
+    },
+    {
+      "id": "agents-md-11",
+      "source_kind": "instruction-file-verification",
+      "source": "npm run verify",
+      "default_disposition": "candidate",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Authoritative repository-declared verification command detected during brownfield init."
+    },
+    {
+      "id": "claude-md-11",
+      "source_kind": "instruction-file-verification",
+      "source": "npm run verify",
+      "default_disposition": "candidate",
+      "recent_catch_evidence": "unknown",
+      "owner": null,
+      "replacement_test_available": null,
+      "review_trigger": "review before promoting this existing check to required",
+      "rationale": "Authoritative repository-declared verification command detected during brownfield init."
+    }
+  ],
+  "existing_verification": {
+    "detected": true,
+    "items": [
+      {
+        "kind": "package-script",
+        "id": "verify:static:bootstrap",
+        "command": "node scripts/node-runtime-contract.mjs && npx biome check scripts/prepare-verify-static.mjs scripts/__tests__/prepare-verify-static.test.ts && npm run prepare:verify-static",
+        "recommendedDisposition": "candidate",
+        "reason": "Existing custom verification-shaped package script detected during brownfield init."
+      },
+      {
+        "kind": "package-script",
+        "id": "preverify:static",
+        "command": "npm run verify:static:bootstrap",
+        "recommendedDisposition": "candidate",
+        "reason": "Existing custom verification-shaped package script detected during brownfield init."
+      },
+      {
+        "kind": "package-script",
+        "id": "proof:repo-guardrails",
+        "command": "node scripts/proof-repo-guardrails.mjs",
+        "recommendedDisposition": "advisory",
+        "reason": "Existing custom verification-shaped package script detected during brownfield init."
+      },
+      {
+        "kind": "package-script",
+        "id": "verify:static",
+        "command": "npm run node-runtime:gate && npm run rename:inventory && npm run noun-consistency:gate && npm run unsaved-guard:gate && npm run state-primitives:ratchet && npm run responsive-surface:ratchet && npm run focus-visible:ratchet && npm run shell-conformance:ratchet && npm run knowledge-kit-import:gate && npx biome check src-server/ src-ui/ packages/ && npx biome check scripts/node-runtime-contract.mjs scripts/__tests__/node-runtime-contract.test.ts scripts/ui-bundle-budget.mjs scripts/ui-bundle-budget.json scripts/__tests__/ui-bundle-budget.test.ts scripts/run-e2e-suite.mjs scripts/lib/e2e-runner-options.mjs scripts/__tests__/e2e-manifest.test.ts scripts/__tests__/trust-reconcile-manifest.test.ts scripts/__tests__/veritas-repo-map.test.ts scripts/__tests__/noun-consistency-gate.test.ts scripts/noun-consistency-gate.mjs scripts/unsaved-guard-gate.mjs scripts/__tests__/unsaved-guard-gate.test.ts scripts/state-primitives-ratchet.mjs scripts/__tests__/state-primitives-ratchet.test.ts scripts/responsive-surface-ratchet.mjs scripts/__tests__/responsive-surface-ratchet.test.ts scripts/focus-visible-ratchet.mjs scripts/__tests__/focus-visible-ratchet.test.ts scripts/shell-conformance-ratchet.mjs scripts/__tests__/shell-conformance-ratchet.test.ts scripts/knowledge-kit-import-gate.mjs scripts/__tests__/knowledge-kit-import-gate.test.ts scripts/dependency-advisory-policy.mjs scripts/dependency-advisory-exceptions.json scripts/__tests__/dependency-advisory-policy.test.ts scripts/__tests__/vite-loopback-default.test.ts scripts/station-dogfood-reconcile.mjs scripts/station-dogfood-health.mjs scripts/station-agent-smoke.mjs scripts/__tests__/station-agent-smoke.test.ts scripts/__tests__/station-dogfood-reconcile.shared.ts scripts/__tests__/station-dogfood-reconcile/ scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts scripts/__tests__/station-dogfood-reconcile.test.ts scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts scripts/__tests__/station-dogfood-reconcile.installer-static-launchd-rollback.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-0.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-1.test.ts scripts/__tests__/station-dogfood-reconcile.cutover-matrix-2.test.ts scripts/__tests__/vitest-worktree-exclusion.test.ts scripts/__tests__/station-dogfood-health.test.ts scripts/__tests__/station-dogfood-runtime-recovery.integration.test.ts scripts/__tests__/fixtures/dogfood-runtime-fixture.mjs tests/e2e-manifest.mjs && npx tsc --noEmit && npx tsc -p tsconfig.tests.json --noEmit && npx tsc -p packages/cli/tsconfig.json --noEmit && npx tsc -p packages/contracts/tsconfig.json --noEmit && npx tsc -p packages/connect/tsconfig.tests.json --noEmit && npx tsc -p packages/sdk/tsconfig.tests.json --noEmit && npx tsc -p packages/shared/tsconfig.json --noEmit && npx tsc -p src-ui/tsconfig.json --noEmit && npm test",
+        "recommendedDisposition": "candidate",
+        "reason": "Existing custom verification-shaped package script detected during brownfield init."
+      },
+      {
+        "kind": "package-script",
+        "id": "verify:e2e:full",
+        "command": "npm run test:e2e:product && npm run test:e2e:first-run && npm run test:e2e:smoke-live && npm run test:e2e:extended && npm run test:e2e:audit && npm run test:e2e:screenshot && npm run test:android",
+        "recommendedDisposition": "candidate",
+        "reason": "Existing custom verification-shaped package script detected during brownfield init."
+      },
+      {
+        "kind": "package-script",
+        "id": "verify:cli-e2e",
+        "command": "node scripts/cli-agent-e2e.mjs",
+        "recommendedDisposition": "candidate",
+        "reason": "Existing custom verification-shaped package script detected during brownfield init."
+      },
+      {
+        "kind": "instruction-file-verification",
+        "id": "AGENTS.md:11",
+        "command": "npm run verify",
+        "recommendedDisposition": "candidate",
+        "reason": "Authoritative repository-declared verification command detected during brownfield init.",
+        "provenance": {
+          "path": "AGENTS.md",
+          "line": 11,
+          "signal": "pre-merge",
+          "authority": "repo-declared-ai-instructions"
+        }
+      },
+      {
+        "kind": "instruction-file-verification",
+        "id": "CLAUDE.md:11",
+        "command": "npm run verify",
+        "recommendedDisposition": "candidate",
+        "reason": "Authoritative repository-declared verification command detected during brownfield init.",
+        "provenance": {
+          "path": "CLAUDE.md",
+          "line": 11,
+          "signal": "pre-merge",
+          "authority": "repo-declared-ai-instructions"
+        }
+      }
+    ],
+    "authoritativeCommands": [
+      "npm run verify"
+    ],
+    "selectedAuthoritativeCommand": "npm run verify",
+    "provenance": [
+      {
+        "command": "npm run verify",
+        "path": "AGENTS.md",
+        "line": 11,
+        "signal": "pre-merge",
+        "authority": "repo-declared-ai-instructions"
+      },
+      {
+        "command": "npm run verify",
+        "path": "CLAUDE.md",
+        "line": 11,
+        "signal": "pre-merge",
+        "authority": "repo-declared-ai-instructions"
+      }
+    ],
+    "conflicts": [
+      {
+        "kind": "package-script-disagreement",
+        "command": "npm run ci:fast",
+        "instructionCommand": "npm run verify",
+        "reason": "The package-script priority and authoritative AI instruction command differ."
+      }
+    ],
+    "recommendedEvidenceInventoryDefaults": {
+      "unknownCatchEvidenceDefault": "candidate",
+      "requiredNeedsOwner": true,
+      "requiredNeedsReviewTrigger": true,
+      "productBehaviorNeedsReplacementTest": true
+    }
+  },
+  "external_boundaries": [],
+  "existing_governance": {
+    "detected": true,
+    "present_paths": [
+      ".veritas/README.md",
+      ".veritas/GOVERNANCE.md",
+      ".veritas/repo-map.json",
+      ".veritas/repo-standards/default.repo-standards.json",
+      ".veritas/authority/default.authority-settings.json"
+    ],
+    "detected_existing_governance": true,
+    "preserved_existing_governance": true,
+    "explicit_replacement_requested": false,
+    "appended_work_area_node_ids": [
+      "product.delivery",
+      "product.deploy",
+      "product.fallow.baselines",
+      "product.gallery",
+      "product.kits",
+      "product.monitoring",
+      "product.ops",
+      "product.schemas",
+      "product.seed"
+    ]
+  },
+  "recommended_surfaces": [
+    {
+      "id": "governance.guidance",
+      "kind": "protected-area",
+      "label": ".veritas/**",
+      "patterns": [
+        ".veritas/"
+      ],
+      "governance-locked": true,
+      "risk": "high",
+      "reason": "Detected .veritas/** as protected-area."
+    },
+    {
+      "id": "governance.root-manifests",
+      "kind": "protected-area",
+      "label": "root manifests",
+      "patterns": [
+        "package.json",
+        "package-lock.json",
+        "README.md",
+        ".gitignore",
+        "AGENTS.md"
+      ],
+      "risk": "high",
+      "reason": "Detected root manifests as protected-area."
+    },
+    {
+      "id": "delivery.workflows",
+      "kind": "delivery-area",
+      "label": ".github/**",
+      "patterns": [
+        ".github/"
+      ],
+      "risk": "medium",
+      "reason": "Detected .github/** as delivery-area."
+    },
+    {
+      "id": "tooling.scripts",
+      "kind": "tooling-area",
+      "label": "scripts/**",
+      "patterns": [
+        "scripts/"
+      ],
+      "risk": "medium",
+      "reason": "Detected scripts/** as tooling-area."
+    },
+    {
+      "id": "app.src.server",
+      "kind": "product-area",
+      "label": "src-server/**",
+      "patterns": [
+        "src-server/"
+      ],
+      "risk": "medium",
+      "reason": "Detected src-server/** as product-area."
+    },
+    {
+      "id": "app.src.ui",
+      "kind": "product-area",
+      "label": "src-ui/**",
+      "patterns": [
+        "src-ui/"
+      ],
+      "risk": "medium",
+      "reason": "Detected src-ui/** as product-area."
+    },
+    {
+      "id": "app.src.shared",
+      "kind": "product-area",
+      "label": "src-shared/**",
+      "patterns": [
+        "src-shared/"
+      ],
+      "risk": "medium",
+      "reason": "Detected src-shared/** as product-area."
+    },
+    {
+      "id": "workspace.packages",
+      "kind": "shared-package",
+      "label": "packages/**",
+      "patterns": [
+        "packages/"
+      ],
+      "risk": "medium",
+      "reason": "Detected packages/** as shared-package."
+    },
+    {
+      "id": "docs.docs",
+      "kind": "product-area",
+      "label": "docs/**",
+      "patterns": [
+        "docs/"
+      ],
+      "risk": "medium",
+      "reason": "Detected docs/** as product-area."
+    },
+    {
+      "id": "verification.tests",
+      "kind": "verification-area",
+      "label": "tests/**",
+      "patterns": [
+        "tests/"
+      ],
+      "risk": "medium",
+      "reason": "Detected tests/** as verification-area."
+    },
+    {
+      "id": "product.delivery",
+      "kind": "product-area",
+      "label": "delivery/**",
+      "patterns": [
+        "delivery/"
+      ],
+      "risk": "medium",
+      "reason": "Detected delivery/** as product-area."
+    },
+    {
+      "id": "product.deploy",
+      "kind": "product-area",
+      "label": "deploy/**",
+      "patterns": [
+        "deploy/"
+      ],
+      "risk": "medium",
+      "reason": "Detected deploy/** as product-area."
+    },
+    {
+      "id": "product.examples",
+      "kind": "product-area",
+      "label": "examples/**",
+      "patterns": [
+        "examples/"
+      ],
+      "risk": "medium",
+      "reason": "Detected examples/** as product-area."
+    },
+    {
+      "id": "product.fallow.baselines",
+      "kind": "product-area",
+      "label": "fallow-baselines/**",
+      "patterns": [
+        "fallow-baselines/"
+      ],
+      "risk": "medium",
+      "reason": "Detected fallow-baselines/** as product-area."
+    },
+    {
+      "id": "product.gallery",
+      "kind": "product-area",
+      "label": "gallery/**",
+      "patterns": [
+        "gallery/"
+      ],
+      "risk": "medium",
+      "reason": "Detected gallery/** as product-area."
+    },
+    {
+      "id": "product.kits",
+      "kind": "product-area",
+      "label": "kits/**",
+      "patterns": [
+        "kits/"
+      ],
+      "risk": "medium",
+      "reason": "Detected kits/** as product-area."
+    },
+    {
+      "id": "product.monitoring",
+      "kind": "product-area",
+      "label": "monitoring/**",
+      "patterns": [
+        "monitoring/"
+      ],
+      "risk": "medium",
+      "reason": "Detected monitoring/** as product-area."
+    },
+    {
+      "id": "product.ops",
+      "kind": "product-area",
+      "label": "ops/**",
+      "patterns": [
+        "ops/"
+      ],
+      "risk": "medium",
+      "reason": "Detected ops/** as product-area."
+    },
+    {
+      "id": "product.schemas",
+      "kind": "product-area",
+      "label": "schemas/**",
+      "patterns": [
+        "schemas/"
+      ],
+      "risk": "medium",
+      "reason": "Detected schemas/** as product-area."
+    },
+    {
+      "id": "product.seed",
+      "kind": "product-area",
+      "label": "seed/**",
+      "patterns": [
+        "seed/"
+      ],
+      "risk": "medium",
+      "reason": "Detected seed/** as product-area."
+    },
+    {
+      "id": "product.src.desktop",
+      "kind": "product-area",
+      "label": "src-desktop/**",
+      "patterns": [
+        "src-desktop/"
+      ],
+      "risk": "medium",
+      "reason": "Detected src-desktop/** as product-area."
+    }
+  ],
+  "recommended_instruction_targets": [
+    {
+      "path": "AGENTS.md",
+      "tool": "codex",
+      "required": true,
+      "exists": true,
+      "selected": true,
+      "has_governance_block": true,
+      "reason": "Selected for starter governance block activation."
+    },
+    {
+      "path": "CLAUDE.md",
+      "tool": "claude-code",
+      "required": true,
+      "exists": true,
+      "selected": true,
+      "has_governance_block": true,
+      "reason": "Selected for starter governance block activation."
+    },
+    {
+      "path": ".cursorrules",
+      "tool": "cursor",
+      "required": false,
+      "exists": false,
+      "selected": false,
+      "has_governance_block": false,
+      "reason": "Known optional AI instruction surface; review before selecting."
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "tool": "github-copilot",
+      "required": false,
+      "exists": false,
+      "selected": false,
+      "has_governance_block": false,
+      "reason": "Known optional AI instruction surface; review before selecting."
+    }
+  ],
+  "selected_instruction_targets": [
+    {
+      "path": "AGENTS.md",
+      "tool": "codex",
+      "required": true
+    },
+    {
+      "path": "CLAUDE.md",
+      "tool": "claude-code",
+      "required": true
+    }
+  ],
+  "generated_output_ignores": [
+    ".kontourai/"
+  ],
+  "owner_questions": [
+    {
+      "id": "canonical-evidenceCheck",
+      "group": "evidenceCheck",
+      "question": "Is `npm run verify` the command that should prove repo health before AI-authored changes are considered ready?"
+    },
+    {
+      "id": "protected-paths",
+      "group": "boundaries",
+      "question": "Which files or directories should agents avoid changing without explicit human approval?"
+    },
+    {
+      "id": "coding-style",
+      "group": "style",
+      "question": "What coding style or local conventions should Veritas surface in repo guidance?"
+    },
+    {
+      "id": "release-expectations",
+      "group": "release",
+      "question": "Which checks distinguish a local change from a release-ready change?"
+    },
+    {
+      "id": "instruction-targets",
+      "group": "activation",
+      "question": "Which AI instruction files should Veritas mutate during apply?"
+    },
+    {
+      "id": "existing-verification-inventory",
+      "group": "brownfield",
+      "question": "Which existing verification checks have recent catch evidence, and which should move to tests, stay candidate, or retire?"
+    },
+    {
+      "id": "replace-existing-governance",
+      "group": "brownfield",
+      "question": "Veritas detected existing authored governance. Should re-authoring explicitly replace it instead of preserving it and adding only uncovered work areas?"
+    }
+  ],
+  "owner_answers": {},
+  "apply_command": "npx @kontourai/veritas init --apply --plan <path-to-this-artifact>",
+  "reasoning_summary": [
+    "Detected repo kind `workspace`.",
+    "Selected evidenceCheck `npm run verify`.",
+    "Selected instruction targets: AGENTS.md, CLAUDE.md.",
+    "Preserved existing authored Repo Standards, authority settings, governance guidance, and repository context; appended 9 uncovered work-area node(s)."
+  ],
+  "output_path": ".veritas/init-plans/explore.json"
+}

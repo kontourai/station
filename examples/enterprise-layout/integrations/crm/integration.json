@@ -1,0 +1,13 @@
+{
+  "id": "crm-mcp",
+  "kind": "mcp",
+  "displayName": "CRM (Salesforce)",
+  "description": "Access CRM accounts, opportunities, and tasks via MCP",
+  "transport": "stdio",
+  "command": "salesforce-mcp",
+  "args": [],
+  "requiredEnv": [],
+  "permissions": {
+    "network": true
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "minimal-layout",
+      "displayName": "Minimal Layout",
+      "description": "Getting-started layout plugin with the smallest useful UI surface.",
+      "version": "1.0.0",
+      "source": "../minimal-layout"
+    },
+    {
+      "id": "getting-started-starter",
+      "displayName": "Getting Started Starter",
+      "description": "Default starter layout that demonstrates agents, chat dock control, navigation, and toast feedback without external services.",
+      "version": "1.0.0",
+      "source": "../getting-started-starter"
+    },
+    {
+      "id": "coding-starter",
+      "displayName": "Coding Starter",
+      "description": "Code-focused starter layout with file browser, terminal notes, diff review, and chat handoff patterns.",
+      "version": "1.0.0",
+      "source": "../coding-starter"
+    },
+    {
+      "id": "survey-review-workbench",
+      "displayName": "Survey Review Workbench",
+      "description": "Kontour Survey's Review Workbench as a Station layout: per-project persisted review sessions and projection to a Surface trust bundle.",
+      "version": "1.0.0",
+      "source": "../survey-review-workbench"
+    },
+    {
+      "id": "builder-delivery-viewer",
+      "displayName": "Builder Delivery Viewer",
+      "description": "Read-only view of published Builder Kit sessions, trust state, delivery companions, and exact Flow joins.",
+      "version": "1.0.0",
+      "source": "../builder-delivery-viewer"
+    },
+    {
+      "id": "fieldwork-review",
+      "displayName": "Fieldwork Review",
+      "description": "Project-local Fieldwork application plugin with a protected review surface hosted by Station.",
+      "version": "0.1.0",
+      "source": "../fieldwork-review"
+    },
+    {
+      "id": "knowledge-docs-starter",
+      "displayName": "Knowledge Docs Starter",
+      "description": "Knowledge and documentation starter layout for document intake, source review, and question answering.",
+      "version": "1.0.0",
+      "source": "../knowledge-docs-starter"
+    },
+    {
+      "id": "demo-layout",
+      "displayName": "Demo Layout",
+      "description": "Starter workspace plugin that demonstrates layout tabs, chat launch, and local state.",
+      "version": "1.0.0",
+      "source": "../demo-layout"
+    },
+    {
+      "id": "enterprise-layout",
+      "displayName": "Enterprise Layout",
+      "description": "Knowledge-rich multi-provider workspace example with calendar, CRM, notes, and provider contracts.",
+      "version": "1.0.0",
+      "source": "../enterprise-layout"
+    },
+    {
+      "id": "smart-routing",
+      "displayName": "Smart Routing",
+      "description": "Deterministic model-tier routing plugin with routing-decision telemetry.",
+      "version": "1.0.0",
+      "source": "../smart-routing"
+    }
+  ],
+  "tools": [
+    {
+      "id": "surface-mcp",
+      "displayName": "Surface Trust State (MCP)",
+      "description": "Kontour Surface MCP server over the active change's trust bundle. One-click install registers a version-pinned stdio server; replace the report path placeholder with the latest Veritas reportArtifactPath.",
+      "version": "2.12.0",
+      "source": "./integrations/surface-mcp"
+    }
+  ]
+}

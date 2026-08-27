@@ -1,0 +1,13 @@
+// KNOWN-BAD: copy the gate cannot read.
+//
+// A scanner that silently skips the shapes it does not understand reports a
+// clean result over content it never evaluated — the `fail-open-validation`
+// class. `label` here is an identifier reference, not a literal, so the gate
+// must report it as unscannable rather than pass over it.
+export const APP_SETTINGS_REGISTRY = [
+  defineSetting({
+    key: 'logLevel',
+    label: LABELS.logLevel,
+    description: 'How much detail Station writes to its logs.',
+  }),
+];

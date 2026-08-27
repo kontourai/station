@@ -1,0 +1,67 @@
+# The container build context is an allowlist. Keep credentials, repository
+# metadata, local Station state, test output, and newly-added paths out unless
+# the Dockerfile explicitly needs them.
+*
+
+!package.json
+!package-lock.json
+!.npmrc
+!station
+!esbuild.config.mjs
+!vite.config.ts
+!tsconfig.json
+!tsconfig.tests.json
+
+# vite.config.ts imports src-desktop/tauri.conf.json at config-load time, so
+# the container build needs only that single file in its allowlisted context.
+!src-desktop/
+src-desktop/*
+!src-desktop/tauri.conf.json
+
+!scripts/
+scripts/*
+!scripts/station-cli.ts
+!scripts/node-runtime-contract.mjs
+!scripts/dependency-lifecycle.mjs
+!scripts/ui-bundle-budget.mjs
+!scripts/ui-bundle-budget.json
+!scripts/lib/
+scripts/lib/*
+!scripts/lib/server-build-config.mjs
+!scripts/lib/container-release-metadata.mjs
+!scripts/lib/dependency-lifecycle-policy.mjs
+
+!config/
+config/*
+!config/dependency-lifecycle-allowlist.json
+!patches/
+!patches/**
+
+!packages/
+!packages/**
+!src-server/
+!src-server/**
+!src-shared/
+!src-shared/**
+!src-ui/
+!src-ui/**
+!schemas/
+!schemas/**
+!seed/
+!seed/**
+
+# Bundled starter registry and the plugin sources it resolves. The image needs
+# these because examples/registry/default.json is the manifest Station falls
+# back to when no registryUrl is configured.
+!examples/
+!examples/**
+
+# Build/runtime source never needs repository tests, fixtures, or key material.
+**/__tests__
+**/__tests__/**
+**/fixtures
+**/fixtures/**
+**/*.test.*
+**/*.spec.*
+**/*.pem
+**/*.key

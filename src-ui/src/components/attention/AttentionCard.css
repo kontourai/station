@@ -1,0 +1,242 @@
+/*
+ * Attention item card — renders a single AttentionItem wherever it needs to
+ * appear. Deliberately its own class family, not `.notification-card`
+ * (NotificationCard.tsx and the globally-mounted NotificationContainer.tsx
+ * toast dropdown both already use that name for two different notification
+ * card concepts, and NotificationContainer's variant is loaded app-wide from
+ * main.tsx — reusing its class names here would put this component's look
+ * at the mercy of unrelated cross-chunk CSS load order). Co-located with the
+ * component so its styling loads wherever `<AttentionCard>` is used, not
+ * only when the Notifications page's own lazy-loaded chunk has been visited
+ * (station#1170: SessionsView renders this without a NotificationsPage
+ * visit first).
+ */
+.attention-item {
+  padding: 20px;
+  background: linear-gradient(
+    135deg,
+    var(--bg-secondary) 0%,
+    var(--bg-tertiary) 100%
+  );
+  border: 1px solid var(--accent-primary);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.attention-item--focused:focus {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.attention-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.attention-item__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.attention-item__type {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.attention-item__message {
+  font-size: var(--text-lg);
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.attention-item__detail {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * station#3203 — LENGTH POLICY for a failure reason on the card. Same policy
+ * as the tray row (`.notification-history__detail--cause`), one line looser
+ * because this card is the full-page inbox rather than a popover row: the
+ * projection bounds the reason to 400 characters, this clamps the rendering,
+ * and the full recorded reason stays reachable through the card's own "Open
+ * session" action, which now lands on the session detail's failure banner.
+ */
+.attention-item__detail--cause {
+  /* An explicit line-height, because a clamp without one clamps to four lines
+     of whatever the browser's `normal` happens to be — the rendered height of
+     the policy would then be unstated and untestable. */
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+}
+
+/*
+ * station#3203: which session failed (engine · agent), one step quieter than
+ * the cause above it so the cause stays the line you read first.
+ */
+.attention-item__identity {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.attention-item__time {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: 16px;
+}
+
+.attention-item__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.attention-item__action {
+  font-family: var(--font-sans);
+  min-height: 44px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-base);
+  font-weight: 600;
+  transition:
+    transform var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.attention-item__action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--border-secondary);
+}
+
+.attention-item__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.attention-item__action--primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+.attention-item__action--danger {
+  /* --error-fill, not the --status-error foreground alias: white on
+     dark's #ff6b6b is 2.78:1 (station#1125's defect via the alias). */
+  background: var(--error-fill);
+  border-color: var(--error-fill);
+  color: white;
+}
+
+.attention-item__action--ghost {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.attention-answer {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.attention-answer textarea {
+  width: 100%;
+  min-height: 72px;
+  box-sizing: border-box;
+}
+
+.attention-open-link {
+  display: inline-block;
+  margin-top: 12px;
+  min-height: 44px;
+  line-height: 44px;
+}
+
+/*
+ * Secondary dismiss for a genuinely-pending approval (live actions + a
+ * resolvable session): visually quiet text so approve/deny stay primary
+ * and a casual click can't discard a live decision.
+ */
+.attention-dismiss-link {
+  display: inline-block;
+  margin-top: 4px;
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.attention-dismiss-link:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/*
+ * A live approval renders BOTH links as adjacent inline-blocks with no
+ * horizontal spacing of their own, which ran them together as one word:
+ * "Open sessionDismiss". Scoped to the adjacency with a sibling combinator
+ * so each still sits flush when it renders alone — `Open session` appears
+ * only with an `openHref`, and this dismiss only while `livePending`, so
+ * either can occur without the other. The top margins are matched here too;
+ * they differed (12px vs 4px), leaving the pair visibly unaligned.
+ */
+.attention-open-link + .attention-dismiss-link {
+  margin-top: 12px;
+  margin-left: 16px;
+}
+
+.attention-error {
+  color: var(--status-error);
+}
+
+.attention-exception-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.attention-exception-fields textarea {
+  width: 100%;
+  min-height: 72px;
+  box-sizing: border-box;
+}
+
+.attention-exception-fields input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .attention-item__actions {
+    justify-content: flex-start;
+  }
+}

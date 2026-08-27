@@ -1,0 +1,13 @@
+{
+  "name": "getting-started-starter",
+  "version": "1.0.0",
+  "displayName": "Getting Started Starter",
+  "description": "Default starter layout that demonstrates agents, chat dock control, navigation, and toast feedback without external services.",
+  "entrypoint": "src/index.tsx",
+  "capabilities": ["chat", "navigation"],
+  "permissions": ["navigation.dock"],
+  "layout": {
+    "slug": "getting-started",
+    "source": "./layout.json"
+  }
+}

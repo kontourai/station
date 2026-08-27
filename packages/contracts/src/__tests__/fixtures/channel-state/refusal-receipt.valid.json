@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "station.channel-refusal-receipt/v1",
+  "channelId": "chan-design",
+  "proposalId": "prop-0001",
+  "reasonCode": "membership-revoked",
+  "policyRevision": "policy-rev-17",
+  "observedAt": "2026-08-02T09:00:01.000Z"
+}

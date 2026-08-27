@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Report
+    url: https://github.com/kontourai/station/security/advisories/new
+    about: Report a suspected vulnerability privately. Do not file it as a public issue.
+  - name: Get Support
+    url: https://kontourai.io/support/
+    about: Ask for setup, usage, or troubleshooting help.
+  - name: Contribution Guide
+    url: https://github.com/kontourai/station/blob/main/CONTRIBUTING.md
+    about: Choose the right path before proposing a change.

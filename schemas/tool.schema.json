@@ -1,0 +1,266 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://station.kontourai.io/schemas/tool.schema.json",
+  "title": "Tool Definition",
+  "description": "Tool definition for MCP or built-in tools",
+  "type": "object",
+  "required": ["id", "kind"],
+  "definitions": {
+    "credentialName": {
+      "type": "string",
+      "pattern": "^(?!(?:__proto__|constructor|prototype)$)[\\s\\S]+$"
+    }
+  },
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique tool identifier",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["mcp", "builtin"],
+      "description": "Tool type"
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Tool description"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether this integration participates in runtime loading"
+    },
+    "disabledTools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "icon": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["stdio", "sse", "streamable-http"],
+      "description": "MCP transport mechanism (for kind=mcp)"
+    },
+    "command": {
+      "type": "string",
+      "description": "Command to execute (for stdio/process transport)"
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Command arguments"
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "WebSocket/TCP endpoint (for ws/tcp transport)"
+    },
+    "env": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/definitions/credentialName"
+      },
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Environment variables for process"
+    },
+    "secretEnvRefs": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      },
+      "description": "Station-owned, bounded secret-binding references for a stdio MCP integration. This disk-only field is intentionally absent from public integration request schemas."
+    },
+    "storedEnvNames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/credentialName"
+      }
+    },
+    "requiredEnvNames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/credentialName"
+      }
+    },
+    "secretEnv": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/definitions/credentialName"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "removeSecretEnvKeys": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/credentialName"
+      }
+    },
+    "probe": {
+      "type": "object",
+      "required": ["ok", "toolCount", "checkedAt"],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "toolCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toolNames": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string"
+          }
+        },
+        "checkedAt": {
+          "type": "string"
+        },
+        "authorization": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["state"],
+              "properties": {
+                "state": {
+                  "enum": [
+                    "never-authorized",
+                    "awaiting-operator-consent",
+                    "authorized"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["state", "reason"],
+              "properties": {
+                "state": {
+                  "enum": [
+                    "authorization-failed",
+                    "token-expired-refresh-failed"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 512
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "builtinPolicy": {
+      "type": "object",
+      "description": "Built-in tool policy (for kind=builtin)",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "station_bash",
+            "station_file_editor",
+            "station_http_request",
+            "station_notebook",
+            "station_render_component"
+          ]
+        },
+        "allowedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Permission flags",
+      "properties": {
+        "filesystem": {
+          "type": "boolean"
+        },
+        "network": {
+          "type": "boolean"
+        },
+        "allowedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "timeouts": {
+      "type": "object",
+      "properties": {
+        "startupMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requestMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "healthCheck": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["jsonrpc", "http", "command"]
+        },
+        "path": {
+          "type": "string"
+        },
+        "intervalMs": {
+          "type": "integer",
+          "minimum": 1000
+        }
+      },
+      "additionalProperties": false
+    },
+    "exposedTools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Hint of tool names exposed by MCP server"
+    }
+  },
+  "additionalProperties": false
+}

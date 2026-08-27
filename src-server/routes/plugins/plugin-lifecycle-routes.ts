@@ -1,0 +1,865 @@
+import { cpSync, existsSync, lstatSync, realpathSync, rmSync } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
+import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  SERVER_EVENTS,
+  type ServerEventName,
+} from '@kontourai/station-contracts/runtime-events';
+import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
+import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import { Hono } from 'hono';
+import { preparePluginProviderGeneration } from '../../providers/plugin-provider-loader.js';
+import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
+import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
+import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
+import {
+  forgetPluginContentDigest,
+  PLUGIN_TREE_COPY,
+  withPluginContentLock,
+} from '../../services/plugins/plugin-content-integrity.js';
+import {
+  readPluginManifestFile,
+  readPluginManifestFileSync,
+} from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  hasGrant,
+  rebindGrantsAfterContentChange,
+  restorePluginGrantEntry,
+  snapshotPluginGrantEntry,
+} from '../../services/plugins/plugin-permissions.js';
+import { pluginUpdates } from '../../telemetry/metrics.js';
+import { execGit } from '../../utils/git-exec.js';
+import type { Logger } from '../../utils/logger.js';
+import { assertPathInside } from '../../utils/path-containment.js';
+import { errorMessage, param } from '../schemas/schemas.js';
+import {
+  captureConfigurationMutation,
+  configurationActivationPayload,
+  configurationMutationStatus,
+} from '../system/configuration-activation.js';
+import {
+  assertPluginNameSegment,
+  capturePersistedAgentOwnership,
+  ensureCanonicalRegistryInstallAliases,
+  removePluginOwnedIntegrations,
+  synchronizePluginAgentDefinitions,
+  uninstallInstalledPlugin,
+} from './plugin-install-shared.js';
+import { loadPluginProviders } from './plugin-loader.js';
+import {
+  type PluginPublicServerQuiescence,
+  quiesceAllPluginPublicServerModules,
+  quiescePluginPublicServerModule,
+} from './plugin-public-server.js';
+
+interface PluginLifecycleRouteDeps {
+  agentsDir: string;
+  eventBus?: {
+    emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
+  };
+  logger: Logger;
+  pluginsDir: string;
+  projectHomeDir: string;
+  buildPlugin: (pluginDir: string, name: string) => Promise<void>;
+  applyConfigurationMutation?: AgentConfigurationMutationRunner;
+  refreshKitObservability?: () => void;
+  settleProviderAdapterRetirements?: () => Promise<void>;
+  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  removeEngineConnections?: (plugin: string) => Promise<void>;
+  quiesceEventSubscriptions?: (
+    pluginName?: string,
+  ) => Promise<{ release(): void }>;
+}
+
+class PluginUpdateRejectedError extends Error {}
+
+type PluginRegistryProviderEntry = ReturnType<
+  typeof getPluginRegistryProviders
+>[number];
+
+function assertExistingPluginRootInside(
+  pluginsDir: string,
+  pluginDir: string,
+): void {
+  assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
+  if (!existsSync(pluginDir)) return;
+  if (lstatSync(pluginDir).isSymbolicLink()) {
+    throw new Error('Plugin update target cannot be a symbolic link');
+  }
+  const pluginsRoot = realpathSync(pluginsDir);
+  const pluginRoot = realpathSync(pluginDir);
+  const targetRelativePath = relative(pluginsRoot, pluginRoot);
+  if (
+    targetRelativePath === '' ||
+    targetRelativePath.startsWith('..') ||
+    isAbsolute(targetRelativePath)
+  ) {
+    throw new Error('Plugin update target escapes plugin root');
+  }
+}
+
+async function listPluginRegistryUpdates() {
+  const updates: Array<{
+    name: string;
+    currentVersion: string;
+    latestVersion: string;
+    source: string;
+  }> = [];
+
+  for (const entry of getPluginRegistryProviders()) {
+    const [available, installed] = await Promise.all([
+      entry.provider.listAvailable(),
+      entry.provider.listInstalled(),
+    ]);
+    for (const installedPlugin of installed) {
+      const installedName =
+        installedPlugin.installedPluginName ?? installedPlugin.id;
+      const availablePlugin = available.find(
+        (plugin) => plugin.id === installedPlugin.id,
+      );
+      if (
+        availablePlugin?.version &&
+        availablePlugin.version !== installedPlugin.version
+      ) {
+        updates.push({
+          name: installedName,
+          currentVersion: installedPlugin.version || 'unknown',
+          latestVersion: availablePlugin.version,
+          source: 'registry',
+        });
+      }
+    }
+  }
+
+  return updates;
+}
+
+async function findOwningPluginRegistryProvider(
+  name: string,
+  projectHomeDir: string,
+): Promise<
+  | {
+      success: true;
+      entry: PluginRegistryProviderEntry;
+      installedName: string;
+      registryId: string;
+    }
+  | { success: false; message: string }
+> {
+  await ensureCanonicalRegistryInstallAliases(projectHomeDir);
+  const matches: Array<{
+    entry: PluginRegistryProviderEntry;
+    installedName: string;
+    registryId: string;
+  }> = [];
+
+  for (const entry of getPluginRegistryProviders()) {
+    const installed = await entry.provider.listInstalled();
+    const providerMatches = installed
+      .map((plugin) => {
+        return {
+          item: plugin,
+          installedName: plugin.installedPluginName ?? plugin.id,
+        };
+      })
+      .filter(
+        ({ item, installedName }) => item.id === name || installedName === name,
+      );
+
+    for (const installedPlugin of providerMatches) {
+      matches.push({
+        entry,
+        installedName: installedPlugin.installedName,
+        registryId: installedPlugin.item.id,
+      });
+    }
+  }
+
+  const matchedTargets = new Set(matches.map((match) => match.installedName));
+  if (matchedTargets.size === 1) {
+    const [matchedTarget] = matchedTargets;
+    for (const entry of getPluginRegistryProviders()) {
+      const installed = await entry.provider.listInstalled();
+      for (const plugin of installed) {
+        const installedName = plugin.installedPluginName ?? plugin.id;
+        if (installedName !== matchedTarget) continue;
+        if (
+          matches.some(
+            (match) =>
+              match.entry === entry &&
+              match.installedName === installedName &&
+              match.registryId === plugin.id,
+          )
+        ) {
+          continue;
+        }
+        matches.push({
+          entry,
+          installedName,
+          registryId: plugin.id,
+        });
+      }
+    }
+  }
+
+  if (matches.length === 1) {
+    return { success: true, ...matches[0] };
+  }
+
+  if (matches.length > 1) {
+    return {
+      success: false,
+      message: `Plugin '${name}' is installed by multiple plugin registry providers`,
+    };
+  }
+
+  return {
+    success: false,
+    message: `No plugin registry provider owns installed plugin '${name}'`,
+  };
+}
+
+async function updatePluginFromRegistry(name: string, projectHomeDir: string) {
+  const owner = await findOwningPluginRegistryProvider(name, projectHomeDir);
+  if (!owner.success) {
+    return owner;
+  }
+
+  if (
+    !owner.entry.provider.update &&
+    owner.installedName !== owner.registryId
+  ) {
+    return {
+      success: false,
+      message: `Plugin registry provider '${owner.entry.source}' cannot update aliased plugin '${owner.installedName}' without an update operation`,
+    };
+  }
+  const operation = owner.entry.provider.update ?? owner.entry.provider.install;
+  return operation.call(owner.entry.provider, owner.registryId);
+}
+
+export function registerPluginLifecycleRoutes(
+  app: Hono,
+  deps: PluginLifecycleRouteDeps,
+): void {
+  const {
+    agentsDir,
+    applyConfigurationMutation,
+    buildPlugin,
+    eventBus,
+    logger,
+    pluginsDir,
+    projectHomeDir,
+    quiesceEventSubscriptions,
+    refreshKitObservability,
+    removeEngineConnections,
+    settleProviderAdapterRetirements,
+  } = deps;
+
+  app.get('/check-updates', async (c) => {
+    const updates: Array<{
+      name: string;
+      currentVersion: string;
+      latestVersion: string;
+      source: string;
+    }> = [];
+
+    try {
+      if (existsSync(pluginsDir)) {
+        const { readdirSync } = await import('node:fs');
+        const entries = readdirSync(pluginsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const dir = join(pluginsDir, entry.name);
+          const gitDir = join(dir, '.git');
+          const manifestPath = join(dir, 'plugin.json');
+          if (!existsSync(gitDir) || !existsSync(manifestPath)) continue;
+
+          try {
+            await execGit(['fetch', '--quiet'], {
+              cwd: dir,
+              timeout: 10000,
+            });
+            const { stdout: behind } = await execGit(
+              ['rev-list', '--count', 'HEAD..@{u}'],
+              { cwd: dir, encoding: 'utf-8' },
+            );
+            if (parseInt(behind.trim(), 10) > 0) {
+              const manifest = readPluginManifestFileSync(manifestPath);
+              const commitsBehind = behind.trim();
+              updates.push({
+                name: entry.name,
+                currentVersion: manifest.version || 'unknown',
+                latestVersion: `${commitsBehind} commit${commitsBehind === '1' ? '' : 's'} behind`,
+                source: 'git',
+              });
+            }
+          } catch (error) {
+            logger.debug('Failed to check git updates for plugin', {
+              plugin: entry.name,
+              error,
+            });
+          }
+        }
+      }
+
+      try {
+        const registryUpdates = await listPluginRegistryUpdates();
+        for (const update of registryUpdates) {
+          if (updates.some((existing) => existing.name === update.name)) {
+            continue;
+          }
+          updates.push(update);
+        }
+      } catch (error) {
+        logger.debug('Failed to check registry for plugin updates', { error });
+      }
+
+      return c.json({ updates });
+    } catch (error: unknown) {
+      logger.error('Failed to check for updates', {
+        error: errorMessage(error),
+      });
+      return c.json({ updates: [] });
+    }
+  });
+
+  app.post('/:name/update', async (c) => {
+    const name = param(c, 'name');
+    try {
+      assertPluginNameSegment(name);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+    let registryOwner: Awaited<
+      ReturnType<typeof findOwningPluginRegistryProvider>
+    > | null = null;
+    let installedPluginName = name;
+    let pluginDir = join(pluginsDir, name);
+    try {
+      assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+
+    const directPluginExists = existsSync(pluginDir);
+    registryOwner = await findOwningPluginRegistryProvider(
+      name,
+      projectHomeDir,
+    );
+    if (!registryOwner.success && registryOwner.message.includes('multiple')) {
+      return c.json({ success: false, error: registryOwner.message }, 400);
+    }
+
+    if (registryOwner.success) {
+      if (directPluginExists && registryOwner.installedName !== name) {
+        return c.json(
+          {
+            success: false,
+            error: `Registry plugin '${name}' resolves to installed plugin '${registryOwner.installedName}', but plugin '${name}' also exists`,
+          },
+          400,
+        );
+      }
+      installedPluginName = registryOwner.installedName;
+      pluginDir = join(pluginsDir, installedPluginName);
+      try {
+        assertPathInside(pluginsDir, pluginDir, 'Plugin update target');
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+      if (!existsSync(pluginDir)) {
+        return c.json({ success: false, error: 'Plugin not found' }, 404);
+      }
+    } else if (!directPluginExists) {
+      return c.json({ success: false, error: registryOwner.message }, 404);
+    } else {
+      registryOwner = null;
+    }
+    try {
+      assertExistingPluginRootInside(pluginsDir, pluginDir);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+
+    const gitDir = join(pluginDir, '.git');
+    const isGitPlugin = existsSync(gitDir);
+    if (!isGitPlugin && !registryOwner) {
+      return c.json({ success: false, error: 'Plugin is not git-backed' }, 400);
+    }
+    if (
+      registryOwner?.success &&
+      !registryOwner.entry.provider.update &&
+      registryOwner.installedName !== registryOwner.registryId
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: `Plugin registry provider '${registryOwner.entry.source}' cannot update aliased plugin '${registryOwner.installedName}' without an update operation`,
+        },
+        400,
+      );
+    }
+
+    let backupRoot: string | null = null;
+    try {
+      // station#3677 review HIGH 1: the whole tree mutation holds the
+      // per-plugin content lock the consent decision's revalidate → commit
+      // span also takes, so an update can never interleave between a
+      // consent fingerprint revalidation and its grant commit.
+      const mutation = await withPluginContentLock(
+        pluginsDir,
+        installedPluginName,
+        () =>
+          captureConfigurationMutation(
+            applyConfigurationMutation,
+            async (beginMutation) => {
+              backupRoot = createStationTempDirSync('plugin-update');
+              const backupDir = join(backupRoot, 'plugin');
+              cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
+              const originalManifest = await readPluginManifestFile(
+                join(backupDir, 'plugin.json'),
+              );
+              const originalIdentity = originalManifest.name || name;
+              const persistedAgentOwnership = capturePersistedAgentOwnership(
+                agentsDir,
+                originalIdentity,
+                originalManifest,
+              );
+              // station#4288: the update is about to withdraw consent that
+              // belonged to the OLD bytes. If any later step fails and the
+              // tree is rolled back, the grants have to come back with it —
+              // otherwise a failed update silently strips a plugin of
+              // capability nobody decided to take away.
+              const grantSnapshot = snapshotPluginGrantEntry(
+                projectHomeDir,
+                originalIdentity,
+              );
+              const eventSubscriptionQuiescence =
+                (await quiesceEventSubscriptions?.(originalIdentity)) ?? null;
+              let serverQuiescence: PluginPublicServerQuiescence;
+              try {
+                serverQuiescence = await quiescePluginPublicServerModule(
+                  pluginsDir,
+                  originalIdentity,
+                );
+              } catch (error) {
+                eventSubscriptionQuiescence?.release();
+                throw error;
+              }
+              try {
+                beginMutation();
+                let updatedManifest: PluginManifest | null = null;
+                try {
+                  if (registryOwner?.success) {
+                    const result = await updatePluginFromRegistry(
+                      registryOwner.registryId,
+                      projectHomeDir,
+                    );
+                    if (!result.success) {
+                      throw new PluginUpdateRejectedError(result.message);
+                    }
+                  } else if (isGitPlugin) {
+                    await execGit(['pull', '--ff-only'], {
+                      cwd: pluginDir,
+                      timeout: 30000,
+                    });
+                  } else {
+                    throw new PluginUpdateRejectedError(
+                      'Plugin is not git-backed',
+                    );
+                  }
+
+                  const manifestPath = join(pluginDir, 'plugin.json');
+                  const manifest = await readPluginManifestFile(manifestPath);
+                  updatedManifest = manifest;
+                  if ((manifest.name || name) !== originalIdentity) {
+                    throw new PluginUpdateRejectedError(
+                      `Plugin identity cannot change during update: ${originalIdentity}`,
+                    );
+                  }
+                  scanPluginPromptGeneration(pluginDir, originalIdentity);
+
+                  await synchronizePluginAgentDefinitions({
+                    agentsDir,
+                    pluginDir,
+                    pluginName: originalIdentity,
+                    projectHomeDir,
+                    manifest,
+                    previousManifest: originalManifest,
+                    logger,
+                    persistedOwnership: persistedAgentOwnership,
+                  });
+
+                  await buildPlugin(pluginDir, originalIdentity);
+                  removePluginOwnedIntegrations(
+                    join(projectHomeDir, 'integrations'),
+                    originalIdentity,
+                  );
+                  copyPluginIntegrations(
+                    pluginDir,
+                    join(projectHomeDir, 'integrations'),
+                  );
+                  // station#4288 — the fix. Consent was given to the bytes
+                  // this update just replaced, so it is re-bound HERE: after
+                  // the build and the integration copy (the tree is final,
+                  // so the digest describes what will actually execute) and
+                  // BEFORE the first read of a grant below, so the provider
+                  // load sees the post-update grants rather than inherited
+                  // ones. Permissions the new manifest newly derives are not
+                  // inherited either — `rebindGrantsAfterContentChange`
+                  // re-derives from `requiredPermissionsForManifest`.
+                  const rebound = await rebindGrantsAfterContentChange(
+                    projectHomeDir,
+                    originalIdentity,
+                    manifest,
+                  );
+                  if (rebound.withdrawn.length > 0) {
+                    logger.info(
+                      'Plugin update withdrew consent bound to the replaced content',
+                      {
+                        plugin: originalIdentity,
+                        withdrawn: rebound.withdrawn,
+                        retained: rebound.retained,
+                      },
+                    );
+                    eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
+                      name: originalIdentity,
+                    });
+                  }
+                  await loadPluginProviders(
+                    pluginsDir,
+                    originalIdentity,
+                    hasGrant(
+                      projectHomeDir,
+                      originalIdentity,
+                      'providers.register',
+                    )
+                      ? manifest
+                      : { ...manifest, providers: [] },
+                    logger,
+                    { strict: true },
+                  );
+                  await deps.reconcileEngineConnections?.(originalIdentity);
+                  await settleProviderAdapterRetirements?.();
+
+                  eventBus?.emit('plugins:updated', {
+                    name,
+                    version: manifest.version,
+                  });
+                  pluginUpdates.add(1, { plugin: name });
+                  return {
+                    success: true as const,
+                    plugin: {
+                      name: manifest.name,
+                      version: manifest.version,
+                    },
+                    // Named, not implied: a plugin that quietly loses a
+                    // capability with no explanation is its own defect.
+                    permissions: {
+                      withdrawn: rebound.withdrawn,
+                      retained: rebound.retained,
+                    },
+                  };
+                } catch (error) {
+                  try {
+                    rmSync(pluginDir, { recursive: true, force: true });
+                    cpSync(backupDir, pluginDir, PLUGIN_TREE_COPY);
+                    // station#4288, delta review MEDIUM 1 (same defect the
+                    // install rollback carries). `rebindGrantsAfterContentChange`
+                    // above refreshed the memo to the UPDATED tree's digest;
+                    // this rollback has just restored the old tree and
+                    // `restorePluginGrantEntry` restores the old digest with
+                    // it, so the `hasGrant(..., 'providers.register')` below
+                    // would compare them, derive `changed`, and reload the
+                    // restored plugin with no providers at all.
+                    forgetPluginContentDigest(pluginsDir, originalIdentity);
+                    removePluginOwnedIntegrations(
+                      join(projectHomeDir, 'integrations'),
+                      originalIdentity,
+                    );
+                    copyPluginIntegrations(
+                      pluginDir,
+                      join(projectHomeDir, 'integrations'),
+                    );
+                    // The tree is back to the reviewed bytes, so the consent
+                    // recorded against them comes back with it — digest
+                    // included, so the restored entry is `bound` again and
+                    // not merely `unverified` (station#4288).
+                    await restorePluginGrantEntry(
+                      projectHomeDir,
+                      originalIdentity,
+                      grantSnapshot,
+                    );
+                    await synchronizePluginAgentDefinitions({
+                      agentsDir,
+                      pluginDir,
+                      pluginName: originalIdentity,
+                      projectHomeDir,
+                      manifest: originalManifest,
+                      previousManifest: updatedManifest ?? originalManifest,
+                      logger,
+                      persistedOwnership: persistedAgentOwnership,
+                    });
+                    await loadPluginProviders(
+                      pluginsDir,
+                      originalIdentity,
+                      hasGrant(
+                        projectHomeDir,
+                        originalIdentity,
+                        'providers.register',
+                      )
+                        ? originalManifest
+                        : { ...originalManifest, providers: [] },
+                      logger,
+                      { strict: true },
+                    );
+                    await deps.reconcileEngineConnections?.(originalIdentity);
+                    await settleProviderAdapterRetirements?.();
+                  } catch (rollbackError) {
+                    throw new AggregateError(
+                      [error, rollbackError],
+                      'Plugin update and rollback both failed.',
+                    );
+                  }
+                  throw error;
+                }
+              } finally {
+                serverQuiescence.release();
+                eventSubscriptionQuiescence?.release();
+              }
+            },
+          ),
+      );
+      if (mutation.value.success) {
+        try {
+          refreshKitObservability?.();
+        } catch (error: unknown) {
+          logger.warn('Kit observability refresh failed after plugin update', {
+            plugin: name,
+            error: errorMessage(error),
+          });
+        }
+      }
+
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
+    } catch (error: unknown) {
+      if (
+        isContextSafetyError(error) ||
+        error instanceof PluginUpdateRejectedError
+      ) {
+        return c.json({ success: false, error: error.message }, 400);
+      }
+      logger.error('Plugin update failed', {
+        plugin: name,
+        error: errorMessage(error),
+      });
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    } finally {
+      if (backupRoot) {
+        rmSync(backupRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  app.delete('/:name', async (c) => {
+    const name = param(c, 'name');
+    try {
+      assertPluginNameSegment(name);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+    const pluginDir = join(pluginsDir, name);
+    try {
+      assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+
+    if (!existsSync(pluginDir)) {
+      return c.json({ success: false, error: 'Plugin not found' }, 404);
+    }
+
+    try {
+      // station#3677 review HIGH 1: removal also mutates the consent
+      // fingerprint's subject tree — hold the same per-plugin content lock
+      // the consent decision's revalidate → commit span takes, so a grant
+      // cannot commit for a plugin being removed underneath it.
+      const mutation = await withPluginContentLock(pluginsDir, name, () =>
+        captureConfigurationMutation(
+          applyConfigurationMutation,
+          async (beginMutation) => {
+            const result = await uninstallInstalledPlugin(name, {
+              agentsDir,
+              beginConfigurationMutation: beginMutation,
+              buildPlugin,
+              eventBus,
+              logger,
+              pluginsDir,
+              projectHomeDir,
+              removeEngineConnections,
+              quiesceEventSubscriptions: quiesceEventSubscriptions
+                ? (plugin) => quiesceEventSubscriptions(plugin)
+                : undefined,
+            });
+            await settleProviderAdapterRetirements?.();
+            return result;
+          },
+        ),
+      );
+      if (mutation.value.success) {
+        try {
+          refreshKitObservability?.();
+        } catch (error: unknown) {
+          logger.warn('Kit observability refresh failed after plugin removal', {
+            plugin: name,
+            error: errorMessage(error),
+          });
+        }
+      }
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
+    } catch (error: unknown) {
+      if (isContextSafetyError(error)) {
+        return c.json({ success: false, error: error.message }, 400);
+      }
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  app.post('/reload', async (c) => {
+    const eventSubscriptionQuiescence =
+      await quiesceEventSubscriptions?.().catch((error) => {
+        logger.error(
+          'Plugin event subscription quiescence failed before reload',
+          {
+            error: errorMessage(error),
+          },
+        );
+        return null;
+      });
+    if (quiesceEventSubscriptions && !eventSubscriptionQuiescence) {
+      return c.json(
+        {
+          success: false,
+          error: 'Plugin event subscription reload could not begin',
+        },
+        500,
+      );
+    }
+    const serverQuiescence = await quiesceAllPluginPublicServerModules().catch(
+      (error) => {
+        logger.error('Plugin server quiescence failed before reload', {
+          error: errorMessage(error),
+        });
+        return null;
+      },
+    );
+    if (!serverQuiescence) {
+      eventSubscriptionQuiescence?.release();
+      return c.json(
+        { success: false, error: 'Plugin server reload could not begin' },
+        500,
+      );
+    }
+    try {
+      const { replacePluginProviders } = await import(
+        '../../providers/registries/registry.js'
+      );
+      const mutation = await captureConfigurationMutation(
+        applyConfigurationMutation,
+        async (beginMutation) => {
+          beginMutation();
+          if (!existsSync(pluginsDir)) {
+            await replacePluginProviders([]);
+            await settleProviderAdapterRetirements?.();
+            return { success: true as const, loaded: 0 };
+          }
+
+          const { resolvePluginProviders } = await import(
+            '../../providers/resolver.js'
+          );
+          const { ConfigLoader } = await import(
+            '../../domain/config-loader.js'
+          );
+
+          const configLoader = new ConfigLoader({ projectHomeDir });
+          const overrides = await configLoader.loadPluginOverrides();
+
+          const { resolved, conflicts } = resolvePluginProviders(
+            pluginsDir,
+            overrides,
+            (pluginName) =>
+              hasGrant(projectHomeDir, pluginName, 'providers.register'),
+            logger,
+          );
+
+          for (const conflict of conflicts) {
+            logger.warn('Provider conflict on reload', {
+              type: conflict.type,
+              candidates: conflict.candidates,
+            });
+          }
+
+          const prepared = await preparePluginProviderGeneration(
+            pluginsDir,
+            resolved.map((entry) => ({
+              pluginName: entry.pluginName,
+              manifest: {
+                providers: [
+                  {
+                    type: entry.type,
+                    module: entry.module,
+                    layout: entry.layout,
+                  },
+                ],
+                displayName: entry.pluginName,
+              } as PluginManifest,
+            })),
+            logger,
+          );
+          await replacePluginProviders(prepared);
+          await settleProviderAdapterRetirements?.();
+          return { success: true as const, loaded: prepared.length };
+        },
+      );
+      if (mutation.value.success) {
+        try {
+          refreshKitObservability?.();
+        } catch (error: unknown) {
+          logger.warn('Kit observability refresh failed after plugin reload', {
+            error: errorMessage(error),
+          });
+        }
+      }
+
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    } finally {
+      serverQuiescence.release();
+      eventSubscriptionQuiescence?.release();
+    }
+  });
+}

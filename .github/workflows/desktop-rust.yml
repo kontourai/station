@@ -1,0 +1,52 @@
+name: Desktop Rust tests
+
+# The bundled-server supervisor state machine (src-desktop) is a pure,
+# exhaustively unit-tested Rust module. It runs on its own paths-filtered lane
+# (mirroring desktop-clean-checkout.yml) so the Rust toolchain + webkit
+# prerequisites are only provisioned when desktop code actually changes. Locally
+# the same command rides `npm run verify:local` via `verify:desktop-rust`.
+on:
+  workflow_dispatch:
+  pull_request_target:
+    paths:
+      - '.github/workflows/desktop-rust.yml'
+      - 'src-desktop/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/desktop-rust.yml'
+      - 'src-desktop/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-rust-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-rust:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Install Linux desktop prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - run: npm run dependencies:ci
+
+      - name: Run bundled-server supervisor Rust tests
+        run: npm run verify:desktop-rust

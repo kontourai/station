@@ -1,0 +1,269 @@
+{
+  "pageLocalMediaQueryCeiling": 100,
+  "pageLocal": {
+    "src-ui/src/components/Checkbox.css": {
+      "count": 1,
+      "reason": "The shared checkbox control's own 44px touch floor. Nothing above it owns this control's box."
+    },
+    "src-ui/src/components/DetailHeader.css": {
+      "count": 2,
+      "reason": "The canonical detail header: stacks title/actions at 640px, and publishes the mobile action footer plus the --detail-body-bottom-clearance token every detail body offsets from."
+    },
+    "src-ui/src/components/InfoTip.css": {
+      "count": 1,
+      "reason": "The shared info-tip trigger shrinks its glyph box at 768px so the tip does not crowd the label it annotates."
+    },
+    "src-ui/src/components/OnboardingGate.css": {
+      "count": 1,
+      "reason": "The setup launcher is fixed shell chrome; on a short viewport it is bounded against the live toolbar and dock heights."
+    },
+    "src-ui/src/components/PathAutocomplete.css": {
+      "count": 1,
+      "reason": "The shared path field's dropdown drops absolute positioning on touch so it cannot open off-screen."
+    },
+    "src-ui/src/components/TasksLayout.css": {
+      "count": 1,
+      "reason": "One tighter page gutter at 640px."
+    },
+    "src-ui/src/components/Toggle.css": {
+      "count": 1,
+      "reason": "The shared toggle's 44px pseudo-element hit box on touch \u2014 deliberately larger than the switch it wraps."
+    },
+    "src-ui/src/components/acp-connections/ACPConnections.css": {
+      "count": 1,
+      "reason": "FORK: the add-connection dialog hand-rolls the mobile bottom-sheet treatment instead of adopting the shared dialog surface. Retire with the sheet primitive (see docs note)."
+    },
+    "src-ui/src/components/attention/AttentionCard.css": {
+      "count": 1,
+      "reason": "Left-aligns the card's action row on small screens."
+    },
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.css": {
+      "count": 1,
+      "reason": "FORK: hand-rolled bottom sheet, including the entrance direction that has to follow the docking edge (station#3309). Retire with the sheet primitive."
+    },
+    "src-ui/src/components/chat-dock/ChatDockInboxPanel.css": {
+      "count": 1,
+      "reason": "prefers-reduced-motion. Keeps `animation: none` because the exit animation is `forwards`: under the motion primitive alone a 0.01ms run HOLDS the collapsed end state instead of leaving the panel as it was."
+    },
+    "src-ui/src/components/chat/QueuedMessages.css": {
+      "count": 1,
+      "reason": "The queued-steer controls carry their own compact touch geometry, tighter than the shared floor."
+    },
+    "src-ui/src/components/chat/chat.css": {
+      "count": 4,
+      "reason": "Four blocks. The composer's two-row mobile stack and the composer popover sheet are this surface's own. The app-toolbar rules here are a KNOWN duplication with index.css (station#3766 records two same-specificity rules contradicting each other); the toolbar wants one mobile home. Two 480px toolbar blocks could not be folded \u2014 `__conn-name`/`__conn-note` `display` is decided again between them."
+    },
+    "src-ui/src/components/coding-layout/BranchToolbar.css": {
+      "count": 1,
+      "reason": "Two-row wrap at mobile: the commit field takes its own line while Push stays beside it."
+    },
+    "src-ui/src/components/coding-layout/CodingInspectorPanel.css": {
+      "count": 1,
+      "reason": "The inspector stacks BELOW the editor on mobile, so its collapsed strip becomes a horizontal icon bar rather than a tall orphaned column."
+    },
+    "src-ui/src/components/coding-layout/CodingLayout.css": {
+      "count": 1,
+      "reason": "The terminal strip, its tab scroller and the new-terminal sheet \u2014 plus the 16px input floor that stops iOS zooming the viewport on focus."
+    },
+    "src-ui/src/components/coding-layout/DiffPanel.css": {
+      "count": 1,
+      "reason": "Diff toggles as touch targets."
+    },
+    "src-ui/src/components/coding-layout/FileTreePanel.css": {
+      "count": 1,
+      "reason": "Taller tree rows and context-menu items on touch."
+    },
+    "src-ui/src/components/coding-layout/PullRequestsPanel.css": {
+      "count": 1,
+      "reason": "The PR rail becomes a full-width band above the content below 760px."
+    },
+    "src-ui/src/components/editor-controls.css": {
+      "count": 1,
+      "reason": "This IS the shared editor-button primitive's touch floor \u2014 the one other stylesheets defer to (station#3783 moved their copies here)."
+    },
+    "src-ui/src/components/first-run/AboutYouStep.css": {
+      "count": 1,
+      "reason": "First-run step: its own option touch floor."
+    },
+    "src-ui/src/components/first-run/Coachmark.css": {
+      "count": 1,
+      "reason": "First-run coachmark: its own action touch floors."
+    },
+    "src-ui/src/components/first-run/EnginesStep.css": {
+      "count": 1,
+      "reason": "First-run step: its own row touch floor and centring."
+    },
+    "src-ui/src/components/modals/NewProjectModal.css": {
+      "count": 2,
+      "reason": "FORK: hand-rolled modal padding/radius at 780px and 380px instead of the shared dialog surface. Retire with the sheet primitive."
+    },
+    "src-ui/src/components/monitoring/InsightsDashboard.css": {
+      "count": 1,
+      "reason": "The insights tab and pill strips become horizontal scrollers and its grids single-column, so nothing forces a horizontal page scroll."
+    },
+    "src-ui/src/components/notifications/BannerHost.css": {
+      "count": 3,
+      "reason": "Three blocks, three different jobs: the reduced-motion `display: none` for an exiting banner (an end state, not a duration); the DESKTOP-only inset that keeps the overlay clear of a side dock; and the mobile grid that moves the actions onto their own row."
+    },
+    "src-ui/src/components/notifications/NotificationContainer.css": {
+      "count": 2,
+      "reason": "The toast stack's small-screen box (safe-area gutters, a viewport-bounded height) and its dismiss touch target."
+    },
+    "src-ui/src/components/notifications/NotificationHistory.css": {
+      "count": 1,
+      "reason": "prefers-reduced-motion. Keeps `animation: none` because the dismiss-collapse animation is `forwards`: under the motion primitive alone the row would snap to `opacity: 0.35` instead of staying legible."
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebar.css": {
+      "count": 3,
+      "reason": "The app-shell navigation rail: the mobile drawer and its backdrop, the touch-only reorder/chevron geometry that has to stay inside a 44px row, and the desktop-side hides."
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebarStatus.css": {
+      "count": 1,
+      "reason": "The drawer's status footer anchors to the device safe-area, not to the dock height \u2014 on mobile the drawer covers that dock."
+    },
+    "src-ui/src/components/registry/ProjectLayoutCatalog.css": {
+      "count": 1,
+      "reason": "Catalog rows drop to two columns at 480px."
+    },
+    "src-ui/src/components/session/SessionModelPicker.css": {
+      "count": 1,
+      "reason": "FORK: hand-rolled bottom sheet. Retire with the sheet primitive."
+    },
+    "src-ui/src/components/setup/ExistingSetupImportStepper.css": {
+      "count": 1,
+      "reason": "The embedded setup-import workflow stacks its own heading and full-width Review import control inside both First Run and Settings; neither host nor the shared action-row primitive owns that internal heading geometry."
+    },
+    "src-ui/src/components/usage-stats/UsageRollupPanel.css": {
+      "count": 1,
+      "reason": "The receipt table and its source-coverage drawer have page-specific horizontal data and full-width mobile controls; shared dialog chrome does not own this data layout."
+    },
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css": {
+      "count": 1,
+      "reason": "Single-column stat cards and a viewport-bounded drill-down modal."
+    },
+    "src-ui/src/components/voice/GlobalVoiceButton.css": {
+      "count": 1,
+      "reason": "The floating voice button re-anchors to the opposite corner on mobile so it never lands on the dock's send control, clamped above the collapsed bar."
+    },
+    "src-ui/src/components/voice/VoiceOrb.css": {
+      "count": 1,
+      "reason": "The orb's own 44px floor on touch."
+    },
+    "src-ui/src/components/voice/VoicePill.css": {
+      "count": 1,
+      "reason": "The voice pill lifts above the safe-area inset and its mute control takes a 44px box."
+    },
+    "src-ui/src/index.css": {
+      "count": 12,
+      "reason": "The app-shell stylesheet, and the largest remaining concentration (12 blocks). It is deliberately NOT a primitive entry: it mixes genuine shell primitives (the responsive dialog surface, the toolbar, the chat dock, the global touch-target net) with page-ish rules (the command/delegation launchers, the new-chat modal), and exempting the file would let any page hide a responsive rule by moving it here. Two blocks are reduced-motion END STATES the motion primitive cannot express; one is a `prefers-color-scheme` fork that should be reading theme tokens; the rest are the shell's own mobile and desktop-only geometry. Three same-condition folds were REFUSED because a `chat-input`/`chat-dock` property is decided again in between."
+    },
+    "src-ui/src/pages/NotificationsPage.css": {
+      "count": 1,
+      "reason": "Stacked filter and card-footer rows on a phone. The dock clearance that used to live here is gone \u2014 the shell reserves it once (station#3902)."
+    },
+    "src-ui/src/pages/ProfilePage.css": {
+      "count": 1,
+      "reason": "The profile hero and stats grid stack and centre at 700px."
+    },
+    "src-ui/src/views/HomeView.css": {
+      "count": 1,
+      "reason": "Single-column action cards, a taller card floor, and stacked task rows."
+    },
+    "src-ui/src/views/IntegrationsView.css": {
+      "count": 1,
+      "reason": "The Form / Raw JSON toggle becomes full-width equal halves; desktop keeps the compact pill."
+    },
+    "src-ui/src/views/KnowledgeConnectionView.css": {
+      "count": 1,
+      "reason": "Field and action widths for this page's two fixed cards; the 44px floors themselves already come from the editor primitive."
+    },
+    "src-ui/src/views/MonitoringWidgets.css": {
+      "count": 1,
+      "reason": "The monitoring dashboard's own vertical budget \u2014 an agents-list cap, a log-feed floor, a metrics cap \u2014 so the feed stays the dominant scroll region on a phone. Nothing above this page knows those proportions."
+    },
+    "src-ui/src/views/PluginManagementView.css": {
+      "count": 1,
+      "reason": "The install bar's wrap behaviour and the wrapping of long plugin names, sources and git hashes."
+    },
+    "src-ui/src/views/ProjectPage.css": {
+      "count": 3,
+      "reason": "Three blocks at three breakpoints: task grids single-column at 760px, the live-work row's touch floor at 768px, and the page's own gutters, card grid, git-commit rows and chat CTA stack."
+    },
+    "src-ui/src/views/ProjectSettingsView.css": {
+      "count": 2,
+      "reason": "The section-nav horizontal scroller at 640px, and the wrapping of identity paths that would otherwise force a horizontal page scroll."
+    },
+    "src-ui/src/views/RegistryView.css": {
+      "count": 1,
+      "reason": "The registry's two-column tab grid and single-column card grid: the SHARED desktop grid's 320px minimum is wider than a 320px viewport once the page's gutters are taken, so this page overrides the primitive's minimum rather than the primitive changing for everyone."
+    },
+    "src-ui/src/views/ReviewQueueView.css": {
+      "count": 3,
+      "reason": "Three breakpoints: the two-up diff collapses at 900px (a content width, not a device), detail padding and action stretch at mobile, run-modal fields at 640px."
+    },
+    "src-ui/src/views/ScheduleView.css": {
+      "count": 2,
+      "reason": "The cron editor, detail fields and table scrollers; at 640px two table columns are dropped and the row name is clamped \u2014 a decision about THIS table's columns that no primitive can hold."
+    },
+    "src-ui/src/views/SessionsView.css": {
+      "count": 3,
+      "reason": "The session detail pane's compact ladder, including a viewport-HEIGHT rung (620px) for an open software keyboard, and the `--viewport-compact` variant that collapses only non-identity chrome (station#1170/#3305)."
+    },
+    "src-ui/src/views/SettingsView.css": {
+      "count": 4,
+      "reason": "The overview grid, the section-nav scroller at 600px, single-column env-var rows, the floating save pill's full-width mobile anchoring, and the reduced-motion outline that substitutes for the highlight pulse."
+    },
+    "src-ui/src/views/TaskWorkspaceView.css": {
+      "count": 1,
+      "reason": "Task-workspace sections and callouts stack at 640px."
+    },
+    "src-ui/src/views/commands-view.css": {
+      "count": 1,
+      "reason": "One page gutter at 640px."
+    },
+    "src-ui/src/views/developer/SystemTab.css": {
+      "count": 1,
+      "reason": "The only min-width query in the set: the system grid opts UP to two columns at 48rem rather than overriding a wider default down."
+    },
+    "src-ui/src/views/editor-layout.css": {
+      "count": 1,
+      "reason": "The editor family's shared mobile geometry \u2014 grids to one column, field and control floors, label rows wrapping. This is where the agent editor's forked `agent-editor-mobile.css` was folded back to, and it applies to every editor rather than one page."
+    },
+    "src-ui/src/views/settings/KeyboardShortcutsSection.css": {
+      "count": 1,
+      "reason": "Shortcut rows go single-column on touch and the capture control takes a 44px box."
+    },
+    "src-ui/src/views/settings/KnowledgeStoreSection.css": {
+      "count": 1,
+      "reason": "The Obsidian action row stretches and wraps, with touch floors on its controls."
+    },
+    "src-ui/src/views/skills-view.css": {
+      "count": 2,
+      "reason": "Skill-detail padding and full-width actions at mobile, and variables rows at 768px. The dock clearance that used to live here is gone \u2014 the shell reserves it once (station#3902)."
+    },
+    "src-ui/src/workspace-panes/BasisPaneLauncher.css": {
+      "count": 1,
+      "reason": "Basis is a long-form disclosure surface: its responsive fallback intentionally becomes a full-height phone sheet while the shared dialog primitive retains bounded-height behavior for ordinary prompts."
+    },
+    "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css": {
+      "count": 2,
+      "reason": "The Work Board owns two compact contracts: phone/coarse viewport stacking and pane-width container behavior that makes the ordered list primary while the canvas is opt-in. Its variable reference fields, camera, and card plane cannot be inferred by the shared host."
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.css": {
+      "count": 1,
+      "reason": "Touch-only geometry for the availability toggle."
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneHost.css": {
+      "count": 1,
+      "reason": "Pane tabs take a touch floor and the review panels stack below 760px."
+    },
+    "src-ui/src/views/BoardView.css": {
+      "count": 1,
+      "reason": "The board grid collapses its ordinal multi-column span layout to one column on narrow viewports; column count derives from BoardWidget size presets \u2014 a board-layout concern no shell primitive owns."
+    },
+    "src-ui/src/workspace-panes/SessionInventory.css": {
+      "count": 1,
+      "reason": "The inventory group index switches from a constrained desktop column to a readable one-column phone layout; shared dialog and page primitives do not own this pane-specific dependency navigation."
+    }
+  }
+}

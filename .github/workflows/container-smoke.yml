@@ -1,0 +1,105 @@
+name: Container smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    name: Exact full-diff classification
+    # station#1931: same defect as ci.yml carried here. `smoke` needs: this,
+    # so while provider-hosted jobs cannot start (org billing, 2026-08-01) a
+    # zero-step failure here skips the self-hosted smoke job entirely — 5 of
+    # the last 5 runs on `main`. Classification runs one node script.
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    if: ${{ github.event_name != 'pull_request' }}
+    timeout-minutes: 10
+    outputs:
+      container: ${{ steps.classify.outputs.container }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "1"
+          timeout-seconds: "300"
+          owner-lifetime-seconds: "7800"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - id: classify
+        name: Classify the complete before..sha diff
+        env:
+          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          AFTER: ${{ github.sha }}
+        run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    needs: classify
+    if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.container == 'true')
+    concurrency:
+      group: container-smoke-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+        with:
+          require-docker: "true"
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "9"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+      - name: Isolate Docker client state
+        # Persistent WSL hosts may also use Docker Desktop interactively. Keep
+        # CI independent from its credential helper and Windows logon state.
+        run: |
+          umask 077
+          docker_config="$(mktemp -d "$RUNNER_TEMP/station-docker-config.XXXXXX")"
+          echo "DOCKER_CONFIG=$docker_config" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: npm run dependencies:ci
+      # The fleet image owns OS-level Chromium dependencies. The unprivileged
+      # persistent runner reuses the repo-pinned browser payload by version.
+      - name: Install repo-pinned Chromium
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
+      - name: Build, pair, persist, and clean up
+        env:
+          STATION_RELEASE_SHA: ${{ github.sha }}
+          STATION_RELEASE_REF: v0.0.0-preview.1
+          STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
+        run: scripts/container-smoke.sh
+      - name: Remove isolated Docker client state
+        if: always()
+        run: |
+          case "$DOCKER_CONFIG" in
+            "$RUNNER_TEMP"/station-docker-config.*) rm -rf -- "$DOCKER_CONFIG" ;;
+            *) echo "Refusing unexpected DOCKER_CONFIG: $DOCKER_CONFIG" >&2; exit 1 ;;
+          esac

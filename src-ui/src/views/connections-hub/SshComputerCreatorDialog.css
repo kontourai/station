@@ -1,0 +1,64 @@
+/*
+ * The SSH creator's own fields and result block. Geometry only — the dialog
+ * chrome, its mobile sheet behaviour and its footer actions all come from the
+ * shared `Dialog`/`ResponsiveDialogSurface`.
+ */
+
+.ssh-computer-creator {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+/* The server's probe answer: a heading, the sentence it derived, the next
+   step, and what it signed in as — each on its own line, because they are
+   separate facts and ran together as one paragraph when they were not. */
+.ssh-computer-creator__result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.ssh-computer-creator__result--ready {
+  border-color: var(--success-text);
+}
+
+.ssh-computer-creator__result--error {
+  border-color: var(--error-text);
+}
+
+.ssh-computer-creator__resolved {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.ssh-computer-creator__failure {
+  color: var(--error-text);
+  font-size: var(--text-sm);
+}
+
+/* The unknown-host receipt: a fingerprint to read aloud and the command that
+   records it. The code block wraps rather than scrolls — a fingerprint being
+   compared by voice must be visible in full at 390 too. */
+.ssh-computer-creator__host-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.ssh-computer-creator__fingerprint {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-tertiary, var(--bg-primary));
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}

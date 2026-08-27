@@ -1,0 +1,36 @@
+/*
+ * Geometry and cadence follow `SessionProjectPill.css` — the other control
+ * that lives in the same trailing slot — so a row carrying both reads as one
+ * family. Squared corners rather than the pill's full round: the pill is an
+ * attribution, this is an action, and the shape difference is not the only
+ * signal (the label is a verb-adjacent noun and the cursor/hover state carry
+ * the rest).
+ */
+.session-evidence-button {
+  flex: 0 0 auto;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.session-evidence-button:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.session-evidence-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}

@@ -1,0 +1,14 @@
+// KNOWN-BAD: ad-hoc "No X" empty copy written as a JSX text node instead of
+// going through the Empty primitive.
+//
+// This is the exact occurrence class that crossed the checked-in ceiling on
+// `main` twice on 2026-08-03 (station#1665 at 52, station#1688/#1690 at 51),
+// each time as a red nobody could attribute to the branch that gated on it.
+// Against a fixture ceiling of 0, one occurrence must fail.
+export function AdHocNoXView() {
+  return (
+    <section className="ad-hoc-no-x-view">
+      <p>No playbooks yet</p>
+    </section>
+  );
+}

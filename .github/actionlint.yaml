@@ -1,0 +1,13 @@
+self-hosted-runner:
+  labels:
+    - kontour-linux
+    - kontour-windows
+    - desktop-win
+    - fast-feedback
+    - heavy-host
+    - docker
+    - playwright
+    - android-kvm
+    - native
+
+config-variables: null

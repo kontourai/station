@@ -1,0 +1,121 @@
+/* Survey Review Workbench layout chrome (the workbench itself ships its own
+   CSS via @kontourai/survey/review-workbench.css). */
+
+.srw-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+}
+
+.srw-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.srw-toolbar-group {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.srw-label {
+  color: var(--text-secondary, #8b8fa3);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.srw-select {
+  background: var(--bg-secondary, #1c1e26);
+  border: 1px solid var(--border-primary, #33364a);
+  border-radius: 6px;
+  color: var(--text-primary, #e6e8f0);
+  max-width: 320px;
+  padding: 6px 8px;
+}
+
+.srw-button {
+  background: var(--bg-secondary, #1c1e26);
+  border: 1px solid var(--border-primary, #33364a);
+  border-radius: 6px;
+  color: var(--text-primary, #e6e8f0);
+  cursor: pointer;
+  padding: 6px 12px;
+}
+
+.srw-button:hover {
+  border-color: var(--accent-primary, #7c5cff);
+}
+
+.srw-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.srw-button-primary {
+  background: var(--accent-primary, #7c5cff);
+  border-color: var(--accent-primary, #7c5cff);
+  color: var(--accent-contrast, #ffffff);
+}
+
+.srw-status {
+  border-radius: 999px;
+  border: 1px solid var(--border-primary, #33364a);
+  color: var(--text-secondary, #8b8fa3);
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+.srw-status-saving {
+  border-color: var(--accent-primary, #7c5cff);
+  color: var(--accent-primary, #7c5cff);
+}
+
+.srw-status-saved {
+  border-color: #3fb96f;
+  color: #3fb96f;
+}
+
+.srw-status-error {
+  border-color: #e05d5d;
+  color: #e05d5d;
+}
+
+.srw-notice {
+  border-radius: 6px;
+  border: 1px solid var(--border-primary, #33364a);
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.srw-notice-error {
+  border-color: #e05d5d;
+  color: #e05d5d;
+}
+
+.srw-notice-success {
+  border-color: #3fb96f;
+  color: #3fb96f;
+}
+
+.srw-bundle-path {
+  color: var(--text-secondary, #8b8fa3);
+  font-family: monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.srw-empty {
+  color: var(--text-secondary, #8b8fa3);
+  padding: 24px 8px;
+}
+
+.srw-workbench {
+  flex: 1;
+  min-height: 0;
+}

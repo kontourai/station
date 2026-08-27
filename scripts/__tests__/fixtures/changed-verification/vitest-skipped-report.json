@@ -1,0 +1,49 @@
+{
+  "numTotalTestSuites": 2,
+  "numPassedTestSuites": 2,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 4,
+  "numPassedTests": 1,
+  "numFailedTests": 0,
+  "numPendingTests": 2,
+  "numTodoTests": 1,
+  "success": true,
+  "testResults": [
+    {
+      "name": "probe.test.ts",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "pass a",
+          "status": "passed",
+          "title": "pass a",
+          "failureMessages": []
+        },
+        {
+          "ancestorTitles": ["env gated"],
+          "fullName": "env gated skipped one",
+          "status": "skipped",
+          "title": "skipped one",
+          "failureMessages": []
+        },
+        {
+          "ancestorTitles": ["env gated"],
+          "fullName": "env gated skipped two",
+          "status": "skipped",
+          "title": "skipped two",
+          "failureMessages": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "todo one",
+          "status": "todo",
+          "title": "todo one",
+          "failureMessages": []
+        }
+      ]
+    }
+  ]
+}

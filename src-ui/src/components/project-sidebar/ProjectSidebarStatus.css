@@ -1,0 +1,86 @@
+/* Non-critical status styles ship with the lazy status component instead of
+   inflating Station's initial shell bundle. */
+.sidebar__status {
+  border-top: 1px solid var(--border-primary);
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.sidebar__status-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.sidebar__status-sessions {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 3px;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sidebar__status-sessions:hover {
+  color: var(--text-primary);
+}
+
+.sidebar__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.sidebar__status-version {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__status-palette {
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 4px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.sidebar__status-palette:hover {
+  opacity: 1;
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.sidebar--collapsed .sidebar__status {
+  display: none;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* The mobile sidebar renders as a full-viewport overlay drawer
+     (position: fixed; top: 0; bottom: 0; z-index: 500) that sits above the
+     chat dock, so the status footer must anchor to the device's safe-area
+     bottom inset — not to --dock-slot-size, which is the height of a dock
+     the drawer already covers. */
+  .sidebar__status {
+    padding-bottom: calc(4px + var(--safe-bottom, 0px));
+  }
+
+  .sidebar__status-palette {
+    display: none;
+  }
+}

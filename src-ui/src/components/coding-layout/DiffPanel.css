@@ -1,0 +1,211 @@
+.diff-toggle {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.diff-toggle--active {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+}
+
+/* ── Change counts (panel-level total + per-file, station#3104) ── */
+
+.diff-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.diff-stat__additions,
+.diff-file-stat__additions {
+  color: var(--success-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-stat__deletions,
+.diff-file-stat__deletions {
+  color: var(--error-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-file-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  margin-left: 8px;
+  color: var(--text-muted);
+}
+
+/* ── Per-file collapse/expand toggle (station#3104) ── */
+
+.diff-file-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.diff-file-collapse-toggle__icon {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.diff-file-collapse-toggle[aria-expanded="false"]
+  .diff-file-collapse-toggle__icon {
+  transform: rotate(-90deg);
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .diff-toggle {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .diff-file-collapse-toggle {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* ── Inline diff review comments ── */
+
+/* Gutter "add comment" affordance, shown on the hovered line. */
+.diff-comment-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.diff-comment-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 4px 12px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent-primary);
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  font-family: var(--font-sans, sans-serif);
+}
+
+.diff-comment {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diff-comment__body {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-comment__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.diff-comment__delete {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+}
+
+.diff-comment__delete:hover {
+  color: var(--error-text, #d33);
+  text-decoration: underline;
+}
+
+.diff-comment-thread__reply {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+}
+
+.diff-comment-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diff-comment-composer__input {
+  width: 100%;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.diff-comment-composer__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.diff-comment-composer__cancel,
+.diff-comment-composer__submit {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border-primary);
+}
+
+.diff-comment-composer__cancel {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.diff-comment-composer__submit {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
+}
+
+.diff-comment-composer__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
