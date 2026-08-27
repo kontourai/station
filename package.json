@@ -251,7 +251,7 @@
     "@aws-sdk/client-pricing": "^3.1110.0",
     "@aws-sdk/client-s3": "^3.1110.0",
     "@aws-sdk/credential-providers": "^3.1110.0",
-    "@hono/node-server": "^2.0.12",
+    "@hono/node-server": "^2.1.1",
     "@kontourai/conduit": "0.6.0",
     "@kontourai/console-core": "^0.3.0",
     "@kontourai/console-server": "^1.0.0",
