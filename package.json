@@ -396,7 +396,7 @@
     "fallow": "^3.16.0",
     "js-tiktoken": "1.0.21",
     "patch-package": "^8.0.1",
-    "pngjs": "^5.0.0",
+    "pngjs": "^7.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "ssh2": "^1.17.0",
