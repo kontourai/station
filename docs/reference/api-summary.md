@@ -412,5 +412,5 @@ The frontend uses `/api/auth/*` and `/api/users/*` prefixes (via `apiBase`), whi
 
 ## Documentation
 
-- **Complete API Reference**: [API.md](./API.md)
+- **Complete API Reference**: [api.md](./api.md)
 - **Frontend Endpoint Audit**: [endpoints.md](./endpoints.md)
