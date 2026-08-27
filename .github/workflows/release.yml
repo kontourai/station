@@ -27,7 +27,7 @@ jobs:
       macos_bundle_version: ${{ steps.source.outputs.macos_bundle_version }}
       created_at: ${{ steps.source.outputs.created_at }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           ref: ${{ github.ref }}
       - id: source
@@ -98,7 +98,7 @@ jobs:
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
       MACOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.macos_bundle_version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           ref: ${{ needs.preflight.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -184,7 +184,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -258,7 +258,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -313,7 +313,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
@@ -357,7 +357,7 @@ jobs:
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
       NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -531,7 +531,7 @@ jobs:
       IOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.ios_bundle_version }}
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -587,7 +587,7 @@ jobs:
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
       NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -704,7 +704,7 @@ jobs:
       RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.preflight.outputs.created_at }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - id: metadata
         env:
@@ -821,7 +821,7 @@ jobs:
       RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.preflight.outputs.created_at }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }

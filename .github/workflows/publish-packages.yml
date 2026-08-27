@@ -89,7 +89,7 @@ jobs:
       # step below pushes through the GitHub API (action v2's default;
       # `push-with-git-cli` stays false), authenticated by its `github-token`
       # input, so no git credential ever needs to exist in this workspace.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
           # Full history, fetched while checkout still holds its ephemeral
