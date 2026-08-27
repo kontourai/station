@@ -45,6 +45,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/${GITHUB_REPOSITORY}/labels?per_page=100" > "$RUNNER_TEMP/live-labels.json"
+          # curl, not gh: the fleet runner image does not ship the gh binary,
+          # and this is the workflow's only gh call (exit 127 on first real run).
+          curl -fsSL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/labels?per_page=100" \
+            > "$RUNNER_TEMP/live-labels.json"
           node scripts/label-manifest.mjs --input="$RUNNER_TEMP/live-labels.json"
           node scripts/backlog-priority-policy.mjs
