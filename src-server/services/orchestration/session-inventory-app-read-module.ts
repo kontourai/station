@@ -466,5 +466,10 @@ function fingerprintProjection(value: SessionInventoryProjection) {
     .digest('base64url');
 }
 function fingerprintPage(value: SessionInventoryGroupPage) {
-  return createHash('sha256').update(JSON.stringify(value)).digest('base64url');
+  // Like projection cursors, a nonterminal group page receives a fresh opaque
+  // EventStore continuation per owner read. Compare only the stable page.
+  const { continuation: _continuation, ...group } = value.group;
+  return createHash('sha256')
+    .update(JSON.stringify({ ...value, group }))
+    .digest('base64url');
 }
