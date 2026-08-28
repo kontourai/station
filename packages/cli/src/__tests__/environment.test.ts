@@ -51,6 +51,7 @@ const RESET = {
 function makeService(): EnvironmentSecurityServiceLike {
   return {
     initialize: vi.fn().mockResolvedValue(INITIAL),
+    readExistingRecord: vi.fn().mockResolvedValue(INITIAL),
     rotateCredential: vi.fn().mockResolvedValue(ROTATED),
     resetEnvironment: vi.fn().mockResolvedValue(RESET),
   };
@@ -1100,6 +1101,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
       }
       return {
         initialize: vi.fn().mockResolvedValue(identity),
+        readExistingRecord: vi.fn().mockResolvedValue(identity),
         rotateCredential: vi.fn(),
         resetEnvironment: vi.fn(),
       };
@@ -1221,6 +1223,180 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
     expect(stdout).toHaveBeenCalledWith(
       JSON.stringify({ requests: [] }, null, 2),
     );
+  });
+
+  test.each([
+    {
+      action: 'list',
+      args: ['access', 'list', '--station=nightly-local'],
+      requests: [],
+      updated: undefined,
+    },
+    {
+      action: 'approve',
+      args: [
+        'access',
+        'approve',
+        'request-nightly',
+        '--force',
+        '--station=nightly-local',
+      ],
+      requests: [
+        {
+          requestId: 'request-nightly',
+          deviceName: 'Nightly device',
+          source: 'same-origin',
+          createdAt: 1,
+          expiresAt: 2,
+          status: 'pending',
+        },
+      ],
+      updated: {
+        requestId: 'request-nightly',
+        deviceName: 'Nightly device',
+        source: 'same-origin',
+        createdAt: 1,
+        expiresAt: 2,
+        status: 'confirmed',
+      },
+    },
+    {
+      action: 'deny',
+      args: [
+        'access',
+        'deny',
+        'request-nightly',
+        '--force',
+        '--station=nightly-local',
+      ],
+      requests: [
+        {
+          requestId: 'request-nightly',
+          deviceName: 'Nightly device',
+          source: 'same-origin',
+          createdAt: 1,
+          expiresAt: 2,
+          status: 'pending',
+        },
+      ],
+      updated: {
+        requestId: 'request-nightly',
+        deviceName: 'Nightly device',
+        source: 'same-origin',
+        createdAt: 1,
+        expiresAt: 2,
+        status: 'denied',
+      },
+    },
+  ])(
+    'uses only readExistingRecord for a saved local Station access $action',
+    async ({ args, requests, updated }) => {
+      upsertProfile({
+        name: 'nightly-local',
+        endpoint: NIGHTLY_API_BASE,
+        environmentId: NIGHTLY_HOME_IDENTITY.environmentId,
+        setupSource: 'local',
+        configurationState: 'configured',
+        localService: {
+          instanceId: 'nightly-instance',
+          baseDir: NIGHTLY_HOME,
+          serverPort: 38141,
+          uiPort: 38142,
+        },
+      });
+      const service: EnvironmentSecurityServiceLike = {
+        initialize: vi.fn().mockResolvedValue(DEFAULT_HOME_IDENTITY),
+        readExistingRecord: vi.fn().mockResolvedValue(NIGHTLY_HOME_IDENTITY),
+        rotateCredential: vi.fn(),
+        resetEnvironment: vi.fn(),
+      };
+      const createService = vi.fn(() => service);
+
+      await runEnvironmentCommand(args, {
+        createService,
+        projectHome: DEFAULT_HOME,
+        request: makeServerAccessApi(NIGHTLY_HOME_IDENTITY, requests, updated),
+        stdout,
+        stderr,
+        isInteractive: false,
+      });
+
+      expect(createService).toHaveBeenCalledWith(NIGHTLY_HOME);
+      expect(service.readExistingRecord).toHaveBeenCalledOnce();
+      expect(service.initialize).not.toHaveBeenCalled();
+    },
+  );
+
+  test('keeps a saved-home read refusal terminal-safe, value-bearing, and before the network', async () => {
+    const unsafeHome = `/tmp/nightly-\u202e${'x'.repeat(600)}`;
+    upsertProfile({
+      name: 'nightly-local',
+      endpoint: NIGHTLY_API_BASE,
+      environmentId: NIGHTLY_HOME_IDENTITY.environmentId,
+      setupSource: 'local',
+      configurationState: 'configured',
+      localService: {
+        instanceId: 'nightly-instance',
+        baseDir: unsafeHome,
+        serverPort: 38141,
+        uiPort: 38142,
+      },
+    });
+    const readFailure = new Error('record missing');
+    const service: EnvironmentSecurityServiceLike = {
+      initialize: vi.fn(),
+      readExistingRecord: vi.fn().mockRejectedValue(readFailure),
+      rotateCredential: vi.fn(),
+      resetEnvironment: vi.fn(),
+    };
+    const request = vi.fn<OperatorJsonRequest>();
+
+    const error = await runEnvironmentCommand(
+      ['access', 'list', '--station=nightly-local'],
+      {
+        createService: vi.fn(() => service),
+        projectHome: DEFAULT_HOME,
+        request,
+        stdout,
+        stderr,
+        isInteractive: false,
+      },
+    ).then(
+      () => undefined,
+      (thrown: Error) => thrown,
+    );
+
+    expect(error?.cause).toBe(readFailure);
+    expect(error?.message).toContain(
+      'Saved Station "nightly-local" recorded home',
+    );
+    expect(error?.message).toContain(
+      'Re-run `station setup local` or fix this saved Station.',
+    );
+    expect(error?.message).toContain('\\u202e');
+    expect(error?.message).not.toContain('\u202e');
+    expect(error?.message.length).toBeLessThan(800);
+    expect(service.initialize).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  test('rejects malformed access syntax before service or network effects', async () => {
+    const createService = vi.fn(() => makeService());
+    const request = vi.fn<OperatorJsonRequest>();
+
+    await expect(
+      runEnvironmentCommand(['access', 'list', '--force'], {
+        createService,
+        projectHome: DEFAULT_HOME,
+        request,
+        stdout,
+        stderr,
+        isInteractive: false,
+      }),
+    ).rejects.toThrow('Usage:');
+
+    expect(createService).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
 
   test('refuses --station when the saved Station records no local home, before ever touching the network, naming a working remedy by value', async () => {

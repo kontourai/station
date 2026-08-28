@@ -1,9 +1,11 @@
 import { createHmac } from 'node:crypto';
 import {
   chmodSync,
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -13,6 +15,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  ensureStationHomeSchemaSync,
+  STATION_HOME_SCHEMA_FILE,
+  STATION_HOME_SCHEMA_VERSION,
+} from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH = 'security/environment.json';
@@ -32,6 +39,7 @@ interface EnvironmentSecuritySnapshot {
 
 interface EnvironmentSecurityServiceInstance {
   initialize(): Promise<EnvironmentSecuritySnapshot>;
+  readExistingRecord(): Promise<EnvironmentSecuritySnapshot>;
   rotateCredential(): Promise<EnvironmentSecuritySnapshot>;
   resetEnvironment(): Promise<EnvironmentSecuritySnapshot>;
   verifyCredential(candidate: string): boolean;
@@ -114,6 +122,29 @@ function makeHome(): string {
   return home;
 }
 
+const EXISTING_RECORD: EnvironmentSecuritySnapshot = {
+  schemaVersion: 1,
+  environmentId: '33333333-3333-4333-8333-333333333333',
+  credential: Buffer.alloc(32, 7).toString('base64url'),
+};
+
+function seedExistingRecord(
+  homeDir: string,
+  record: unknown = EXISTING_RECORD,
+): void {
+  ensureStationHomeSchemaSync(homeDir);
+  const securityDir = join(homeDir, 'security');
+  mkdirSync(securityDir, { mode: 0o700 });
+  chmodSync(securityDir, 0o700);
+  const recordPath = join(securityDir, 'environment.json');
+  writeFileSync(recordPath, `${JSON.stringify(record)}\n`);
+  chmodSync(recordPath, 0o600);
+}
+
+function securityInventory(homeDir: string): string[] {
+  return readdirSync(join(homeDir, 'security')).sort();
+}
+
 function writeLock(
   homeDir: string,
   overrides: Partial<{
@@ -147,6 +178,169 @@ afterEach(() => {
 });
 
 describe('EnvironmentSecurityService', () => {
+  test('reads an admitted existing record without creating a lock, revision key, or pairing state', async () => {
+    const homeDir = makeHome();
+    seedExistingRecord(homeDir);
+    const beforeHome = readdirSync(homeDir).sort();
+    const beforeSecurity = readdirSync(join(homeDir, 'security')).sort();
+    const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+    await expect(
+      new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+    ).resolves.toEqual(EXISTING_RECORD);
+
+    expect(readdirSync(homeDir).sort()).toEqual(beforeHome);
+    expect(readdirSync(join(homeDir, 'security')).sort()).toEqual(
+      beforeSecurity,
+    );
+    expect(readdirSync(join(homeDir, 'security'))).toEqual([
+      'environment.json',
+    ]);
+    expect(statSync(join(homeDir, 'security')).mode & 0o777).toBe(0o700);
+    expect(
+      statSync(join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH)).mode &
+        0o777,
+    ).toBe(0o600);
+  });
+
+  test('refuses a missing saved home without bootstrapping it', async () => {
+    const parent = makeHome();
+    const homeDir = join(parent, 'missing-station-home');
+    const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+    await expect(
+      new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+    ).rejects.toThrow('STATION_HOME_RESET_REQUIRED');
+
+    expect(existsSync(homeDir)).toBe(false);
+  });
+
+  test.each([
+    [
+      'malformed',
+      { schemaVersion: 1, environmentId: EXISTING_RECORD.environmentId },
+    ],
+    ['unsupported version', { ...EXISTING_RECORD, schemaVersion: 2 }],
+  ])(
+    'refuses a %s existing record without changing its home',
+    async (_, record) => {
+      const homeDir = makeHome();
+      seedExistingRecord(homeDir, record);
+      const recordPath = join(
+        homeDir,
+        ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH,
+      );
+      const before = readFileSync(recordPath, 'utf8');
+      const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+      await expect(
+        new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+      ).rejects.toThrow(
+        /Invalid environment security record|Unsupported environment security record version/,
+      );
+
+      expect(readFileSync(recordPath, 'utf8')).toBe(before);
+      expect(readdirSync(join(homeDir, 'security')).sort()).toEqual([
+        'environment.json',
+      ]);
+    },
+  );
+
+  test.each([
+    ['older', STATION_HOME_SCHEMA_VERSION - 1],
+    ['newer', STATION_HOME_SCHEMA_VERSION + 1],
+  ])(
+    'refuses an %s Station home schema without changing its record or inventory',
+    async (_, schemaVersion) => {
+      const homeDir = makeHome();
+      seedExistingRecord(homeDir);
+      const markerPath = join(homeDir, STATION_HOME_SCHEMA_FILE);
+      const recordPath = join(
+        homeDir,
+        ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH,
+      );
+      writeFileSync(
+        markerPath,
+        `${JSON.stringify({ version: schemaVersion })}\n`,
+      );
+      const beforeMarker = readFileSync(markerPath, 'utf8');
+      const beforeRecord = readFileSync(recordPath, 'utf8');
+      const beforeInventory = securityInventory(homeDir);
+      const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+      await expect(
+        new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+      ).rejects.toThrow(
+        `Unsupported Station home schema version ${schemaVersion}; expected ${STATION_HOME_SCHEMA_VERSION}`,
+      );
+
+      expect(readFileSync(markerPath, 'utf8')).toBe(beforeMarker);
+      expect(readFileSync(recordPath, 'utf8')).toBe(beforeRecord);
+      expect(securityInventory(homeDir)).toEqual(beforeInventory);
+    },
+  );
+
+  test.each([
+    [
+      'security directory',
+      'security',
+      0o755,
+      'Unsafe environment security directory permissions',
+    ],
+    [
+      'environment record',
+      ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH,
+      0o644,
+      'Unsafe environment security record permissions',
+    ],
+  ])(
+    'refuses a %s with non-private mode %o without repairing it',
+    async (_, relativePath, mode, expectedError) => {
+      const homeDir = makeHome();
+      seedExistingRecord(homeDir);
+      const target = join(homeDir, relativePath);
+      chmodSync(target, mode);
+      const beforeRecord = readFileSync(
+        join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH),
+        'utf8',
+      );
+      const beforeInventory = securityInventory(homeDir);
+      const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+      await expect(
+        new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+      ).rejects.toThrow(expectedError);
+
+      expect(statSync(target).mode & 0o777).toBe(mode);
+      expect(
+        readFileSync(
+          join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH),
+          'utf8',
+        ),
+      ).toBe(beforeRecord);
+      expect(securityInventory(homeDir)).toEqual(beforeInventory);
+    },
+  );
+
+  test('refuses a symlinked security directory without following or repairing it', async () => {
+    const homeDir = makeHome();
+    ensureStationHomeSchemaSync(homeDir);
+    const target = join(homeDir, 'security-target');
+    mkdirSync(target, { mode: 0o700 });
+    symlinkSync(target, join(homeDir, 'security'));
+    const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+    await expect(
+      new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+    ).rejects.toThrow('Invalid environment security directory');
+
+    expect(readdirSync(homeDir).sort()).toEqual([
+      '.station-home-schema.json',
+      'security',
+      'security-target',
+    ]);
+  });
+
   test('atomically creates one high-entropy identity and credential record', async () => {
     const homeDir = makeHome();
     const EnvironmentSecurityService = await loadEnvironmentSecurityService();
