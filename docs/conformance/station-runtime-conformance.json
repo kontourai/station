@@ -145,7 +145,7 @@
       "adapterId": "station-voltagent",
       "adapterVersion": "0.6.0",
       "hostId": "station-voltagent",
-      "hostVersion": "2.9.2",
+      "hostVersion": "2.10.0",
       "capabilities": {
         "lifecycle": {
           "session-start": "unavailable",
