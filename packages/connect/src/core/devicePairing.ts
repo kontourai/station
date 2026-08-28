@@ -14,6 +14,15 @@ import {
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts/station-profile';
 
 const PAYLOAD_PREFIX = 'station-pairing:v1:';
+const CANONICAL_SCANNED_PAIRING_OFFER_FIELDS = new Set([
+  'protocolVersion',
+  'environmentId',
+  'offerId',
+  'challenge',
+  'endpoint',
+  'scope',
+  'expiresAt',
+]);
 const PAIRING_CLIENT_INSTANCE_STORAGE_PREFIX =
   'station-pairing-client-instance:v1:';
 const PENDING_EXCHANGE_STORAGE_PREFIX = 'station-pairing-pending-exchange:v1:';
@@ -152,12 +161,21 @@ export function encodeDevicePairingPayload(offer: DevicePairingOffer): string {
 
 export function decodeDevicePairingPayload(
   value: string,
+  options: { requireCanonicalOfferFields?: boolean } = {},
 ): ScannedPairingOffer | null {
   if (!value.startsWith(PAYLOAD_PREFIX)) return null;
   try {
     const payload = JSON.parse(
       decodeBase64Url(value.slice(PAYLOAD_PREFIX.length)),
     ) as Partial<ScannedPairingOffer>;
+    if (
+      options.requireCanonicalOfferFields &&
+      Object.keys(payload).some(
+        (key) => !CANONICAL_SCANNED_PAIRING_OFFER_FIELDS.has(key),
+      )
+    ) {
+      return null;
+    }
     if (
       payload.protocolVersion !== DEVICE_PAIRING_PROTOCOL_VERSION ||
       typeof payload.scope !== 'string' ||

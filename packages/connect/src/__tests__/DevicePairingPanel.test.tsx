@@ -1939,6 +1939,23 @@ describe('device pairing panels', () => {
       // Standard is the default preset (station#1098 R3).
       scope: pairingScopePresetString('standard'),
     });
+    expect(
+      (screen.getByLabelText('Pairing client channel') as HTMLSelectElement)
+        .value,
+    ).toBe('stable');
+    fireEvent.change(screen.getByLabelText('Pairing client channel'), {
+      target: { value: 'beta' },
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy pairing link' }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^station-beta:\/\/pair\?linkVersion=1&clientChannel=beta&payload=/,
+        ),
+      ),
+    );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       new URL('https://station.example.test/api/pairing/offers'),
       expect.objectContaining({

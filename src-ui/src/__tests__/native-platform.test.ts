@@ -358,7 +358,9 @@ describe('native platform boundary', () => {
         listen: async () => () => undefined,
       },
       {
-        getCurrent: async () => ['station://pair?payload=launch'],
+        getCurrent: async () => [
+          'station-stable://pair?linkVersion=1&clientChannel=stable&payload=launch',
+        ],
         onOpenUrl: async (handler) => {
           activeHandler = handler;
           return () => {
@@ -373,14 +375,18 @@ describe('native platform boundary', () => {
     );
 
     await vi.waitFor(() =>
-      expect(received).toContain('station://pair?payload=launch'),
+      expect(received).toContain(
+        'station-stable://pair?linkVersion=1&clientChannel=stable&payload=launch',
+      ),
     );
-    activeHandler?.(['station://pair?payload=active']);
+    activeHandler?.([
+      'station-stable://pair?linkVersion=1&clientChannel=stable&payload=active',
+    ]);
     subscription.dispose();
 
     expect(received).toEqual([
-      'station://pair?payload=launch',
-      'station://pair?payload=active',
+      'station-stable://pair?linkVersion=1&clientChannel=stable&payload=launch',
+      'station-stable://pair?linkVersion=1&clientChannel=stable&payload=active',
     ]);
     expect(unlistened).toBe(true);
   });

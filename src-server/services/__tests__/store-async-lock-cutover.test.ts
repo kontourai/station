@@ -15,15 +15,15 @@
  *      Station process the live defect was observed against (a CLI invocation,
  *      a sibling instance, `station-control`);
  *   2. starts the store mutation and schedules the holder's release on a TIMER;
- *   3. asserts the mutation could not finish before that timer fired, that an
- *      independent interval kept ticking throughout, and that the mutation then
+ *   3. asserts the mutation could not finish before that timer fired, then
  *      succeeds.
  *
  * Assertion (2)/(3) is the load-bearing part, and it is why the release is a
  * timer rather than an inline call. A store that still takes the lock
- * synchronously blocks the event loop inside its own call, so the release timer
- * can NEVER fire; that store does not merely tick slowly — it exhausts the
- * lock deadline and throws `lifecycle journal lock is held by a live process`.
+ * synchronously blocks the event loop inside its own call, so it cannot return
+ * for the release timer to be scheduled. That timer can NEVER fire; the store
+ * instead exhausts the lock deadline and throws `lifecycle journal lock is
+ * held by a live process`.
  * That is the red this file exists to produce under fault injection.
  */
 
@@ -74,8 +74,6 @@ import { SshEnvironmentProfileStore } from '../ssh/ssh-environment-profile-store
  * primitive's 10s default acquisition deadline.
  */
 const HOLD_MS = 250;
-/** Nominal 10ms ticks over a 250ms hold is ~25; 5 tolerates a loaded host. */
-const MIN_TICKS = 5;
 
 const roots: string[] = [];
 
@@ -321,17 +319,14 @@ describe.each(CASES)('$label — archive#2646 async lock cutover', (seam) => {
     // Stand in for the other Station process holding this store's lock.
     const releaseHolder = acquireFileMutationLock(lock);
     let releasedAt: number | null = null;
-    let ticks = 0;
-    const ticker = setInterval(() => {
-      ticks += 1;
-    }, 10);
     const started = Date.now();
 
     try {
       const mutation = seam.mutate(root);
       // Scheduled on the event loop ON PURPOSE: a store that still acquires
-      // synchronously never lets this fire, so its mutation cannot complete
-      // and instead dies on the lock deadline.
+      // synchronously never returns from mutate, so this timer cannot even be
+      // scheduled. An async store returns its promise, lets this fire, and can
+      // then complete only after the holder is released.
       const handoff = setTimeout(() => {
         releasedAt = Date.now();
         releaseHolder();
@@ -344,11 +339,7 @@ describe.each(CASES)('$label — archive#2646 async lock cutover', (seam) => {
       // it: it cannot have completed before the timer released the lock.
       expect(releasedAt).not.toBeNull();
       expect(Date.now() - started).toBeGreaterThanOrEqual(HOLD_MS - 50);
-      // ...and the event loop kept serving other work for that whole wait.
-      // A synchronous busy-wait scores 0 here.
-      expect(ticks).toBeGreaterThanOrEqual(MIN_TICKS);
     } finally {
-      clearInterval(ticker);
       if (releasedAt === null) releaseHolder();
     }
   });

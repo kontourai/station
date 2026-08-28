@@ -6,6 +6,7 @@ use tauri::Manager;
 mod bundled_server_state;
 mod channel_ports_generated;
 mod notification_watch;
+mod pairing_deep_link_channels_generated;
 mod service_state;
 #[cfg(not(mobile))]
 mod ssh_launcher;
@@ -67,6 +68,7 @@ struct NativeCapabilityStatus {
 struct NativeCapabilityReport {
     platform: &'static str,
     channel: &'static str,
+    pairing_deep_link_scheme: String,
     capabilities: Vec<NativeCapabilityStatus>,
     /// True for a development build. On Android this is the `.debug`
     /// application id installed alongside a release build, so the UI can look
@@ -187,7 +189,7 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
     capabilities.push(NativeCapabilityStatus {
         id: "pairing-deep-link",
         state: "enabled",
-        reason: "The native host registers the reviewed station://pair association.",
+        reason: "The native host registers this channel's reviewed pairing association.",
     });
     capabilities.push(NativeCapabilityStatus {
         id: "host-credential-broker",
@@ -218,6 +220,12 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
     NativeCapabilityReport {
         platform: compile_target_platform(),
         channel: native_app_channel(identifier, cfg!(debug_assertions)),
+        pairing_deep_link_scheme:
+            pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(
+                identifier,
+                cfg!(debug_assertions),
+                native_app_channel(identifier, cfg!(debug_assertions)),
+            ),
         dev_build: cfg!(debug_assertions),
         mobile_default_endpoint: if cfg!(mobile) {
             trusted_mobile_default_endpoint(option_env!("STATION_MOBILE_DEFAULT_ENDPOINT"))
@@ -11104,6 +11112,14 @@ mod tests {
             "nightly"
         );
         assert_eq!(native_app_channel("io.kontourai.station.beta", true), "dev");
+        assert_eq!(
+            pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(
+                "io.kontourai.station.dev.dev.release.7",
+                true,
+                "dev",
+            ),
+            "station-dev-dev-release-7",
+        );
     }
 
     #[test]

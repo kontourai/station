@@ -95,6 +95,17 @@ export {
   retryLocalSelfProvisionAfterRejection,
 } from './core/localSelfProvision';
 export type {
+  PairingDeepLinkChannel,
+  PairingDeepLinkParseResult,
+} from './core/pairingDeepLink';
+export {
+  encodePairingDeepLink,
+  PAIRING_DEEP_LINK_VERSION,
+  PAIRING_LINK_REMEDY,
+  pairingDeepLinkScheme,
+  parsePairingDeepLink,
+} from './core/pairingDeepLink';
+export type {
   CompletePaired,
   CompletePendingPairingOptions,
   PendingPairingCompletion,

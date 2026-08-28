@@ -35,5 +35,11 @@
       "icons/nightly/icon.icns",
       "icons/nightly/icon.ico"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [{ "scheme": ["station-nightly"], "appLink": false }],
+      "desktop": { "schemes": ["station-nightly"] }
+    }
   }
 }
