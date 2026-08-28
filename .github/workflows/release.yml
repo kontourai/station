@@ -27,7 +27,7 @@ jobs:
       macos_bundle_version: ${{ steps.source.outputs.macos_bundle_version }}
       created_at: ${{ steps.source.outputs.created_at }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref }}
       - id: source
@@ -98,7 +98,7 @@ jobs:
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
       MACOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.macos_bundle_version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -173,7 +173,7 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/*
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: "${{ matrix.artifact }}", path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-windows:
@@ -189,7 +189,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -247,7 +247,7 @@ jobs:
           cp src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi.zip.sig "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip.sig"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-desktop-windows-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-linux:
@@ -263,7 +263,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -307,7 +307,7 @@ jobs:
           cp src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.tar.gz.sig "release-assets/station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz.sig"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-desktop-linux-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   portable:
@@ -318,14 +318,14 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
       - run: scripts/package-portable-release.sh --output-dir release-assets --ref "${{ needs.preflight.outputs.tag }}" --sha "${{ needs.preflight.outputs.sha }}" --created-at "${{ needs.preflight.outputs.created_at }}"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-portable, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   android:
@@ -362,15 +362,15 @@ jobs:
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
       NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - run: sdkmanager "ndk;27.0.12077973"
       - name: Resolve native update feed contract
         id: update_feed
@@ -512,7 +512,7 @@ jobs:
           fi
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-android, path: release-assets, if-no-files-found: error, retention-days: 14 }
       - name: Upload to Play internal testing track
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
@@ -536,7 +536,7 @@ jobs:
       IOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.ios_bundle_version }}
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -559,7 +559,7 @@ jobs:
           tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-${RELEASE_TAG}-ios-simulator.app.tar.gz" "$(basename "$simulator_app")"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-ios-simulator-verification, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   ios-device:
@@ -592,7 +592,7 @@ jobs:
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
       NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
@@ -681,7 +681,7 @@ jobs:
           cp "$ipa" "release-assets/station-${RELEASE_TAG}-ios-device.ipa"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-ios-device, path: release-assets, if-no-files-found: error, retention-days: 14 }
       - name: Upload to TestFlight
         if: ${{ env.APPLE_API_KEY_ID != '' }}
@@ -709,7 +709,7 @@ jobs:
       RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.preflight.outputs.created_at }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - id: metadata
         env:
@@ -729,7 +729,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - name: Refuse to overwrite immutable source image staging
         run: |
           if docker buildx imagetools inspect "${{ steps.metadata.outputs.staging_tag }}" >/dev/null 2>&1; then
@@ -790,10 +790,10 @@ jobs:
           push-to-registry: true
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/station-container-release.json }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-container-release, path: release-assets, if-no-files-found: error, retention-days: 14 }
       - name: Transfer scanner inventory through scratch only
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: station-container-sbom-source
           path: ${{ runner.temp }}/station-container-sbom-source
@@ -826,7 +826,7 @@ jobs:
       RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.preflight.outputs.created_at }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
