@@ -1,12 +1,13 @@
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   appendEntry,
   assertValidEntry,
   DEPLOY_LEDGER_CHANNELS,
   DEPLOY_LEDGER_JSON_PATH,
+  DEPLOY_LEDGER_MD_PATH,
   entryIdentityKey,
   main,
   previousShipSha,
@@ -19,6 +20,7 @@ import {
 const A_SHA = 'a'.repeat(40);
 const B_SHA = 'b'.repeat(40);
 const C_SHA = 'c'.repeat(40);
+const REPO_ROOT = resolve(import.meta.dirname, '../..');
 
 // Past dates: validateEntry rejects future timestamps beyond clock skew
 // (review LOW-1), so fixtures must be unambiguously in the past.
@@ -181,6 +183,27 @@ describe('deploy ledger append semantics', () => {
   });
 });
 
+describe('deploy ledger rendered source link', () => {
+  it('keeps the stable JSON label while linking to its sibling file', () => {
+    const markdown = renderLedgerMarkdown({
+      entries: [entry()],
+      githubRepo: 'kontourai/station',
+    });
+    expect(markdown).toContain(
+      `[\`${DEPLOY_LEDGER_JSON_PATH}\`](deploy-ledger.json)`,
+    );
+  });
+
+  it('keeps the checked-in Markdown byte-identical to the JSON projection', () => {
+    const entries = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, DEPLOY_LEDGER_JSON_PATH), 'utf8'),
+    );
+    expect(
+      renderLedgerMarkdown({ entries, githubRepo: 'kontourai/station' }),
+    ).toBe(readFileSync(resolve(REPO_ROOT, DEPLOY_LEDGER_MD_PATH), 'utf8'));
+  });
+});
+
 describe('same-sha batch companions (MED-3)', () => {
   it('finds the batch leader and omits the slice on companions', () => {
     const leader = entry({
@@ -292,21 +315,23 @@ describe('markdown regeneration', () => {
     expect(first).toBe(second);
   });
 
-  it('documents the JSON location and schema without unreadable-URL claims (MED-8)', () => {
+  it('documents the public raw JSON source and schema (MED-8)', () => {
     const markdown = renderLedgerMarkdown({
       entries: [entry()],
       githubRepo: 'kontourai/station',
     });
     expect(markdown).toContain(DEPLOY_LEDGER_JSON_PATH);
-    // The repository is private: an unauthenticated raw.githubusercontent
-    // fetch 404s, so the generated header must not CLAIM a readable raw
-    // URL. Naming the mechanism while declaring it unreadable is fine;
-    // printing a github.com .../raw/... URL as if fetchable is not.
-    expect(markdown).not.toMatch(/github\.com\/[^\s]*\/raw\//);
-    expect(markdown).toMatch(/repository is private/);
-    expect(markdown).toMatch(/404/);
-    // The consumption mechanism is explicitly undecided until the site PR.
-    expect(markdown).toMatch(/decided in the site PR/);
+    expect(markdown).toContain(
+      'https://raw.githubusercontent.com/kontourai/station/main/docs/reference/deploy-ledger.json',
+    );
+    expect(markdown).toMatch(/public repository/);
+    expect(markdown).toMatch(/without authentication/);
+    // The site controls its transport and presentation, while the ledger
+    // remains the source-generated input.
+    expect(markdown).toContain('archive#4572');
+    expect(markdown).not.toContain('station#4572');
+    expect(markdown).toMatch(/site PR decides/);
+    expect(markdown).toMatch(/reads that URL directly or copies the JSON/);
     for (const channel of DEPLOY_LEDGER_CHANNELS) {
       expect(markdown).toContain(`\`${channel}\``);
     }

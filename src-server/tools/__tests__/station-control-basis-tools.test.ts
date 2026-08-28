@@ -112,8 +112,9 @@ describe('station-control Basis MCP App', () => {
     expect(taskUri).toBe('ui://station/basis/task/v3');
     expect(taskContent.mimeType).toBe('text/html;profile=mcp-app');
     expect(Buffer.byteLength(taskContent.text, 'utf8')).toBeLessThanOrEqual(
-      500 * 1024,
+      480 * 1024,
     );
+    expect(taskContent.text).not.toContain('surface-trust-panel');
     expect(appTool.mock.calls[0]?.slice(0, 4)).toMatchObject([
       'get_basis',
       expect.any(String),
