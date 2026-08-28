@@ -62,22 +62,83 @@ type NormalizedComponent = {
   purl?: unknown;
 };
 
-function lockedCargoPackages(): LockedCargoPackage[] {
-  return readFileSync(resolve(native, 'Cargo.lock'), 'utf8')
-    .split(/^\[\[package\]\]\r?$/m)
-    .slice(1)
-    .map((block) => {
-      const name = /^name = "([^"]+)"$/m.exec(block)?.[1];
-      const version = /^version = "([^"]+)"$/m.exec(block)?.[1];
-      if (!name || !version) {
-        throw new Error('Cargo.lock package record is missing name or version');
-      }
-      return { name, version };
-    });
+function lockedCargoPackages(
+  source = readFileSync(resolve(native, 'Cargo.lock'), 'utf8'),
+): LockedCargoPackage[] {
+  const blocks = source.split(/^\[\[package\]\]\r?$/m).slice(1);
+  if (blocks.length === 0) {
+    throw new Error('Cargo.lock has no package records');
+  }
+  return blocks.map((block) => {
+    const name = /^name = "([^"]+)"$/m.exec(block)?.[1];
+    const version = /^version = "([^"]+)"$/m.exec(block)?.[1];
+    if (!name || !version) {
+      throw new Error('Cargo.lock package record is missing name or version');
+    }
+    return { name, version };
+  });
+}
+
+function exactlyOneLockedPackage(
+  lockedPackages: LockedCargoPackage[],
+  name: string,
+): LockedCargoPackage {
+  const matches = lockedPackages.filter((locked) => locked.name === name);
+  if (matches.length !== 1) {
+    throw new Error(`Cargo.lock must contain exactly one ${name} record`);
+  }
+  return matches[0];
 }
 
 afterEach(() => {
   if (existsSync(output)) rmSync(output);
+});
+
+test('Cargo.lock has exactly one root and required plugin record', () => {
+  const lockedPackages = lockedCargoPackages();
+  expect(exactlyOneLockedPackage(lockedPackages, 'station')).toMatchObject({
+    name: 'station',
+  });
+  for (const name of ['tauri-plugin-process', 'tauri-plugin-updater']) {
+    expect(exactlyOneLockedPackage(lockedPackages, name)).toMatchObject({
+      name,
+    });
+  }
+});
+
+test('Cargo.lock parser and root/plugin uniqueness fail closed', () => {
+  expect(() => lockedCargoPackages('version = 4\n')).toThrow(
+    'Cargo.lock has no package records',
+  );
+  expect(() => lockedCargoPackages('[[package]]\nname = "station"\n')).toThrow(
+    'Cargo.lock package record is missing name or version',
+  );
+
+  const duplicateRoot = lockedCargoPackages(`
+[[package]]
+name = "station"
+version = "0.1.2"
+
+[[package]]
+name = "station"
+version = "0.1.2"
+`);
+  expect(() => exactlyOneLockedPackage(duplicateRoot, 'station')).toThrow(
+    'Cargo.lock must contain exactly one station record',
+  );
+
+  const duplicatePlugin = lockedCargoPackages(`
+[[package]]
+name = "tauri-plugin-process"
+version = "2.3.1"
+
+[[package]]
+name = "tauri-plugin-process"
+version = "2.3.2"
+`);
+  expect(() =>
+    exactlyOneLockedPackage(duplicatePlugin, 'tauri-plugin-process'),
+  ).toThrow('Cargo.lock must contain exactly one tauri-plugin-process record');
 });
 
 test.skipIf(!hasProducerToolchain)(
@@ -91,9 +152,7 @@ test.skipIf(!hasProducerToolchain)(
     const source = JSON.parse(readFileSync(output, 'utf8'));
     expect(source.specVersion).toBe('1.5');
     const lockedPackages = lockedCargoPackages();
-    expect(
-      lockedPackages.filter(({ name }) => name === 'station'),
-    ).toHaveLength(1);
+    exactlyOneLockedPackage(lockedPackages, 'station');
     const expectedDependencyComponents = lockedPackages.length - 1;
     expect(source.components).toHaveLength(expectedDependencyComponents);
     const components = cyclonedxComponents(source, 'cargo', output);
@@ -105,24 +164,15 @@ test.skipIf(!hasProducerToolchain)(
         purl: 'pkg:cargo/android-native-keyring-store@1.0.0',
       }),
     );
-    const lockedVersions = (name: string) =>
-      [
-        ...new Set(
-          lockedPackages
-            .filter((locked) => locked.name === name)
-            .map((locked) => locked.version),
-        ),
-      ].sort();
     const pluginNames = ['tauri-plugin-process', 'tauri-plugin-updater'];
     const expectedPlugins = pluginNames
-      .flatMap((name) => {
-        const versions = lockedVersions(name);
-        expect(versions, `${name} must be locked`).not.toHaveLength(0);
-        return versions.map((version) => ({
+      .map((name) => {
+        const locked = exactlyOneLockedPackage(lockedPackages, name);
+        return {
           name,
-          version,
-          purl: `pkg:cargo/${name}@${version}`,
-        }));
+          version: locked.version,
+          purl: `pkg:cargo/${name}@${locked.version}`,
+        };
       })
       .sort((left, right) =>
         `${left.name}@${left.version}`.localeCompare(
