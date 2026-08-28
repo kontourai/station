@@ -282,6 +282,11 @@ const SECURITY_BASE_CHECKOUT_REF = `\${{ github.event.pull_request.base.sha || g
 const SECURITY_BASE_CHECKOUT_PATH = 'base-policy';
 const SECURITY_CANDIDATE_CHECKOUT_PATH = 'candidate';
 const SECURITY_SARIF_OUTPUT = `\${{ runner.temp }}/codeql-sarif`;
+const SECURITY_NORMALIZED_SARIF = `\${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif`;
+const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
+const SECURITY_ANALYSIS_CONCURRENCY_GROUP =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  'security-analysis-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}';
 const CHECKOUT_ACTION =
   'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 const SETUP_NODE_ACTION =
@@ -298,7 +303,8 @@ if [ "\${#SARIF_FILES[@]}" -ne 1 ]; then
   echo "Expected exactly one JavaScript CodeQL SARIF file; found \${#SARIF_FILES[@]}." >&2
   exit 1
 fi
-node base-policy/scripts/codeql-sarif-policy.mjs --input="\${SARIF_FILES[0]}"`;
+node base-policy/scripts/codeql-sarif-normalize.mjs --input="\${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
+node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF"`;
 const FORK_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
 const FORK_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
@@ -969,61 +975,113 @@ function hasExactPullRequestTitleGateTopology(
   );
 }
 
+function hasExactKeys(value, expected) {
+  return (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === expected.length &&
+    expected.every((key) => Object.hasOwn(value, key))
+  );
+}
+
 function hasExactSecurityAnalysisSteps(job) {
   const [base, setupNode, candidate, init, analyze, policy] = job?.steps ?? [];
   return (
+    hasExactKeys(job, ['name', 'runs-on', 'timeout-minutes', 'steps']) &&
+    job?.name === 'CodeQL JavaScript and TypeScript' &&
+    job?.['runs-on'] === 'ubuntu-22.04' &&
+    job?.['timeout-minutes'] === SECURITY_ANALYSIS_TIMEOUT_MINUTES &&
     (job?.steps?.length ?? 0) === 6 &&
+    hasExactKeys(base, ['name', 'uses', 'with']) &&
+    base?.name === 'Check out base policy' &&
     base?.uses === CHECKOUT_ACTION &&
-    base?.with?.['persist-credentials'] === false &&
+    hasExactKeys(base?.with, [
+      'fetch-depth',
+      'persist-credentials',
+      'repository',
+      'ref',
+      'path',
+    ]) &&
     base.with?.['fetch-depth'] === 1 &&
+    base.with?.['persist-credentials'] === false &&
     base.with.repository === SECURITY_BASE_CHECKOUT_REPOSITORY &&
     base.with.ref === SECURITY_BASE_CHECKOUT_REF &&
     base.with.path === SECURITY_BASE_CHECKOUT_PATH &&
+    hasExactKeys(setupNode, ['uses', 'with']) &&
     setupNode?.uses === SETUP_NODE_ACTION &&
+    hasExactKeys(setupNode?.with, ['node-version-file']) &&
     setupNode.with?.['node-version-file'] === 'base-policy/.nvmrc' &&
+    hasExactKeys(candidate, ['name', 'uses', 'with']) &&
+    candidate?.name === 'Check out candidate' &&
     candidate?.uses === CHECKOUT_ACTION &&
-    candidate?.with?.['persist-credentials'] === false &&
+    hasExactKeys(candidate?.with, [
+      'fetch-depth',
+      'persist-credentials',
+      'repository',
+      'ref',
+      'path',
+    ]) &&
     candidate.with?.['fetch-depth'] === 1 &&
+    candidate.with?.['persist-credentials'] === false &&
     candidate.with.repository === FAST_CHECKOUT_REPOSITORY &&
     candidate.with.ref === FAST_CHECKOUT_REF &&
     candidate.with.path === SECURITY_CANDIDATE_CHECKOUT_PATH &&
+    hasExactKeys(init, ['name', 'uses', 'with']) &&
+    init?.name === 'Initialize CodeQL' &&
     init?.uses === CODEQL_INIT_ACTION &&
+    hasExactKeys(init?.with, [
+      'languages',
+      'build-mode',
+      'queries',
+      'source-root',
+    ]) &&
     init.with?.languages === 'javascript-typescript' &&
     init.with?.['build-mode'] === 'none' &&
     init.with?.queries === 'security-extended' &&
     init.with?.['source-root'] === SECURITY_CANDIDATE_CHECKOUT_PATH &&
+    hasExactKeys(analyze, ['id', 'name', 'uses', 'with']) &&
+    analyze?.id === 'analyze' &&
+    analyze?.name === 'Analyze without ingestion' &&
     analyze?.uses === CODEQL_ANALYZE_ACTION &&
+    hasExactKeys(analyze?.with, [
+      'category',
+      'checkout_path',
+      'output',
+      'upload',
+      'upload-database',
+    ]) &&
     analyze.with?.category === '/language:javascript-typescript' &&
     analyze.with?.checkout_path === SECURITY_CANDIDATE_CHECKOUT_PATH &&
     analyze.with?.output === SECURITY_SARIF_OUTPUT &&
     analyze.with?.upload === 'never' &&
     analyze.with?.['upload-database'] === false &&
-    policy?.name === 'Enforce JavaScript SARIF policy' &&
+    hasExactKeys(policy, ['name', 'env', 'run']) &&
+    policy?.name === 'Normalize and enforce JavaScript SARIF policy' &&
+    hasExactKeys(policy?.env, [
+      'CODEQL_SARIF_DIRECTORY',
+      'CODEQL_NORMALIZED_SARIF',
+    ]) &&
     policy.env?.CODEQL_SARIF_DIRECTORY === SECURITY_SARIF_OUTPUT &&
+    policy.env?.CODEQL_NORMALIZED_SARIF === SECURITY_NORMALIZED_SARIF &&
     policy.run?.trim() === SECURITY_POLICY_RUN
   );
 }
 
 function hasExactDependencyReviewSteps(job) {
   const [review] = job?.steps ?? [];
-  const exactKeys = (value, expected) =>
-    value &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === expected.length &&
-    expected.every((key) => Object.hasOwn(value, key));
   return (
-    exactKeys(job, ['name', 'if', 'runs-on', 'permissions', 'steps']) &&
+    hasExactKeys(job, ['name', 'if', 'runs-on', 'permissions', 'steps']) &&
     job?.name === 'Dependency review' &&
     job?.if === DEPENDENCY_REVIEW_PR_GUARD &&
     job?.['runs-on'] === 'ubuntu-22.04' &&
-    exactKeys(job?.permissions, ['contents']) &&
+    hasExactKeys(job?.permissions, ['contents']) &&
     job.permissions.contents === 'read' &&
     (job?.steps?.length ?? 0) === 1 &&
-    exactKeys(review, ['name', 'uses', 'with']) &&
+    hasExactKeys(review, ['name', 'uses', 'with']) &&
     review?.name === 'Review dependency changes' &&
     review?.uses === DEPENDENCY_REVIEW_ACTION &&
-    exactKeys(review?.with, [
+    hasExactKeys(review?.with, [
       'vulnerability-check',
       'fail-on-severity',
       'license-check',
@@ -1136,6 +1194,44 @@ function hasExactSecurityAnalysisPrTargetTrigger(document) {
     Array.isArray(trigger.branches) &&
     trigger.branches.length === 1 &&
     trigger.branches[0] === 'main'
+  );
+}
+
+function hasExactMainBranchTrigger(trigger) {
+  return (
+    trigger &&
+    typeof trigger === 'object' &&
+    !Array.isArray(trigger) &&
+    Object.keys(trigger).length === 1 &&
+    Array.isArray(trigger.branches) &&
+    trigger.branches.length === 1 &&
+    trigger.branches[0] === 'main'
+  );
+}
+
+function hasExactSecurityAnalysisWorkflow(document) {
+  return (
+    hasExactKeys(document, [
+      'name',
+      'on',
+      'permissions',
+      'concurrency',
+      'jobs',
+    ]) &&
+    document?.name === 'Security analysis' &&
+    hasExactKeys(document?.on, [
+      'push',
+      PULL_REQUEST_TARGET,
+      'workflow_dispatch',
+    ]) &&
+    hasExactMainBranchTrigger(document.on.push) &&
+    hasExactSecurityAnalysisPrTargetTrigger(document) &&
+    document.on.workflow_dispatch === null &&
+    hasExactKeys(document.permissions, ['contents']) &&
+    document.permissions.contents === 'read' &&
+    hasExactKeys(document.concurrency, ['group', 'cancel-in-progress']) &&
+    document.concurrency.group === SECURITY_ANALYSIS_CONCURRENCY_GROUP &&
+    document.concurrency['cancel-in-progress'] === true
   );
 }
 
@@ -1386,6 +1482,16 @@ function baseControlledPrWorkflowFindings(file, document) {
       },
     ];
   const findings = [];
+  if (
+    file === SECURITY_ANALYSIS_WORKFLOW &&
+    !hasExactSecurityAnalysisWorkflow(document)
+  )
+    findings.push({
+      file,
+      jobId: 'workflow',
+      message:
+        'security-analysis must retain the exact base-controlled workflow shape, triggers, permissions, and concurrency',
+    });
   if (
     file === SECURITY_ANALYSIS_WORKFLOW &&
     !hasExactSecurityAnalysisPrTargetTrigger(document)

@@ -311,6 +311,11 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'CodeQL SARIF trust boundary',
   },
   {
+    pattern: 'scripts/codeql-sarif-normalize.mjs',
+    tests: ['scripts/__tests__/codeql-sarif-normalize.test.ts'],
+    reason: 'CodeQL SARIF transport admission boundary',
+  },
+  {
     pattern: 'docs/guides/dependency-security.md',
     tests: ['scripts/__tests__/dependency-security-docs.test.ts'],
     reason: 'dependency-security documentation contract',

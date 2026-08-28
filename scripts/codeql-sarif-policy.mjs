@@ -203,12 +203,12 @@ export function validateCodeqlSarif(document) {
   return evaluateCodeqlSarif(document).findings;
 }
 
-export function parseSarifBytes(bytes) {
+export function parseSarifBytes(bytes, { requireTerminalNewline = true } = {}) {
   if (!Buffer.isBuffer(bytes) || bytes.length === 0)
     throw new Error('SARIF input is empty.');
   if (bytes.length > MAX_SARIF_BYTES)
     throw new Error(`SARIF input exceeds the ${MAX_SARIF_BYTES}-byte limit.`);
-  if (!bytes.subarray(-1).equals(Buffer.from('\n')))
+  if (requireTerminalNewline && !bytes.subarray(-1).equals(Buffer.from('\n')))
     throw new Error('SARIF input is truncated or lacks its terminal newline.');
   let source;
   try {

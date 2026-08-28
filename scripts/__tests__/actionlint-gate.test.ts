@@ -45,6 +45,7 @@ function securityAnalysisWorkflowDocument() {
   );
   if (!workflow) throw new Error('Expected the checked-in security workflow.');
   return structuredClone(workflow.document) as {
+    [key: string]: unknown;
     jobs: Record<
       string,
       { steps: Array<Record<string, unknown>>; [key: string]: unknown }
@@ -862,6 +863,124 @@ describe('persistent runner policy', () => {
   ])('rejects security-analysis %s', (_name, mutate) => {
     const document = securityAnalysisWorkflowDocument();
     mutate(document.jobs.codeql.steps);
+    expect(
+      persistentRunnerPolicyFindings([
+        { file: '.github/workflows/security-analysis.yml', document },
+      ]),
+    ).toContainEqual({
+      file: '.github/workflows/security-analysis.yml',
+      jobId: 'codeql',
+      message:
+        'security-analysis must retain the exact base-policy and candidate checkouts, pinned CodeQL actions, and sole base-policy shell',
+    });
+  });
+
+  test.each([undefined, 31])(
+    'rejects a changed CodeQL timeout bound (%s)',
+    (timeout) => {
+      const document = securityAnalysisWorkflowDocument();
+      document.jobs.codeql['timeout-minutes'] = timeout;
+      expect(
+        persistentRunnerPolicyFindings([
+          { file: '.github/workflows/security-analysis.yml', document },
+        ]),
+      ).toContainEqual({
+        file: '.github/workflows/security-analysis.yml',
+        jobId: 'codeql',
+        message:
+          'security-analysis must retain the exact base-policy and candidate checkouts, pinned CodeQL actions, and sole base-policy shell',
+      });
+    },
+  );
+
+  test.each([
+    [
+      'workflow NODE_OPTIONS',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.env = { NODE_OPTIONS: '--require=candidate/hook.cjs' };
+      },
+    ],
+    [
+      'workflow candidate shell default',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.defaults = { run: { shell: 'candidate/.github/shell' } };
+      },
+    ],
+    [
+      'extra workflow key',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document['run-name'] = 'candidate override';
+      },
+    ],
+  ])('rejects security-analysis workflow-level %s', (_name, mutate) => {
+    const document = securityAnalysisWorkflowDocument();
+    mutate(document);
+    expect(
+      persistentRunnerPolicyFindings([
+        { file: '.github/workflows/security-analysis.yml', document },
+      ]),
+    ).toContainEqual({
+      file: '.github/workflows/security-analysis.yml',
+      jobId: 'workflow',
+      message:
+        'security-analysis must retain the exact base-controlled workflow shape, triggers, permissions, and concurrency',
+    });
+  });
+
+  test.each([
+    [
+      'candidate-controlled shell',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.jobs.codeql.steps[5].shell = 'candidate/.github/shell';
+      },
+    ],
+    [
+      'job defaults',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.jobs.codeql.defaults = { run: { shell: 'bash' } };
+      },
+    ],
+    [
+      'policy NODE_OPTIONS',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.jobs.codeql.steps[5].env = {
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          CODEQL_SARIF_DIRECTORY: '${{ runner.temp }}/codeql-sarif',
+          CODEQL_NORMALIZED_SARIF:
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+            '${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif',
+          NODE_OPTIONS: '--require=candidate/hook.cjs',
+        };
+      },
+    ],
+    [
+      'checkout extra input',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.jobs.codeql.steps[0].with = {
+          ...(document.jobs.codeql.steps[0].with ?? {}),
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          token: '${{ github.token }}',
+        };
+      },
+    ],
+    [
+      'analysis extra input',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.jobs.codeql.steps[4].with = {
+          ...(document.jobs.codeql.steps[4].with ?? {}),
+          threads: 0,
+        };
+      },
+    ],
+    [
+      'checkout action drift',
+      (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
+        document.jobs.codeql.steps[0].uses = 'actions/checkout@candidate';
+      },
+    ],
+  ])('rejects security-analysis %s', (_name, mutate) => {
+    const document = securityAnalysisWorkflowDocument();
+    mutate(document);
     expect(
       persistentRunnerPolicyFindings([
         { file: '.github/workflows/security-analysis.yml', document },
