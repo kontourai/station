@@ -1143,6 +1143,17 @@ export async function quarantineLegacyServiceManifest(
         {
           mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
           afterMaintenanceAcquired: () => {
+            // This is the first post-acquisition operation. The home was
+            // admitted before awaiting the mutation lock, so a pathname
+            // replacement must refuse before stale-sidecar reconciliation can
+            // inspect or mutate the replacement registry.
+            if (
+              !sameIdentity(
+                trustedDirectory(transaction.stationHome),
+                transaction.admittedHome,
+              )
+            )
+              refuse();
             reconcileStaleDesktopSidecars(transaction.stationHome, {
               processProbe: hooks.registryProcessProbe,
               mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },

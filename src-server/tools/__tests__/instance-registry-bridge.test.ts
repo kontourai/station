@@ -664,12 +664,32 @@ describe('instance registry bridge legacy manifest transaction (archive#4457)', 
         mode: 0o700,
       });
       writeFileSync(fixture.manifest, original, { mode: 0o600 });
+      const exitedSidecar = spawnSync(process.execPath, ['-e', ''], {
+        windowsHide: true,
+      });
+      expect(exitedSidecar.status).toBe(0);
+      upsertInstance(
+        'desktop-sidecar-replacement',
+        {
+          port: 18141,
+          type: 'sidecar',
+          pid: exitedSidecar.pid,
+          birth: 'replacement-sidecar-birth',
+        },
+        fixture.home,
+      );
     } finally {
       maintenance.release();
     }
+    const replacementRegistry = readFileSync(
+      resolveInstanceRegistryPath(fixture.home),
+    );
     await expect(pending).resolves.toEqual({ kind: 'refused' });
     expect(readFileSync(fixture.manifest)).toEqual(original);
     expect(existsSync(join(fixture.home, 'quarantine'))).toBe(false);
+    expect(readFileSync(resolveInstanceRegistryPath(fixture.home))).toEqual(
+      replacementRegistry,
+    );
   });
 
   test('refuses symlinks and loose modes without moving the source', async () => {
