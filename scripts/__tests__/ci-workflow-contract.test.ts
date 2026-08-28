@@ -373,7 +373,9 @@ describe('CI verification workflow contracts', () => {
       ci.indexOf('  browser-smoke:'),
     );
 
-    expect(fastChecks).toContain('timeout-minutes: 15');
+    expect(fastChecks).toContain('timeout-minutes: 45');
+    expect(fastChecks).toContain('timeout-minutes: 20');
+    expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");
     expect(fastChecks).toContain(
       'runs-on: [self-hosted, Linux, X64, fast-feedback]',
