@@ -59,7 +59,14 @@ interface TrustBundle {
  * and fails, and a new violation cannot be absorbed by appending to it
  * without a reviewer seeing the diff.
  */
-const GRANDFATHERED_CLAIM_IDS = ['fixture.grandfathered-undisclosed-count'];
+const GRANDFATHERED_CLAIMS = [
+  {
+    bundle:
+      'scripts/__tests__/fixtures/trust-bundle-claim-prose/grandfathered-undisclosed-count/trust.bundle',
+    claimId: 'fixture.grandfathered-undisclosed-count',
+    reason: 'synthetic-legacy-attestation-count',
+  },
+];
 
 /**
  * Phrases that make a count honest by naming what backs it. Present in the
@@ -146,6 +153,14 @@ function collectViolations(root = FIXTURE_ROOT): Violation[] {
   );
 }
 
+function isGrandfatheredViolation(violation: Violation): boolean {
+  return GRANDFATHERED_CLAIMS.some(
+    (record) =>
+      record.bundle === violation.bundle &&
+      record.claimId === violation.claimId,
+  );
+}
+
 describe('a trust-bundle claim does not state more than its evidence class supports', () => {
   it('finds the exact nonzero public fixture inventory', () => {
     // Vacuous green is the failure mode this whole cluster of issues is
@@ -182,7 +197,7 @@ describe('a trust-bundle claim does not state more than its evidence class suppo
 
   it('carries no un-disclosed pass/fail count on an attestation claim', () => {
     const violations = collectViolations().filter(
-      (violation) => !GRANDFATHERED_CLAIM_IDS.includes(violation.claimId),
+      (violation) => !isGrandfatheredViolation(violation),
     );
     expect(
       violations,
@@ -202,8 +217,16 @@ describe('a trust-bundle claim does not state more than its evidence class suppo
   it('keeps the grandfathered list exact', () => {
     // A stale exemption is an exemption for nothing, and a growing one is the
     // rule quietly repealed. Both fail here.
-    const violating = collectViolations().map((violation) => violation.claimId);
-    expect([...GRANDFATHERED_CLAIM_IDS].sort()).toEqual([...violating].sort());
+    const violating = collectViolations().map(({ bundle, claimId }) => ({
+      bundle,
+      claimId,
+    }));
+    expect(
+      GRANDFATHERED_CLAIMS.map(({ bundle, claimId }) => ({ bundle, claimId })),
+    ).toEqual(violating);
+    for (const record of GRANDFATHERED_CLAIMS) {
+      expect(record.reason).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+    }
   });
 
   it('fails mutations that hide an attestation count or rely only on policy classification', () => {
@@ -223,6 +246,25 @@ describe('a trust-bundle claim does not state more than its evidence class suppo
     unsupported.evidence = [];
     unsupported.claims![0]!.fieldOrBehavior = 'Fixture run passed: 18/18.';
     expect(collectBundleViolations(unsupported, positivePath)).toHaveLength(1);
+
+    const relocated = structuredClone(positive);
+    relocated.claims![0]!.id = 'fixture.grandfathered-undisclosed-count';
+    relocated.claims![0]!.fieldOrBehavior = 'Fixture run passed: 12/12.';
+    const relocatedViolation = collectBundleViolations(relocated, positivePath);
+    expect(relocatedViolation).toHaveLength(1);
+    expect(isGrandfatheredViolation(relocatedViolation[0]!)).toBe(false);
+
+    const designatedPath = join(
+      FIXTURE_ROOT,
+      'grandfathered-undisclosed-count',
+      'trust.bundle',
+    );
+    const designatedViolation = collectBundleViolations(
+      JSON.parse(readFileSync(designatedPath, 'utf8')) as TrustBundle,
+      designatedPath,
+    );
+    expect(designatedViolation).toHaveLength(1);
+    expect(isGrandfatheredViolation(designatedViolation[0]!)).toBe(true);
   });
 
   it('does not fire on dates, issue numbers, or digests', () => {
