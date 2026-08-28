@@ -5,6 +5,8 @@ name: Debug SARIF capture
 # imagined shape. Dispatch-only; delete once fixtures are refreshed.
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/625-sarif-rule-resolution]
 
 permissions:
   contents: read
