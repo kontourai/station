@@ -62,7 +62,7 @@ RUN apt-get update \
 # would otherwise force an expensive recursive copy into the runtime image.
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/station /app/.station-release.json ./
-COPY --from=build --chown=node:node /app/scripts/station-cli.ts /app/scripts/node-runtime-contract.mjs ./scripts/
+COPY --from=build --chown=node:node /app/scripts/station-cli.ts /app/scripts/source-bootstrap.ts /app/scripts/node-runtime-contract.mjs ./scripts/
 COPY --from=build --chown=node:node /app/packages ./packages
 COPY --from=build --chown=node:node /app/src-server ./src-server
 COPY --from=build --chown=node:node /app/src-shared ./src-shared

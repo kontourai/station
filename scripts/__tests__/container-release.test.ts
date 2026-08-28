@@ -138,6 +138,7 @@ const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/station',
   '/app/.station-release.json',
   '/app/scripts/station-cli.ts',
+  '/app/scripts/source-bootstrap.ts',
   '/app/scripts/node-runtime-contract.mjs',
   '/app/packages',
   '/app/src-server',

@@ -21,6 +21,7 @@ src-desktop/*
 !scripts/
 scripts/*
 !scripts/station-cli.ts
+!scripts/source-bootstrap.ts
 !scripts/node-runtime-contract.mjs
 !scripts/dependency-lifecycle.mjs
 !scripts/ui-bundle-budget.mjs
