@@ -19,6 +19,9 @@ import {
   test,
   vi,
 } from 'vitest';
+import { DEFAULT_SERVER_PORT } from '../commands/helpers.js';
+
+const LOOPBACK_API_BASE = `http://127.0.0.1:${DEFAULT_SERVER_PORT}`;
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -69,7 +72,7 @@ describe('runCoreCommand', () => {
     await runCoreCommand('agents', ['list']);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/agents',
+      `${LOOPBACK_API_BASE}/api/agents`,
       expect.objectContaining({ method: 'GET' }),
     );
     expect(consoleLog).toHaveBeenCalledWith(
@@ -139,7 +142,7 @@ describe('runCoreCommand', () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/projects',
+      `${LOOPBACK_API_BASE}/api/projects`,
       expect.objectContaining({
         method: 'POST',
         body: '{"name":"Demo Project","slug":"demo"}',
@@ -158,7 +161,7 @@ describe('runCoreCommand', () => {
       '--verbose',
     ]);
     expect(consoleError).toHaveBeenCalledWith(
-      'Target: station=direct endpoint=http://127.0.0.1:3141 source=loopback',
+      `Target: station=direct endpoint=${LOOPBACK_API_BASE} source=loopback`,
     );
   });
 
@@ -198,17 +201,17 @@ describe('runCoreCommand', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'http://127.0.0.1:3141/api/tasks',
+      `${LOOPBACK_API_BASE}/api/tasks`,
       expect.objectContaining({ method: 'GET' }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space',
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space`,
       expect.objectContaining({ method: 'GET' }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'http://127.0.0.1:3141/api/tasks',
+      `${LOOPBACK_API_BASE}/api/tasks`,
       expect.objectContaining({
         method: 'POST',
         body: '{"projectId":"project-1","title":"Create"}',
@@ -237,7 +240,7 @@ describe('runCoreCommand', () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/references',
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/references`,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -272,7 +275,7 @@ describe('runCoreCommand', () => {
     const { runCoreCommand } = await import('../commands/core.js');
     await runCoreCommand('tasks', ['show-turn', 'task/with space']);
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/turn-references',
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/turn-references`,
       expect.objectContaining({ method: 'GET' }),
     );
   });
@@ -352,12 +355,12 @@ describe('runCoreCommand', () => {
     await runCoreCommand('tasks', ['show-support', 'task/with space']);
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support/bundles',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support/bundles/sb1.bundle/claims',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/turn-references',
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support/bundles`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support/bundles/sb1.bundle/claims`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/turn-references/reference%2F1/support`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/turn-references`,
     ]);
     expect(fetchMock.mock.calls[2]?.[1]).toEqual(
       expect.objectContaining({
@@ -433,10 +436,10 @@ describe('runCoreCommand', () => {
       'output/1',
     ]);
     expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/outputs',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/outputs/output%2F1',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/outputs',
-      'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/outputs/output%2F1',
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/outputs`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/outputs/output%2F1`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/outputs`,
+      `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/outputs/output%2F1`,
     ]);
     expect(fetchMock.mock.calls[2]?.[1]).toEqual(
       expect.objectContaining({
@@ -484,7 +487,7 @@ describe('runCoreCommand', () => {
       ]);
       expect(readFileSync(destination, 'utf8')).toBe('exact bytes');
       expect(fetchMock).toHaveBeenCalledWith(
-        'http://127.0.0.1:3141/api/tasks/task%2Fwith%20space/outputs/out%2F1/content',
+        `${LOOPBACK_API_BASE}/api/tasks/task%2Fwith%20space/outputs/out%2F1/content`,
         expect.objectContaining({ method: 'GET' }),
       );
 
@@ -648,7 +651,7 @@ describe('runCoreCommand', () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/skills/local',
+      `${LOOPBACK_API_BASE}/api/skills/local`,
       expect.objectContaining({
         method: 'POST',
         body: '{"name":"ship-it","body":"Do the thing"}',
@@ -695,8 +698,25 @@ describe('runCoreCommand', () => {
       '--session=thread-1',
     ]);
 
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${LOOPBACK_API_BASE}/api/orchestration/events`,
+    );
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit)?.method ?? 'GET').toBe(
+      'GET',
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `${LOOPBACK_API_BASE}/api/orchestration/chat/thread-1/continue`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          environment: { kind: 'current' },
+          message: 'hello there',
+        }),
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/orchestration/chat/thread-1/continue',
+      `${LOOPBACK_API_BASE}/api/orchestration/chat/thread-1/continue`,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -747,8 +767,25 @@ describe('runCoreCommand', () => {
     ]);
 
     // The agent slug must not leak into the message body.
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${LOOPBACK_API_BASE}/api/orchestration/events`,
+    );
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit)?.method ?? 'GET').toBe(
+      'GET',
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `${LOOPBACK_API_BASE}/api/orchestration/chat/thread-1/continue`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          environment: { kind: 'current' },
+          message: 'hello there',
+        }),
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/orchestration/chat/thread-1/continue',
+      `${LOOPBACK_API_BASE}/api/orchestration/chat/thread-1/continue`,
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
