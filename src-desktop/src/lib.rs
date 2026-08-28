@@ -52,7 +52,6 @@ use tauri::{
 };
 #[cfg(not(mobile))]
 use tauri_plugin_deep_link::DeepLinkExt;
-#[cfg(not(mobile))]
 use tauri_plugin_opener::OpenerExt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -5421,7 +5420,10 @@ fn open_local_browser_preview(app: AppHandle, url: String) -> Result<(), String>
 #[tauri::command]
 fn open_external_link(app: AppHandle, url: String) -> Result<(), String> {
     let parsed = url::Url::parse(&url).map_err(|_| "invalid external URL".to_string())?;
-    let segments: Vec<_> = parsed.path_segments().map(|segments| segments.collect()).unwrap_or_default();
+    let segments: Vec<_> = parsed
+        .path_segments()
+        .map(|segments| segments.collect())
+        .unwrap_or_default();
     if parsed.scheme() != "https"
         || parsed.host_str() != Some("github.com")
         || parsed.port().is_some()
@@ -5433,11 +5435,17 @@ fn open_external_link(app: AppHandle, url: String) -> Result<(), String> {
         || segments[0].is_empty()
         || segments[1].is_empty()
         || segments[2] != "issues"
-        || segments[3].parse::<u64>().ok().filter(|number| *number > 0).is_none()
+        || segments[3]
+            .parse::<u64>()
+            .ok()
+            .filter(|number| *number > 0)
+            .is_none()
     {
         return Err("Station refused an unrecognized external work-item URL".to_string());
     }
-    app.opener().open_url(url, None::<&str>).map_err(|error| error.to_string())
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| error.to_string())
 }
 
 /// Discover and select exactly one reachable local preview target. The native

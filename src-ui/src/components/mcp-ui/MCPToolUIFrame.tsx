@@ -14,9 +14,8 @@ import {
   SESSION_INVENTORY_CURRENT_GROUP_IDS,
 } from '@kontourai/station-contracts/session-inventory';
 import {
-  parseStationSessionInventoryMcpNegotiatedInput,
   parseStationSessionInventoryMcpV2Envelope,
-  STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+  parseStationSessionInventoryMcpV2Input,
 } from '@kontourai/station-contracts/session-inventory-mcp';
 import type {
   MCPToolUIPermissions,
@@ -102,19 +101,26 @@ export function sessionInventoryV2OpenLinkCapability(
   result: unknown,
   input: unknown,
 ): SessionInventoryV2OpenLinkCapability | null {
-  const negotiated = parseStationSessionInventoryMcpNegotiatedInput(input);
+  const negotiated = parseStationSessionInventoryMcpV2Input(input);
   const envelope = parseStationSessionInventoryMcpV2Envelope(
     (result as { structuredContent?: unknown } | null)?.structuredContent,
   );
   if (
-    negotiated?.version !== STATION_SESSION_INVENTORY_MCP_V2_VERSION ||
+    !negotiated ||
     !envelope ||
-    JSON.stringify(negotiated.input.scope) !==
+    JSON.stringify(negotiated.scope) !==
       JSON.stringify(
         envelope.kind === 'projection'
           ? envelope.projection.scope
           : envelope.page.scope,
       )
+  )
+    return null;
+  if (
+    (negotiated.operation === 'open' && envelope.kind !== 'projection') ||
+    (negotiated.operation === 'page' &&
+      (envelope.kind !== 'group-page' ||
+        envelope.page.group.id !== negotiated.groupId))
   )
     return null;
   const capability = (result as { _meta?: Record<string, unknown> } | null)
@@ -143,6 +149,11 @@ export function sessionInventoryV2OpenLinkCapability(
     )
   )
     return null;
+  if (
+    negotiated.operation === 'page' &&
+    capabilityRecord.occurrenceId !== negotiated.occurrenceId
+  )
+    return null;
   const groups =
     envelope.kind === 'projection'
       ? envelope.projection.groups
@@ -156,7 +167,7 @@ export function sessionInventoryV2OpenLinkCapability(
       }
   return {
     occurrenceId: capabilityRecord.occurrenceId as string,
-    scopeKey: JSON.stringify(negotiated.input.scope),
+    scopeKey: JSON.stringify(negotiated.scope),
     urls,
   };
 }
@@ -693,8 +704,7 @@ function MCPToolUISandbox({
     serverId === 'station-control' &&
     toolName === 'get_session_inventory' &&
     resourceUri === 'ui://station/basis/session-inventory/v2' &&
-    parseStationSessionInventoryMcpNegotiatedInput(capturedInitialArguments)
-      ?.version === STATION_SESSION_INVENTORY_MCP_V2_VERSION;
+    !!parseStationSessionInventoryMcpV2Input(capturedInitialArguments);
 
   const srcDoc = useMemo(() => {
     const text = resource.data?.text;
@@ -744,6 +754,10 @@ function MCPToolUISandbox({
     // connection/principal rotation cannot spend it.
     const resultAuthority = requestAuthority;
     let openLinkCapability: SessionInventoryV2OpenLinkCapability | null = null;
+    let initialOpenLinkWitness: Pick<
+      SessionInventoryV2OpenLinkCapability,
+      'occurrenceId' | 'scopeKey'
+    > | null = null;
     const isCurrentInitialSubject = () => {
       const currentIdentity = paneIdentityRef.current
         ? `${paneIdentityRef.current.descriptorId}:${paneIdentityRef.current.instanceId}:${paneIdentityRef.current.stateKey}`
@@ -761,6 +775,20 @@ function MCPToolUISandbox({
     ) => {
       const next = sessionInventoryV2OpenLinkCapability(result, toolInput);
       if (!next || !resultAuthority?.isCurrent()) {
+        openLinkCapability = null;
+        return;
+      }
+      if (!append)
+        initialOpenLinkWitness = {
+          occurrenceId: next.occurrenceId,
+          scopeKey: next.scopeKey,
+        };
+      if (
+        append &&
+        (!initialOpenLinkWitness ||
+          initialOpenLinkWitness.occurrenceId !== next.occurrenceId ||
+          initialOpenLinkWitness.scopeKey !== next.scopeKey)
+      ) {
         openLinkCapability = null;
         return;
       }
@@ -891,8 +919,22 @@ function MCPToolUISandbox({
               });
             });
         };
-        bridge.onrequestteardown = async () => {
+        bridge.onrequestteardown = () => {
+          // An App-initiated teardown is terminal for this exact occurrence.
+          // Do not let a late page response recreate the same capability.
+          lifecycle = 'tearing-down';
           openLinkCapability = null;
+          initialOpenLinkWitness = null;
+          if (basisReadSession && basisOccurrenceId) {
+            void proxyBasisDispose(
+              baseUrl,
+              basisReadSession,
+              basisOccurrenceId,
+            ).catch(() => {});
+            basisOccurrenceId = null;
+            basisContinuationToken = null;
+          }
+          void bridge?.teardownResource?.({}).catch(() => {});
         };
         bridge.onrequestdisplaymode = async ({ mode }) => {
           const appAvailableModes = bridge?.getAppCapabilities()
@@ -1098,6 +1140,7 @@ function MCPToolUISandbox({
       basisContinuationToken = null;
       basisOccurrenceId = null;
       openLinkCapability = null;
+      initialOpenLinkWitness = null;
       if (bridgeRef.current === bridge) bridgeRef.current = null;
       // teardownResource sends a `ui/resource-teardown` request the View may
       // never answer once we close the transport; swallow its rejection so it
