@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
-  CODEQL_TOOL_NAME,
+  CODEQL_TOOL_NAMES,
   evaluateCodeqlSarif,
   parseInputPath,
   parseSarifBytes,
@@ -13,43 +13,331 @@ import {
 const fixture = (name: string) =>
   readFileSync(`scripts/__tests__/fixtures/codeql-sarif/${name}`, 'utf8');
 const parseFixture = (name: string) => JSON.parse(fixture(name));
-const readBytes = (value: string) =>
-  (() => Buffer.from(value)) as unknown as typeof readFileSync;
+const errorBaseline = () =>
+  JSON.parse(readFileSync('scripts/codeql-error-baseline.json', 'utf8'));
+const readFiles = (files: Record<string, string>) =>
+  ((path: string) => {
+    const content = files[path];
+    if (content === undefined) throw new Error(`unexpected read: ${path}`);
+    return Buffer.from(content);
+  }) as unknown as typeof readFileSync;
+const readBytes = (value: string) => readFiles({ 'input.sarif': value });
+
+/** The real capture's error-level result, present in the checked-in baseline. */
+const BASELINED_ERROR_SUMMARY_PREFIX =
+  'js/request-forgery [error/9.1] src-server/services/discord/discord-gateway-service.ts';
 
 describe('CodeQL SARIF policy', () => {
-  test('accepts the pinned-action-compatible completed clean fixture', () => {
+  test('accepts the real-capture-shaped clean fixture (empty driver rules, extension packs)', () => {
     const document = parseFixture('pinned-codeql-clean.sarif');
-    expect(document.$schema).toBe(SARIF_SCHEMA_URLS[0]);
-    expect(document.runs[0].tool.driver.name).toBe(CODEQL_TOOL_NAME);
+    expect(SARIF_SCHEMA_URLS).toContain(document.$schema);
+    expect(CODEQL_TOOL_NAMES).toContain(document.runs[0].tool.driver.name);
+    expect(document.runs[0].tool.driver.rules).toEqual([]);
     expect(evaluateCodeqlSarif(document)).toEqual({
       findings: [],
-      summaries: [],
+      staleBaseline: [],
+      blocked: [],
+      baselined: [],
+      advisories: [],
     });
     expect(
       runCodeqlSarifPolicy(
-        ['--input=clean.sarif'],
+        ['--input=input.sarif'],
         readBytes(fixture('pinned-codeql-clean.sarif')),
       ),
-    ).toEqual({ input: 'clean.sarif', runs: 1 });
+    ).toEqual({
+      input: 'input.sarif',
+      runs: 1,
+      staleBaseline: [],
+      baselined: [],
+      advisories: [],
+    });
   });
 
-  test('blocks a pinned-action-compatible finding using inherited rule severity and metadata', () => {
+  test('resolves extension-pack rules via rule.toolComponent and splits error from advisory', () => {
     const document = parseFixture('pinned-codeql-finding.sarif');
-    expect(evaluateCodeqlSarif(document)).toEqual({
-      findings: [],
-      summaries: [
-        'js/path-injection [error/8.1] Untrusted input reaches a filesystem path.',
-      ],
-    });
+    const verdict = evaluateCodeqlSarif(document);
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.blocked).toHaveLength(1);
+    expect(verdict.blocked[0]).toContain(BASELINED_ERROR_SUMMARY_PREFIX);
+    expect(verdict.advisories).toHaveLength(1);
+    expect(verdict.advisories[0]).toContain(
+      'js/insecure-temporary-file [warning/7.0]',
+    );
     expect(() =>
       runCodeqlSarifPolicy(
-        ['--input=finding.sarif'],
+        ['--input=input.sarif'],
         readBytes(fixture('pinned-codeql-finding.sarif')),
       ),
-    ).toThrow('CodeQL SARIF policy blocked 1 result(s)');
+    ).toThrow('CodeQL SARIF policy blocked 1 error-level result(s)');
   });
 
-  test('bounds the policy log summary when many findings are present', () => {
+  test('the checked-in baseline grandfathers every error result matching an entry (rule + path + lineHash)', () => {
+    const document = parseFixture('pinned-codeql-finding.sarif');
+    // The finding fixture carries one error result matching a baseline entry;
+    // the remaining checked-in entries would be stale against this document,
+    // so pass only the matching entry — mirroring how a shrunken tree behaves.
+    const entry = errorBaseline().findings.find(
+      (candidate: { rule: string }) => candidate.rule === 'js/request-forgery',
+    );
+    expect(entry).toBeDefined();
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: { findings: [entry] },
+    });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.blocked).toEqual([]);
+    expect(verdict.baselined).toHaveLength(1);
+    expect(verdict.baselined[0]).toContain(BASELINED_ERROR_SUMMARY_PREFIX);
+    const result = runCodeqlSarifPolicy(
+      ['--input=input.sarif', '--baseline=baseline.json'],
+      readFiles({
+        'input.sarif': fixture('pinned-codeql-finding.sarif'),
+        'baseline.json': JSON.stringify({ findings: [entry] }),
+      }),
+    );
+    expect(result.baselined).toHaveLength(1);
+    expect(result.advisories).toHaveLength(1);
+  });
+
+  test('one baseline entry grandfathers multiple results sharing rule, path, and lineHash — the computed breadth', () => {
+    // Mirrors the real corpus: scripts/phone-ui-server.mjs line 44 carries two
+    // distinct path-injection results under one fingerprint. The entry admits
+    // both; the disclosed trade-off is that a NEW dataflow landing on an
+    // already-baselined line is also admitted.
+    const document = parseFixture('pinned-codeql-finding.sarif');
+    const errorResult = document.runs[0].results[0];
+    document.runs[0].results = [errorResult, { ...errorResult }];
+    const entry = errorBaseline().findings.find(
+      (candidate: { rule: string }) => candidate.rule === 'js/request-forgery',
+    );
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: { findings: [entry] },
+    });
+    expect(verdict.blocked).toEqual([]);
+    expect(verdict.baselined).toHaveLength(2);
+    expect(verdict.staleBaseline).toEqual([]);
+  });
+
+  test('an error result without partialFingerprints blocks — it can never be baselined', () => {
+    const document = parseFixture('pinned-codeql-finding.sarif');
+    const errorResult = document.runs[0].results[0];
+    delete errorResult.partialFingerprints;
+    document.runs[0].results = [errorResult];
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: { findings: errorBaseline().findings },
+    });
+    expect(verdict.blocked).toHaveLength(1);
+    expect(verdict.blocked[0]).toContain(BASELINED_ERROR_SUMMARY_PREFIX);
+  });
+
+  test('a stale baseline entry fails by default and warns under --stale-baseline=warn', () => {
+    const document = parseFixture('pinned-codeql-clean.sarif');
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: {
+        findings: [
+          { rule: 'js/gone', path: 'src/removed.ts', lineHash: 'dead:1' },
+        ],
+      },
+    });
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.staleBaseline.join('\n')).toContain(
+      'no longer matches any error-level result; remove it',
+    );
+    // validateCodeqlSarif and the CLI default keep stale entries failing.
+    expect(
+      validateCodeqlSarif(document, {
+        baseline: {
+          findings: [
+            { rule: 'js/gone', path: 'src/removed.ts', lineHash: 'dead:1' },
+          ],
+        },
+      }).join('\n'),
+    ).toContain('no longer matches');
+    const staleFiles = {
+      'input.sarif': fixture('pinned-codeql-clean.sarif'),
+      'baseline.json': JSON.stringify({
+        findings: [
+          { rule: 'js/gone', path: 'src/removed.ts', lineHash: 'dead:1' },
+        ],
+      }),
+    };
+    expect(() =>
+      runCodeqlSarifPolicy(
+        ['--input=input.sarif', '--baseline=baseline.json'],
+        readFiles(staleFiles),
+      ),
+    ).toThrow('no longer matches');
+    // warn mode: the PR-event posture — reported, not failing.
+    const warned = runCodeqlSarifPolicy(
+      [
+        '--input=input.sarif',
+        '--baseline=baseline.json',
+        '--stale-baseline=warn',
+      ],
+      readFiles(staleFiles),
+    );
+    expect(warned.staleBaseline).toHaveLength(1);
+    expect(() =>
+      runCodeqlSarifPolicy(
+        [
+          '--input=input.sarif',
+          '--baseline=baseline.json',
+          '--stale-baseline=never',
+        ],
+        readFiles(staleFiles),
+      ),
+    ).toThrow('--stale-baseline must be fail or warn');
+  });
+
+  test('a baseline entry does not grandfather a moved or edited finding (fingerprint mismatch)', () => {
+    const document = parseFixture('pinned-codeql-finding.sarif');
+    const entry = errorBaseline().findings.find(
+      (candidate: { rule: string }) => candidate.rule === 'js/request-forgery',
+    );
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: {
+        findings: [{ ...entry, lineHash: 'ffffffffffffffff:1' }],
+      },
+    });
+    expect(verdict.blocked).toHaveLength(1);
+    expect(verdict.staleBaseline.join('\n')).toContain('no longer matches');
+  });
+
+  test('rejects a malformed baseline instead of silently enforcing without it', () => {
+    const document = parseFixture('pinned-codeql-clean.sarif');
+    expect(
+      validateCodeqlSarif(document, { baseline: { findings: 'nope' } }).join(
+        '\n',
+      ),
+    ).toContain('baseline.findings: must be an array');
+    expect(
+      validateCodeqlSarif(document, {
+        baseline: { findings: [{ rule: 'js/x' }] },
+      }).join('\n'),
+    ).toContain('must contain nonblank rule, path, and lineHash');
+    expect(() =>
+      runCodeqlSarifPolicy(
+        ['--input=input.sarif', '--baseline=baseline.json'],
+        readFiles({
+          'input.sarif': fixture('pinned-codeql-clean.sarif'),
+          'baseline.json': 'not json',
+        }),
+      ),
+    ).toThrow('CodeQL error baseline is unreadable');
+  });
+
+  test('still resolves the legacy driver-rules shape and long tool name', () => {
+    const document = parseFixture('pinned-codeql-legacy-driver-rules.sarif');
+    expect(document.runs[0].tool.driver.name).toBe(
+      'CodeQL command-line toolchain',
+    );
+    const verdict = evaluateCodeqlSarif(document);
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.blocked).toHaveLength(1);
+    expect(verdict.blocked[0]).toContain('js/path-injection [error/8.1]');
+  });
+
+  test('defaults an omitted SARIF level to warning but rejects explicit none', () => {
+    const document = parseFixture('codeql-2.26.3-no-level.sarif');
+    const omitted = evaluateCodeqlSarif(document);
+    expect(omitted.findings).toEqual([]);
+    expect(omitted.blocked).toEqual([]);
+    expect(omitted.advisories).toEqual([
+      'js/path-injection [warning/8.1] Untrusted input reaches a filesystem path.',
+    ]);
+
+    document.runs[0].results[0].level = 'none';
+    expect(validateCodeqlSarif(document)).toContain(
+      'runs[0].results[0]: must resolve severity level error, warning, or note.',
+    );
+  });
+
+  test('treats name-only SARIF tool components as a driver cross-check and rejects inconsistent references', () => {
+    const named = parseFixture('pinned-codeql-finding.sarif');
+    named.runs[0].results = [
+      {
+        ...named.runs[0].results[0],
+        rule: {
+          ...named.runs[0].results[0].rule,
+          toolComponent: { name: 'codeql/javascript-queries' },
+        },
+      },
+    ];
+    expect(validateCodeqlSarif(named)).toContain(
+      'runs[0].results[0]: has an unknown or ambiguous rule.toolComponent reference.',
+    );
+
+    const mismatch = parseFixture('pinned-codeql-finding.sarif');
+    mismatch.runs[0].results = [
+      {
+        ...mismatch.runs[0].results[0],
+        ruleId: 'js/insecure-temporary-file',
+      },
+    ];
+    expect(validateCodeqlSarif(mismatch)).toContain(
+      'runs[0].results[0]: rule.id and ruleId disagree.',
+    );
+
+    const componentMismatch = parseFixture('pinned-codeql-finding.sarif');
+    componentMismatch.runs[0].results = [
+      {
+        ...componentMismatch.runs[0].results[0],
+        rule: {
+          ...componentMismatch.runs[0].results[0].rule,
+          toolComponent: {
+            index: 0,
+            name: 'codeql/javascript-all',
+          },
+        },
+      },
+    ];
+    expect(validateCodeqlSarif(componentMismatch)).toContain(
+      'runs[0].results[0]: has an unknown or ambiguous rule.toolComponent reference.',
+    );
+
+    const malformedExtensions = parseFixture('pinned-codeql-clean.sarif');
+    malformedExtensions.runs[0].tool.extensions = { bad: true };
+    expect(validateCodeqlSarif(malformedExtensions)).toContain(
+      'runs[0]: tool.extensions must be an array when present.',
+    );
+  });
+
+  test('resolves driver GUID components and rejects ambiguous or mismatched selectors', () => {
+    const document = parseFixture('pinned-codeql-legacy-driver-rules.sarif');
+    document.runs[0].tool.driver.guid = 'driver-guid';
+    document.runs[0].results[0].rule = {
+      index: 0,
+      toolComponent: {
+        guid: 'driver-guid',
+        name: 'CodeQL command-line toolchain',
+      },
+    };
+    delete document.runs[0].results[0].ruleIndex;
+    expect(evaluateCodeqlSarif(document).findings).toEqual([]);
+
+    document.runs[0].results[0].rule.toolComponent.name = 'wrong';
+    expect(validateCodeqlSarif(document)).toContain(
+      'runs[0].results[0]: has an unknown or ambiguous rule.toolComponent reference.',
+    );
+  });
+
+  test.each([
+    ['array component', [[]], 'must be a tool component object'],
+    [
+      'blank extension name',
+      [{ name: ' ', rules: [] }],
+      'must contain a nonblank extension name',
+    ],
+  ])(
+    'rejects malformed extension entries: %s',
+    (_name, extensions, expected) => {
+      const document = parseFixture('pinned-codeql-clean.sarif');
+      document.runs[0].tool.extensions = extensions;
+      expect(validateCodeqlSarif(document).join('\n')).toContain(expected);
+    },
+  );
+
+  test('bounds the blocked-result log when many findings are present', () => {
     const finding = parseFixture('pinned-codeql-finding.sarif');
     finding.runs[0].results = Array.from(
       { length: 21 },
@@ -57,18 +345,18 @@ describe('CodeQL SARIF policy', () => {
     );
     expect(() =>
       runCodeqlSarifPolicy(
-        ['--input=many.sarif'],
+        ['--input=input.sarif'],
         readBytes(`${JSON.stringify(finding)}\n`),
       ),
     ).toThrow('… 1 additional result(s) omitted.');
   });
 
-  test('fails the pinned-action-compatible analysis-error fixture', () => {
+  test('fails the analysis-error fixture on its failed invocation', () => {
     expect(
       validateCodeqlSarif(
         parseFixture('pinned-codeql-analysis-error.sarif'),
       ).join('\n'),
-    ).toContain('reports an analysis error');
+    ).toContain('must declare executionSuccessful: true');
   });
 
   test.each([
@@ -94,20 +382,36 @@ describe('CodeQL SARIF policy', () => {
       'must identify tool.driver.name',
     ],
     [
-      'synthetic empty run',
+      'rule-free synthetic run',
       {
         ...parseFixture('pinned-codeql-clean.sarif'),
         runs: [
           {
-            tool: { driver: { name: CODEQL_TOOL_NAME, rules: [] } },
+            tool: {
+              driver: { name: 'CodeQL', rules: [] },
+              extensions: [{ name: 'codeql/javascript-queries', rules: [] }],
+            },
             results: [],
           },
         ],
       },
-      'empty rules are synthetic or incomplete evidence',
+      'a rule-free run is synthetic or incomplete evidence',
     ],
     [
-      'mismatched rule references',
+      'unknown ruleId with no component reference',
+      {
+        ...parseFixture('pinned-codeql-finding.sarif'),
+        runs: [
+          {
+            ...parseFixture('pinned-codeql-finding.sarif').runs[0],
+            results: [{ ruleId: 'js/not-in-rules', message: { text: 'x' } }],
+          },
+        ],
+      },
+      'unknown or ambiguous ruleId reference',
+    ],
+    [
+      'toolComponent index out of range',
       {
         ...parseFixture('pinned-codeql-finding.sarif'),
         runs: [
@@ -115,15 +419,55 @@ describe('CodeQL SARIF policy', () => {
             ...parseFixture('pinned-codeql-finding.sarif').runs[0],
             results: [
               {
-                ruleId: 'js/not-in-rules',
-                ruleIndex: 0,
-                message: { text: 'mismatch' },
+                ruleId: 'js/request-forgery',
+                rule: {
+                  id: 'js/request-forgery',
+                  index: 0,
+                  toolComponent: { index: 9 },
+                },
+                message: { text: 'x' },
               },
             ],
           },
         ],
       },
+      'invalid rule.toolComponent reference',
+    ],
+    [
+      'ruleId ambiguous across components without a component reference',
+      (() => {
+        const document = parseFixture('pinned-codeql-finding.sarif');
+        const run = document.runs[0];
+        run.tool.driver.rules = [{ ...run.tool.extensions[0].rules[0] }];
+        run.results = [
+          { ruleId: 'js/request-forgery', message: { text: 'x' } },
+        ];
+        return document;
+      })(),
       'unknown or ambiguous ruleId reference',
+    ],
+    [
+      'rule reference disagreeing with its resolved index',
+      {
+        ...parseFixture('pinned-codeql-finding.sarif'),
+        runs: [
+          {
+            ...parseFixture('pinned-codeql-finding.sarif').runs[0],
+            results: [
+              {
+                ruleId: 'js/insecure-temporary-file',
+                rule: {
+                  id: 'js/insecure-temporary-file',
+                  index: 0,
+                  toolComponent: { index: 0 },
+                },
+                message: { text: 'x' },
+              },
+            ],
+          },
+        ],
+      },
+      'rule id or guid does not match its resolved index',
     ],
   ])('fails closed for %s', (_name, document, expected) => {
     expect(validateCodeqlSarif(document).join('\n')).toContain(expected);
@@ -142,7 +486,7 @@ describe('CodeQL SARIF policy', () => {
   test('requires an explicit input and propagates a structural policy fault', () => {
     expect(() => parseInputPath([])).toThrow('Usage:');
     expect(() =>
-      runCodeqlSarifPolicy(['--input=fixture.sarif'], readBytes('{}\n')),
+      runCodeqlSarifPolicy(['--input=input.sarif'], readBytes('{}\n')),
     ).toThrow('CodeQL SARIF policy failed');
   });
 });

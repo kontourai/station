@@ -1,6 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  CI_FAST_INFRASTRUCTURE_EXIT_CODE,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -11,12 +10,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CI_FAST_INFRASTRUCTURE_EXIT_CODE,
+  CI_FAST_NESTED_INFRASTRUCTURE_CAUSE,
+  CI_FAST_OWNER_INFRASTRUCTURE_PREFIX,
+  CiFastInfrastructureError,
   CONTENT_INTEGRITY_FAST_COMMAND,
+  classifyCiFastCommandResult,
   FAST_FEEDBACK_TIMEOUT_MS,
   FAST_STATIC_COMMANDS,
   FAST_STATIC_RESERVE_MS,
   fastBase,
   runCiFast,
+  runCiFastCli,
   SELECTOR_DEFERRED_EXIT_CODE,
   SELECTOR_DEFERRED_MESSAGE,
 } from '../run-ci-fast.mjs';
@@ -193,6 +198,56 @@ describe('bounded ci:fast runner', () => {
     ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
   });
 
+  it.each([
+    'selector command timed out',
+    'ci:fast command could not start: spawn EACCES',
+  ])('renders %s as a classified infrastructure exit', (cause) => {
+    const output: string[] = [];
+    expect(
+      runCiFastCli({
+        run: () => {
+          throw new CiFastInfrastructureError(cause);
+        },
+        error: (message) => output.push(message),
+      }),
+    ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
+    expect(output).toEqual([
+      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${cause}\n`,
+    ]);
+  });
+
+  it('classifies a signal-terminated nested command as infrastructure', () => {
+    expect(() =>
+      classifyCiFastCommandResult({ status: null, signal: 'SIGTERM' }),
+    ).toThrow('ci:fast command terminated by signal SIGTERM');
+  });
+
+  it('emits a final owner marker when a nested command returns exit 80', () => {
+    const output: string[] = [];
+    expect(
+      runCiFastCli({
+        run: () => CI_FAST_INFRASTRUCTURE_EXIT_CODE,
+        error: (message) => output.push(message),
+      }),
+    ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
+    expect(output).toEqual([
+      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
+    ]);
+  });
+
+  it('keeps exit 2 for policy errors', () => {
+    const output: string[] = [];
+    expect(
+      runCiFastCli({
+        run: () => {
+          throw new Error('invalid ci-fast policy');
+        },
+        error: (message) => output.push(message),
+      }),
+    ).toBe(2);
+    expect(output).toEqual(['invalid ci-fast policy\n']);
+  });
+
   it('fails closed for an option-like base and a non-deferred child failure', () => {
     expect(() => fastBase({ STATION_CI_FAST_BASE: '--bad' })).toThrow(
       'must be a Git ref',
@@ -241,7 +296,7 @@ describe('bounded ci:fast runner', () => {
     ]);
   });
 
-  it('does not launch the next child after the five-minute budget is exhausted', () => {
+  it('does not launch the next child after the seven-minute budget is exhausted', () => {
     let clock = 1_000;
     let calls = 0;
     expect(() =>
@@ -254,7 +309,7 @@ describe('bounded ci:fast runner', () => {
           return 0;
         },
       }),
-    ).toThrow('exceeded its 5-minute feedback budget');
+    ).toThrow('exceeded its 7-minute feedback budget');
     expect(calls).toBe(1);
   });
 });

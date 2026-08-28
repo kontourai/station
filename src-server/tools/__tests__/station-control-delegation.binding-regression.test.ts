@@ -380,4 +380,107 @@ describe('station#4543: delegate create -> status/events binding survives for an
       ),
     ).resolves.toMatchObject({ taskId });
   });
+
+  test('station#661: a task with more runtime events than the projection fold still resolves events, with the true thread event count', async () => {
+    const { delegateTask, observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+
+    const handle = await delegateTask(
+      {
+        prompt: 'Write the requested file',
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('opencode-agent'),
+        },
+      },
+      service,
+    );
+    const taskId = handle.taskId;
+
+    await waitFor(
+      () => eventStore.listEvents(taskId).map((event) => event.payload.method),
+      (methods) => methods.includes('session.configured'),
+    );
+
+    // `listSessionProjectionEvents`'s fold only ever retains a handful of
+    // NAMED slots (session.started, session.configured, the thread's overall
+    // latest event, ...) — never every persisted row. Publish a run's worth
+    // of ordinary content/tool events, none of which occupy a dedicated
+    // fold slot except (at most) the very last one as "latest", so the fold
+    // stays small while the thread's real event count keeps growing. This
+    // is the exact shape of a real ACP run with text deltas and tool calls
+    // that station#661 reported as "invalid task event state".
+    const now = new Date().toISOString();
+    for (let turn = 0; turn < 5; turn += 1) {
+      const itemId = `item-${turn}`;
+      const toolCallId = `tool-call-${turn}`;
+      acp.events.push({
+        eventId: `${taskId}-text-${turn}`,
+        provider: 'acp',
+        threadId: taskId,
+        createdAt: now,
+        method: 'content.text-delta',
+        itemId,
+        delta: `chunk ${turn}`,
+      } as unknown as CanonicalRuntimeEvent);
+      acp.events.push({
+        eventId: `${taskId}-tool-started-${turn}`,
+        provider: 'acp',
+        threadId: taskId,
+        createdAt: now,
+        method: 'tool.started',
+        itemId,
+        toolCallId,
+        toolName: 'write_file',
+      } as unknown as CanonicalRuntimeEvent);
+      acp.events.push({
+        eventId: `${taskId}-tool-progress-${turn}`,
+        provider: 'acp',
+        threadId: taskId,
+        createdAt: now,
+        method: 'tool.progress',
+        itemId,
+        toolCallId,
+        message: 'writing',
+      } as unknown as CanonicalRuntimeEvent);
+      acp.events.push({
+        eventId: `${taskId}-tool-completed-${turn}`,
+        provider: 'acp',
+        threadId: taskId,
+        createdAt: now,
+        method: 'tool.completed',
+        itemId,
+        toolCallId,
+        toolName: 'write_file',
+        status: 'success',
+      } as unknown as CanonicalRuntimeEvent);
+    }
+    // 2 (session.started/configured) + 5 * 4 (text-delta + tool triple) = 22.
+    const expectedTotalEvents = 22;
+
+    await waitFor(
+      () => eventStore.listEvents(taskId).length,
+      (count) => count >= expectedTotalEvents,
+    );
+    const trueEventCount = eventStore.countEventsByThread(taskId);
+    expect(trueEventCount).toBe(expectedTotalEvents);
+    // The fold staying smaller than the thread total is what makes this test
+    // discriminating: if the projection fold ever grows to retain these
+    // runtime methods, eventCount-from-fold would equal the true count and a
+    // revert of the fix would pass unnoticed.
+    expect(eventStore.listSessionProjectionEvents(taskId).length).toBeLessThan(
+      expectedTotalEvents,
+    );
+
+    // Pre-fix, `readSessionEventPage` labeled the fold's own (much smaller)
+    // length as `eventCount`, so the consumer guard's
+    // `rawNextSequence > eventCount` tripped and threw "The selected Station
+    // returned invalid task event state" for a perfectly healthy task. Both
+    // the resolution and the reported count must reflect the thread's real
+    // event total, not the projection fold's size.
+    const page = await observeDelegatedTaskEvents({ taskId }, service);
+    expect(page.taskId).toBe(taskId);
+    expect(page.eventCount).toBe(trueEventCount);
+  });
 });

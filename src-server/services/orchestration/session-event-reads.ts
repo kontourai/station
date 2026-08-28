@@ -160,6 +160,7 @@ export class SessionEventReads {
         persisted,
         loaded,
         events: projectionEvents.map((event) => event.payload),
+        eventCount: this.deps.eventStore?.countEventsByThread(threadId),
         turnProgress: this.deps.readTurnProgress(threadId),
         answerability: this.deps.observeAnswerability(
           threadId,

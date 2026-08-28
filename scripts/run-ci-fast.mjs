@@ -4,11 +4,17 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
+import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
 
-export const FAST_FEEDBACK_TIMEOUT_MS = 5 * 60_000;
+export const FAST_FEEDBACK_TIMEOUT_MS = CI_FAST_TIMEOUT_MS;
 export const FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
 export const SELECTOR_DEFERRED_EXIT_CODE = 3;
 export const CI_FAST_INFRASTRUCTURE_EXIT_CODE = PRODUCT_LAW_TIMEOUT_EXIT_CODE;
+/** Emitted only by this owner after its nested command has settled. */
+export const CI_FAST_OWNER_INFRASTRUCTURE_PREFIX =
+  '[station-ci-fast-owner-final] ';
+export const CI_FAST_NESTED_INFRASTRUCTURE_CAUSE =
+  'ci:fast nested infrastructure exit';
 export const SELECTOR_DEFERRED_MESSAGE =
   'ci:fast: affected-test selection deferred; full-regression remains the required completion gate.\n';
 // Reserve enough headroom for ALL the static invariants so an affected-test
@@ -19,8 +25,9 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // pair is what needs the room. Measured on a dev host under load ~20:
 // `build:connect` 7s, `typecheck-aggregate` 82s for all 13 lanes (it runs
 // them with bounded concurrency, so it is CHEAPER than the 72s three of
-// those lanes cost run sequentially). 150s leaves ~2.5min of the 5-minute
-// budget for affected-test selection, which observed runs use ~1-2min of.
+// those lanes cost run sequentially). 150s leaves ~4.5min of the seven-minute
+// budget for affected-test selection, which observed runs use ~1-2min locally
+// and now retains measured fleet headroom.
 // If a real runner disagrees, the scoped fallback is `typecheck:server-tests`
 // alone (27s, and the only lane of the thirteen that needs no build) — that
 // covers where both of #4273's motivating breaks actually landed.
@@ -77,8 +84,37 @@ export function fastBase(env = process.env) {
   return base;
 }
 
+/** A bounded execution fault, distinct from an invalid policy/configuration. */
+export class CiFastInfrastructureError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = 'CiFastInfrastructureError';
+  }
+}
+
 function remaining(startedAt, now = Date.now) {
   return FAST_FEEDBACK_TIMEOUT_MS - (now() - startedAt);
+}
+
+export function classifyCiFastCommandResult(result) {
+  if (result?.error?.code === 'ETIMEDOUT')
+    throw new CiFastInfrastructureError(
+      `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`,
+    );
+  if (result?.error)
+    throw new CiFastInfrastructureError(
+      `ci:fast command could not start: ${result.error.message}`,
+      { cause: result.error },
+    );
+  if (typeof result?.signal === 'string' && result.signal.length > 0)
+    throw new CiFastInfrastructureError(
+      `ci:fast command terminated by signal ${result.signal.slice(0, 32)}`,
+    );
+  if (result?.status == null)
+    throw new CiFastInfrastructureError(
+      'ci:fast command ended without an exit status',
+    );
+  return result.status;
 }
 
 function run(command, args, { cwd, timeout }) {
@@ -88,12 +124,7 @@ function run(command, args, { cwd, timeout }) {
     timeout,
     windowsHide: true,
   });
-  if (result.error?.code === 'ETIMEDOUT')
-    throw new Error(
-      `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`,
-    );
-  if (result.error) throw result.error;
-  return result.status ?? 1;
+  return classifyCiFastCommandResult(result);
 }
 
 /**
@@ -120,7 +151,7 @@ export function runCiFast({
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)
-      throw new Error(
+      throw new CiFastInfrastructureError(
         `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`,
       );
     const status = execute(command, args, { cwd, timeout });
@@ -133,15 +164,27 @@ export function runCiFast({
   return 0;
 }
 
-function main() {
+export function runCiFastCli({
+  run = runCiFast,
+  error = (message) => process.stderr.write(message),
+} = {}) {
   try {
-    process.exitCode = runCiFast();
-  } catch (error) {
-    process.stderr.write(
-      `${error instanceof Error ? error.message : String(error)}\n`,
-    );
-    process.exitCode = 2;
+    const status = run();
+    if (status === CI_FAST_INFRASTRUCTURE_EXIT_CODE)
+      error(
+        `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
+      );
+    return status;
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : String(caught);
+    if (caught instanceof CiFastInfrastructureError) {
+      error(`${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
+      return CI_FAST_INFRASTRUCTURE_EXIT_CODE;
+    }
+    error(`${message}\n`);
+    return 2;
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
+  process.exitCode = runCiFastCli();

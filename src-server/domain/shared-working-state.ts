@@ -388,6 +388,7 @@ class SharedWorkingStateCore {
   readonly #maxDeferredBytes: number;
   #deferredBytes = 0;
   #history: AppliedOperation[] = [];
+  #revision: RevisionId | undefined;
   /** Earliest revision from which retained operation deltas may be complete. */
   #replayCheckpointRevision: RevisionId;
 
@@ -428,7 +429,8 @@ class SharedWorkingStateCore {
   }
 
   get revision(): RevisionId {
-    return `swsr-v1:${digest({
+    if (this.#revision) return this.#revision;
+    this.#revision = `swsr-v1:${digest({
       schemaVersion: SHARED_WORKING_STATE_SCHEMA_VERSION,
       documentId: this.#scope.documentId,
       atoms: [...this.#atoms.values()]
@@ -437,6 +439,7 @@ class SharedWorkingStateCore {
       knownOperations: this.#knownOperationProjection(),
       deferredOperations: this.#deferredProjection(),
     })}`;
+    return this.#revision;
   }
 
   text(): string {
@@ -616,6 +619,7 @@ class SharedWorkingStateCore {
           ...deferred,
           admission: 'trusted',
         });
+        this.#invalidateRevision();
         const released = this.#reconcileDeferred(authorization);
         return this.#record({
           outcome: 'replayed',
@@ -713,6 +717,7 @@ class SharedWorkingStateCore {
       for (const target of operation.target)
         this.#atoms.get(target)!.deleted = true;
     this.#knownOperations.set(operation.operationId, operationHash);
+    this.#invalidateRevision();
     this.#history.push({ operation: cloneOperation(operation), priorRevision });
     if (this.#history.length > this.#maxRetainedOperations)
       this.#history.shift();
@@ -735,6 +740,7 @@ class SharedWorkingStateCore {
       digest: operationHash,
       admission,
     });
+    this.#invalidateRevision();
     this.#deferredBytes += bytes;
     return true;
   }
@@ -742,6 +748,7 @@ class SharedWorkingStateCore {
   #removeDeferred(operationId: OperationId): DeferredOperation {
     const entry = this.#deferred.get(operationId)!;
     this.#deferred.delete(operationId);
+    this.#invalidateRevision();
     this.#deferredBytes -= Buffer.byteLength(
       JSON.stringify(entry.operation),
       'utf8',
@@ -839,7 +846,12 @@ class SharedWorkingStateCore {
     sharedWorkingStateOperations.add(1, { operation, outcome });
   }
 
+  #invalidateRevision(): void {
+    this.#revision = undefined;
+  }
+
   #restore(snapshot: unknown): void {
+    this.#invalidateRevision();
     if (
       !isRecord(snapshot) ||
       snapshot.schemaVersion !== SHARED_WORKING_STATE_SCHEMA_VERSION ||
