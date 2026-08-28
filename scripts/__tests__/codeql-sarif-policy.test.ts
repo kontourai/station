@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
-  CODEQL_TOOL_NAME,
+  CODEQL_TOOL_NAMES,
   evaluateCodeqlSarif,
   parseInputPath,
   parseSarifBytes,
@@ -20,7 +20,7 @@ describe('CodeQL SARIF policy', () => {
   test('accepts the pinned-action-compatible completed clean fixture', () => {
     const document = parseFixture('pinned-codeql-clean.sarif');
     expect(document.$schema).toBe(SARIF_SCHEMA_URLS[0]);
-    expect(document.runs[0].tool.driver.name).toBe(CODEQL_TOOL_NAME);
+    expect(CODEQL_TOOL_NAMES).toContain(document.runs[0].tool.driver.name);
     expect(evaluateCodeqlSarif(document)).toEqual({
       findings: [],
       summaries: [],
@@ -49,9 +49,23 @@ describe('CodeQL SARIF policy', () => {
     ).toThrow('CodeQL SARIF policy blocked 1 result(s)');
   });
 
+  test('resolves current CodeQL extension-pack rules through rule.toolComponent', () => {
+    const document = parseFixture('pinned-codeql-extension-rules.sarif');
+    expect(evaluateCodeqlSarif(document)).toEqual({
+      findings: [],
+      summaries: [
+        'js/path-injection [error/8.1] Untrusted input reaches a filesystem path.',
+      ],
+    });
+    document.runs[0].results[0].rule.toolComponent.index = 9;
+    expect(validateCodeqlSarif(document).join('\n')).toContain(
+      'invalid rule.toolComponent reference',
+    );
+  });
+
   test('treats the CodeQL 2.26.3 no-level result as SARIF-warning evidence, not malformed input', () => {
     const document = parseFixture('codeql-2.26.3-no-level.sarif');
-    expect(document.runs[0].tool.driver.name).toBe(CODEQL_TOOL_NAME);
+    expect(CODEQL_TOOL_NAMES).toContain(document.runs[0].tool.driver.name);
     expect(document.runs[0].tool.driver.semanticVersion).toBe('2.26.3');
     expect(document.runs[0].tool.driver.rules).toHaveLength(1);
     expect(document.runs[0].results[0]).not.toHaveProperty('level');
@@ -136,12 +150,12 @@ describe('CodeQL SARIF policy', () => {
         ...parseFixture('pinned-codeql-clean.sarif'),
         runs: [
           {
-            tool: { driver: { name: CODEQL_TOOL_NAME, rules: [] } },
+            tool: { driver: { name: 'CodeQL', rules: [] } },
             results: [],
           },
         ],
       },
-      'empty rules are synthetic or incomplete evidence',
+      'a rule-free run is synthetic or incomplete evidence',
     ],
     [
       'mismatched rule references',

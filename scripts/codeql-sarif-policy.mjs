@@ -9,7 +9,10 @@ export const SARIF_SCHEMA_URLS = Object.freeze([
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
   'https://json.schemastore.org/sarif-2.1.0.json',
 ]);
-export const CODEQL_TOOL_NAME = 'CodeQL command-line toolchain';
+export const CODEQL_TOOL_NAMES = Object.freeze([
+  'CodeQL',
+  'CodeQL command-line toolchain',
+]);
 export const MAX_SARIF_BYTES = 50 * 1024 * 1024;
 export const MAX_RESULT_SUMMARIES = 20;
 export const MAX_RESULT_MESSAGE_LENGTH = 240;
@@ -45,9 +48,50 @@ function validateAdmission(document, findings) {
   return findings.length === 0;
 }
 
-function resultRule(result, rules, path, findings) {
-  const hasRuleIndex = result.ruleIndex !== undefined;
-  const hasRuleId = nonEmptyString(result.ruleId);
+function componentRules(component) {
+  return Array.isArray(component?.rules) ? component.rules : [];
+}
+
+function resultRule(result, { driver, extensions }, path, findings) {
+  const reference = result.rule;
+  if (
+    reference !== undefined &&
+    (!reference || typeof reference !== 'object')
+  ) {
+    findings.push(issue(path, 'has a malformed rule reference.'));
+    return undefined;
+  }
+  let component = driver;
+  if (reference?.toolComponent !== undefined) {
+    const index = reference.toolComponent?.index;
+    if (!Number.isInteger(index) || index < 0 || index >= extensions.length) {
+      findings.push(
+        issue(path, 'has an invalid rule.toolComponent reference.'),
+      );
+      return undefined;
+    }
+    component = extensions[index];
+  }
+  if (
+    reference?.index !== undefined &&
+    result.ruleIndex !== undefined &&
+    reference.index !== result.ruleIndex
+  ) {
+    findings.push(issue(path, 'rule.index and ruleIndex disagree.'));
+    return undefined;
+  }
+  if (
+    nonEmptyString(reference?.id) &&
+    nonEmptyString(result.ruleId) &&
+    reference.id !== result.ruleId
+  ) {
+    findings.push(issue(path, 'rule.id and ruleId disagree.'));
+    return undefined;
+  }
+  const ruleIndex = reference?.index ?? result.ruleIndex;
+  const ruleId = reference?.id ?? result.ruleId;
+  const hasRuleIndex = ruleIndex !== undefined;
+  const hasRuleId = nonEmptyString(ruleId);
   if (!hasRuleIndex && !hasRuleId) {
     findings.push(
       issue(path, 'must reference a rule with ruleIndex or ruleId.'),
@@ -57,17 +101,21 @@ function resultRule(result, rules, path, findings) {
   let rule;
   if (hasRuleIndex) {
     if (
-      !Number.isInteger(result.ruleIndex) ||
-      result.ruleIndex < 0 ||
-      result.ruleIndex >= rules.length
+      !Number.isInteger(ruleIndex) ||
+      ruleIndex < 0 ||
+      ruleIndex >= componentRules(component).length
     ) {
       findings.push(issue(path, 'has an invalid ruleIndex reference.'));
       return undefined;
     }
-    rule = rules[result.ruleIndex];
+    rule = componentRules(component)[ruleIndex];
   }
   if (hasRuleId) {
-    const matches = rules.filter(
+    const search =
+      hasRuleIndex || reference?.toolComponent !== undefined
+        ? componentRules(component)
+        : [driver, ...extensions].flatMap(componentRules);
+    const matches = search.filter(
       (candidate) => candidate?.id === result.ruleId,
     );
     if (matches.length !== 1) {
@@ -94,12 +142,12 @@ function boundedMessage(message) {
     : compact;
 }
 
-function validateResult(result, rules, path, findings, summaries) {
+function validateResult(result, components, path, findings, summaries) {
   if (!result || typeof result !== 'object') {
     findings.push(issue(path, 'must be an object.'));
     return;
   }
-  const rule = resultRule(result, rules, path, findings);
+  const rule = resultRule(result, components, path, findings);
   // SARIF 2.1 defines an omitted result.level as warning. Explicit none is
   // narrower than this security policy: result.kind defaults to fail, so none
   // alone cannot turn a finding into clean evidence.
@@ -135,27 +183,43 @@ function validateRun(run, index, findings, summaries) {
     return;
   }
   const driver = run.tool?.driver;
-  const rules = Array.isArray(driver?.rules) ? driver.rules : [];
-  if (!driver || driver.name !== CODEQL_TOOL_NAME)
-    findings.push(
-      issue(path, `must identify tool.driver.name as ${CODEQL_TOOL_NAME}.`),
-    );
-  if (!Array.isArray(driver?.rules) || driver.rules.length === 0)
+  const extensions = Array.isArray(run.tool?.extensions)
+    ? run.tool.extensions
+    : [];
+  if (!driver || !CODEQL_TOOL_NAMES.includes(driver.name))
     findings.push(
       issue(
         path,
-        'must include CodeQL driver rules; empty rules are synthetic or incomplete evidence.',
+        `must identify tool.driver.name as one of: ${CODEQL_TOOL_NAMES.join(', ')}.`,
+      ),
+    );
+  const components = { driver, extensions };
+  const allRules = [driver, ...extensions].flatMap(componentRules);
+  if (allRules.length === 0)
+    findings.push(
+      issue(
+        path,
+        'must declare CodeQL rules on the driver or its extensions; a rule-free run is synthetic or incomplete evidence.',
       ),
     );
   else {
-    for (const [ruleIndex, rule] of rules.entries()) {
-      if (!nonEmptyString(rule?.id))
-        findings.push(
-          issue(
-            `${path}.tool.driver.rules[${ruleIndex}]`,
-            'must contain a nonblank id.',
-          ),
-        );
+    for (const [componentIndex, component] of [
+      driver,
+      ...extensions,
+    ].entries()) {
+      const label =
+        componentIndex === 0
+          ? `${path}.tool.driver`
+          : `${path}.tool.extensions[${componentIndex - 1}]`;
+      for (const [ruleIndex, rule] of componentRules(component).entries()) {
+        if (!nonEmptyString(rule?.id))
+          findings.push(
+            issue(
+              `${label}.rules[${ruleIndex}]`,
+              'must contain a nonblank id.',
+            ),
+          );
+      }
     }
   }
   if (run.invocations !== undefined && !Array.isArray(run.invocations))
@@ -187,7 +251,7 @@ function validateRun(run, index, findings, summaries) {
   for (const [resultIndex, result] of run.results.entries())
     validateResult(
       result,
-      rules,
+      components,
       `${path}.results[${resultIndex}]`,
       findings,
       summaries,
