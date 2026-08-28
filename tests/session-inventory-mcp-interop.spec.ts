@@ -7,6 +7,7 @@ import {
   type SessionInventoryProjection,
 } from '@kontourai/station-contracts/session-inventory';
 import { createStationAnswerBinding } from '@kontourai/station-contracts/task-basis';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { composeBasisProjection } from '@kontourai/surface/basis';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -18,6 +19,7 @@ import {
   STATION_CONTROL_MCP_PATH,
 } from '../src-server/routes/mcp/station-control-mcp-route.js';
 import { createOrchestrationRoutes } from '../src-server/routes/orchestration/orchestration.js';
+import { createTaskRoutes } from '../src-server/routes/orchestration/tasks.js';
 import {
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
@@ -126,7 +128,7 @@ function projection(): SessionInventoryProjection {
             count: { kind: 'at-least' as const, value: 3 },
             continuation: 'first-owner-cursor',
             items: [initialInput],
-            gaps: [],
+            gaps: [{ kind: 'unavailable' as const }],
           }
         : {
             id,
@@ -184,6 +186,48 @@ function page(
   } as SessionInventoryGroupPage;
 }
 
+const KEPT_SCOPE = {
+  kind: 'kept-in-task' as const,
+  sessionId: 'fixture-session',
+  taskId: 'fixture-task',
+};
+
+function keptProjection(): SessionInventoryProjection {
+  return {
+    version: 'station.session-inventory/v1',
+    scope: KEPT_SCOPE,
+    groups: SESSION_INVENTORY_GROUP_IDS.map((id) =>
+      id === 'kept'
+        ? {
+            id,
+            owner: { owner: 'station.task-graph', id: 'fixture/v1' },
+            state: 'available' as const,
+            count: { kind: 'exact' as const, value: 1 },
+            items: [
+              {
+                kind: 'task-kept-result' as const,
+                key: 'kept:fixture-result',
+                owner: { owner: 'station.task-graph', id: 'fixture/v1' },
+                relations: ['kept-in-task'] as const,
+                taskId: KEPT_SCOPE.taskId,
+                provenanceSessionId: KEPT_SCOPE.sessionId,
+                referenceId: 'fixture-result',
+              },
+            ],
+            gaps: [],
+          }
+        : {
+            id,
+            owner: { owner: 'station.inventory', id: 'fixture/v1' },
+            state: 'empty' as const,
+            count: { kind: 'exact' as const, value: 0 },
+            items: [],
+            gaps: [],
+          },
+    ),
+  } as SessionInventoryProjection;
+}
+
 const hostSource = `
 import { AppBridge, PostMessageTransport } from '@modelcontextprotocol/ext-apps/app-bridge';
 const iframe = document.querySelector('iframe');
@@ -222,6 +266,26 @@ bridge.oncalltool = async ({name,arguments:args}) => {
   const result = await call(args);
   capture(result);
   return result;
+};
+bridge.onreadresource = () => { throw new Error('No protected resource reads'); };
+void bridge.connect(new PostMessageTransport(iframe.contentWindow, iframe.contentWindow));
+void fetch('/resource').then(r=>r.text()).then(html=>{iframe.srcdoc=html;});
+`;
+
+const keptHostSource = `
+import { AppBridge, PostMessageTransport } from '@modelcontextprotocol/ext-apps/app-bridge';
+const iframe = document.querySelector('iframe');
+const call = async (args) => {
+  const response = await fetch('/call', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)});
+  if (!response.ok) throw new Error('Session inventory unavailable');
+  return response.json();
+};
+const bridge = new AppBridge(null, {name:'Official kept Session inventory host fixture',version:'1'}, {serverTools:{}}, {hostContext:{theme:'light'}});
+bridge.oninitialized = async () => {
+  const args = {operation:'open',scope:{kind:'kept-in-task',sessionId:'fixture-session',taskId:'fixture-task'}};
+  const result = await call(args);
+  await bridge.sendToolInput({arguments:args});
+  await bridge.sendToolResult(result);
 };
 bridge.onreadresource = () => { throw new Error('No protected resource reads'); };
 void bridge.connect(new PostMessageTransport(iframe.contentWindow, iframe.contentWindow));
@@ -351,6 +415,7 @@ test('Session inventory resource interoperates with an independent official AppB
       )
         appNetworkRequests += 1;
     });
+    await browser.setViewportSize({ width: 390, height: 900 });
     await browser.goto(HOST);
     const app = browser.frameLocator('iframe');
     await expect(
@@ -377,18 +442,33 @@ test('Session inventory resource interoperates with an independent official AppB
     await expect(
       app.getByRole('button', { name: 'compact', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
-    await app.getByRole('button', { name: 'full', exact: true }).click();
+    await app.getByRole('button', { name: 'compact', exact: true }).focus();
+    await browser.keyboard.press('Tab');
     await expect(
       app.getByRole('button', { name: 'full', exact: true }),
+    ).toBeFocused();
+    await browser.keyboard.press('Enter');
+    await expect(
+      app.getByRole('button', { name: 'full', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(app.locator('section[data-group-id="inputs"]')).toContainText(
+      'This owner is unavailable.',
+    );
+    await app.getByRole('button', { name: 'Sources', exact: true }).focus();
+    await browser.keyboard.press('Space');
+    await expect(
+      app.getByRole('button', { name: 'Sources', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
     await expect(
       app.getByRole('heading', { name: 'Sources (0)', exact: true }),
     ).toBeVisible();
-    await app.getByRole('button', { name: 'Sources', exact: true }).click();
+    await app.getByRole('button', { name: 'Attention', exact: true }).focus();
+    await browser.keyboard.press('Space');
     await expect(
-      app.getByRole('button', { name: 'Sources', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true');
-    await app.getByRole('button', { name: 'Inputs', exact: true }).click();
+      app.locator('section[data-group-id="attention"]'),
+    ).toContainText('Some owner context needs attention.');
+    await app.getByRole('button', { name: 'Inputs', exact: true }).focus();
+    await browser.keyboard.press('Space');
     const loadMore = app.getByRole('button', {
       name: 'Load more',
       exact: true,
@@ -419,6 +499,11 @@ test('Session inventory resource interoperates with an independent official AppB
     await expect(app.locator('#session-inventory-app img')).toHaveCount(0);
     await expect(app.locator('#session-inventory-app script')).toHaveCount(0);
     await expect(app.getByText(hostile, { exact: false })).toHaveCount(0);
+    expect(
+      await app
+        .locator('html')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth),
+    ).toBe(true);
     expect(appNetworkRequests).toBe(0);
     await expectNoBlockingAccessibilityViolations(
       browser,
@@ -468,6 +553,159 @@ test('Session inventory resource interoperates with an independent official AppB
         }),
       ),
     });
+  } finally {
+    await client.close().catch(() => {});
+    revokeStationControlMcpToken(sessionId);
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    restoreEnvironment();
+  }
+});
+
+test('kept-in-task inventory crosses the real Task app-read route into the portable App', async ({
+  page: browser,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  let ownerReads = 0;
+  const readModule = createSessionInventoryAppReadModule({
+    isEnabled: () => true,
+    authorize: ({ routeFamily, scope }) =>
+      routeFamily === 'task' &&
+      scope.kind === 'kept-in-task' &&
+      scope.taskId === KEPT_SCOPE.taskId &&
+      scope.sessionId === KEPT_SCOPE.sessionId,
+    read: async ({ scope }) => {
+      ownerReads += 1;
+      return JSON.stringify(scope) === JSON.stringify(KEPT_SCOPE)
+        ? { status: 'found', projection: keptProjection() }
+        : { status: 'not-found' };
+    },
+    page: async () => ({ status: 'not-found' }),
+  });
+  const owner = new Hono();
+  owner.use('/api/tasks/*', async (c, next) => {
+    if (c.req.header(INTERNAL_API_TOKEN_HEADER) !== getInternalApiToken())
+      return c.json({ error: 'Unauthorized' }, 401);
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      kind: 'internal',
+      credential: getInternalApiToken(),
+      authority: undefined,
+      source: 'bearer',
+    });
+    await next();
+  });
+  const taskGraph = {
+    readTask: (taskId: string) =>
+      taskId === KEPT_SCOPE.taskId ? { id: taskId } : undefined,
+    readSessionRelations: (sessionId: string) => ({
+      links:
+        sessionId === KEPT_SCOPE.sessionId
+          ? [
+              {
+                sourceType: 'task',
+                sourceId: KEPT_SCOPE.taskId,
+                targetType: 'session',
+                targetId: KEPT_SCOPE.sessionId,
+              },
+            ]
+          : [],
+    }),
+  };
+  owner.route(
+    '/api/tasks',
+    createTaskRoutes(taskGraph as never, {
+      taskDispatcher: {
+        dispatch: async () => {
+          throw new Error('Unexpected Task mutation in read-only fixture');
+        },
+      } as never,
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest('fixture-user', undefined, undefined),
+      canReadSession: (sessionId) => sessionId === KEPT_SCOPE.sessionId,
+      isRequestPrincipalCurrent: (request) =>
+        isTrustedInternalApiToken(
+          getRuntimeAuthenticatedRequestPrincipal(request)?.credential,
+        ),
+      callerBindingForRequest: (request) =>
+        request.headers.get(INTERNAL_CONTROL_CALLER_BINDING_HEADER) ??
+        undefined,
+      sessionInventoryAppRead: readModule,
+    }),
+  );
+  const server = serve({ fetch: owner.fetch, port: 0, hostname: '127.0.0.1' });
+  if (!server.listening)
+    await new Promise<void>((resolve) => server.once('listening', resolve));
+  const port = (server.address() as AddressInfo).port;
+  owner.route('/', createStationControlMcpRoutes({ port }));
+  const sessionId = `session-inventory-kept-${testInfo.workerIndex}`;
+  const { token } = mintStationControlMcpToken(sessionId, 'url-token');
+  const client = new Client(
+    { name: 'session-inventory-kept-interop', version: '1' },
+    { capabilities: {} },
+  );
+  const transport = new StreamableHTTPClientTransport(
+    new URL(
+      `http://127.0.0.1:${port}${STATION_CONTROL_MCP_PATH}?token=${encodeURIComponent(token)}`,
+    ),
+  );
+  const restoreEnvironment = preserveBasisInteropEnvironment();
+  const calls: unknown[] = [];
+  try {
+    await client.connect(transport);
+    const resource = await client.readResource({ uri: APP_URI });
+    const content = resource.contents[0];
+    if (!content || !('text' in content) || typeof content.text !== 'string')
+      throw new Error('Real MCP resource did not contain text');
+    expect(Buffer.byteLength(content.text)).toBeLessThanOrEqual(480 * 1024);
+    const host = await build({
+      stdin: {
+        contents: keptHostSource,
+        resolveDir: process.cwd(),
+        loader: 'js',
+      },
+      bundle: true,
+      platform: 'browser',
+      format: 'iife',
+      write: false,
+      minify: true,
+    });
+    await browser.route(`${HOST}/**`, async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/resource')
+        return route.fulfill({ contentType: 'text/html', body: content.text });
+      if (path === '/call') {
+        const args = route.request().postDataJSON();
+        calls.push(args);
+        return route.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify(
+            await client.callTool({
+              name: 'get_session_inventory',
+              arguments: args,
+            }),
+          ),
+        });
+      }
+      return route.fulfill({
+        contentType: 'text/html',
+        body: `<!doctype html><html lang="en"><head><title>Independent kept inventory host</title></head><body><iframe title="Portable kept Session inventory" sandbox="allow-scripts" style="width:100%;height:900px;border:0"></iframe><script>${host.outputFiles[0]!.text.replaceAll('</', '<\\/')}</script></body></html>`,
+      });
+    });
+    await browser.goto(HOST);
+    const app = browser.frameLocator('iframe');
+    await expect(
+      app.getByRole('heading', {
+        name: 'Kept in Task “fixture-task”',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await app.getByRole('button', { name: 'Kept', exact: true }).click();
+    await expect(app.locator('section[data-group-id="kept"]')).toContainText(
+      'Kept result — Context from this Session; Kept context',
+    );
+    expect(calls).toEqual([{ operation: 'open', scope: KEPT_SCOPE }]);
+    expect(ownerReads).toBeGreaterThan(0);
   } finally {
     await client.close().catch(() => {});
     revokeStationControlMcpToken(sessionId);
