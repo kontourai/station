@@ -20,10 +20,13 @@ name: Nightly
 # its four specs touch device sessions or pairing. Paired-device journey coverage is
 # separate, open work (station#4537 item 1).
 #
-# Deliberately self-hosted: build-android.yml already builds Android on this
-# fleet, so the nightly does not depend on provider-hosted capacity. Adding a
-# new workflow to the fleet requires it in the "Kontour Build Fleet" runner
-# group's allow-list — until then its jobs queue rather than run.
+# The `test-gate` and `nightly` (Android) jobs below are deliberately
+# self-hosted: build-android.yml already builds Android on this fleet, so
+# they do not depend on provider-hosted capacity. Adding a new SELF-HOSTED
+# job to the fleet requires it in the "Kontour Build Fleet" runner group's
+# allow-list — until then its jobs queue rather than run. This does not
+# apply to `nightly-desktop`, which runs on a provider-hosted `macos-15`
+# runner outside the fleet (see that job's own header).
 on:
   schedule:
     # 09:00 UTC — early morning in the maintainer's timezone, so a day's work
@@ -841,6 +844,12 @@ jobs:
   # independently. Runs on GitHub-hosted `macos-15`, the same provider-hosted
   # image release.yml's desktop-macos job uses — the self-hosted-fleet
   # allow-list this file's header describes governs only self-hosted jobs.
+  #
+  # This job ships the CONFIG half only (build, sign, publish the manifest).
+  # No updater runtime exists in src-desktop yet — no `tauri-plugin-updater`
+  # dependency, no check/apply call site — so nothing in a built app reads
+  # what this job publishes today. That runtime is the sibling lane
+  # feat/desktop-updater-runtime.
   nightly-desktop:
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
@@ -858,10 +867,18 @@ jobs:
 
       - name: Decide whether there is a new desktop nightly to build
         # Mirrors the Android decide step, against this leg's own rolling
-        # tag. No manual rebuild input (unlike Android): the desktop version
-        # string carries only a day number, never a build index, so a
-        # same-day rebuild would be indistinguishable from the prior
-        # version — left as an owner follow-up, not invented here.
+        # tag: only a HEAD that differs from the last shipped SHA builds.
+        # Real hazard this does NOT close (no manual rebuild input, unlike
+        # Android, and no build-index in the version string): two runs
+        # triggered the same day at DIFFERENT SHAs both decide build=true
+        # and both derive the SAME version string (day-numbered only), so
+        # the second run's --clobber upload silently replaces the first
+        # binary under an identical version — any client already offered
+        # (or that applied) the first is never offered the second, and the
+        # deploy ledger records both SHAs as separate rows under one
+        # version with no signal that only one is actually live. Left as an
+        # owner follow-up (a build-index suffix, or same-day refusal, per
+        # the fix-round decision); not invented in this round.
         id: decide
         run: |
           head_sha=$(git rev-parse HEAD)
