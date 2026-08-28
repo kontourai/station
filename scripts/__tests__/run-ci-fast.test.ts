@@ -115,6 +115,7 @@ describe('bounded ci:fast runner', () => {
   it('pins a small static invariant allowlist with no broad static or full Vitest lane', () => {
     expect(FAST_STATIC_COMMANDS).toEqual([
       [process.execPath, ['scripts/node-runtime-contract.mjs']],
+      ['npm', ['run', 'dependencies:verify']],
       ['npm', ['run', 'lockfile-sync:gate']],
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
@@ -230,9 +231,11 @@ describe('bounded ci:fast runner', () => {
       FAST_FEEDBACK_TIMEOUT_MS - 49_380,
       FAST_FEEDBACK_TIMEOUT_MS - 61_725,
       FAST_FEEDBACK_TIMEOUT_MS - 74_070,
-      // station#4273 added two commands; the arithmetic is unchanged.
+      // station#604 adds nearest-workspace dependency verification; the
+      // arithmetic is unchanged.
       FAST_FEEDBACK_TIMEOUT_MS - 86_415,
       FAST_FEEDBACK_TIMEOUT_MS - 98_760,
+      FAST_FEEDBACK_TIMEOUT_MS - 111_105,
     ]);
   });
 

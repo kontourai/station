@@ -59,6 +59,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/node-runtime-contract.mjs']),
   ]),
+  Object.freeze(['npm', Object.freeze(['run', 'dependencies:verify'])]),
   Object.freeze(['npm', Object.freeze(['run', 'lockfile-sync:gate'])]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
