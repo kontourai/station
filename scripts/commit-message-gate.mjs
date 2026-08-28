@@ -149,6 +149,23 @@ export const FROZEN_IMMUTABLE_HISTORY_RECORDS = Object.freeze([
     reason:
       'published immutable native-tray polling merge predating pull-request title enforcement',
   }),
+  Object.freeze({
+    sha: '87b347f23e7e11fcdf66b99241bf7a969aa4edfc',
+    parents:
+      '1e5c8d769fa866874288c481e4aba2b6bb502681 981a49cd6e38de943b807fb2a20d75d0061a0c04',
+    subject:
+      'Refuse phantom saved-Station homes without creating identity (#543)',
+    reason:
+      'published immutable saved-Station home-identity merge present in the frozen verification baseline',
+  }),
+  Object.freeze({
+    sha: '9a24a3f996557b83e7bc8dac5648a5e8e2a5628b',
+    parents:
+      'a456218b05327cf0e3db1fce6c2bba631903a5ff edfe85b26ff8cf7ccfe3c716663698e6b80cbf4f',
+    subject: 'Route pairing links deterministically by client channel (#511)',
+    reason:
+      'published immutable pairing-link client-channel routing merge present in the frozen verification baseline',
+  }),
 ]);
 
 /** Exact immutable-history match; no subject-only or partial-record exception. */

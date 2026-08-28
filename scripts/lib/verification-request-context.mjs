@@ -18,6 +18,7 @@ import {
   verificationLeaseOwnership,
 } from './verification-lease-ownership.mjs';
 import { createVerificationRequest } from './verification-receipt.mjs';
+import { bindVerificationRequestEnvironment } from './verification-request-environment.mjs';
 import {
   defaultCoordinatorRoot,
   receiptPath,
@@ -103,6 +104,7 @@ export function prepareCoordinatorContext({
   // or a receipt.
   assertInstalledDependenciesMatchLockfile({ repositoryRoot: before.worktree });
   const request = createVerificationRequest(lane.id, before);
+  const requestEnv = bindVerificationRequestEnvironment(executionEnv, request);
   assertExpectedRequest({
     lane,
     cwd,
@@ -140,7 +142,7 @@ export function prepareCoordinatorContext({
     hostPressureThreshold: threshold,
     hostPressureWaitMs,
     hostPressureGated,
-    env: executionEnv,
+    env: requestEnv,
     expectedRequest,
   };
 }
