@@ -7467,13 +7467,24 @@ fn resolve_desktop_log_level(raw: Option<String>) -> (log::LevelFilter, Option<S
 /// `desktop_updater_config_key_path_matches_the_release_config_emitter`
 /// below (Rust) and its JS-side counterpart pinning the same path.
 ///
-/// `tauri_plugin_updater::Config`'s own deserializer requires `pubkey` with
-/// no default, so registering the plugin against a config missing it (every
-/// dev build, and any channel before its endpoint ships) would fail
-/// `Builder::build()` and abort the whole application rather than merely
-/// leaving self-update unavailable. This check must run BEFORE the plugin is
-/// registered, not inside its setup, so an absent or partial config skips
-/// registration entirely instead of crashing startup.
+/// The two halves of this check exist for different reasons:
+///
+/// - The `pubkey` half is crash-avoidance. `tauri_plugin_updater::Config`'s
+///   own deserializer requires `pubkey` with no default, so registering the
+///   plugin against a config with no `plugins.updater` key at all (every dev
+///   build) — or one whose `endpoints` entries are not valid URLs (a blank
+///   or malformed string) — fails `Builder::build()` and aborts the whole
+///   application, not just self-update. This check must run BEFORE the
+///   plugin is registered, not inside its setup, so that config skips
+///   registration entirely instead of crashing startup.
+/// - The `endpoints`-non-empty half is NOT crash-avoidance: a pubkey with
+///   `endpoints` absent or `[]` deserializes fine — `Config.endpoints`
+///   defaults to an empty `Vec`. Requiring it non-empty here is deliberate
+///   inertness policy: a registered plugin with zero endpoints would boot
+///   without crashing but could never find an update, which is a worse,
+///   quieter failure than not registering at all. This is the shape
+///   `native-release-config.mjs`'s pubkey-only overlay produces today for
+///   every channel before its endpoint ships.
 #[cfg(not(mobile))]
 fn desktop_updater_plugin_configured(
     plugins: &std::collections::HashMap<String, serde_json::Value>,

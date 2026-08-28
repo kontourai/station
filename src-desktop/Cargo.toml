@@ -62,10 +62,15 @@ tauri-plugin-opener = "=2.5.4"
 # Self-update (#575). Desktop-only, matching this plugin's own supported
 # platforms (Windows, Linux, macOS). Registration is conditional at runtime
 # on the build carrying a usable `plugins.updater` config — see
-# `desktop_updater_plugin_configured` in `src/lib.rs` — because the plugin's
-# config type requires a pubkey with no default, so registering it against
-# an absent or partial config would fail application startup outright rather
-# than leaving the feature merely unavailable.
+# `desktop_updater_plugin_configured` in `src/lib.rs`. Two different reasons
+# feed that one gate: the plugin's config type requires a pubkey with no
+# default (an absent `plugins.updater` key, or a blank/malformed endpoint
+# URL, fails deserialization and would abort application startup outright,
+# not just disable self-update — a real crash this gate exists to avoid),
+# while requiring `endpoints` to be non-empty is a separate, deliberate
+# choice: a pubkey with no endpoints deserializes fine and would register a
+# functionally inert plugin, which is honest-inertness policy, not a second
+# crash guard.
 tauri-plugin-updater = "=2.10.1"
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.
