@@ -848,8 +848,7 @@ jobs:
   # This job ships the CONFIG half only (build, sign, publish the manifest).
   # No updater runtime exists in src-desktop yet — no `tauri-plugin-updater`
   # dependency, no check/apply call site — so nothing in a built app reads
-  # what this job publishes today. That runtime is the sibling lane
-  # feat/desktop-updater-runtime.
+  # what this job publishes today. The runtime half is tracked on #575.
   nightly-desktop:
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
@@ -877,8 +876,8 @@ jobs:
         # (or that applied) the first is never offered the second, and the
         # deploy ledger records both SHAs as separate rows under one
         # version with no signal that only one is actually live. Left as an
-        # owner follow-up (a build-index suffix, or same-day refusal, per
-        # the fix-round decision); not invented in this round.
+        # deliberate decision tracked in #624 (build-index suffix, or
+        # same-day refusal); not invented here.
         id: decide
         run: |
           head_sha=$(git rev-parse HEAD)
