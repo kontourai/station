@@ -95,6 +95,38 @@ function storeBundle(identity) {
   };
 }
 
+const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
+
+/**
+ * Tauri updater plugin overlay shared by every channel that ships a signed
+ * update artifact. `updaterEndpoint` is optional: a tagged release's
+ * `assemble-draft` job stamps the public key alone (the endpoint is decided
+ * by the publish step that promotes the draft), while a rolling nightly
+ * channel knows its endpoint at build time and passes both.
+ */
+export function updaterPluginConfig(updaterPublicKey, updaterEndpoint) {
+  if (
+    typeof updaterPublicKey !== 'string' ||
+    updaterPublicKey.trim().length === 0
+  ) {
+    fail('updater public key must be non-empty when provided');
+  }
+  const updater = { pubkey: updaterPublicKey.trim() };
+  if (updaterEndpoint !== undefined) {
+    if (
+      typeof updaterEndpoint !== 'string' ||
+      !HTTPS_URL_PATTERN.test(updaterEndpoint)
+    ) {
+      fail('updater endpoint must be a non-empty https URL');
+    }
+    updater.endpoints = [updaterEndpoint];
+  }
+  return {
+    createUpdaterArtifacts: NATIVE_UPDATER_ARTIFACT_MODE,
+    plugins: { updater },
+  };
+}
+
 export function createNativeReleaseConfig({
   tag,
   updaterPublicKey,
@@ -114,19 +146,12 @@ export function createNativeReleaseConfig({
     config.productName = nativeProductNameForChannel(channel);
   }
   if (updaterPublicKey !== undefined) {
-    if (
-      typeof updaterPublicKey !== 'string' ||
-      updaterPublicKey.trim().length === 0
-    ) {
-      fail('updater public key must be non-empty when provided');
-    }
+    const { createUpdaterArtifacts, plugins } =
+      updaterPluginConfig(updaterPublicKey);
     return {
       ...config,
-      bundle: {
-        ...config.bundle,
-        createUpdaterArtifacts: NATIVE_UPDATER_ARTIFACT_MODE,
-      },
-      plugins: { updater: { pubkey: updaterPublicKey.trim() } },
+      bundle: { ...config.bundle, createUpdaterArtifacts },
+      plugins,
     };
   }
   return config;

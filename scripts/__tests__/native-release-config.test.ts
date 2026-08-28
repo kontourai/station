@@ -13,6 +13,7 @@ import {
   nativeVersionFromTag,
   repositoryVersionForTag,
   taggedStoreIdentity,
+  updaterPluginConfig,
 } from '../lib/native-release-config.mjs';
 
 describe('native release configuration', () => {
@@ -179,5 +180,43 @@ describe('native release configuration', () => {
       plugins: { updater: { pubkey: 'trusted-public-key' } },
     });
     expect(NATIVE_UPDATER_ARTIFACT_MODE).toBe('v1Compatible');
+  });
+
+  test('the shared updater plugin overlay adds an endpoint only when one is given (station#575)', () => {
+    expect(updaterPluginConfig('trusted-public-key')).toEqual({
+      createUpdaterArtifacts: NATIVE_UPDATER_ARTIFACT_MODE,
+      plugins: { updater: { pubkey: 'trusted-public-key' } },
+    });
+    expect(
+      updaterPluginConfig(
+        '  trusted-public-key  ',
+        'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
+      ),
+    ).toEqual({
+      createUpdaterArtifacts: NATIVE_UPDATER_ARTIFACT_MODE,
+      plugins: {
+        updater: {
+          pubkey: 'trusted-public-key',
+          endpoints: [
+            'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
+          ],
+        },
+      },
+    });
+  });
+
+  test('the shared updater plugin overlay fails closed on an empty key or a non-https endpoint', () => {
+    expect(() => updaterPluginConfig('')).toThrow(
+      'updater public key must be non-empty',
+    );
+    expect(() => updaterPluginConfig('   ')).toThrow(
+      'updater public key must be non-empty',
+    );
+    expect(() =>
+      updaterPluginConfig(
+        'trusted-public-key',
+        'http://insecure.example/latest.json',
+      ),
+    ).toThrow('updater endpoint must be a non-empty https URL');
   });
 });
