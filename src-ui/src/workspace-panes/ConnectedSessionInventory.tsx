@@ -1,6 +1,7 @@
 import { SessionInventory } from '@kontourai/station-basis-pane/session-inventory';
 import {
   buildSessionInventoryViewModel,
+  mergeSessionInventoryGroupPages,
   type SessionInventoryAction,
   type SessionInventorySelection,
   type SessionInventoryViewItem,
@@ -192,7 +193,11 @@ function ConnectedSessionInventorySurface({
         : [...current, { key, page: received }],
     );
   }, [nextPage?.continuation, page.data, selectedScopeKey]);
-  const projection = mergePages(inventory.data, loadedPages, selection.scope);
+  const projection = mergeSessionInventoryGroupPages(
+    inventory.data,
+    loadedPages.map((entry) => entry.page),
+    selection.scope,
+  );
   const model = projection
     ? buildSessionInventoryViewModel(
         projection,
@@ -330,43 +335,6 @@ function availableScopes(
         (other) => JSON.stringify(other) === JSON.stringify(candidate),
       ) === index,
   );
-}
-
-function mergePages(
-  projection: SessionInventoryProjection | undefined,
-  pages: readonly { key: string; page: SessionInventoryGroupPage }[],
-  scope: SessionInventoryScope,
-): SessionInventoryProjection | undefined {
-  if (!projection) return projection;
-  let current = projection;
-  for (const entry of pages) {
-    const page = entry.page;
-    if (scopeKey(page.scope) !== scopeKey(scope)) continue;
-    current = {
-      ...current,
-      groups: current.groups.map((group) =>
-        group.id === page.group.id
-          ? {
-              ...group,
-              ...page.group,
-              items: dedupeItems([...group.items, ...page.group.items]),
-            }
-          : group,
-      ),
-    };
-  }
-  return current;
-}
-
-function dedupeItems<T extends { key: string }>(
-  items: readonly T[],
-): readonly T[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    if (seen.has(item.key)) return false;
-    seen.add(item.key);
-    return true;
-  });
 }
 
 function scopeKey(scope: SessionInventoryScope): string {

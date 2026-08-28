@@ -8,6 +8,12 @@ import {
   SESSION_INVENTORY_GROUP_IDS,
   SESSION_INVENTORY_V1,
 } from '../session-inventory.js';
+import {
+  buildStationSessionInventoryMcpEnvelope,
+  buildStationSessionInventoryMcpGroupPageEnvelope,
+  parseStationSessionInventoryMcpEnvelope,
+  parseStationSessionInventoryMcpInput,
+} from '../session-inventory-mcp.js';
 import { createStationAnswerBinding } from '../task-basis.js';
 
 function projection(): any {
@@ -86,6 +92,45 @@ function currentProjection(): any {
   return value;
 }
 describe('Session inventory v1', () => {
+  test('closes the portable MCP input and keeps continuations out of structured content', () => {
+    expect(
+      parseStationSessionInventoryMcpInput({
+        operation: 'open',
+        scope: { kind: 'whole-session', sessionId: 'session-a' },
+      }),
+    ).not.toBeNull();
+    expect(
+      parseStationSessionInventoryMcpInput({
+        operation: 'page',
+        scope: { kind: 'whole-session', sessionId: 'session-a' },
+        occurrenceId: 'a'.repeat(24),
+        groupId: 'inputs',
+        continuationToken: 'b'.repeat(16),
+      }),
+    ).not.toBeNull();
+    const value = projection();
+    const envelope = buildStationSessionInventoryMcpEnvelope(value);
+    expect(envelope?.kind).toBe('projection');
+    if (envelope?.kind === 'projection')
+      expect(envelope.projection.groups[0]).not.toHaveProperty('continuation');
+    const page = buildStationSessionInventoryMcpGroupPageEnvelope({
+      version: SESSION_INVENTORY_V1,
+      scope: value.scope,
+      group: value.groups[0],
+    });
+    expect(page?.kind).toBe('group-page');
+    expect(parseStationSessionInventoryMcpEnvelope(page)).toEqual(page);
+    if (page?.kind !== 'group-page') throw new Error('expected group page');
+    expect(
+      parseStationSessionInventoryMcpEnvelope({
+        ...page,
+        page: {
+          ...page.page,
+          group: { ...page.page.group, continuation: 'x'.repeat(16) },
+        },
+      }),
+    ).toBeNull();
+  });
   test('accepts the fixed, ordered empty projection', () => {
     expect(parseSessionInventoryProjection(projection())).not.toBeNull();
   });

@@ -17,7 +17,8 @@
     "./session-inventory": "./src/SessionInventory.tsx",
     "./station-basis-pane": "./src/StationBasisPane.tsx",
     "./answer-basis-affordance": "./src/AnswerBasisAffordance.tsx",
-    "./task-basis-mcp-app": "./src/task-basis-mcp-app.ts"
+    "./task-basis-mcp-app": "./src/task-basis-mcp-app.ts",
+    "./session-inventory-mcp-app": "./src/session-inventory-mcp-app.ts"
   },
   "scripts": {
     "build": "tsc",

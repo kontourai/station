@@ -27,6 +27,12 @@ view module. The page contract alone does not enable network pagination.
 `station-control/get_task_basis` App at `ui://station/basis/task/v3`. It is
 web-only; native shells retain the native pane. The host alone issues its narrow
 continuation capability, bound to the exact Task, caller, and read authority.
+
+## Portable Session inventory MCP App
+
+`session-inventory-mcp-app` renders the already-authorized, metadata-only
+Session inventory envelope. It has no actions, links, network fetches, or live
+state synthesis; opaque page continuations remain host metadata.
 Opaque occurrence/token metadata expires, rotates, and revokes on teardown;
 pages replace each other rather than accumulating protected state. Generic
 unavailable covers stale, revoked, malformed, and failed reads.

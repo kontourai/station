@@ -2,10 +2,47 @@ import {
   SESSION_INVENTORY_GROUP_IDS,
   type SessionInventoryGroup,
   type SessionInventoryGroupId,
+  type SessionInventoryGroupPage,
   type SessionInventoryProjection,
   type SessionInventoryRow,
   type SessionInventoryScope,
 } from '@kontourai/station-contracts/session-inventory';
+
+export function mergeSessionInventoryGroupPages(
+  projection: SessionInventoryProjection | undefined,
+  pages: readonly SessionInventoryGroupPage[],
+  scope: SessionInventoryScope,
+): SessionInventoryProjection | undefined {
+  if (!projection || JSON.stringify(projection.scope) !== JSON.stringify(scope))
+    return undefined;
+  let current = projection;
+  for (const page of pages) {
+    if (JSON.stringify(page.scope) !== JSON.stringify(scope)) return undefined;
+    if (
+      scope.kind === 'current-answer' &&
+      (JSON.stringify(page.basis) !== JSON.stringify(current.basis) ||
+        JSON.stringify(page.basisBinding) !==
+          JSON.stringify(current.basisBinding))
+    )
+      return undefined;
+    const existing = current.groups.find((group) => group.id === page.group.id);
+    if (!existing) return undefined;
+    const rows = [...existing.items];
+    for (const row of page.group.items) {
+      const prior = rows.find((item) => item.key === row.key);
+      if (prior && JSON.stringify(prior) !== JSON.stringify(row))
+        return undefined;
+      if (!prior) rows.push(row);
+    }
+    current = {
+      ...current,
+      groups: current.groups.map((group) =>
+        group.id === page.group.id ? { ...page.group, items: rows } : group,
+      ),
+    };
+  }
+  return current;
+}
 
 export type SessionInventoryDensity = 'compact' | 'full';
 export type SessionInventorySelection = {
@@ -305,4 +342,12 @@ export function buildSessionInventoryViewModel(
     selection: repaired,
     repairedSelection,
   };
+}
+
+/** Portable density is a local presentation choice; it never changes authority. */
+export function buildSessionInventoryCompactViewModel(
+  projection: SessionInventoryProjection,
+  selection: SessionInventorySelection,
+): SessionInventoryViewModel {
+  return buildSessionInventoryViewModel(projection, selection, 'compact');
 }

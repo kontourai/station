@@ -1236,6 +1236,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/session-inventory-mcp-interop.spec.ts',
+    bucket: 'extended',
+    surface: 'Session inventory / MCP Apps interoperability',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Real Station session-inventory tool/resource and bounded owner projection through an independent official MCP Apps host: host theme, compact/full and group selection, exact opaque page capability rotation, terminal removal, fail-closed malformed metadata, Basis reuse, hostile metadata inertness, and no protected App fetch.',
+    exceptions: [],
+  },
+  {
     path: 'tests/project-task-room-collaboration.spec.ts',
     bucket: 'smoke-live',
     surface: 'Project/Task room collaboration',
