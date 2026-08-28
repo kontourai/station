@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
@@ -12,6 +12,18 @@ const release = readFileSync(
   resolve(root, '.github/workflows/release.yml'),
   'utf8',
 );
+
+// The proof executes the LITERAL workflow producer command, which needs the
+// release toolchain on THIS machine: bash (the workflow's ubuntu default
+// shell — not zsh, which was an author's-machine artifact and is absent on
+// lean Linux runners) plus cargo with the cyclonedx producer installed.
+// Absent toolchain = skip with the reason named, not a red that reads as a
+// product failure (green-because-of-the-dev-machine, inverted).
+const hasProducerToolchain =
+  spawnSync('bash', ['-c', 'command -v cargo'], { stdio: 'ignore' }).status ===
+    0 &&
+  spawnSync('bash', ['-c', 'cargo cyclonedx --version'], { stdio: 'ignore' })
+    .status === 0;
 
 function producerCommand(source = release) {
   const workflow: any = load(source);
@@ -47,25 +59,29 @@ afterEach(() => {
   if (existsSync(output)) rmSync(output);
 });
 
-test('cargo-cyclonedx proof executes the literal workflow producer command and public-safe graph', () => {
-  execFileSync('zsh', ['-c', producerCommand()], {
-    cwd: root,
-    timeout: 120_000,
-    stdio: 'pipe',
-  });
-  const source = JSON.parse(readFileSync(output, 'utf8'));
-  expect(source.specVersion).toBe('1.5');
-  expect(source.components).toHaveLength(561);
-  const components = cyclonedxComponents(source, 'cargo', output);
-  expect(components).toHaveLength(561);
-  expect(JSON.stringify(components)).not.toMatch(/file:|\/private\//);
-  expect(components).toContainEqual(
-    expect.objectContaining({
-      name: 'android-native-keyring-store',
-      purl: 'pkg:cargo/android-native-keyring-store@1.0.0',
-    }),
-  );
-}, 120_000);
+test.skipIf(!hasProducerToolchain)(
+  'cargo-cyclonedx proof executes the literal workflow producer command and public-safe graph (skips where the release toolchain is absent)',
+  () => {
+    execFileSync('bash', ['-c', producerCommand()], {
+      cwd: root,
+      timeout: 120_000,
+      stdio: 'pipe',
+    });
+    const source = JSON.parse(readFileSync(output, 'utf8'));
+    expect(source.specVersion).toBe('1.5');
+    expect(source.components).toHaveLength(561);
+    const components = cyclonedxComponents(source, 'cargo', output);
+    expect(components).toHaveLength(561);
+    expect(JSON.stringify(components)).not.toMatch(/file:|\/private\//);
+    expect(components).toContainEqual(
+      expect.objectContaining({
+        name: 'android-native-keyring-store',
+        purl: 'pkg:cargo/android-native-keyring-store@1.0.0',
+      }),
+    );
+  },
+  120_000,
+);
 
 test.each([
   ['format', '--format json', '--format xml'],
