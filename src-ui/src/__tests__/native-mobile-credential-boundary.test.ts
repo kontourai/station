@@ -36,7 +36,10 @@ describe('native mobile credential authority ratchet', () => {
       'profile.isTauri ? rejectingDesktopCredentialStorage',
     );
     expect(apiBase).toMatch(
-      /profile\.isTauri\s+\? \{ transport: lazyNativeAuthenticatedTransport \}/,
+      /const credential\s*=\s*profile\.isTauri\s*\?\s*undefined\s*:\s*evidence\?\.credential\s*;/,
+    );
+    expect(apiBase).toMatch(
+      /profile\.isTauri\s*\?\s*\{[\s\S]*transport: nativeBinding\s*\? nativeTransportForBinding\(nativeBinding\.bindingId\)\s*:\s*lazyNativeAuthenticatedTransport/,
     );
     expect(apiBase).toContain(
       'profile.isTauri ? lazyNativePairingExchangeTransport : undefined',
@@ -76,6 +79,9 @@ describe('native mobile credential authority ratchet', () => {
     expect(mobilePath).not.toContain('.home_dir()');
     expect(mobilePath).not.toContain('var_os("STATION_HOME")');
     expect(desktopPath).toMatch(
+      /resolve_station_root\(\)\s*\.join\("config"\)\s*\.join\("profiles\.json"\)/,
+    );
+    expect(desktopPath).not.toMatch(
       /home_dir|STATION_HOME|resolve_station_home_for_channel/,
     );
   });
