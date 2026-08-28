@@ -51,28 +51,34 @@ describe('channel-aware pairing deep links', () => {
       expect(parsed.message).toContain(PAIRING_LINK_REMEDY);
   });
 
-  test('rejects an additive credential field only at the deep-link boundary', () => {
-    const encoded = btoa(
-      JSON.stringify({
-        protocolVersion: 1,
-        environmentId: 'backend-identity-is-independent',
-        offerId: 'offer-test',
-        challenge: 'challenge-test',
-        endpoint: 'https://station.example.test',
-        scope: 'orchestration:read',
-        expiresAt: Date.now() + 60_000,
-        credential: 'must-not-enter-url-admission',
-      }),
-    )
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-    const credentialPayload = `station-pairing:v1:${encoded}`;
-    expect(
-      parsePairingDeepLink(
-        `station-stable://pair?linkVersion=1&clientChannel=stable&payload=${encodeURIComponent(credentialPayload)}`,
-        { clientChannel: 'stable' },
-      ).status,
-    ).toBe('error');
-  });
+  test.each([
+    { metadata: { credential: 'must-not-enter-url-admission' } },
+    { metadata: { authorization: { bearer: 'must-not-enter-url-admission' } } },
+  ])(
+    'rejects nested credential-bearing additive data at the deep-link boundary',
+    (metadata) => {
+      const encoded = btoa(
+        JSON.stringify({
+          protocolVersion: 1,
+          environmentId: 'backend-identity-is-independent',
+          offerId: 'offer-test',
+          challenge: 'challenge-test',
+          endpoint: 'https://station.example.test',
+          scope: 'orchestration:read',
+          expiresAt: Date.now() + 60_000,
+          metadata,
+        }),
+      )
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      const credentialPayload = `station-pairing:v1:${encoded}`;
+      expect(
+        parsePairingDeepLink(
+          `station-stable://pair?linkVersion=1&clientChannel=stable&payload=${encodeURIComponent(credentialPayload)}`,
+          { clientChannel: 'stable' },
+        ).status,
+      ).toBe('error');
+    },
+  );
 });

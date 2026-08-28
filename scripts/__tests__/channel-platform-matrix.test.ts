@@ -8,7 +8,9 @@ import {
   applyAndroidChannelIcons,
 } from '../apply-android-channel-icons.mjs';
 import {
+  checkChannelPlatformMatrix,
   devPairingDeepLinkScheme,
+  generatedChannelPlatformOutputs,
   pairingSchemeForChannel,
   readChannelPlatformMatrix,
 } from '../channel-platform-matrix.mjs';
@@ -99,6 +101,42 @@ describe('cross-platform release channel matrix', () => {
     }
     expect(devPairingDeepLinkScheme('Dev.Release.7')).toBe(
       'station-dev-dev-release-7',
+    );
+  });
+
+  test('generator check fails deterministically when a generated consumer drifts', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'station-channel-matrix-'));
+    const authority = readChannelPlatformMatrix();
+    mkdirSync(join(fixture, 'config'), { recursive: true });
+    writeFileSync(
+      join(fixture, 'config/channel-platform-matrix.json'),
+      JSON.stringify({ channels: authority }),
+    );
+    for (const [path, contents] of generatedChannelPlatformOutputs(authority)) {
+      const destination = join(fixture, path);
+      mkdirSync(resolve(destination, '..'), { recursive: true });
+      writeFileSync(destination, contents);
+    }
+    for (const channel of ['stable', 'beta', 'nightly']) {
+      const file =
+        channel === 'stable' ? 'tauri.conf.json' : `tauri.${channel}.conf.json`;
+      const destination = join(fixture, 'src-desktop', file);
+      mkdirSync(resolve(destination, '..'), { recursive: true });
+      writeFileSync(
+        destination,
+        readFileSync(resolve(root, 'src-desktop', file), 'utf8'),
+      );
+    }
+    expect(checkChannelPlatformMatrix(fixture)).toEqual([]);
+    writeFileSync(
+      join(
+        fixture,
+        'packages/connect/src/core/pairingDeepLinkChannels.generated.ts',
+      ),
+      '// stale\n',
+    );
+    expect(checkChannelPlatformMatrix(fixture)).toContain(
+      'packages/connect/src/core/pairingDeepLinkChannels.generated.ts',
     );
   });
 

@@ -97,10 +97,12 @@ export function parsePairingDeepLink(
     const payload = parsed.searchParams.get('payload');
     if (
       !payload ||
-      !decodeDevicePairingPayload(payload, { rejectCredentialFields: true })
+      !decodeDevicePairingPayload(payload, {
+        requireCanonicalOfferFields: true,
+      })
     ) {
       return pairingLinkError(
-        'This Station pairing offer is invalid, expired, or contains unsupported credentials.',
+        'This Station pairing offer is invalid, expired, or contains unsupported data.',
       );
     }
     return { status: 'ok', payload };

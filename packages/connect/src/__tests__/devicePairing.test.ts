@@ -90,8 +90,11 @@ describe('device pairing QR payload', () => {
     ).toMatchObject({ scope: 'orchestration:read' });
   });
 
-  test('keeps raw scanner decoding additive while a caller may request strict credential rejection', () => {
-    const source = { ...offer(), credential: 'additive-field' };
+  test('keeps raw scanner decoding additive while a caller may request canonical fields', () => {
+    const source = {
+      ...offer(),
+      metadata: { authorization: { credential: 'benign-unknown-to-scanner' } },
+    };
     const encoded = btoa(JSON.stringify(source))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
@@ -101,7 +104,9 @@ describe('device pairing QR payload', () => {
       environmentId: source.environmentId,
     });
     expect(
-      decodeDevicePairingPayload(payload, { rejectCredentialFields: true }),
+      decodeDevicePairingPayload(payload, {
+        requireCanonicalOfferFields: true,
+      }),
     ).toBeNull();
   });
 });
