@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -486,6 +487,17 @@ describe('native release workflow topology', () => {
     );
     expect(seal.run).toContain('macos-notarized-artifacts.mjs');
     expect(seal.run).toContain('station-notary-api-key.p8');
+    expect(seal.run).toContain('app_candidates=()');
+    expect(seal.run).toContain(
+      'done < <(find "src-desktop/target/$' +
+        "{{ matrix.target }}/release/bundle/macos\" -maxdepth 1 -type d -name '*.app' -print0)",
+    );
+    expect(seal.run).toContain("while IFS= read -r -d '' app_candidate; do");
+    expect(seal.run).toContain('app_candidates+=("$app_candidate")');
+    expect(seal.run).toContain('test "$' + '{#app_candidates[@]}" -eq 1');
+    expect(seal.run).toContain('app="$' + '{app_candidates[0]}"');
+    expect(seal.run).not.toContain('-print -quit');
+    expect(seal.run).toContain('macos-notarized-artifacts.mjs --app "$app"');
     expect(seal.env).toMatchObject({
       APPLE_API_KEY_ID: `\${{ secrets.APPLE_API_KEY_ID }}`,
       APPLE_API_ISSUER_ID: `\${{ secrets.APPLE_API_ISSUER_ID }}`,
@@ -508,6 +520,41 @@ describe('native release workflow topology', () => {
     expect(macosArtifacts).toContain(
       "run('tar', ['-C', join(app, '..'), '-czf', updater, appName])",
     );
+  });
+
+  it('admits exactly one relative macOS app discovered by the release workflow', () => {
+    const directory = mkdtempSync(
+      resolve(tmpdir(), 'station-macos-discovery-'),
+    );
+    const bundleRoot = resolve(
+      directory,
+      'src-desktop/target/aarch64-apple-darwin/release/bundle/macos',
+    );
+    const macos = workflowJob(release, 'desktop-macos');
+    const seal = namedStep(
+      macos,
+      'Seal, notarize, and derive canonical macOS artifacts',
+    );
+    const discovery = seal.run
+      .slice(seal.run.indexOf('app_candidates=()'))
+      .split('printf \'%s\' "$APPLE_API_PRIVATE_KEY"')[0]
+      .replace('$' + '{{ matrix.target }}', 'aarch64-apple-darwin');
+    const runDiscovery = () =>
+      execFileSync(
+        '/bin/bash',
+        ['-e', '-c', `${discovery}\nprintf '%s' "$app"`],
+        { cwd: directory, encoding: 'utf8', stdio: 'pipe', timeout: 10_000 },
+      );
+    try {
+      mkdirSync(resolve(bundleRoot, 'Station.app'), { recursive: true });
+      expect(runDiscovery()).toBe(
+        'src-desktop/target/aarch64-apple-darwin/release/bundle/macos/Station.app',
+      );
+      mkdirSync(resolve(bundleRoot, 'Unexpected.app'));
+      expect(runDiscovery).toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('builds deb and rpm before the signed AppImage overlay without post-sign mutation', () => {

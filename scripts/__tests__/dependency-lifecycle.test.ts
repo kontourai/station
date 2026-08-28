@@ -38,6 +38,10 @@ import {
   verifyArtifact,
   verifyNodePtyHandshake,
 } from '../lib/dependency-lifecycle-policy.mjs';
+import {
+  classifyDependencySpec,
+  findWorkspaceDependencyProblems,
+} from '../lib/workspace-dependency-satisfaction.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const policy = JSON.parse(
@@ -48,6 +52,44 @@ const policy = JSON.parse(
 );
 const nodes = readLifecycleLocks(root);
 const shellLauncherTest = process.platform === 'win32' ? it.skip : it;
+
+function workspaceDependencyFixture({
+  dependencies,
+  optionalDependencies,
+  rootPackages = {},
+  workspacePackages = {},
+}: {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  rootPackages?: Record<string, Record<string, unknown>>;
+  workspacePackages?: Record<string, Record<string, unknown>>;
+} = {}) {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'station-workspace-deps-'));
+  const workspace = join(fixtureRoot, 'packages', 'fixture');
+  const writePackage = (path: string, manifest: Record<string, unknown>) => {
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, 'package.json'), JSON.stringify(manifest));
+  };
+  writePackage(fixtureRoot, {
+    name: 'fixture-root',
+    private: true,
+    workspaces: ['packages/fixture'],
+  });
+  writePackage(workspace, {
+    name: '@fixture/workspace',
+    version: '1.0.0',
+    dependencies,
+    optionalDependencies,
+  });
+  for (const [name, manifest] of Object.entries(rootPackages))
+    writePackage(
+      join(fixtureRoot, 'node_modules', ...name.split('/')),
+      manifest,
+    );
+  for (const [name, manifest] of Object.entries(workspacePackages))
+    writePackage(join(workspace, 'node_modules', ...name.split('/')), manifest);
+  return { fixtureRoot };
+}
 
 function executable(path: string, source: string) {
   writeFileSync(path, source, { mode: 0o755 });
@@ -718,6 +760,125 @@ describe('dependency lifecycle policy', () => {
       }
     },
   );
+
+  it('verifies nearest installed workspace dependencies rather than a root inventory', () => {
+    const nested = workspaceDependencyFixture({
+      dependencies: { datum: '0.8.0' },
+      rootPackages: { datum: { name: 'datum', version: '0.7.0' } },
+      workspacePackages: { datum: { name: 'datum', version: '0.8.0' } },
+    });
+    const hoisted = workspaceDependencyFixture({
+      dependencies: { datum: '^0.8.0' },
+      rootPackages: { datum: { name: 'datum', version: '0.8.4' } },
+    });
+    const brokenNearest = workspaceDependencyFixture({
+      dependencies: { datum: '0.8.0' },
+      rootPackages: { datum: { name: 'datum', version: '0.7.0' } },
+    });
+    try {
+      expect(
+        findWorkspaceDependencyProblems({ root: nested.fixtureRoot }),
+      ).toEqual([]);
+      expect(
+        findWorkspaceDependencyProblems({ root: hoisted.fixtureRoot }),
+      ).toEqual([]);
+      expect(
+        findWorkspaceDependencyProblems({ root: brokenNearest.fixtureRoot }),
+      ).toEqual([
+        'packages/fixture → datum: installed 0.7.0 at node_modules/datum/package.json does not satisfy declared 0.8.0',
+      ]);
+    } finally {
+      for (const fixture of [nested, hoisted, brokenNearest])
+        rmSync(fixture.fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('fails required missing packages but permits npm optional absence', () => {
+    const required = workspaceDependencyFixture({
+      dependencies: { missing: '^1.0.0' },
+    });
+    const optional = workspaceDependencyFixture({
+      optionalDependencies: { optional: '^1.0.0' },
+    });
+    const optionalMismatch = workspaceDependencyFixture({
+      optionalDependencies: { optional: '^1.0.0' },
+      rootPackages: { optional: { name: 'optional', version: '2.0.0' } },
+    });
+    try {
+      expect(
+        findWorkspaceDependencyProblems({ root: required.fixtureRoot }),
+      ).toEqual(['packages/fixture → missing: missing (declared ^1.0.0)']);
+      expect(
+        findWorkspaceDependencyProblems({ root: optional.fixtureRoot }),
+      ).toEqual([]);
+      expect(
+        findWorkspaceDependencyProblems({ root: optionalMismatch.fixtureRoot }),
+      ).toEqual([
+        'packages/fixture → optional: installed 2.0.0 at node_modules/optional/package.json does not satisfy declared ^1.0.0',
+      ]);
+    } finally {
+      for (const fixture of [required, optional, optionalMismatch])
+        rmSync(fixture.fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reads scoped and exports-blocked package manifests by installation path', () => {
+    const fixture = workspaceDependencyFixture({
+      dependencies: { '@scope/exports-blocked': '~1.2.0' },
+      rootPackages: {
+        '@scope/exports-blocked': {
+          name: '@scope/exports-blocked',
+          version: '1.2.9',
+          exports: './index.js',
+        },
+      },
+    });
+    try {
+      expect(
+        findWorkspaceDependencyProblems({ root: fixture.fixtureRoot }),
+      ).toEqual([]);
+    } finally {
+      rmSync(fixture.fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('explicitly classifies local and remote npm protocols while requiring installation', () => {
+    expect(classifyDependencySpec('workspace:*')).toMatchObject({
+      kind: 'local-protocol',
+    });
+    expect(classifyDependencySpec('file:../local')).toMatchObject({
+      kind: 'local-protocol',
+    });
+    expect(
+      classifyDependencySpec('git+https://example.test/repo.git'),
+    ).toMatchObject({
+      kind: 'remote-protocol',
+    });
+    expect(classifyDependencySpec('npm:real-package@^1.0.0')).toMatchObject({
+      kind: 'npm-alias',
+      targetName: 'real-package',
+      targetSpec: '^1.0.0',
+    });
+    const fixture = workspaceDependencyFixture({
+      dependencies: {
+        local: 'workspace:*',
+        linked: 'file:../linked',
+        aliased: 'npm:real-package@^1.0.0',
+      },
+      rootPackages: {
+        local: { name: 'local', version: '9.9.9' },
+        linked: { name: 'linked', version: '1.0.0' },
+        aliased: { name: 'real-package', version: '1.2.0' },
+      },
+    });
+    try {
+      expect(
+        findWorkspaceDependencyProblems({ root: fixture.fixtureRoot }),
+      ).toEqual([]);
+    } finally {
+      rmSync(fixture.fixtureRoot, { recursive: true, force: true });
+    }
+  });
 
   it('rejects raw workflow bypasses while permitting the runner', () => {
     expect(REPOSITORY_LIFECYCLE_SOURCES).toContain('station');

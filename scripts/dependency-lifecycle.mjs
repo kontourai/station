@@ -21,6 +21,7 @@ import {
   readLifecycleLocks,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { assertWorkspaceDependencySatisfaction } from './lib/workspace-dependency-satisfaction.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const allowlistPath = resolve(
@@ -233,6 +234,10 @@ export function runApprovedHooks(allowlist, { cwd = root } = {}) {
 export function verify({ cwd = root } = {}) {
   const allowlist = check({ cwd });
   preflightInstalledLifecycle(allowlist, { cwd });
+  // This is intentionally after npm ci and before every green lifecycle
+  // receipt. It validates what Node will resolve from each workspace, not
+  // merely the versions represented somewhere in a lockfile.
+  assertWorkspaceDependencySatisfaction({ root: cwd });
   const results = allowlist.entries
     .filter(
       (entry) =>

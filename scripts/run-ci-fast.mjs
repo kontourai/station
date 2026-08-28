@@ -34,6 +34,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/node-runtime-contract.mjs']),
   ]),
+  // Lifecycle verification also checks nearest workspace resolution. A copied
+  // root node_modules can otherwise make this lane green while a workspace's
+  // required nested version is absent and TypeScript resolves a wrong parent.
+  Object.freeze(['npm', Object.freeze(['run', 'dependencies:verify'])]),
   Object.freeze(['npm', Object.freeze(['run', 'lockfile-sync:gate'])]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
