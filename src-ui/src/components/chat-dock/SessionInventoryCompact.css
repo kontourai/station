@@ -39,14 +39,3 @@
 .session-inventory-compact__previews bdi {
   overflow-wrap: anywhere;
 }
-@media (prefers-reduced-motion: reduce) {
-  .session-inventory-compact * {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
-  }
-}
-@media (max-width: 400px) {
-  .session-inventory-compact {
-    font-size: max(1rem, 16px);
-  }
-}

@@ -1,25 +1,23 @@
 import type React from 'react';
-import { lazy, Suspense } from 'react';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { ArrowDownGlyph, ArrowLeftGlyph, ArrowUpGlyph } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { DockPlacementControl } from './DockPlacementControl';
 import type { DockSnap } from './dockSnap';
 import { readDockSnap } from './dockSnap';
 
-const LazyChatDockWorkspaceControls = lazy(() =>
+const loadChatDockWorkspaceControls = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({
     default: module.ChatDockWorkspaceControls,
-  })),
-);
-const LazyChatDockWorkspaceActions = lazy(() =>
+  }));
+const loadChatDockWorkspaceActions = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({
     default: module.ChatDockWorkspaceActions,
-  })),
-);
+  }));
 
 interface Session {
   id: string;
@@ -229,9 +227,11 @@ export function ChatDockHeader({
           </button>
         )}
         {workspaceControls ? (
-          <Suspense fallback={null}>
-            <LazyChatDockWorkspaceControls {...workspaceControls} />
-          </Suspense>
+          <LazyBoundary
+            load={loadChatDockWorkspaceControls}
+            pending={null}
+            componentProps={workspaceControls}
+          />
         ) : null}
         {chatIdentity ? (
           <div className="chat-dock__header-identity">{chatIdentity}</div>
@@ -253,9 +253,11 @@ export function ChatDockHeader({
         onClick={(e) => e.stopPropagation()}
       >
         {workspaceControls ? (
-          <Suspense fallback={null}>
-            <LazyChatDockWorkspaceActions {...workspaceControls} />
-          </Suspense>
+          <LazyBoundary
+            load={loadChatDockWorkspaceActions}
+            pending={null}
+            componentProps={workspaceControls}
+          />
         ) : null}
         {activeSessions.length > 0 && (
           <div className="chat-dock__activity">

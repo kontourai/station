@@ -12,6 +12,7 @@ import {
   readSessionInventorySelection,
   useSessionInventorySelection,
 } from '../../workspace-panes/sessionInventorySelection';
+import { SkeletonBlock } from '../state';
 import {
   sessionInventoryLiveItems,
   useSessionInventoryLive,
@@ -97,7 +98,9 @@ export function SessionInventoryCompact({
     );
   if (inventory.isLoading)
     return (
-      <aside aria-label="Session inventory">Loading Session inventory…</aside>
+      <aside aria-label="Session inventory">
+        <SkeletonBlock count={2} label="Loading Session inventory" />
+      </aside>
     );
   if (inventory.error || !inventory.data)
     return (
