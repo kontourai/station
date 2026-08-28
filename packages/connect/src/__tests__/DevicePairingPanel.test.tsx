@@ -102,6 +102,58 @@ describe('device pairing panels', () => {
     );
   });
 
+  test('keeps an accepted review open when a later native link is rejected', () => {
+    const payload = encodeDevicePairingPayload({
+      protocolVersion: 1,
+      environmentId: 'environment-link',
+      offerId: 'offer-link',
+      challenge: 'challenge-link',
+      manualCode: 'ABCDE12345',
+      endpoint: 'https://station.example.ts.net',
+      scope: 'orchestration:read',
+      expiresAt: Date.now() + 60_000,
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    render(
+      <JoinDevicePairingPanel
+        initialPairingPayload={payload}
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Review pairing offer')).toBeTruthy();
+    expect(screen.getByText(/Backend ID: environment-link/)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('relinquishes its parent review when choosing another pairing method', () => {
+    const payload = encodeDevicePairingPayload({
+      protocolVersion: 1,
+      environmentId: 'environment-link',
+      offerId: 'offer-link',
+      challenge: 'challenge-link',
+      manualCode: 'ABCDE12345',
+      endpoint: 'https://station.example.ts.net',
+      scope: 'orchestration:read',
+      expiresAt: Date.now() + 60_000,
+    });
+    const onReviewDismissed = vi.fn();
+    render(
+      <JoinDevicePairingPanel
+        initialPairingPayload={payload}
+        onReviewDismissed={onReviewDismissed}
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose method' }));
+
+    expect(onReviewDismissed).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
+  });
+
   test('keeps a same-origin access request pending until explicit authority approves it', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       response(
