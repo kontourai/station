@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 
@@ -25,6 +25,23 @@ function existsClause(certificateSelector) {
   return new RegExp(
     `\\b${certificateSelector}\\s*(?:/\\*\\s*)?exists\\b(?:\\s*\\*/)?`,
   );
+}
+
+export function admitMacosAppBundle(app, fs, path = { resolve }) {
+  if (typeof app !== 'string' || app.length === 0 || /[\0\r\n]/.test(app)) {
+    throw new Error('Expected an unambiguous staged application bundle path.');
+  }
+  const requested = path.resolve(app);
+  if (!fs.existsSync(requested)) throw new Error('Staged app does not exist.');
+  const metadata = fs.lstatSync(requested);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink() || !basename(requested).endsWith('.app')) {
+    throw new Error('Expected a non-symlink staged application bundle.');
+  }
+  const canonical = fs.realpathSync(requested);
+  if (canonical !== requested || !basename(canonical).endsWith('.app')) {
+    throw new Error('Staged app path must not traverse a symlink or escape its requested bundle.');
+  }
+  return canonical;
 }
 
 /**
@@ -90,16 +107,16 @@ function submit(run, file, key, keyId, issuer) {
 
 export function createMacosNotarizedArtifacts(options, injected = {}) {
   const run = injected.run ?? exec;
-  const fs = injected.fs ?? { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync };
-  const app = need(options.app, 'app'); const identity = need(options.identity, 'identity');
+  const fs = injected.fs ?? { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync };
+  const app = admitMacosAppBundle(need(options.app, 'app'), fs, injected.path);
+  const identity = need(options.identity, 'identity');
   const key = need(options.notaryKey, 'notaryKey'); const keyId = need(options.notaryKeyId, 'notaryKeyId');
   const issuer = need(options.notaryIssuer, 'notaryIssuer'); const assets = need(options.assetsDir, 'assetsDir');
   const tag = need(options.releaseTag, 'releaseTag'); const arch = need(options.architecture, 'architecture');
   const bundleId = need(options.bundleId, 'bundleId');
   if (!['aarch64', 'x86_64'].includes(arch)) throw new Error('Expected a canonical macOS architecture.');
-  if (!fs.existsSync(app)) throw new Error('Staged app does not exist.');
   if (!fs.existsSync(key)) throw new Error('Notary API key file does not exist.');
-  const appName = basename(app); if (!appName.endsWith('.app')) throw new Error('Expected a staged application bundle.');
+  const appName = basename(app);
   fs.mkdirSync(assets, { recursive: true });
   const root = fs.mkdtempSync(join(tmpdir(), 'station-macos-release-')); const mount = join(root, 'mounted');
   const dmgRoot = join(root, 'dmg-root'); const zip = join(root, 'notarization-input.zip');
@@ -116,7 +133,7 @@ export function createMacosNotarizedArtifacts(options, injected = {}) {
     if (dr.status !== 0) throw new Error(`codesign designated requirement query failed with status ${dr.status}.`);
     assertOuterAppCertificateBackedRequirement(dr, bundleId);
     const entitlementOutput = captured(run('codesign', ['-d', '--entitlements', '-', '--xml', app], true));
-    const entitlementDiagnostic = `Executable=${app}`;
+    const entitlementDiagnostic = `Executable=${join(app, 'Contents', 'MacOS', 'station')}`;
     if (entitlementOutput.status !== 0 || entitlementOutput.stdout !== '' || /[\r\n]/.test(app) || (entitlementOutput.stderr !== entitlementDiagnostic && entitlementOutput.stderr !== `${entitlementDiagnostic}\n`)) throw new Error('Outer app has unexpected entitlements.');
     run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', app, zip]); submit(run, zip, key, keyId, issuer);
     run('xcrun', ['stapler', 'staple', app]); run('xcrun', ['stapler', 'validate', app]);
