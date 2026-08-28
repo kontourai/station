@@ -1,0 +1,10 @@
+{
+  "evidence": [],
+  "claims": [
+    {
+      "id": "fixture.grandfathered-undisclosed-count",
+      "fieldOrBehavior": "Fixture run passed: 12/12 files with 34 passed.",
+      "verificationPolicyId": "fixture:attestation"
+    }
+  ]
+}
