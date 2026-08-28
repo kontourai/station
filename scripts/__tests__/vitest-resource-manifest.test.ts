@@ -106,6 +106,20 @@ describe('Vitest resource manifest', () => {
     );
   }, 70_000);
 
+  it('classifies the policy documentation reader exactly once as shared output', () => {
+    const policyReader = 'scripts/__tests__/verification-policy-gate.test.ts';
+    const groups = discoverVitestResourceGroups();
+    expect(
+      SHARED_OUTPUT_VITEST_FILES.filter((file) => file === policyReader),
+    ).toEqual([policyReader]);
+    expect(groups.sharedOutput.filter((file) => file === policyReader)).toEqual(
+      [policyReader],
+    );
+    expect(groups.ordinary).not.toContain(policyReader);
+    expect(groups.processHeavy).not.toContain(policyReader);
+    expect(groups.processExclusive).not.toContain(policyReader);
+  }, 70_000);
+
   it('keeps reviewed indirect and host-resource seams in the two-worker group', () => {
     const groups = discoverVitestResourceGroups();
 
