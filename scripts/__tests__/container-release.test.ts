@@ -140,6 +140,8 @@ const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/scripts/station-cli.ts',
   '/app/scripts/source-bootstrap.ts',
   '/app/scripts/station-cli-implementation.ts',
+  '/app/scripts/lib/verification-host-pressure.mjs',
+  '/app/config/plugin-scaffold-dependencies.json',
   '/app/scripts/node-runtime-contract.mjs',
   '/app/packages',
   '/app/src-server',

@@ -17,7 +17,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/connect/package.json packages/connect/
 COPY examples/builder-delivery-viewer/package.json examples/builder-delivery-viewer/
 COPY examples/fieldwork-review/package.json examples/fieldwork-review/
-COPY config/dependency-lifecycle-allowlist.json config/
+COPY config/dependency-lifecycle-allowlist.json config/plugin-scaffold-dependencies.json config/
 COPY schemas/dependency-lifecycle-allowlist.schema.json schemas/
 COPY patches ./patches
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
@@ -63,6 +63,8 @@ RUN apt-get update \
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/station /app/.station-release.json ./
 COPY --from=build --chown=node:node /app/scripts/station-cli.ts /app/scripts/station-cli-implementation.ts /app/scripts/source-bootstrap.ts /app/scripts/node-runtime-contract.mjs ./scripts/
+COPY --from=build --chown=node:node /app/scripts/lib/verification-host-pressure.mjs ./scripts/lib/
+COPY --from=build --chown=node:node /app/config/plugin-scaffold-dependencies.json ./config/
 COPY --from=build --chown=node:node /app/packages ./packages
 COPY --from=build --chown=node:node /app/src-server ./src-server
 COPY --from=build --chown=node:node /app/src-shared ./src-shared

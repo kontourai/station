@@ -30,12 +30,14 @@ scripts/*
 !scripts/lib/
 scripts/lib/*
 !scripts/lib/server-build-config.mjs
+!scripts/lib/verification-host-pressure.mjs
 !scripts/lib/container-release-metadata.mjs
 !scripts/lib/dependency-lifecycle-policy.mjs
 
 !config/
 config/*
 !config/dependency-lifecycle-allowlist.json
+!config/plugin-scaffold-dependencies.json
 !patches/
 !patches/**
 
