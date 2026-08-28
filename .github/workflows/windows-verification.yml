@@ -61,15 +61,6 @@ jobs:
       - run: npm run dependencies:ci
 
 
-      # Detect nvm4w junction rot early with the remedy in the message.
-      # The link CANNOT be healed here: recreating it from a non-interactive
-      # context (service, scheduled task) marks it an untrusted mount point —
-      # which is exactly how it rots. Only an interactive `nvm use` on the
-      # host produces a trusted, traversable link (proven live 2026-08-27).
-      - name: Verify the nvm4w node junction is traversable
-        shell: cmd
-        run: |
-          C:\nvm4w\nodejs\node.exe --version || (echo ::error::nvm4w junction rotted - untrusted mount point. SSH to desktop-win as the interactive user and rebuild it with an interactive nvm-use of 24.5.0 && exit /b 1)
       - name: Verify verification policy contract
         run: npm run verification:policy:gate
 
