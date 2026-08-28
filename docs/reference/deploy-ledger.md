@@ -27,7 +27,39 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
+| 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
+| 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-28T16:30:48Z · stable-npm · 0.7.0
+
+- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
+- Artifact: npm:@kontourai/station-shared@0.7.0 (dist-tag latest)
+- Note: Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change.
+
+### Changelog
+
+> slice carried by the same run's station-contracts row (same sha, same publish)
+
+## 2026-08-28T16:30:48Z · stable-npm · 0.7.0
+
+- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
+- Artifact: npm:@kontourai/station-sdk@0.7.0 (dist-tag latest)
+- Note: Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change.
+
+### Changelog
+
+> slice carried by the same run's station-contracts row (same sha, same publish)
+
+## 2026-08-28T16:25:30Z · stable-npm · 0.7.0
+
+- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
+- Artifact: npm:@kontourai/station-contracts@0.7.0 (dist-tag latest)
+
+### Changelog
+
+> Changelog slice omitted: this ship is a same-sha companion of stable-npm 0.5.1 (recorded at b4fe42e) — no commits exist between same-sha ships, so the slice would repeat that entry's.
 
 ## 2026-08-27T10:54:02Z · nightly-android · 0.1.2-nightly.2430
 
