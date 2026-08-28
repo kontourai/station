@@ -167,6 +167,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the refusal path's exit STATUS is proven, not just the pure validator;
   // the corpus check additionally drives one `git log` against origin/main.
   'scripts/__tests__/commit-message-gate.test.ts',
+  // station#625: same shape again — the CodeQL SARIF policy gate runs as
+  // bounded single-shot node children so its blocked/stale-baseline refusal
+  // paths' EXIT STATUS and printed verdicts are proven, not just the pure
+  // evaluation functions.
+  'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
   // station#3749: same shape again — the SDK refusal-message gate is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision

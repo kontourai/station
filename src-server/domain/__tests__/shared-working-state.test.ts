@@ -125,6 +125,61 @@ describe('SharedWorkingState', () => {
     expect(state.resync(base, 10, [1]).outcome).toBe('snapshot');
   });
 
+  test('keeps cached revisions aligned with digest participants, not history', () => {
+    const ports = createSharedWorkingState({ scope });
+    const initial = ports.live.revision;
+    expect(ports.live.revision).toBe(initial);
+
+    const child = insert('op-cache-child', 'actor-a', 'op-cache-root:0', 'c', [
+      'op-cache-root',
+    ]);
+    expect(ports.live.apply(child, authorization)).toMatchObject({
+      outcome: 'deferred',
+    });
+    const deferred = ports.live.revision;
+    expect(deferred).not.toBe(initial);
+
+    expect(ports.recovery.replay(child)).toMatchObject({
+      outcome: 'replayed',
+    });
+    const promoted = ports.live.revision;
+    expect(promoted).not.toBe(deferred);
+
+    expect(
+      ports.live.apply(
+        insert('op-cache-root', 'actor-a', null, 'r'),
+        authorization,
+      ),
+    ).toMatchObject({
+      outcome: 'applied',
+      releasedOperationIds: ['op-cache-child'],
+    });
+    const applied = ports.live.revision;
+    expect(applied).not.toBe(promoted);
+
+    const deletion: TextDocumentOperation = {
+      schemaVersion: SHARED_WORKING_STATE_SCHEMA_VERSION,
+      operationId: 'op-cache-delete',
+      documentId: scope.documentId,
+      replicaId: 'replica-actor-a',
+      actor: { actorId: 'actor-a', kind: 'human' },
+      parents: ['op-cache-root'],
+      authorizationEpoch: authorization.epoch,
+      kind: 'delete',
+      target: ['op-cache-root:0'],
+    };
+    expect(ports.live.apply(deletion, authorization).outcome).toBe('applied');
+    const deleted = ports.live.revision;
+    expect(deleted).not.toBe(applied);
+
+    const snapshot = ports.live.compact();
+    expect(snapshot.revision).toBe(deleted);
+    expect(ports.live.revision).toBe(deleted);
+    expect(createSharedWorkingState({ scope, snapshot }).live.revision).toBe(
+      deleted,
+    );
+  });
+
   test('fails closed for stale writers, unauthorized actors, malformed and unsupported input', () => {
     const state = new SharedWorkingState({ scope });
     const operation = insert('op-guard', 'actor-a', null, 'x');

@@ -1,0 +1,60 @@
+{
+  "description": "Error-level CodeQL findings that predate the enforceable SARIF policy, grandfathered pending triage (#688). An entry matches every error-level result sharing its rule, path, and primaryLocationLineHash, so editing the flagged line invalidates the entry. Remove an entry in the same change that resolves its finding: the PR gate warns about the stale entry (it reads this file from the base checkout and cannot see the removal), and the post-merge push-to-main gate fails on it.",
+  "findings": [
+    {
+      "rule": "js/bad-code-sanitization",
+      "path": "scripts/__tests__/verification-coordinator.test.ts",
+      "lineHash": "35621f6192dacac7:1"
+    },
+    {
+      "rule": "js/bad-code-sanitization",
+      "path": "src-server/routes/plugins/__tests__/plugin-public-server.test.ts",
+      "lineHash": "f80f92d5c25658d2:1"
+    },
+    {
+      "rule": "js/bad-code-sanitization",
+      "path": "src-ui/src/components/plugins/PluginFrameHost.tsx",
+      "lineHash": "5fe76efc0d552cb2:1"
+    },
+    {
+      "rule": "js/path-injection",
+      "path": "scripts/phone-ui-server.mjs",
+      "lineHash": "4aecb2e901291a7f:1"
+    },
+    {
+      "rule": "js/path-injection",
+      "path": "scripts/phone-ui-server.mjs",
+      "lineHash": "72e7b30345e22f3:1"
+    },
+    {
+      "rule": "js/path-injection",
+      "path": "scripts/phone-ui-server.mjs",
+      "lineHash": "a228b11458c465d9:1"
+    },
+    {
+      "rule": "js/redos",
+      "path": "scripts/__tests__/container-release.test.ts",
+      "lineHash": "32bf712b61a35f1c:1"
+    },
+    {
+      "rule": "js/regex-injection",
+      "path": "scripts/station-dogfood-reconcile.mjs",
+      "lineHash": "ba5142e64c438175:1"
+    },
+    {
+      "rule": "js/request-forgery",
+      "path": "src-server/services/discord/discord-gateway-service.ts",
+      "lineHash": "e5ab68fdc6b4d1d4:1"
+    },
+    {
+      "rule": "js/user-controlled-bypass",
+      "path": "src-ui/src/utils/browserWebSocketAuth.ts",
+      "lineHash": "361ac214e7f5ea3c:1"
+    },
+    {
+      "rule": "js/user-controlled-bypass",
+      "path": "src-ui/src/utils/browserWebSocketAuth.ts",
+      "lineHash": "e658c76ce53272a6:1"
+    }
+  ]
+}
