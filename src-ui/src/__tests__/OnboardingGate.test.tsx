@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PAIRING_LINK_REMEDY } from '@kontourai/station-connect/pairing-deep-link';
 import type { SystemStatus } from '@kontourai/station-sdk';
 import {
   act,
@@ -49,6 +50,14 @@ const refetch = vi.fn();
 const forceRefetch = vi.fn();
 const restartBundledServerMock = vi.fn(() => Promise.resolve(true));
 const toastMocks = vi.hoisted(() => ({ showToast: vi.fn() }));
+const pairingDeepLinkHookMock = vi.hoisted(() => ({
+  options: undefined as
+    | {
+        onPairingPayload: (payload: string) => void;
+        onError: (message: string) => void;
+      }
+    | undefined,
+}));
 let bootstrapRecoveryError: string | undefined;
 
 vi.mock('../hooks/useSystemStatus', () => ({
@@ -92,6 +101,18 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
 // behavior from the toast implementation while retaining the hook contract.
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: toastMocks.showToast }),
+}));
+
+// The native adapter is covered at its own seam. This captures the shell's
+// callbacks so this component test can deliver an accepted link followed by a
+// rejected one without making a browser test impersonate a native association.
+vi.mock('../hooks/usePairingDeepLink', () => ({
+  usePairingDeepLink: (options: {
+    onPairingPayload: (payload: string) => void;
+    onError: (message: string) => void;
+  }) => {
+    pairingDeepLinkHookMock.options = options;
+  },
 }));
 
 // archive#1715: the local self-authorization effect calls
@@ -163,15 +184,23 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     ConnectionManagerModal: ({
       isOpen,
       initialPanel,
+      initialPairingPayload,
+      pairingLinkError,
       onRestartInjectedConnection,
     }: {
       isOpen: boolean;
       initialPanel?: string;
+      initialPairingPayload?: string;
+      pairingLinkError?: string;
       onRestartInjectedConnection?: () => void;
     }) =>
       isOpen ? (
         <div data-testid="connection-manager">
           Connection manager: {initialPanel ?? 'list'}
+          <output data-testid="connection-manager-pairing-payload">
+            {initialPairingPayload ?? ''}
+          </output>
+          {pairingLinkError && <div role="alert">{pairingLinkError}</div>}
           {onRestartInjectedConnection && (
             <button
               type="button"
@@ -368,6 +397,8 @@ describe('OnboardingGate', () => {
     forceRefetch.mockResolvedValue(undefined);
     restartBundledServerMock.mockReset();
     restartBundledServerMock.mockResolvedValue(true);
+    toastMocks.showToast.mockReset();
+    pairingDeepLinkHookMock.options = undefined;
     onboardingSetupStore.reset();
     currentPathname = '/';
     pendingLocalSelfProvisionProfileNameMock.mockReset();
@@ -678,6 +709,73 @@ describe('OnboardingGate', () => {
     );
 
     expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+  });
+
+  test('keeps a reviewed pairing offer open with a rejected link remedy', () => {
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+
+    const pairingHook = pairingDeepLinkHookMock.options;
+    expect(pairingHook).toBeTruthy();
+    const acceptedPayload = 'station-pairing:v1:accepted-offer';
+
+    const rejectedMessage = `This Station pairing link is malformed. ${PAIRING_LINK_REMEDY}`;
+    act(() => {
+      pairingHook?.onPairingPayload(acceptedPayload);
+      pairingHook?.onError(rejectedMessage);
+    });
+
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+    expect(
+      screen.getByTestId('connection-manager-pairing-payload').textContent,
+    ).toBe(acceptedPayload);
+
+    // A rejected event does not pass a payload to the Join state, so the
+    // accepted offer stays reviewable while its remedy remains available.
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+    expect(
+      screen.getByTestId('connection-manager-pairing-payload').textContent,
+    ).toBe(acceptedPayload);
+    expect(screen.getByRole('alert').textContent).toContain(
+      PAIRING_LINK_REMEDY,
+    );
+    expect(toastMocks.showToast).not.toHaveBeenCalled();
+  });
+
+  test('shows a standalone rejected link through the normal toast', () => {
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+
+    const rejectedMessage = `This Station pairing link is malformed. ${PAIRING_LINK_REMEDY}`;
+    act(() => pairingDeepLinkHookMock.options?.onError(rejectedMessage));
+
+    expect(screen.queryByTestId('connection-manager')).toBeNull();
+    expect(toastMocks.showToast).toHaveBeenCalledWith(rejectedMessage);
+  });
+
+  test('keeps a base-scan modal rejection inside the dialog', () => {
+    currentStatus = chatReadyStatus();
+    openConnectionsModal({ mode: 'pair-device' });
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+
+    const rejectedMessage = `This Station pairing link is malformed. ${PAIRING_LINK_REMEDY}`;
+    act(() => pairingDeepLinkHookMock.options?.onError(rejectedMessage));
+
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      PAIRING_LINK_REMEDY,
+    );
+    expect(toastMocks.showToast).not.toHaveBeenCalled();
   });
 
   test('keeps the app usable without a setup overlay when a runtime is available', () => {
