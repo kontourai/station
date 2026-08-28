@@ -82,4 +82,43 @@ describe('SessionInventoryAppReadModule', () => {
       }),
     ).resolves.toEqual({ status: 'unavailable' });
   });
+
+  test('terminates cross-scope owner projections while allowing a tenant-aware hosted authority', async () => {
+    const crossScope = {
+      ...projection,
+      scope: { kind: 'whole-session' as const, sessionId: 'other-session' },
+    } as SessionInventoryProjection;
+    const module = createSessionInventoryAppReadModule({
+      read: vi.fn(async () => ({
+        status: 'found' as const,
+        projection: crossScope,
+      })),
+      page: vi.fn(),
+      authorize: () => true,
+      isEnabled: () => true,
+    });
+    await expect(
+      module.open({
+        scope: projection.scope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+
+    const hosted = createSessionInventoryAppReadModule({
+      read: vi.fn(async () => ({ status: 'found' as const, projection })),
+      page: vi.fn(),
+      authorize: () => true,
+      isEnabled: () => true,
+    });
+    await expect(
+      hosted.open({
+        scope: projection.scope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: { mode: 'hosted' } as never,
+      }),
+    ).resolves.toMatchObject({ status: 'available' });
+  });
 });

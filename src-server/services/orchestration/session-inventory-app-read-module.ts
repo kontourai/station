@@ -184,8 +184,11 @@ export function createSessionInventoryAppReadModule(input: {
     authority: SessionReadAuthority,
     request?: Request,
   ): Promise<SessionInventoryAppReadOutcome> => {
-    if (state.inFlight || !current(state, authority, request))
+    if (state.inFlight) return unavailable();
+    if (!current(state, authority, request)) {
+      terminate(state);
       return unavailable();
+    }
     state.inFlight = true;
     try {
       if (!(await input.isEnabled()) || !current(state, authority, request)) {
@@ -217,6 +220,7 @@ export function createSessionInventoryAppReadModule(input: {
       if (
         second.status !== 'found' ||
         !current(state, authority, request) ||
+        JSON.stringify(second.projection.scope) !== state.scopeKey ||
         fingerprintProjection(first.projection) !==
           fingerprintProjection(second.projection)
       ) {
@@ -254,12 +258,15 @@ export function createSessionInventoryAppReadModule(input: {
     continuationToken: string,
   ): Promise<SessionInventoryAppReadOutcome> => {
     const continuation = state.continuations.get(groupId);
+    if (!current(state, authority, request)) {
+      terminate(state);
+      return unavailable();
+    }
     if (
       state.inFlight ||
       !continuation ||
       continuation.token !== continuationToken ||
-      state.pages >= SESSION_INVENTORY_APP_READ_MAX_PAGES ||
-      !current(state, authority, request)
+      state.pages >= SESSION_INVENTORY_APP_READ_MAX_PAGES
     )
       return unavailable();
     state.inFlight = true;
@@ -305,7 +312,7 @@ export function createSessionInventoryAppReadModule(input: {
       if (
         !envelope ||
         !parseStationSessionInventoryMcpEnvelope(envelope) ||
-        page.scope.kind !== state.scope.kind ||
+        JSON.stringify(page.scope) !== state.scopeKey ||
         page.group.id !== groupId
       ) {
         terminate(state);
@@ -337,7 +344,6 @@ export function createSessionInventoryAppReadModule(input: {
     async open({ scope, routeFamily, callerBinding, authority, request }) {
       purge();
       if (
-        authority.mode === 'hosted' ||
         !validScope(scope) ||
         !validBinding(callerBinding) ||
         !takeRate(callerBinding) ||
@@ -376,7 +382,6 @@ export function createSessionInventoryAppReadModule(input: {
       purge();
       const state = sessions.get(occurrenceId);
       if (
-        authority.mode === 'hosted' ||
         !validScope(scope) ||
         !validBinding(callerBinding) ||
         !validToken(occurrenceId) ||

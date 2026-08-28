@@ -2,6 +2,7 @@ import {
   buildStationSessionInventoryMcpAppResource,
   STATION_SESSION_INVENTORY_MCP_RESOURCE_URI,
 } from '@kontourai/station-basis-pane/session-inventory-mcp-app';
+import { SESSION_INVENTORY_GROUP_IDS } from '@kontourai/station-contracts/session-inventory';
 import {
   parseStationSessionInventoryMcpEnvelope,
   parseStationSessionInventoryMcpInput,
@@ -14,7 +15,9 @@ import {
   isStationControlCallerCurrent,
 } from './station-control-shared.js';
 
-export const STATION_SESSION_INVENTORY_MCP_TOOL_NAME =
+export const STATION_SESSION_INVENTORY_MCP_SERVER_ID = 'station-control';
+export const STATION_SESSION_INVENTORY_MCP_TOOL_NAME = 'get_session_inventory';
+export const STATION_SESSION_INVENTORY_MCP_TOOL_REF =
   'station-control/get_session_inventory';
 export const STATION_SESSION_INVENTORY_MCP_RESOURCE_NAME =
   'station-session-inventory-v1';
@@ -122,12 +125,17 @@ function validCapability(value: unknown): value is {
     typeof capability.occurrenceId === 'string' &&
     /^[A-Za-z0-9_-]{24,128}$/.test(capability.occurrenceId) &&
     Array.isArray(capability.continuations) &&
+    capability.continuations.length <= SESSION_INVENTORY_GROUP_IDS.length &&
     capability.continuations.every(
       (entry) =>
         !!entry &&
         typeof entry === 'object' &&
         !Array.isArray(entry) &&
         typeof (entry as Record<string, unknown>).groupId === 'string' &&
+        SESSION_INVENTORY_GROUP_IDS.includes(
+          (entry as Record<string, unknown>)
+            .groupId as (typeof SESSION_INVENTORY_GROUP_IDS)[number],
+        ) &&
         typeof (entry as Record<string, unknown>).continuationToken ===
           'string' &&
         /^[A-Za-z0-9_-]{24,128}$/.test(
