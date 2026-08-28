@@ -393,6 +393,69 @@ describe('markdown regeneration', () => {
   });
 });
 
+describe('per-package identity (multi-package npm publishes)', () => {
+  const base = {
+    timestampUtc: '2026-08-28T16:00:00Z',
+    channel: 'stable-npm',
+    version: '0.7.0',
+    sha: 'b4fe42e5cc089fc95f8f513d549d78b82f198d96',
+    workflowRunUrl: null,
+    artifacts: ['npm:probe'],
+    gateResult: 'probe',
+    notes: null,
+    changelog: null,
+  };
+
+  it('two packages sharing version and sha from one publish both record', () => {
+    let entries: unknown[] = [];
+    entries = appendEntry(
+      entries as never,
+      {
+        ...base,
+        package: '@kontourai/station-contracts',
+      } as never,
+    );
+    entries = appendEntry(
+      entries as never,
+      {
+        ...base,
+        package: '@kontourai/station-sdk',
+      } as never,
+    );
+    expect(entries).toHaveLength(2);
+  });
+
+  it('the same package at the same version and sha is refused as a re-record', () => {
+    const entries = appendEntry(
+      [] as never,
+      {
+        ...base,
+        package: '@kontourai/station-sdk',
+      } as never,
+    );
+    expect(() =>
+      appendEntry(
+        entries as never,
+        {
+          ...base,
+          package: '@kontourai/station-sdk',
+        } as never,
+      ),
+    ).toThrow(/already records this ship/);
+  });
+
+  it('a malformed package name is refused with a teaching message', () => {
+    const verdict = validateEntry({
+      ...base,
+      package: 'Not A Package!!',
+    } as never);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.errors.join(' ')).toMatch(
+      /package must be an npm package name/,
+    );
+  });
+});
+
 describe('the CLI boundary', () => {
   function scratchLedger() {
     const directory = mkdtempSync(join(tmpdir(), 'station-deploy-ledger-'));
