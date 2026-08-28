@@ -33,7 +33,6 @@ import {
   reconcileStaleDesktopSidecars,
   withInstanceRegistryMutationLock,
 } from '@kontourai/station-shared/instance-registry';
-import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { birthProvesReuse } from '@kontourai/station-shared/process-identity';
 import {
   admitStationRuntimeHome,
@@ -41,7 +40,9 @@ import {
 } from '@kontourai/station-shared/runtime-path-resolver';
 import {
   acquireStationHomeMaintenanceLease,
+  acquireStationHomeMaintenanceLeaseAsync,
   StationHomeActiveError,
+  type StationHomeAsyncMaintenanceLease,
   StationHomeLifecycleUnavailableError,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { withProfileStoreLock } from '../../packages/cli/src/commands/profile-store.js';
@@ -111,6 +112,8 @@ export interface LegacyServiceManifestQuarantineHooks {
   readonly afterRenameBeforeCommit?: () => void;
   readonly afterCommittedFsyncBeforeLink?: () => void;
   readonly afterCommittedLinkBeforeDirectoryFsync?: () => void;
+  /** Internal async bridge handoff; the shared maintenance lease is already held. */
+  readonly maintenanceLeaseAlreadyHeld?: boolean;
 }
 
 interface FileObservation {
@@ -872,35 +875,35 @@ export function quarantineLegacyServiceManifest(
     // Admission and the private-directory check establish that this selected
     // home is safe before asking the shared lifecycle authority to coordinate
     // it. The lease then spans every classification and publication step.
-    let lease: ReturnType<typeof acquireStationHomeMaintenanceLease>;
-    try {
-      lease = acquireStationHomeMaintenanceLease(stationHome, {
-        acquireMutationLock: (path) =>
-          acquireFileMutationLock(path, {
-            timeoutMs: PREPARATION_LOCK_TIMEOUT_MS,
-          }),
-        // A prior desktop generation can leave its registry claim behind
-        // after its sidecar has exited. Reap only a claim whose PID/birth
-        // identity proves that prior owner is gone, while maintenance still
-        // excludes a new runtime. This preserves the required authority order:
-        // maintenance -> registry -> profile. In particular, do not use the
-        // broader ephemeral reconciler here: runtime preparation owns neither
-        // worktree nor inline records.
-        afterMaintenanceAcquired: () => {
-          reconcileStaleDesktopSidecars(stationHome, {
-            processProbe: hooks.registryProcessProbe,
-            mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
-          });
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof StationHomeActiveError ||
-        error instanceof StationHomeLifecycleUnavailableError
-      ) {
+    let lease:
+      | ReturnType<typeof acquireStationHomeMaintenanceLease>
+      | undefined;
+    if (!hooks.maintenanceLeaseAlreadyHeld) {
+      try {
+        lease = acquireStationHomeMaintenanceLease(stationHome, {
+          // A prior desktop generation can leave its registry claim behind
+          // after its sidecar has exited. Reap only a claim whose PID/birth
+          // identity proves that prior owner is gone, while maintenance still
+          // excludes a new runtime. This preserves the required authority order:
+          // maintenance -> registry -> profile. In particular, do not use the
+          // broader ephemeral reconciler here: runtime preparation owns neither
+          // worktree nor inline records.
+          afterMaintenanceAcquired: () => {
+            reconcileStaleDesktopSidecars(stationHome, {
+              processProbe: hooks.registryProcessProbe,
+              mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
+            });
+          },
+        });
+      } catch (error) {
+        if (
+          error instanceof StationHomeActiveError ||
+          error instanceof StationHomeLifecycleUnavailableError
+        ) {
+          return { kind: 'refused' };
+        }
         return { kind: 'refused' };
       }
-      return { kind: 'refused' };
     }
     try {
       // Every recovery write (including target-only receipt publication and
@@ -1139,7 +1142,47 @@ export function quarantineLegacyServiceManifest(
         { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
       );
     } finally {
-      lease.release();
+      lease?.release();
+    }
+  } catch (error) {
+    if (error instanceof LegacyServiceManifestRefusal)
+      return { kind: 'refused' };
+    throw error;
+  }
+}
+
+export async function quarantineLegacyServiceManifestAsync(
+  requestedHome: string,
+  requestedRoot: string,
+  hooks: LegacyServiceManifestQuarantineHooks = {},
+): Promise<LegacyServiceManifestQuarantineResult> {
+  try {
+    const stationRoot = resolveStationRoot({ STATION_ROOT: requestedRoot });
+    if (stationRoot !== resolve(requestedRoot)) refuse();
+    const stationHome = admitStationRuntimeHome(requestedHome, {
+      STATION_ROOT: stationRoot,
+    } as NodeJS.ProcessEnv);
+    trustedDirectory(stationHome);
+    let lease: StationHomeAsyncMaintenanceLease;
+    try {
+      lease = await acquireStationHomeMaintenanceLeaseAsync(stationHome, {
+        afterMaintenanceAcquired: () => {
+          reconcileStaleDesktopSidecars(stationHome, {
+            processProbe: hooks.registryProcessProbe,
+            mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
+          });
+        },
+      });
+    } catch {
+      return { kind: 'refused' };
+    }
+    try {
+      return quarantineLegacyServiceManifest(requestedHome, requestedRoot, {
+        ...hooks,
+        maintenanceLeaseAlreadyHeld: true,
+      });
+    } finally {
+      await lease.release();
     }
   } catch (error) {
     if (error instanceof LegacyServiceManifestRefusal)
