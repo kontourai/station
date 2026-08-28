@@ -62,3 +62,31 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^9c1185a5c5e9fc54612808977ee8f548b2258d31ddadef4a5d3f0d9a4d61d0da$''']
 paths = ['''(^|/)packages/contracts/src/__tests__/fixtures/answer-share-channel/share-record-without-binding\.legacy\.json$''']
+
+[[allowlists]]
+description = "Synthetic Stripe-shaped fixture driving the plugin-config key-name secret axis test"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^sk_live_51H8xQ2eZvKYlo2Cabcdefghijkl$''']
+paths = ['''(^|/)src-server/routes/plugins/__tests__/plugin-config-routes\.test\.ts$''']
+
+[[allowlists]]
+description = "Synthetic AWS-shaped fixture proving non-secret-named fields pass through plugin config unredacted"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^AKIAABCDEFGHIJKLMNOP$''']
+paths = ['''(^|/)src-server/routes/plugins/__tests__/plugin-config-routes\.test\.ts$''']
+
+[[allowlists]]
+description = "Synthetic CLI api-key literal in the ACP probe's failure-reason redaction test"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^sk-live-abcdef1234567890$''']
+paths = ['''(^|/)src-server/services/acp/__tests__/acp-probe\.test\.ts$''']
+
+[[allowlists]]
+description = "Handoff-qualification context marker (entropy-flagged constant, not a credential)"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^HANDOFF-CARRY-731$''']
+paths = ['''(^|/)src-server/routes/orchestration/__tests__/conversation-handoff\.qualification\.test\.ts$''']
