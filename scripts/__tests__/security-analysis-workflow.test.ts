@@ -38,11 +38,15 @@ describe('security analysis workflow', () => {
     expect(workflow).not.toContain('continue-on-error:');
   });
 
-  test('checks out base policy before the exact candidate head without retained credentials', () => {
+  test('isolates base policy outside the candidate scan before checking out the exact candidate head', () => {
     const base = workflow.indexOf('name: Check out base policy');
+    const isolate = workflow.indexOf(
+      'name: Isolate base policy outside candidate scan',
+    );
     const candidate = workflow.indexOf('name: Check out candidate');
     expect(base).toBeGreaterThan(-1);
-    expect(candidate).toBeGreaterThan(base);
+    expect(isolate).toBeGreaterThan(base);
+    expect(candidate).toBeGreaterThan(isolate);
     expect(workflow).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'repository: ${{ github.repository }}',
@@ -53,6 +57,11 @@ describe('security analysis workflow', () => {
     );
     expect(workflow).toContain('path: base-policy');
     expect(workflow).toContain('node-version-file: base-policy/.nvmrc');
+    expect(workflow).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'BASE_POLICY_DIRECTORY: ${{ runner.temp }}/base-policy',
+    );
+    expect(workflow).toContain('mv base-policy "$BASE_POLICY_DIRECTORY"');
     expect(workflow).toContain('path: candidate');
     expect(workflow.match(/persist-credentials: false/g)).toHaveLength(2);
     expect(workflow).toContain('github.event.pull_request.head.repo.full_name');
@@ -100,6 +109,10 @@ describe('security analysis workflow', () => {
       'CODEQL_NORMALIZED_SARIF: ${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif',
     );
     expect(workflow).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'BASE_POLICY_DIRECTORY: ${{ runner.temp }}/base-policy',
+    );
+    expect(workflow).toContain(
       'find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif -print0',
     );
     expect(workflow).toContain(
@@ -107,10 +120,10 @@ describe('security analysis workflow', () => {
     );
     expect(workflow).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell expansion.
-      'node base-policy/scripts/codeql-sarif-normalize.mjs --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"',
+      'node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"',
     );
     expect(workflow).toContain(
-      'node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF"',
+      'node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_NORMALIZED_SARIF"',
     );
     expect(workflow).not.toContain('npm ci');
     expect(workflow).not.toContain('npm run codeql:sarif:check');

@@ -834,7 +834,7 @@ describe('persistent runner policy', () => {
     [
       'swapped base-policy and candidate checkouts',
       (steps: Array<Record<string, unknown>>) =>
-        ([steps[0], steps[2]] = [steps[2], steps[0]]),
+        ([steps[0], steps[3]] = [steps[3], steps[0]]),
     ],
     [
       'extra checkout',
@@ -844,14 +844,14 @@ describe('persistent runner policy', () => {
     [
       'upload SARIF action',
       (steps: Array<Record<string, unknown>>) => {
-        steps[3].uses =
+        steps[4].uses =
           'github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28';
       },
     ],
     [
       'candidate-controlled policy shell',
       (steps: Array<Record<string, unknown>>) => {
-        steps[5].run =
+        steps[6].run =
           'node candidate/scripts/codeql-sarif-policy.mjs --input="$SARIF"';
       },
     ],
@@ -931,7 +931,7 @@ describe('persistent runner policy', () => {
     [
       'candidate-controlled shell',
       (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
-        document.jobs.codeql.steps[5].shell = 'candidate/.github/shell';
+        document.jobs.codeql.steps[6].shell = 'candidate/.github/shell';
       },
     ],
     [
@@ -943,12 +943,14 @@ describe('persistent runner policy', () => {
     [
       'policy NODE_OPTIONS',
       (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
-        document.jobs.codeql.steps[5].env = {
+        document.jobs.codeql.steps[6].env = {
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
           CODEQL_SARIF_DIRECTORY: '${{ runner.temp }}/codeql-sarif',
           CODEQL_NORMALIZED_SARIF:
             // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
             '${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          BASE_POLICY_DIRECTORY: '${{ runner.temp }}/base-policy',
           NODE_OPTIONS: '--require=candidate/hook.cjs',
         };
       },
@@ -966,8 +968,8 @@ describe('persistent runner policy', () => {
     [
       'analysis extra input',
       (document: ReturnType<typeof securityAnalysisWorkflowDocument>) => {
-        document.jobs.codeql.steps[4].with = {
-          ...(document.jobs.codeql.steps[4].with ?? {}),
+        document.jobs.codeql.steps[5].with = {
+          ...(document.jobs.codeql.steps[5].with ?? {}),
           threads: 0,
         };
       },
