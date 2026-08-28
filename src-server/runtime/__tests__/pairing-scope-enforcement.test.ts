@@ -85,6 +85,13 @@ function createHarness() {
   };
 }
 
+function representativePath(rule: (typeof PAIRING_SCOPE_ROUTE_TABLE)[number]) {
+  if (rule.exact) {
+    return rule.prefix.replace(/:[^/]+/g, 'scope-fixture');
+  }
+  return rule.prefix === '/integrations' ? rule.prefix : `${rule.prefix}/probe`;
+}
+
 /** One representative leaf path per read-tier rule in the route table. */
 const READ_TIER_CASES = PAIRING_SCOPE_ROUTE_TABLE.filter(
   (rule) => rule.scope === 'orchestration:read',
@@ -93,7 +100,7 @@ const READ_TIER_CASES = PAIRING_SCOPE_ROUTE_TABLE.filter(
   // `/integrations/:id` is an explicit operate override. Appending a
   // synthetic segment to the family root accidentally exercises that detail
   // rule instead of the read-only list leaf this table entry owns.
-  path: rule.prefix === '/integrations' ? rule.prefix : `${rule.prefix}/probe`,
+  path: representativePath(rule),
 }));
 
 /** One representative leaf path per mutate-tier rule in the route table. */
@@ -201,6 +208,78 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
       }
     },
   );
+
+  it('enforces the audited Task, Session, and Flow leaves at their literal paths', async () => {
+    const { request } = createHarness();
+    const reads = [
+      ['GET', '/api/tasks/task-1/gate-evaluation-references'],
+      ['GET', '/api/orchestration/sessions/thread-1/outputs'],
+      [
+        'GET',
+        '/api/orchestration/sessions/thread-1/turns/turn-1/narrative/target',
+      ],
+      [
+        'GET',
+        '/api/orchestration/sessions/thread-1/turns/turn-1/assessment/target',
+      ],
+      [
+        'GET',
+        '/api/projects/project-1/flow/runs/run-1/gates/gate-1/evaluations/evaluation-1',
+      ],
+      ['POST', '/api/orchestration/sessions/thread-1/outputs/event-1/inspect'],
+    ] as const;
+    for (const [method, path] of reads) {
+      const response = await request(path, method, READ_ONLY_CREDENTIAL);
+      expect(response.status, `${method} ${path}`).toBe(200);
+    }
+
+    const futureNestedInspection = await request(
+      '/api/orchestration/sessions/thread-1/outputs/event-1/inspect/commit',
+      'POST',
+      READ_ONLY_CREDENTIAL,
+    );
+    expect(futureNestedInspection.status).toBe(403);
+    await expect(futureNestedInspection.json()).resolves.toEqual({
+      error: { code: 'insufficient_scope' },
+    });
+    expect(
+      (
+        await request(
+          '/api/orchestration/sessions/thread-1/outputs/event-1/inspect/commit',
+          'POST',
+          STANDARD_CREDENTIAL,
+        )
+      ).status,
+    ).toBe(200);
+
+    const mutations = [
+      ['POST', '/api/tasks/task-1/declared-outputs/session-1/event-1/keep'],
+      ['PUT', '/api/orchestration/sessions/thread-1/turns/turn-1/narrative'],
+      ['DELETE', '/api/orchestration/sessions/thread-1/turns/turn-1/narrative'],
+      ['PUT', '/api/orchestration/sessions/thread-1/turns/turn-1/assessment'],
+      [
+        'DELETE',
+        '/api/orchestration/sessions/thread-1/turns/turn-1/assessment',
+      ],
+    ] as const;
+    for (const [method, path] of mutations) {
+      const denied = await request(path, method, READ_ONLY_CREDENTIAL);
+      expect(denied.status, `${method} ${path}`).toBe(403);
+      await expect(denied.json()).resolves.toEqual({
+        error: { code: 'insufficient_scope' },
+      });
+
+      const admitted = await request(path, method, STANDARD_CREDENTIAL);
+      expect(admitted.status, `${method} ${path}`).toBe(200);
+    }
+
+    const invalid = await request(
+      '/api/orchestration/sessions/thread-1/outputs/event-1/inspect',
+      'POST',
+      'not-a-real-credential',
+    );
+    expect(invalid.status).toBe(401);
+  });
 
   it('a standard credential is allowed on every mutation and read (but the table has no access:manage HTTP case to sweep separately)', async () => {
     const { request } = createHarness();
