@@ -1,5 +1,6 @@
 {
   "name": "@kontourai/station-board-pane",
+  "private": true,
   "version": "0.1.2",
   "description": "The Console Board as a Station Workspace Pane, on published contracts only",
   "type": "module",
