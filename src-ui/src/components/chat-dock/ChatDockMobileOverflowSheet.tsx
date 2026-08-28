@@ -1,8 +1,15 @@
+import { useState } from 'react';
+import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
+
+const loadSessionInventoryFullFallback = () =>
+  import('./SessionInventoryFullFallback').then((module) => ({
+    default: module.SessionInventoryFullFallback,
+  }));
 
 /**
  * The mobile header's overflow sheet.
@@ -15,17 +22,41 @@ import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 export function ChatDockMobileOverflowSheet({
   overflow,
   projectScope,
+  returnFocusTarget,
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
   /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
   projectScope?: { name: string; onClear: () => void };
+  returnFocusTarget?: HTMLElement | null;
   onClose: () => void;
 }) {
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const run = (action: () => void) => {
     onClose();
     action();
   };
+
+  if (inventoryOpen && overflow.sessionInventory)
+    return (
+      <LazyBoundary
+        load={loadSessionInventoryFullFallback}
+        pending={null}
+        componentProps={{
+          scope: {
+            kind: 'whole-session' as const,
+            sessionId: overflow.sessionInventory.sessionId,
+          },
+          chatStoreId: overflow.sessionInventory.chatStoreId,
+          trigger: returnFocusTarget ?? null,
+          forceFallback: true,
+          onClose: () => {
+            setInventoryOpen(false);
+            onClose();
+          },
+        }}
+      />
+    );
 
   return (
     <ResponsiveDialogSurface
@@ -63,6 +94,16 @@ export function ChatDockMobileOverflowSheet({
         >
           Conversation history
         </button>
+        {overflow.sessionInventory ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => setInventoryOpen(true)}
+          >
+            Session inventory
+          </button>
+        ) : null}
         {overflow.onOpenProject && (
           <button
             type="button"

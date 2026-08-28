@@ -387,6 +387,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
+  const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
     isDockOpen,
     isDockMaximized,
@@ -757,6 +758,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessions,
     orchestrationSessionsStatus,
   });
+  const inventoryChatStoreId = activeSession?.id;
+  const inventoryExecutionId =
+    activeSession?.currentSessionId ?? inventoryChatStoreId;
+  const inventoryProjectSlug = activeSession?.projectSlug;
+  const inventoryProjectId = inventoryProjectSlug
+    ? projects.find((project) => project.slug === inventoryProjectSlug)?.id
+    : undefined;
   const activeConversationId = activeSession?.conversationId ?? '';
   const [contextBoundaryStored, setContextBoundaryStored] = useState(() =>
     activeConversationId
@@ -1908,6 +1916,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   : null,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
+                sessionInventory:
+                  inventoryExecutionId &&
+                  activeOrchestrationSessionRead === 'present'
+                    ? {
+                        sessionId: inventoryExecutionId,
+                        chatStoreId: activeSession!.id,
+                      }
+                    : undefined,
                 // Collapsing must clear Maximized (#795) — an independent
                 // `is-maximized` class surviving a collapse leaves a
                 // full-height dock with an emptied body.
@@ -2015,6 +2031,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       isBackgroundTasksOpen,
                       onToggleBackgroundTasks: () =>
                         setIsBackgroundTasksOpen((open) => !open),
+                      sessionInventory: inventoryExecutionId
+                        ? {
+                            chatStoreId: inventoryChatStoreId!,
+                            executionId: inventoryExecutionId,
+                            projectId: inventoryProjectId,
+                            executionRead: activeOrchestrationSessionRead,
+                            mountRef: sessionInventoryMountRef,
+                            dockMode: effectiveDockSlotPlacement,
+                            fullscreen: isFullscreenPlacement,
+                          }
+                        : undefined,
                       onOpenConversation: () => setShowSessionPicker(true),
                       onNewChat: openNewChatDirect,
                     }
@@ -2109,6 +2136,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   />
                 )}
                 <div className="chat-dock__conversation-surface">
+                  <div ref={sessionInventoryMountRef} />
                   <ChatDockContentArea
                     onNewChat={handleStartNewChatWithMessage}
                     activeSession={activeSession}

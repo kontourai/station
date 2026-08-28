@@ -549,6 +549,7 @@ function MessageBubbleComponent({
                     load={loadConnectedAnswerBasisAffordance}
                     componentProps={{
                       projectSlug: activeSession.projectSlug,
+                      chatStoreId: activeSession.id,
                       sessionId: answerSessionId,
                       turnId: msg.turnId,
                     }}
