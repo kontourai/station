@@ -12,7 +12,11 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { writeJsonDurably } from './durable-json-file.js';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
-import { acquireFileMutationLock } from './lifecycle-events.js';
+import {
+  acquireFileMutationLock,
+  acquireFileMutationLockAsync,
+  type FileMutationLockOptions,
+} from './lifecycle-events.js';
 import {
   exactProcessIdentity,
   type ProcessIdentityDependencies,
@@ -42,6 +46,17 @@ export interface StationHomeRuntimeLease {
 
 export interface StationHomeMaintenanceLease {
   release(): void;
+}
+
+export interface StationHomeAsyncLifecycleHooks {
+  processIdentity?: ProcessIdentityDependencies;
+  /** Bounded caller-owned acquisition policy for async maintenance admission. */
+  mutationLockOptions?: FileMutationLockOptions;
+  afterMaintenanceAcquired?: () => void | Promise<void>;
+}
+
+export interface StationHomeAsyncMaintenanceLease {
+  release(): Promise<void>;
 }
 
 export class StationHomeLifecycleUnavailableError extends Error {
@@ -294,6 +309,46 @@ export function acquireStationHomeMaintenanceLease(
     }
     throw new StationHomeLifecycleUnavailableError(
       'Maintenance ownership could not be established',
+      { cause: error },
+    );
+  }
+}
+
+/** Async maintenance admission for boot paths that must not block the event loop. */
+export async function acquireStationHomeMaintenanceLeaseAsync(
+  homeDir: string,
+  hooks: StationHomeAsyncLifecycleHooks = {},
+): Promise<StationHomeAsyncMaintenanceLease> {
+  const paths = coordinationPaths(homeDir);
+  prepareCoordination(paths);
+  let releaseMutation: (() => Promise<void>) | undefined;
+  try {
+    releaseMutation = await acquireFileMutationLockAsync(
+      paths.lock,
+      hooks.mutationLockOptions,
+    );
+    if (listLiveLeases(paths.leases, hooks.processIdentity).length > 0) {
+      throw new StationHomeActiveError();
+    }
+    await hooks.afterMaintenanceAcquired?.();
+    let released = false;
+    return {
+      release: async () => {
+        if (released) return;
+        released = true;
+        await releaseMutation!();
+      },
+    };
+  } catch (error) {
+    if (releaseMutation) await releaseMutation();
+    if (
+      error instanceof StationHomeLifecycleUnavailableError ||
+      error instanceof StationHomeActiveError
+    ) {
+      throw error;
+    }
+    throw new StationHomeLifecycleUnavailableError(
+      'Async maintenance ownership could not be established',
       { cause: error },
     );
   }
