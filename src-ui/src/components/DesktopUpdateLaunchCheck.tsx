@@ -31,8 +31,19 @@ export function DesktopUpdateLaunchCheck() {
   const [available, setAvailable] = useState<AvailableDesktopUpdate | null>(
     null,
   );
-  const [installFailure, setInstallFailure] = useState<string | null>(null);
+  const [installFailure, setInstallFailure] = useState<{
+    attempt: number;
+    message: string;
+  } | null>(null);
   const installing = useRef(false);
+  // A retry after the SAME message is a new attempt, not the same banner —
+  // `bannerStore` durably suppresses a re-presented (id, occurrence) pair
+  // after the user dismisses it, so an occurrence keyed on the message alone
+  // would drop every retry's failure silently after the first dismissal
+  // (station#575 review HIGH-1: reproduced as install-attempted=1,
+  // failureBannerShown=false). Folding the attempt number into the
+  // occurrence keeps each install's own failure a genuinely new occurrence.
+  const attempt = useRef(0);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -49,15 +60,19 @@ export function DesktopUpdateLaunchCheck() {
   const install = useCallback(() => {
     if (!available || installing.current) return;
     installing.current = true;
+    attempt.current += 1;
+    const thisAttempt = attempt.current;
     setInstallFailure(null);
     void available
       .install()
       .catch((error: unknown) => {
-        setInstallFailure(
-          error instanceof Error
-            ? error.message
-            : 'Station could not install the update.',
-        );
+        setInstallFailure({
+          attempt: thisAttempt,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Station could not install the update.',
+        });
       })
       .finally(() => {
         installing.current = false;
@@ -93,8 +108,8 @@ export function DesktopUpdateLaunchCheck() {
       id: BANNER_IDS.desktopUpdateInstallFailure,
       priority: BANNER_PRIORITY.info,
       tone: 'error',
-      message: `Station could not install the update: ${installFailure}`,
-      occurrence: installFailure,
+      message: `Station could not install the update: ${installFailure.message}`,
+      occurrence: `${installFailure.attempt}:${installFailure.message}`,
       dismissible: true,
       actions: [{ label: 'Try again', onClick: install }],
     });

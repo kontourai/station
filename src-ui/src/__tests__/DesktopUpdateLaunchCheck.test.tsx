@@ -28,7 +28,7 @@ const { DesktopUpdateLaunchCheck } = await import(
   '../components/DesktopUpdateLaunchCheck'
 );
 const { BannerHost } = await import('../components/notifications/BannerHost');
-const { bannerStore } = await import('../contexts/banner-store');
+const { BANNER_IDS, bannerStore } = await import('../contexts/banner-store');
 
 /**
  * Update state is chrome: it must reach the user through the shell's banner
@@ -133,6 +133,63 @@ describe('DesktopUpdateLaunchCheck', () => {
     // is still there even though the last install attempt failed.
     expect(within(host).getByRole('status').textContent).toContain(
       'Station 2026.8.28 is available.',
+    );
+  });
+
+  test('re-presents an install failure on retry even after the user dismissed the same message', async () => {
+    // Regression for station#575 review HIGH-1: `bannerStore` durably
+    // suppresses a re-`present`ed (id, occurrence) pair after the user
+    // dismisses it. Keying the failure banner's occurrence on the error
+    // message ALONE meant a genuine retry that failed with the identical
+    // message (the common case — the same signature/network problem)
+    // presented nothing, durably across restarts: install-attempted=1,
+    // failureBannerShown=false, no way back short of clearing storage.
+    downloadAndInstall.mockRejectedValue(new Error('signature check failed'));
+    check.mockResolvedValue({ version: '2026.8.28', downloadAndInstall });
+    renderWithChrome();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Install and restart' }),
+    );
+    await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(
+        bannerStore
+          .getSnapshot()
+          .some(
+            (banner) => banner.id === BANNER_IDS.desktopUpdateInstallFailure,
+          ),
+      ).toBe(true),
+    );
+
+    // Dismiss exactly the way the banner host's own dismiss control does.
+    bannerStore.dismiss(BANNER_IDS.desktopUpdateInstallFailure, {
+      reason: 'user',
+    });
+    await waitFor(() =>
+      expect(
+        bannerStore
+          .getSnapshot()
+          .some(
+            (banner) => banner.id === BANNER_IDS.desktopUpdateInstallFailure,
+          ),
+      ).toBe(false),
+    );
+
+    // Retry — the same underlying failure, the same message.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Install and restart' }),
+    );
+    await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledTimes(2));
+
+    await waitFor(() =>
+      expect(
+        bannerStore
+          .getSnapshot()
+          .some(
+            (banner) => banner.id === BANNER_IDS.desktopUpdateInstallFailure,
+          ),
+      ).toBe(true),
     );
   });
 });
