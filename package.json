@@ -37,7 +37,7 @@
     "verify:local": "node scripts/run-verification.mjs request verify-local",
     "verify:local:raw": "node scripts/run-local-verification.mjs -- npm run verify:static:raw && npm run verify:desktop-rust && npm run check:mobile-compile",
     "prepare:verify-static": "node scripts/prepare-verify-static.mjs",
-    "verify:static:bootstrap": "node scripts/node-runtime-contract.mjs && npm run dependencies:check && npm run lockfile-sync:gate && npm run dependency-drift:gate && npm run docs:truth:gate && npx biome check scripts/check-kontour-dependency-drift.ts scripts/dependency-lifecycle.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/dependency-lifecycle-workflow-gate.mjs scripts/prepare-verify-static.mjs scripts/__tests__/prepare-verify-static.test.ts scripts/__tests__/dependency-lifecycle.test.ts && npm run prepare:verify-static",
+    "verify:static:bootstrap": "node scripts/node-runtime-contract.mjs && npm run dependencies:check && npm run lockfile-sync:gate && npm run dependency-drift:gate && npm run docs:truth:gate && npx biome check scripts/check-kontour-dependency-drift.ts scripts/dependency-lifecycle.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/dependency-lifecycle-workflow-gate.mjs scripts/prepare-verify-static.mjs scripts/__tests__/prepare-verify-static.test.ts scripts/__tests__/dependency-lifecycle.test.ts scripts/__tests__/run-ci-fast.test.ts && npm run prepare:verify-static",
     "preverify:static": "node -e \"\"",
     "proof:repo-guardrails": "node scripts/proof-repo-guardrails.mjs",
     "proof:repo-governance": "node scripts/proof-family-lane.mjs --lane=repo-governance",
