@@ -260,7 +260,7 @@ describe('verification policy gate', () => {
 
   test('pins admission headroom for ci:fast beside the full test phase', () => {
     expect(CI_FAST_RESERVED_WEIGHT).toBe(20);
-    expect(CI_FAST_TIMEOUT_MS).toBe(7 * 60_000);
+    expect(CI_FAST_TIMEOUT_MS).toBe(12 * 60_000);
     expect(FULL_REGRESSION_TEST_WEIGHT).toBe(80);
     const crowded = LANES.map((lane) =>
       lane.id === 'full-regression'
@@ -281,24 +281,24 @@ describe('verification policy gate', () => {
 
   test('rejects a ci:fast deadline that drifts from the bounded runner budget', () => {
     const drifted = LANES.map((lane) =>
-      lane.id === 'ci-fast' ? { ...lane, timeoutMs: 5 * 60_000 } : lane,
+      lane.id === 'ci-fast' ? { ...lane, timeoutMs: 7 * 60_000 } : lane,
     );
     expect(verificationPolicyErrors({ lanes: drifted })).toContain(
-      'ci:fast must use the exact 7-minute bounded-feedback deadline',
+      'ci:fast must use the exact 12-minute bounded-feedback deadline',
     );
   });
 
-  test('pins the seven-minute deadline in every contributor-facing ci:fast guide', () => {
+  test('pins the twelve-minute deadline in every contributor-facing ci:fast guide', () => {
     const stale = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
       ...entry,
-      text: entry.marker.includes('seven-minute')
-        ? 'bounded five-minute feedback lane'
+      text: entry.marker.includes('twelve-minute')
+        ? 'bounded seven-minute feedback lane'
         : '',
     }));
     expect(
       verificationPolicyErrors({ ciFastDeadlineGuidance: stale }),
     ).toContain(
-      "docs/guides/code-quality.md must state 'bounded seven-minute feedback'",
+      "docs/guides/code-quality.md must state 'bounded twelve-minute feedback'",
     );
   });
 
