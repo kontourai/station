@@ -67,6 +67,11 @@ const deleteOutputMutation = {
   mutate: vi.fn(),
 };
 const downloadOutputContent = vi.fn();
+const taskWorkspaceAuthorityScope = vi.hoisted(() => ({
+  apiBase: 'http://station.test',
+  authorityKey: 'task-workspace-fixture',
+  isCurrent: () => true,
+}));
 
 // AW-4: the optional Task experiences are now derived from this
 // Station's installed plugins, so the view reads the plugin inventory too.
@@ -101,9 +106,15 @@ vi.mock('@kontourai/station-sdk/task-outputs', () => ({
   useCreateTaskOutputMutation: () => createOutputMutation,
   useDeleteTaskOutputMutation: () => deleteOutputMutation,
 }));
-vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://station.test' }),
-}));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../contexts/ApiBaseContext')>();
+  return {
+    ...actual,
+    useApiBase: () => ({ apiBase: 'http://station.test' }),
+    useHostRequestAuthorityScope: () => taskWorkspaceAuthorityScope,
+  };
+});
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
   useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
