@@ -465,6 +465,13 @@ describe('station#4543: delegate create -> status/events binding survives for an
     );
     const trueEventCount = eventStore.countEventsByThread(taskId);
     expect(trueEventCount).toBe(expectedTotalEvents);
+    // The fold staying smaller than the thread total is what makes this test
+    // discriminating: if the projection fold ever grows to retain these
+    // runtime methods, eventCount-from-fold would equal the true count and a
+    // revert of the fix would pass unnoticed.
+    expect(
+      eventStore.listSessionProjectionEvents(taskId).length,
+    ).toBeLessThan(expectedTotalEvents);
 
     // Pre-fix, `readSessionEventPage` labeled the fold's own (much smaller)
     // length as `eventCount`, so the consumer guard's
