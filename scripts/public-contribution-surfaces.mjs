@@ -31,6 +31,7 @@ export const TRUST_ROOTS = Object.freeze([
   'scripts/label-manifest.mjs',
   'scripts/generate-issue-lifecycle-reference.mjs',
   'scripts/codeql-sarif-policy.mjs',
+  'scripts/codeql-sarif-normalize.mjs',
   'SECURITY.md',
   'docs/privacy-policy.md',
   'docs/guides/dependency-security.md',

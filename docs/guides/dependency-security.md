@@ -44,8 +44,11 @@ subprocess signals and operational exit statuses also fail closed.
 The hosted security-analysis workflow is a JavaScript/TypeScript source scan
 with `security-extended` queries and no build. It writes the action's documented
 `javascript.sarif` output into job-temporary storage, requires exactly one such
-file, and runs the checker read from the exact base commit—not the candidate
-checkout. It runs on a disposable GitHub-hosted runner and deliberately uses
+file, then uses the checker read from the exact base commit—not the candidate
+checkout—to bounded-read, strict-parse, and atomically canonicalize it before
+semantic enforcement. Its 30-minute job limit is deliberate headroom over a
+10m55 successful security-extended analysis, not an unbounded retry window. It
+runs on a disposable GitHub-hosted runner and deliberately uses
 `upload: never`: this repository does **not** claim that GitHub ingests or
 displays the result.
 

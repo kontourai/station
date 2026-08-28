@@ -9,6 +9,7 @@ scripts/actionlint-gate.mjs @briananderson1222
 scripts/ci-workflow-governance.mjs @briananderson1222
 scripts/dependency-advisory-policy.mjs @briananderson1222
 scripts/codeql-sarif-policy.mjs @briananderson1222
+scripts/codeql-sarif-normalize.mjs @briananderson1222
 scripts/dependency-advisory-exceptions.json @briananderson1222
 scripts/issue-lifecycle-reducer.mjs @briananderson1222
 scripts/issue-availability.mjs @briananderson1222

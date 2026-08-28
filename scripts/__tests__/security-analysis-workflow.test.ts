@@ -79,14 +79,25 @@ describe('security analysis workflow', () => {
     expect(workflow).toContain('upload-database: false');
   });
 
-  test('requires exactly one known JavaScript SARIF output before running the checked-in policy', () => {
+  test('keeps a measured, bounded timeout for analysis and base-policy enforcement', () => {
+    expect(workflow).toContain('timeout-minutes: 30');
+    expect(workflow).not.toContain('timeout-minutes: 15');
+  });
+
+  test('requires exactly one known JavaScript SARIF output, normalizes it atomically, then runs the checked-in policy', () => {
     const analyze = workflow.indexOf('name: Analyze without ingestion');
-    const policy = workflow.indexOf('name: Enforce JavaScript SARIF policy');
+    const policy = workflow.indexOf(
+      'name: Normalize and enforce JavaScript SARIF policy',
+    );
     expect(analyze).toBeGreaterThan(-1);
     expect(policy).toBeGreaterThan(analyze);
     expect(workflow).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'CODEQL_SARIF_DIRECTORY: ${{ runner.temp }}/codeql-sarif',
+    );
+    expect(workflow).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'CODEQL_NORMALIZED_SARIF: ${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif',
     );
     expect(workflow).toContain(
       'find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif -print0',
@@ -96,7 +107,10 @@ describe('security analysis workflow', () => {
     );
     expect(workflow).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell expansion.
-      'node base-policy/scripts/codeql-sarif-policy.mjs --input="${SARIF_FILES[0]}"',
+      'node base-policy/scripts/codeql-sarif-normalize.mjs --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"',
+    );
+    expect(workflow).toContain(
+      'node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF"',
     );
     expect(workflow).not.toContain('npm ci');
     expect(workflow).not.toContain('npm run codeql:sarif:check');

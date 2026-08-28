@@ -35,7 +35,9 @@ jobs:
   codeql:
     name: CodeQL JavaScript and TypeScript
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    # A successful security-extended run took 10m55; retain bounded headroom
+    # for post-analysis normalization and base-policy enforcement.
+    timeout-minutes: 30
     steps:
       - name: Check out base policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,13 +74,15 @@ jobs:
           output: ${{ runner.temp }}/codeql-sarif
           upload: never
           upload-database: false
-      - name: Enforce JavaScript SARIF policy
+      - name: Normalize and enforce JavaScript SARIF policy
         env:
           CODEQL_SARIF_DIRECTORY: ${{ runner.temp }}/codeql-sarif
+          CODEQL_NORMALIZED_SARIF: ${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif
         run: |
           mapfile -d '' -t SARIF_FILES < <(find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif -print0)
           if [ "${#SARIF_FILES[@]}" -ne 1 ]; then
             echo "Expected exactly one JavaScript CodeQL SARIF file; found ${#SARIF_FILES[@]}." >&2
             exit 1
           fi
-          node base-policy/scripts/codeql-sarif-policy.mjs --input="${SARIF_FILES[0]}"
+          node base-policy/scripts/codeql-sarif-normalize.mjs --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
+          node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF"
