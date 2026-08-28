@@ -13,6 +13,7 @@
     "haptics:allow-impact-feedback",
     "haptics:allow-notification-feedback",
     "haptics:allow-selection-feedback",
-    "deep-link:default"
+    "deep-link:default",
+    "opener:allow-open-url"
   ]
 }

@@ -415,6 +415,7 @@ describe('Session inventory v2', () => {
     ).toBeNull();
     expect(
       parseStationSessionInventoryMcpV2Input({
+        version: 'station.session-inventory-mcp/v2',
         operation: 'page',
         scope: value.scope,
         occurrenceId: 'a'.repeat(24),

@@ -361,7 +361,9 @@ test('Session inventory resource interoperates with an independent official AppB
     const tool = tools.tools.find(
       (entry) => entry.name === 'get_session_inventory',
     );
-    expect(tool?._meta).toMatchObject({ ui: { resourceUri: APP_URI } });
+    expect(tool?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://station/basis/session-inventory/v2' },
+    });
     expect(tool?.annotations?.readOnlyHint).toBe(true);
     const resource = await client.readResource({ uri: APP_URI });
     const content = resource.contents[0];
@@ -466,7 +468,7 @@ test('Session inventory resource interoperates with an independent official AppB
     await browser.keyboard.press('Space');
     await expect(
       app.locator('section[data-group-id="attention"]'),
-    ).toContainText('Some owner context needs attention.');
+    ).toContainText('No attention were recorded for this scope.');
     await app.getByRole('button', { name: 'Inputs', exact: true }).focus();
     await browser.keyboard.press('Space');
     const loadMore = app.getByRole('button', {

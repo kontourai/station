@@ -26,7 +26,10 @@ import {
   type SessionInventoryRow,
   type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
-import { parseStationSessionInventoryMcpInput } from '@kontourai/station-contracts/session-inventory-mcp';
+import {
+  parseStationSessionInventoryMcpNegotiatedInput,
+  STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+} from '@kontourai/station-contracts/session-inventory-mcp';
 import {
   parseStationBasisProjection,
   parseStationTaskBasisCollection,
@@ -721,7 +724,10 @@ export function createTaskRoutes(
     const callerBinding = options.callerBindingForRequest?.(request);
     let occurrenceId: string | undefined;
     try {
-      const parsed = parseStationSessionInventoryMcpInput(await c.req.json());
+      const negotiated = parseStationSessionInventoryMcpNegotiatedInput(
+        await c.req.json(),
+      );
+      const parsed = negotiated?.input;
       const service = serviceForRequest(request);
       const authorized = () =>
         options.isRequestPrincipalCurrent?.(request) !== false &&
@@ -755,6 +761,7 @@ export function createTaskRoutes(
       const outcome =
         parsed.operation === 'open'
           ? await options.sessionInventoryAppRead.open({
+              version: negotiated!.version,
               scope: parsed.scope,
               routeFamily: 'task',
               callerBinding,
@@ -762,6 +769,7 @@ export function createTaskRoutes(
               request,
             })
           : await options.sessionInventoryAppRead.page({
+              version: negotiated!.version,
               scope: parsed.scope,
               routeFamily: 'task',
               occurrenceId: parsed.occurrenceId,
@@ -793,7 +801,9 @@ export function createTaskRoutes(
         success: true,
         data: outcome.data,
         meta: {
-          'station.session-inventory-app/v1': {
+          [negotiated!.version === STATION_SESSION_INVENTORY_MCP_V2_VERSION
+            ? 'station.session-inventory-app/v2'
+            : 'station.session-inventory-app/v1']: {
             occurrenceId,
             continuations: outcome.continuations,
           },

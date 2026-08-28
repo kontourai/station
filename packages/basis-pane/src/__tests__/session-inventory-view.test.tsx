@@ -7,7 +7,7 @@ import {
   type SessionInventoryProjection,
 } from '@kontourai/station-contracts/session-inventory';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { SessionInventory } from '../SessionInventory';
 import { renderSessionInventoryDom } from '../session-inventory-dom';
 import { buildSessionInventoryViewModel } from '../session-inventory-view';
@@ -316,6 +316,18 @@ describe('Session inventory view model', () => {
     expect(
       model.groups.find((candidate) => candidate.id === 'attention')?.stateCopy,
     ).toBe('Some owner context needs attention.');
+    const root = document.createElement('section');
+    const onAction = vi.fn();
+    renderSessionInventoryDom(root, model, onAction);
+    const open = Array.from(root.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Open work item',
+    )!;
+    open.click();
+    expect(onAction).toHaveBeenCalledWith(
+      'open-work-item',
+      'https://github.com/kontourai/station/issues/235',
+    );
+    expect(root.querySelector('a')).toBeNull();
 
     const kept = buildSessionInventoryViewModel(
       {

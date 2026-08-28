@@ -53,8 +53,14 @@ export type StationSessionInventoryMcpInput =
       continuationToken: string;
     };
 export type StationSessionInventoryMcpV2Input =
-  | { operation: 'open'; scope: SessionInventoryScope }
   | {
+      /** Explicit discriminator: omitted input is permanently the v1 contract. */
+      version: typeof STATION_SESSION_INVENTORY_MCP_V2_VERSION;
+      operation: 'open';
+      scope: SessionInventoryScope;
+    }
+  | {
+      version: typeof STATION_SESSION_INVENTORY_MCP_V2_VERSION;
       operation: 'page';
       scope: SessionInventoryScope;
       occurrenceId: string;
@@ -79,18 +85,28 @@ function scope(value: unknown): value is SessionInventoryScope {
         isStationBasisId(item.taskId)))
   );
 }
-function parseInput<T extends string>(value: unknown, groups: readonly T[]) {
+function parseInput<T extends string>(
+  value: unknown,
+  groups: readonly T[],
+  version?: typeof STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (
     item.operation === 'open' &&
-    Object.keys(item).length === 2 &&
+    Object.keys(item).length === (version ? 3 : 2) &&
+    (!version || item.version === version) &&
     scope(item.scope)
   )
-    return { operation: 'open' as const, scope: item.scope };
+    return {
+      ...(version ? { version } : {}),
+      operation: 'open' as const,
+      scope: item.scope,
+    };
   if (
     item.operation === 'page' &&
-    Object.keys(item).length === 5 &&
+    Object.keys(item).length === (version ? 6 : 5) &&
+    (!version || item.version === version) &&
     scope(item.scope) &&
     typeof item.occurrenceId === 'string' &&
     /^[A-Za-z0-9_-]{24,128}$/.test(item.occurrenceId) &&
@@ -101,6 +117,7 @@ function parseInput<T extends string>(value: unknown, groups: readonly T[]) {
     item.continuationToken.length <= 1024
   )
     return {
+      ...(version ? { version } : {}),
       operation: 'page' as const,
       scope: item.scope,
       occurrenceId: item.occurrenceId,
@@ -117,7 +134,31 @@ export function parseStationSessionInventoryMcpInput(
 export function parseStationSessionInventoryMcpV2Input(
   value: unknown,
 ): StationSessionInventoryMcpV2Input | null {
-  return parseInput(value, SESSION_INVENTORY_CURRENT_GROUP_IDS);
+  return parseInput(
+    value,
+    SESSION_INVENTORY_CURRENT_GROUP_IDS,
+    STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+  ) as StationSessionInventoryMcpV2Input | null;
+}
+
+/** Negotiate once at the tool/route seam; no discriminator is always v1. */
+export function parseStationSessionInventoryMcpNegotiatedInput(value: unknown):
+  | {
+      version: typeof STATION_SESSION_INVENTORY_MCP_VERSION;
+      input: StationSessionInventoryMcpInput;
+    }
+  | {
+      version: typeof STATION_SESSION_INVENTORY_MCP_V2_VERSION;
+      input: StationSessionInventoryMcpV2Input;
+    }
+  | null {
+  const v2 = parseStationSessionInventoryMcpV2Input(value);
+  if (v2)
+    return { version: STATION_SESSION_INVENTORY_MCP_V2_VERSION, input: v2 };
+  const v1 = parseStationSessionInventoryMcpInput(value);
+  return v1
+    ? { version: STATION_SESSION_INVENTORY_MCP_VERSION, input: v1 }
+    : null;
 }
 function plain(value: unknown): value is Record<string, unknown> {
   return (

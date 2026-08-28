@@ -78,6 +78,15 @@ describe('portable Session inventory MCP App', () => {
   });
 
   test('renders owner and derived Attention gaps plus owner-derived current/kept labels inertly', () => {
+    projection.version = 'station.session-inventory/v2';
+    projection.groups.splice(2, 0, {
+      id: 'work-items',
+      owner: { owner: 'station.session-work-items', id: 'v1' },
+      state: 'empty',
+      count: { kind: 'exact', value: 0 },
+      items: [],
+      gaps: [],
+    });
     projection.groups[0].gaps = [{ kind: 'unavailable' }];
     projection.groups[0].items[0].attachmentDescriptors = [
       {
@@ -87,9 +96,12 @@ describe('portable Session inventory MCP App', () => {
         length: 1,
       },
     ];
-    projection.groups[7].state = 'available';
-    projection.groups[7].count = { kind: 'exact', value: 1 };
-    projection.groups[7].items = [
+    const keptGroup = projection.groups.find(
+      (group: any) => group.id === 'kept',
+    )!;
+    keptGroup.state = 'available';
+    keptGroup.count = { kind: 'exact', value: 1 };
+    keptGroup.items = [
       {
         kind: 'task-kept-result',
         key: 'kept-result',

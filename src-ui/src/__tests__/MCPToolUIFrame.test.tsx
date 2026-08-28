@@ -22,6 +22,7 @@ import {
   mcpUiHostAppearance,
   mcpUiHostGeometry,
   mcpUiToolCallDecision,
+  sessionInventoryV2OpenLinkCapability,
 } from '../components/mcp-ui/MCPToolUIFrame';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
@@ -32,6 +33,7 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3141' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 
 let mockNativeShell = false;
@@ -106,6 +108,87 @@ describe('MCPToolUIFrame', () => {
         },
       },
     });
+  });
+  test('derives Station v2 open-link authority only from a matching current result', () => {
+    const groups = [
+      'inputs',
+      'sources',
+      'work-items',
+      'execution',
+      'decisions',
+      'outputs',
+      'verification-delivery',
+      'live-now',
+      'kept',
+      'attention',
+      'resources',
+    ].map((id) => ({
+      id,
+      owner: {
+        owner:
+          id === 'work-items'
+            ? 'station.session-work-items'
+            : 'station.inventory',
+        id: 'v1',
+      },
+      state: id === 'work-items' ? 'available' : 'empty',
+      count: { kind: 'exact', value: id === 'work-items' ? 1 : 0 },
+      gaps: [],
+      items:
+        id === 'work-items'
+          ? [
+              {
+                kind: 'station-session-work-item',
+                key: 'work-item:association-235',
+                owner: { owner: 'station.session-work-items', id: 'v1' },
+                relations: ['observed-during', 'produced-by'],
+                sessionId: 'session',
+                conversationId: 'conversation',
+                eventId: 'event',
+                turnId: 'turn',
+                toolCallId: 'call',
+                provider: { id: 'github', host: 'github.com' },
+                workItemRef: 'github:kontourai/station#235',
+                repository: { owner: 'kontourai', name: 'station' },
+                nativeId: '1234567890',
+                associationIds: ['association-235'],
+                observedAt: '2026-08-28T12:00:00.000Z',
+              },
+            ]
+          : [],
+    }));
+    const result = {
+      _meta: {
+        'station.session-inventory-app/v2': {
+          occurrenceId: 'occurrence_'.padEnd(32, 'a'),
+          continuations: [],
+        },
+      },
+      structuredContent: {
+        version: 'station.session-inventory-mcp/v2',
+        kind: 'projection',
+        projection: {
+          version: 'station.session-inventory/v2',
+          scope: { kind: 'whole-session', sessionId: 'session' },
+          groups,
+        },
+      },
+    };
+    const input = {
+      version: 'station.session-inventory-mcp/v2',
+      operation: 'open',
+      scope: { kind: 'whole-session', sessionId: 'session' },
+    };
+    const capability = sessionInventoryV2OpenLinkCapability(result, input);
+    expect(capability?.urls).toEqual(
+      new Set(['https://github.com/kontourai/station/issues/235']),
+    );
+    expect(
+      sessionInventoryV2OpenLinkCapability(result, {
+        ...input,
+        scope: { kind: 'whole-session', sessionId: 'other' },
+      }),
+    ).toBeNull();
   });
   test('never resolves or mounts a scripted MCP iframe inside a native shell', () => {
     mockNativeShell = true;

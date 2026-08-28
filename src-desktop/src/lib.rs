@@ -5416,6 +5416,30 @@ fn open_local_browser_preview(app: AppHandle, url: String) -> Result<(), String>
     })
 }
 
+/// Opens only the closed GitHub work-item locator admitted by the MCP host.
+/// The WebView never receives generic opener authority.
+#[tauri::command]
+fn open_external_link(app: AppHandle, url: String) -> Result<(), String> {
+    let parsed = url::Url::parse(&url).map_err(|_| "invalid external URL".to_string())?;
+    let segments: Vec<_> = parsed.path_segments().map(|segments| segments.collect()).unwrap_or_default();
+    if parsed.scheme() != "https"
+        || parsed.host_str() != Some("github.com")
+        || parsed.port().is_some()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || segments.len() != 4
+        || segments[0].is_empty()
+        || segments[1].is_empty()
+        || segments[2] != "issues"
+        || segments[3].parse::<u64>().ok().filter(|number| *number > 0).is_none()
+    {
+        return Err("Station refused an unrecognized external work-item URL".to_string());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|error| error.to_string())
+}
+
 /// Discover and select exactly one reachable local preview target. The native
 /// service authority must be running first; the UI cannot nominate a remote
 /// connection, a session endpoint, or a pre-existing renderer as authority.
@@ -7679,16 +7703,19 @@ If a stable instance is running, this launch will focus its window and exit.",
             .build(),
     );
 
+    // The MCP host owns a narrow external-link command; register the opener on
+    // mobile too so that command has the same OS-owned boundary everywhere.
+    builder = builder.plugin(
+        tauri_plugin_opener::Builder::new()
+            .open_js_links_on_click(false)
+            .build(),
+    );
+
     #[cfg(not(mobile))]
     {
         // The Rust-owned tray opens one validated local Station URL. Disable
         // the opener plugin's default JavaScript link interception so the
         // webview receives no generic opener authority.
-        builder = builder.plugin(
-            tauri_plugin_opener::Builder::new()
-                .open_js_links_on_click(false)
-                .build(),
-        );
         // Registered only when the build carries a usable updater config —
         // see `desktop_updater_plugin_configured`'s doc comment for why an
         // unconditional registration is unsafe here.
@@ -7745,6 +7772,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         notification_watch_start,
         notification_watch_stop,
         open_local_browser_preview,
+        open_external_link,
         discover_local_browser_preview_target,
         open_local_browser_preview_window,
         open_workspace_pane_pop_out,
@@ -7761,6 +7789,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        open_external_link,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
         credential_vault_commit_pairing,
