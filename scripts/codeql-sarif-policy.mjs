@@ -56,7 +56,7 @@ function resultRule(result, { driver, extensions }, path, findings) {
   const reference = result.rule;
   if (
     reference !== undefined &&
-    (!reference || typeof reference !== 'object')
+    (!reference || typeof reference !== 'object' || Array.isArray(reference))
   ) {
     findings.push(issue(path, 'has a malformed rule reference.'));
     return undefined;
@@ -115,9 +115,7 @@ function resultRule(result, { driver, extensions }, path, findings) {
       hasRuleIndex || reference?.toolComponent !== undefined
         ? componentRules(component)
         : [driver, ...extensions].flatMap(componentRules);
-    const matches = search.filter(
-      (candidate) => candidate?.id === result.ruleId,
-    );
+    const matches = search.filter((candidate) => candidate?.id === ruleId);
     if (matches.length !== 1) {
       findings.push(
         issue(path, 'has an unknown or ambiguous ruleId reference.'),
@@ -186,6 +184,10 @@ function validateRun(run, index, findings, summaries) {
   const extensions = Array.isArray(run.tool?.extensions)
     ? run.tool.extensions
     : [];
+  if (run.tool?.extensions !== undefined && !Array.isArray(run.tool.extensions))
+    findings.push(
+      issue(path, 'tool.extensions must be an array when present.'),
+    );
   if (!driver || !CODEQL_TOOL_NAMES.includes(driver.name))
     findings.push(
       issue(

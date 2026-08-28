@@ -314,6 +314,19 @@ describe('the npm stable ledger record', () => {
   });
 });
 
+describe('the npm ledger loop records only registry-confirmed ships', () => {
+  it('registry-confirms each package before recording (changesets lists tag-only private packages as published)', () => {
+    expect(publishPackages).toContain('if ! npm view "$name@$version" version');
+    expect(publishPackages).toContain(
+      'not on the npm registry (tag-only or private publish) — no ledger row',
+    );
+  });
+
+  it('passes the package name into the ledger identity', () => {
+    expect(publishPackages).toContain('--package "$name"');
+  });
+});
+
 describe('the shared commit-back script (MED-2)', () => {
   it('authenticates with the ephemeral token and never a persisted credential', () => {
     expect(commitScript).toContain("'http.https://github.com/.extraheader'");

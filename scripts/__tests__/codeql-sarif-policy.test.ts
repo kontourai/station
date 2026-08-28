@@ -63,6 +63,25 @@ describe('CodeQL SARIF policy', () => {
     );
   });
 
+  test('resolves a rule-object-only reference and rejects malformed references and extensions', () => {
+    const document = parseFixture('pinned-codeql-extension-rules.sarif');
+    delete document.runs[0].results[0].ruleId;
+    expect(evaluateCodeqlSarif(document).findings).toEqual([]);
+
+    document.runs[0].results[0].rule = [];
+    expect(validateCodeqlSarif(document)).toContain(
+      'runs[0].results[0]: has a malformed rule reference.',
+    );
+
+    const malformedExtensions = parseFixture(
+      'pinned-codeql-extension-rules.sarif',
+    );
+    malformedExtensions.runs[0].tool.extensions = { invalid: true };
+    expect(validateCodeqlSarif(malformedExtensions)).toContain(
+      'runs[0]: tool.extensions must be an array when present.',
+    );
+  });
+
   test('treats the CodeQL 2.26.3 no-level result as SARIF-warning evidence, not malformed input', () => {
     const document = parseFixture('codeql-2.26.3-no-level.sarif');
     expect(CODEQL_TOOL_NAMES).toContain(document.runs[0].tool.driver.name);
