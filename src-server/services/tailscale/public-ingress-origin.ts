@@ -45,6 +45,31 @@ export type TailscaleCli = (
   args: readonly string[],
 ) => Promise<TailscaleCliResult>;
 
+/**
+ * Tailscale's signed macOS app-bundle command. This is a reviewed, constant
+ * path — never a value derived from a request, configuration, or PATH entry.
+ */
+export const TAILSCALE_MACOS_APP_CLI =
+  '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
+
+/**
+ * Ordered executable names this process is permitted to invoke. A GUI-launched
+ * packaged app does not inherit an interactive shell PATH, so macOS tries the
+ * official app bundle before the ordinary PATH installation.
+ */
+export function tailscaleCliExecutableCandidates(
+  platform: NodeJS.Platform = process.platform,
+): readonly string[] {
+  return platform === 'darwin'
+    ? [TAILSCALE_MACOS_APP_CLI, 'tailscale']
+    : ['tailscale'];
+}
+
+export type TailscaleCliExecutor = (
+  executable: string,
+  args: readonly string[],
+) => Promise<TailscaleCliResult>;
+
 /** Loopback hosts a serve mapping may name for a port on this machine. */
 const LOOPBACK_PROXY_HOSTS = new Set([
   '127.0.0.1',
@@ -232,11 +257,11 @@ export function createPublicIngressOriginResolver(input: {
   };
 }
 
-/** Bounded, non-throwing `tailscale` invocation. */
-export const defaultTailscaleCli: TailscaleCli = (args) =>
+/** Bounded, non-throwing invocation of one reviewed Tailscale executable. */
+const executeTailscaleCli: TailscaleCliExecutor = (executable, args) =>
   new Promise((resolvePromise) => {
     execFile(
-      'tailscale',
+      executable,
       [...args],
       {
         timeout: 2_500,
@@ -258,6 +283,37 @@ export const defaultTailscaleCli: TailscaleCli = (args) =>
       },
     );
   });
+
+/**
+ * Bounded, non-throwing CLI discovery. Every executable is an exact reviewed
+ * candidate, and only a successful invocation is accepted. This preserves the
+ * ordinary PATH install as a fallback when a packaged macOS app cannot invoke
+ * its official app-bundle command.
+ */
+export function createTailscaleCli(
+  input: {
+    readonly platform?: NodeJS.Platform;
+    readonly execute?: TailscaleCliExecutor;
+  } = {},
+): TailscaleCli {
+  const candidates = tailscaleCliExecutableCandidates(input.platform);
+  const execute = input.execute ?? executeTailscaleCli;
+  return async (args) => {
+    for (const executable of candidates) {
+      try {
+        const result = await execute(executable, args);
+        if (result.exitCode === 0) return result;
+      } catch {
+        // A malformed executor or failed spawn is indistinguishable from an
+        // unavailable candidate at this narrow, fail-closed boundary.
+      }
+    }
+    return { stdout: '', exitCode: null };
+  };
+}
+
+/** Bounded, non-throwing `tailscale` invocation. */
+export const defaultTailscaleCli = createTailscaleCli();
 
 const resolvers = new Map<string, PublicIngressOriginResolver>();
 

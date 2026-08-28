@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import {
   createPublicIngressOriginResolver,
+  createTailscaleCli,
   parseMagicDnsHost,
   parseServePublicOrigin,
+  TAILSCALE_MACOS_APP_CLI,
   type TailscaleCliResult,
+  tailscaleCliExecutableCandidates,
 } from '../public-ingress-origin.js';
 
 /**
@@ -248,5 +251,141 @@ describe('createPublicIngressOriginResolver', () => {
     expect(first).toBe('https://kontour.python-smelt.ts.net');
     expect(second).toBe(first);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe('Tailscale CLI executable discovery', () => {
+  test('tries the official macOS app-bundle binary before the ordinary PATH command', () => {
+    expect(tailscaleCliExecutableCandidates('darwin')).toEqual([
+      TAILSCALE_MACOS_APP_CLI,
+      'tailscale',
+    ]);
+    expect(tailscaleCliExecutableCandidates('linux')).toEqual(['tailscale']);
+  });
+
+  test('uses the official macOS app-bundle binary when the GUI PATH has no tailscale command', async () => {
+    const calls: string[] = [];
+    const cli = createTailscaleCli({
+      platform: 'darwin',
+      execute: async (executable) => {
+        calls.push(executable);
+        return { stdout: STATUS_JSON, exitCode: 0 };
+      },
+    });
+
+    await expect(cli(['status', '--json'])).resolves.toEqual({
+      stdout: STATUS_JSON,
+      exitCode: 0,
+    });
+    expect(calls).toEqual([TAILSCALE_MACOS_APP_CLI]);
+  });
+
+  test.each([
+    ['missing', { stdout: '', exitCode: null }],
+    ['non-executable', { stdout: '', exitCode: null }],
+    ['timed out', { stdout: '', exitCode: null }],
+    ['non-zero', { stdout: 'daemon unavailable', exitCode: 1 }],
+  ] as const)(
+    'falls back from a %s official candidate and remains fail-closed when PATH also fails',
+    async (_label, official) => {
+      const calls: string[] = [];
+      const cli = createTailscaleCli({
+        platform: 'darwin',
+        execute: async (executable) => {
+          calls.push(executable);
+          return executable === TAILSCALE_MACOS_APP_CLI
+            ? official
+            : { stdout: '', exitCode: null };
+        },
+      });
+
+      await expect(cli(['status', '--json'])).resolves.toEqual({
+        stdout: '',
+        exitCode: null,
+      });
+      expect(calls).toEqual([TAILSCALE_MACOS_APP_CLI, 'tailscale']);
+    },
+  );
+
+  test('falls back to the ordinary PATH installation without executing any caller-controlled candidate', async () => {
+    const calls: string[] = [];
+    const cli = createTailscaleCli({
+      platform: 'darwin',
+      execute: async (executable) => {
+        calls.push(executable);
+        return executable === TAILSCALE_MACOS_APP_CLI
+          ? { stdout: '', exitCode: null }
+          : { stdout: STATUS_JSON, exitCode: 0 };
+      },
+    });
+
+    await expect(cli(['status', '--json'])).resolves.toEqual({
+      stdout: STATUS_JSON,
+      exitCode: 0,
+    });
+    expect(calls).toEqual([TAILSCALE_MACOS_APP_CLI, 'tailscale']);
+  });
+
+  test('resolves a real Serve origin through PATH fallback when the app-bundle command is unavailable', async () => {
+    const calls: string[] = [];
+    const cli = createTailscaleCli({
+      platform: 'darwin',
+      execute: async (executable, args) => {
+        calls.push(`${executable} ${args.join(' ')}`);
+        if (executable === TAILSCALE_MACOS_APP_CLI)
+          return { stdout: '', exitCode: null };
+        return args[0] === 'status'
+          ? { stdout: STATUS_JSON, exitCode: 0 }
+          : { stdout: SERVE_JSON, exitCode: 0 };
+      },
+    });
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3141, 3000],
+      cli,
+    });
+
+    await expect(resolver.resolve()).resolves.toBe(
+      'https://kontour.python-smelt.ts.net',
+    );
+    expect(calls).toEqual([
+      `${TAILSCALE_MACOS_APP_CLI} status --json`,
+      'tailscale status --json',
+      `${TAILSCALE_MACOS_APP_CLI} serve status --json`,
+      'tailscale serve status --json',
+    ]);
+  });
+
+  test('fails closed on malformed successful CLI output instead of treating another executable as its result', async () => {
+    const calls: string[] = [];
+    const cli = createTailscaleCli({
+      platform: 'darwin',
+      execute: async (executable) => {
+        calls.push(executable);
+        return executable === TAILSCALE_MACOS_APP_CLI
+          ? { stdout: 'not json', exitCode: 0 }
+          : { stdout: STATUS_JSON, exitCode: 0 };
+      },
+    });
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3000],
+      cli,
+    });
+
+    await expect(resolver.resolve()).resolves.toBeUndefined();
+    expect(calls).toEqual([TAILSCALE_MACOS_APP_CLI]);
+  });
+
+  test('returns no successful result when an executor throws', async () => {
+    const cli = createTailscaleCli({
+      platform: 'darwin',
+      execute: async () => {
+        throw new Error('hostile executor');
+      },
+    });
+
+    await expect(cli(['status', '--json'])).resolves.toEqual({
+      stdout: '',
+      exitCode: null,
+    });
   });
 });
