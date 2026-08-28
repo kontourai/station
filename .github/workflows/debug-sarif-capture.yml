@@ -1,0 +1,56 @@
+name: Debug SARIF capture
+
+# Temporary diagnostic for issue #625: capture the raw CodeQL SARIF the hosted
+# runner produces so the policy fix is built against real bytes, not an
+# imagined shape. Dispatch-only; delete once fixtures are refreshed.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture raw CodeQL SARIF
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          path: candidate
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+          source-root: candidate
+      - id: analyze
+        name: Analyze without ingestion
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          category: /language:javascript-typescript
+          checkout_path: candidate
+          output: ${{ runner.temp }}/codeql-sarif
+          upload: never
+          upload-database: false
+      - name: Summarize tool structure
+        env:
+          CODEQL_SARIF_DIRECTORY: ${{ runner.temp }}/codeql-sarif
+        run: |
+          SARIF=$(find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif)
+          jq '{driverName: .runs[0].tool.driver.name,
+               driverSemanticVersion: .runs[0].tool.driver.semanticVersion,
+               driverRuleCount: (.runs[0].tool.driver.rules | length),
+               extensions: [.runs[0].tool.extensions[]? | {name, ruleCount: (.rules | length)}],
+               resultCount: (.runs[0].results | length),
+               firstResultRuleRef: (.runs[0].results[0] | {ruleId, ruleIndex, rule})}' "$SARIF"
+      - name: Upload raw SARIF
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v6.0.0
+        with:
+          name: raw-codeql-sarif
+          path: ${{ runner.temp }}/codeql-sarif/**/javascript.sarif
+          retention-days: 3
