@@ -1,5 +1,6 @@
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
+import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import {
   isBuiltinStationControl,
   isBuiltinStationDocs,
@@ -215,6 +216,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     const memoryAdapters = new Map();
     const agentMetadataMap = new Map();
     const agentHooksMap = new Map();
+    const provenanceGeneration = createMCPToolProvenanceGeneration();
 
     const agents = await bootstrapRuntimeDefaultAgent({
       appConfig: {
@@ -232,6 +234,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       resolveDefaultModelHint: () => 'claude-sonnet',
       createModel,
       loadAgentTools,
+      mcpToolProvenanceGeneration: provenanceGeneration,
       activeAgents,
       agentTools,
       memoryAdapters,
@@ -263,6 +266,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
           mcpServers: ['station-control', 'station-docs'],
         }),
       }),
+      provenanceGeneration,
     );
     // archive#914: the agent must be built with the very adapter registered under its
     // slug. A separate instance meant the agent wrote to the framework's own

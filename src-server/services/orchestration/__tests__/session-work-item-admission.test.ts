@@ -1,5 +1,6 @@
 import { parseSessionWorkItemAssociation } from '@kontourai/station-contracts/session-work-item';
 import { describe, expect, test } from 'vitest';
+import { createMCPToolProvenanceGeneration } from '../mcp-tool-provenance.js';
 import {
   createSessionWorkItemAdmissionRegistry,
   type SessionWorkItemCanonicalToolCompletion,
@@ -9,6 +10,18 @@ import {
   mintWorkItemResultProjectorProvenanceForReviewedLoader,
   WorkItemResultProjector,
 } from '../work-item-result-projector.js';
+
+function loaderProvenance() {
+  const generation = createMCPToolProvenanceGeneration();
+  return mintWorkItemResultProjectorProvenanceForReviewedLoader(
+    generation.mint({
+      serverId: 'github',
+      originalToolName: 'create_issue',
+      runtimeName: 'github_createIssue',
+      integrationId: 'github',
+    }),
+  )!;
+}
 
 function candidate(
   overrides: Partial<
@@ -35,7 +48,7 @@ function candidate(
   const projected = new WorkItemResultProjector().project({
     ...values,
     terminalStatus: 'success',
-    provenance: mintWorkItemResultProjectorProvenanceForReviewedLoader(),
+    provenance: loaderProvenance(),
     githubArguments: {
       owner: 'kontourai',
       repo: 'station',
@@ -129,7 +142,7 @@ describe('Session work-item admission registry', () => {
       turnId: 'turn-loader',
       toolCallId: 'call-loader',
       terminalStatus: 'success',
-      provenance: mintWorkItemResultProjectorProvenanceForReviewedLoader(),
+      provenance: loaderProvenance(),
       githubArguments: {
         owner: 'kontourai',
         repo: 'station',

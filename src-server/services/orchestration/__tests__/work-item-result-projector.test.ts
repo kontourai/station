@@ -3,6 +3,7 @@ import {
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
 import { describe, expect, test } from 'vitest';
+import { createMCPToolProvenanceGeneration } from '../mcp-tool-provenance.js';
 import {
   deriveGithubIssueHttpsLink,
   mintWorkItemResultProjectorProvenanceForReviewedLoader,
@@ -12,7 +13,15 @@ import {
   type WorkItemResultProjectorInput,
 } from '../work-item-result-projector.js';
 
-const provenance = mintWorkItemResultProjectorProvenanceForReviewedLoader();
+const loaderGeneration = createMCPToolProvenanceGeneration();
+const provenance = mintWorkItemResultProjectorProvenanceForReviewedLoader(
+  loaderGeneration.mint({
+    serverId: 'github',
+    originalToolName: 'create_issue',
+    runtimeName: 'github_createIssue',
+    integrationId: 'github',
+  }),
+)!;
 
 function minimalContent(overrides: Record<string, unknown> = {}): unknown {
   return [
@@ -133,6 +142,37 @@ describe('WorkItemResultProjector', () => {
       } as unknown as WorkItemResultProjectorInput['provenance'],
     });
     expect(new WorkItemResultProjector().project(spoofed)).toBeNull();
+  });
+
+  test('mints GitHub projection authority only from an exact current loader record', () => {
+    const generation = createMCPToolProvenanceGeneration();
+    const spoofedServer = generation.mint({
+      serverId: 'github-spoof',
+      originalToolName: 'create_issue',
+      runtimeName: 'github_createIssue',
+      integrationId: 'github',
+    });
+    expect(
+      mintWorkItemResultProjectorProvenanceForReviewedLoader(spoofedServer),
+    ).toBeNull();
+
+    const loaderRecord = generation.mint({
+      serverId: 'github',
+      originalToolName: 'create_issue',
+      runtimeName: 'github_createIssue',
+      integrationId: 'github',
+    });
+    const minted =
+      mintWorkItemResultProjectorProvenanceForReviewedLoader(loaderRecord);
+    expect(minted).not.toBeNull();
+    generation.revoke();
+    expect(
+      new WorkItemResultProjector().project(
+        input(minimalContent(), {
+          provenance: minted!,
+        }),
+      ),
+    ).toBeNull();
   });
 
   test('freezes loader-issued provenance against retargeting', () => {

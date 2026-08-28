@@ -7,6 +7,7 @@ import {
   principalKey,
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
+import { createMCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { BuiltinScheduler } from '../../services/scheduling/builtin-scheduler.js';
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
 import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
@@ -14,8 +15,10 @@ import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context
 import {
   createVoltAgentLifecycleHooks,
   normalizeVoltAgentToolErrors,
+  toVoltAgentTool,
 } from '../frameworks/voltagent-adapter.js';
 import { createScheduledTurnAdapter } from '../routes/runtime-route-support.js';
+import { normalizeLoadedMCPTools } from '../tools/mcp-tool-names.js';
 
 const grantHome = join(tmpdir(), `scheduler-hook-grants-${process.pid}`);
 
@@ -194,6 +197,56 @@ describe('VoltAgent lifecycle hooks', () => {
         options: toolOptions('call-no-hook'),
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it('passes only loader-issued MCP identity and separately retained arguments/result to the hook', async () => {
+    const generation = createMCPToolProvenanceGeneration();
+    const [loaded] = normalizeLoadedMCPTools(
+      'assistant',
+      [{ name: 'github_create_issue', execute: vi.fn() }] as any,
+      new Map(),
+      new Map(),
+      generation,
+      'github-integration',
+      () => ({ serverId: 'github', originalToolName: 'create_issue' }),
+      { debug: vi.fn() },
+    );
+    const afterToolCall = vi.fn();
+    const hooks = createVoltAgentLifecycleHooks('assistant', {
+      afterToolCall,
+    });
+    const context = operationContext();
+    const args = { owner: 'kontourai', repo: 'station', title: 'Issue' };
+    const output = [{ type: 'text', text: '{"id":"1"}' }];
+    const tool = toVoltAgentTool(loaded as any);
+
+    await hooks.onToolStart!({
+      agent: {} as any,
+      tool,
+      context,
+      args,
+      options: toolOptions('call-provenance'),
+    });
+    await hooks.onToolEnd!({
+      tool,
+      context,
+      output,
+      options: toolOptions('call-provenance'),
+    });
+
+    const [toolContext, result] = afterToolCall.mock.calls[0];
+    expect(toolContext.mcp?.provenance).toMatchObject({
+      serverId: 'github',
+      originalToolName: 'create_issue',
+      runtimeName: 'github_createIssue',
+      integrationId: 'github-integration',
+    });
+    expect(Object.isFrozen(toolContext.mcp?.provenance)).toBe(true);
+    expect(toolContext.mcp?.trustedArguments).toBe(args);
+    expect(result.mcp?.trustedContent).toBe(output);
+    expect(JSON.stringify({ toolContext, result })).not.toContain(
+      'loader-provenance',
+    );
   });
 
   it('does not mint an unattended principal from caller-controlled options', async () => {

@@ -1,4 +1,8 @@
 import type { Tool } from '@voltagent/core';
+import type {
+  MCPToolLoaderProvenance,
+  MCPToolProvenanceGeneration,
+} from '../../services/orchestration/mcp-tool-provenance.js';
 import {
   normalizeToolName,
   parseToolName,
@@ -9,6 +13,8 @@ export interface MCPToolNameMappingEntry {
   normalized: string;
   server: string | null;
   tool: string;
+  /** Exact server-side identity issued during this runtime generation. */
+  provenance?: MCPToolLoaderProvenance;
 }
 
 export function normalizeLoadedMCPTools(
@@ -16,23 +22,47 @@ export function normalizeLoadedMCPTools(
   tools: Tool<any>[],
   toolNameMapping: Map<string, MCPToolNameMappingEntry>,
   toolNameReverseMapping: Map<string, string>,
+  provenanceGeneration: MCPToolProvenanceGeneration,
+  integrationId: string,
+  loaderIdentity: (tool: Tool<any>) => {
+    serverId: string;
+    originalToolName: string;
+  },
   logger: {
     debug: (message: string, payload?: Record<string, unknown>) => void;
   },
 ): Tool<any>[] {
   return tools.map((tool) => {
     const normalized = normalizeToolName(tool.name);
+    const parsed = parseToolName(tool.name);
+    const source = loaderIdentity(tool);
+    const existing = toolNameMapping.get(normalized);
+    if (
+      existing &&
+      (!existing.provenance ||
+        existing.provenance.serverId !== source.serverId ||
+        existing.provenance.originalToolName !== source.originalToolName ||
+        existing.provenance.integrationId !== integrationId)
+    ) {
+      throw new Error(`MCP runtime tool name collision for '${normalized}'.`);
+    }
+    const provenance = provenanceGeneration.mint({
+      serverId: source.serverId,
+      originalToolName: source.originalToolName,
+      runtimeName: normalized,
+      integrationId,
+    });
+    const entry: MCPToolNameMappingEntry = Object.freeze({
+      original: tool.name,
+      normalized,
+      server: parsed.server,
+      tool: parsed.tool,
+      provenance,
+    });
+    toolNameMapping.set(normalized, entry);
+    toolNameReverseMapping.set(tool.name, normalized);
 
     if (normalized !== tool.name) {
-      const parsed = parseToolName(tool.name);
-      toolNameMapping.set(normalized, {
-        original: tool.name,
-        normalized,
-        server: parsed.server,
-        tool: parsed.tool,
-      });
-      toolNameReverseMapping.set(tool.name, normalized);
-
       logger.debug('Tool name normalized', {
         agent: agentSlug,
         original: tool.name,
@@ -42,11 +72,49 @@ export function normalizeLoadedMCPTools(
       });
     }
 
-    return {
+    const loaded = {
       ...tool,
       name: normalized,
     };
+    // Symbols do not enter JSON/model tool descriptions, while enumerable
+    // ownership lets Station's intentional object-spread wrappers preserve
+    // this server-only handle through execution.
+    Object.defineProperty(loaded, loadedMCPToolProvenance, {
+      configurable: false,
+      enumerable: true,
+      value: provenance,
+      writable: false,
+    });
+    return loaded;
   });
+}
+
+const loadedMCPToolProvenance = Symbol('station.loaded-mcp-tool-provenance');
+
+export function getLoadedMCPToolProvenance(
+  value: unknown,
+): MCPToolLoaderProvenance | undefined {
+  return value && typeof value === 'object'
+    ? ((value as Record<PropertyKey, unknown>)[loadedMCPToolProvenance] as
+        | MCPToolLoaderProvenance
+        | undefined)
+    : undefined;
+}
+
+/** Preserve the server-only handle when a framework materializes a new tool. */
+export function copyLoadedMCPToolProvenance<T extends object>(
+  source: unknown,
+  target: T,
+): T {
+  const provenance = getLoadedMCPToolProvenance(source);
+  if (!provenance) return target;
+  Object.defineProperty(target, loadedMCPToolProvenance, {
+    configurable: false,
+    enumerable: true,
+    value: provenance,
+    writable: false,
+  });
+  return target;
 }
 
 export function matchesToolPattern(

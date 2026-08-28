@@ -12,6 +12,11 @@ vi.mock('../../agents/runtime-agent-lifecycle.js', async () => {
   return { ...actual, reloadRuntimeAgents };
 });
 
+import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
+import {
+  mintWorkItemResultProjectorProvenanceForReviewedLoader,
+  WorkItemResultProjector,
+} from '../../../services/orchestration/work-item-result-projector.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
 import { StationRuntime } from '../station-runtime.js';
 
@@ -31,6 +36,7 @@ function createRuntime(): any {
   runtime.retiredMcpConfigs = new Set();
   runtime.toolNameMapping = new Map();
   runtime.toolNameReverseMapping = new Map();
+  runtime.mcpToolProvenanceGeneration = createMCPToolProvenanceGeneration();
   runtime.loadedProviderLaunchabilityRevision = 0;
   runtime.loadedAppConfigLaunchabilityRevision = 0;
   runtime.providerService = {
@@ -51,6 +57,66 @@ afterEach(() => {
 });
 
 describe('StationRuntime configuration generation reload', () => {
+  test('rejects a delayed default-agent MCP result after full reload revokes its startup generation', async () => {
+    const runtime = createRuntime();
+    runtime.toolNameMapping.set('github_createIssue', {
+      original: 'github_create_issue',
+      normalized: 'github_createIssue',
+      server: 'github',
+      tool: 'create_issue',
+    });
+    runtime.toolNameReverseMapping.set(
+      'github_create_issue',
+      'github_createIssue',
+    );
+    const loaderRecord = runtime.mcpToolProvenanceGeneration.mint({
+      serverId: 'github',
+      originalToolName: 'create_issue',
+      runtimeName: 'github_createIssue',
+      integrationId: 'github',
+    });
+    const provenance =
+      mintWorkItemResultProjectorProvenanceForReviewedLoader(loaderRecord);
+    expect(provenance).not.toBeNull();
+    reloadRuntimeAgents.mockImplementation(async (options) => {
+      options.commitPreparedResources();
+      return {};
+    });
+
+    await runtime.reloadAgentsFromDisk();
+
+    // A removed tool's stale identity cannot survive into the replacement
+    // generation and make a later same-name loader look like a collision.
+    expect(runtime.toolNameMapping).toEqual(new Map());
+    expect(runtime.toolNameReverseMapping).toEqual(new Map());
+
+    expect(
+      new WorkItemResultProjector().project({
+        associationId: 'association-delayed',
+        sessionId: 'session-1',
+        conversationId: 'conversation-1',
+        turnId: 'turn-1',
+        toolCallId: 'call-1',
+        terminalStatus: 'success',
+        provenance: provenance!,
+        githubArguments: {
+          owner: 'kontourai',
+          repo: 'station',
+          title: 'Delayed startup result',
+        },
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              id: '1234567890',
+              url: 'https://github.com/kontourai/station/issues/235',
+            }),
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
+
   test('rebuilds the default agent and global tools before publishing source revisions', async () => {
     const runtime = createRuntime();
     const customTool = { name: 'custom-tool', execute: vi.fn() };

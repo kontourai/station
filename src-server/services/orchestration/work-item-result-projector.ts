@@ -9,6 +9,10 @@ import {
   type SessionWorkItemReadProjection,
 } from '@kontourai/station-contracts/session-work-item';
 import {
+  isCurrentMCPToolLoaderProvenance,
+  type MCPToolLoaderProvenance,
+} from './mcp-tool-provenance.js';
+import {
   issueSessionWorkItemCandidateFromProjector,
   parseSessionWorkItemCandidate,
   type SessionWorkItemCandidate,
@@ -30,14 +34,30 @@ const githubRepository = /^[A-Za-z0-9._-]{1,100}$/;
 export type WorkItemResultProjectorProvenance = {
   readonly serverId: 'github';
   readonly originalToolName: 'create_issue';
+  /** The exact loader record remains current through projection. */
+  readonly loaderProvenance: MCPToolLoaderProvenance;
   readonly [provenanceBrand]: true;
 };
 
-/** Temporary loader-seam injection point; runtime composition owns this later. */
-export function mintWorkItemResultProjectorProvenanceForReviewedLoader(): WorkItemResultProjectorProvenance {
+/**
+ * Narrow result-projection authority.  The only issuer accepts an immutable,
+ * still-current loader record; neither model tool names nor canonical strings
+ * are accepted as a substitute.
+ */
+export function mintWorkItemResultProjectorProvenanceForReviewedLoader(
+  loaderProvenance: MCPToolLoaderProvenance,
+): WorkItemResultProjectorProvenance | null {
+  if (
+    !isCurrentMCPToolLoaderProvenance(loaderProvenance) ||
+    loaderProvenance.serverId !== 'github' ||
+    loaderProvenance.originalToolName !== 'create_issue'
+  ) {
+    return null;
+  }
   const value = Object.freeze({
     serverId: 'github' as const,
     originalToolName: 'create_issue' as const,
+    loaderProvenance,
     [provenanceBrand]: true as const,
   });
   issuedProvenance.add(value);
@@ -239,7 +259,8 @@ export class WorkItemResultProjector {
     try {
       if (
         input.terminalStatus !== 'success' ||
-        !issuedProvenance.has(input.provenance)
+        !issuedProvenance.has(input.provenance) ||
+        !isCurrentMCPToolLoaderProvenance(input.provenance.loaderProvenance)
       )
         return null;
       const projected =

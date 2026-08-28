@@ -23,6 +23,7 @@ import { createPromptOnlyMemoryView } from '../../adapters/file/memory-adapter-p
 import { resolveMaxSteps } from '../../constants.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import { stationDenial } from '../agents/denial-message.js';
 import {
@@ -40,6 +41,10 @@ import {
 } from '../native-output-declaration.js';
 import { runWithCurrentNativeOutputCall } from '../native-output-turn-grant.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
+import {
+  copyLoadedMCPToolProvenance,
+  getLoadedMCPToolProvenance,
+} from '../tools/mcp-tool-names.js';
 import type {
   AgentCreationConfig,
   IAgent,
@@ -91,6 +96,7 @@ export interface CreateAgentOptions {
     }
   >;
   toolNameReverseMapping: Map<string, string>;
+  mcpToolProvenanceGeneration?: MCPToolProvenanceGeneration;
   approvalRegistry: ApprovalRegistry;
   agentFixedTokens: Map<
     string,
@@ -604,13 +610,16 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
           return result;
         }
       : undefined;
-  return createTool({
-    id: tool.id,
-    name: tool.name,
-    description: tool.description ?? '',
-    parameters,
-    ...(execute ? { execute: execute as never } : {}),
-  }) as unknown as Tool<any>;
+  return copyLoadedMCPToolProvenance(
+    tool,
+    createTool({
+      id: tool.id,
+      name: tool.name,
+      description: tool.description ?? '',
+      parameters,
+      ...(execute ? { execute: execute as never } : {}),
+    }) as unknown as Tool<any>,
+  );
 }
 
 type PendingVoltAgentToolCall = {
@@ -664,6 +673,14 @@ export function createVoltAgentLifecycleHooks(
         toolName: tool.name,
         toolCallId,
         toolArgs: args,
+        ...(getLoadedMCPToolProvenance(tool)
+          ? {
+              mcp: Object.freeze({
+                provenance: getLoadedMCPToolProvenance(tool)!,
+                trustedArguments: args,
+              }),
+            }
+          : {}),
       };
       const invocation = voltAgentInvocationContext(
         slug,
@@ -794,7 +811,13 @@ export function createVoltAgentLifecycleHooks(
           toolCallId,
           toolArgs: undefined,
         },
-        { output, error },
+        {
+          output,
+          error,
+          ...(pending?.tool.mcp
+            ? { mcp: Object.freeze({ trustedContent: output }) }
+            : {}),
+        },
         pending?.invocation ??
           voltAgentInvocationContext(
             slug,
@@ -939,6 +962,7 @@ export class VoltAgentFramework {
       | 'integrationMetadata'
       | 'toolNameMapping'
       | 'toolNameReverseMapping'
+      | 'mcpToolProvenanceGeneration'
       | 'integrationSecretResolver'
       | 'logger'
       | 'serverPort'
@@ -955,6 +979,7 @@ export class VoltAgentFramework {
       opts.toolNameReverseMapping,
       opts.logger,
       opts.serverPort,
+      opts.mcpToolProvenanceGeneration!,
       opts.integrationSecretResolver,
     )) as ITool[];
     return [...loaded, createNativeOutputDeclarationTool() as ITool];

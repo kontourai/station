@@ -8,6 +8,7 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import type { SkillService } from '../../services/agents/skill-service.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
@@ -48,6 +49,7 @@ interface RuntimeAgentBuilderContext {
     }
   >;
   toolNameReverseMapping: Map<string, string>;
+  mcpToolProvenanceGeneration: MCPToolProvenanceGeneration;
   memoryAdapters: Map<string, FileMemoryAdapter>;
   agentFixedTokens: Map<
     string,
@@ -78,6 +80,7 @@ export type RuntimeAgentPreparationState = Pick<
   | 'mcpConfigs'
   | 'mcpConnectionStatus'
   | 'memoryAdapters'
+  | 'mcpToolProvenanceGeneration'
   | 'toolNameMapping'
   | 'toolNameReverseMapping'
 >;
@@ -168,6 +171,7 @@ export async function prepareRuntimeAgentInstance(
       integrationMetadata: preparationState.integrationMetadata,
       toolNameMapping: preparationState.toolNameMapping,
       toolNameReverseMapping: preparationState.toolNameReverseMapping,
+      mcpToolProvenanceGeneration: preparationState.mcpToolProvenanceGeneration,
       approvalRegistry: context.approvalRegistry,
       agentFixedTokens: preparationState.agentFixedTokens,
       memoryAdapters: preparationState.memoryAdapters,

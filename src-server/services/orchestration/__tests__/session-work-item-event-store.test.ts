@@ -8,11 +8,24 @@ import {
   EventStore,
   SessionWorkItemObservationCorruptionError,
 } from '../event-store.js';
+import { createMCPToolProvenanceGeneration } from '../mcp-tool-provenance.js';
 import type { SessionWorkItemCandidate } from '../session-work-item-candidate.js';
 import {
   mintWorkItemResultProjectorProvenanceForReviewedLoader,
   WorkItemResultProjector,
 } from '../work-item-result-projector.js';
+
+function loaderProvenance() {
+  const generation = createMCPToolProvenanceGeneration();
+  return mintWorkItemResultProjectorProvenanceForReviewedLoader(
+    generation.mint({
+      serverId: 'github',
+      originalToolName: 'create_issue',
+      runtimeName: 'github_createIssue',
+      integrationId: 'github',
+    }),
+  )!;
+}
 
 const directories: string[] = [];
 
@@ -29,7 +42,7 @@ function candidate(): SessionWorkItemCandidate {
     turnId: 'turn-a',
     toolCallId: 'call-a',
     terminalStatus: 'success',
-    provenance: mintWorkItemResultProjectorProvenanceForReviewedLoader(),
+    provenance: loaderProvenance(),
     githubArguments: {
       owner: 'kontourai',
       repo: 'station',

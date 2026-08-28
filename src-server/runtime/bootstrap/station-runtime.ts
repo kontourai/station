@@ -278,6 +278,10 @@ import {
   FileActionOperationStore,
 } from '../../services/operations/action-operation-service.js';
 import { FleetDispatchActionOperationObserver } from '../../services/operations/fleet-dispatch-action-operation-observer.js';
+import {
+  createMCPToolProvenanceGeneration,
+  type MCPToolProvenanceGeneration,
+} from '../../services/orchestration/mcp-tool-provenance.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
@@ -410,6 +414,8 @@ export class StationRuntime {
     }
   > = new Map(); // Tool name mapping with parsed data
   private toolNameReverseMapping: Map<string, string> = new Map(); // Original -> Normalized for O(1) lookup
+  private mcpToolProvenanceGeneration: MCPToolProvenanceGeneration =
+    createMCPToolProvenanceGeneration();
   private monitoringEvents = new EventEmitter();
   private monitoringEmitter!: MonitoringEmitter;
   private agentStats = new Map<
@@ -2021,8 +2027,12 @@ export class StationRuntime {
       mcpConfigs: new Map(),
       mcpConnectionStatus: new Map(),
       memoryAdapters: new Map(),
-      toolNameMapping: new Map(this.toolNameMapping),
-      toolNameReverseMapping: new Map(this.toolNameReverseMapping),
+      mcpToolProvenanceGeneration: createMCPToolProvenanceGeneration(),
+      // A fresh generation must never inherit a prior runtime name's
+      // authority. A replacement may reuse its presentation name; collisions
+      // apply only among tools admitted to this staged snapshot.
+      toolNameMapping: new Map(),
+      toolNameReverseMapping: new Map(),
     };
     for (const [source, target] of [
       [this.agentFixedTokens, preparationState.agentFixedTokens],
@@ -2068,6 +2078,9 @@ export class StationRuntime {
           ...preparationState,
         }),
       commitPreparedResources: () => {
+        this.mcpToolProvenanceGeneration.revoke();
+        this.mcpToolProvenanceGeneration =
+          preparationState.mcpToolProvenanceGeneration;
         for (const [key, value] of preparationState.mcpConfigs) {
           this.mcpConfigs.set(key, value);
         }
@@ -2344,6 +2357,7 @@ export class StationRuntime {
       mcpConfigs: new Map(this.mcpConfigs),
       mcpConnectionStatus: new Map(this.mcpConnectionStatus),
       memoryAdapters: new Map(this.memoryAdapters),
+      mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
       toolNameMapping: new Map(this.toolNameMapping),
       toolNameReverseMapping: new Map(this.toolNameReverseMapping),
     };
@@ -2592,7 +2606,7 @@ export class StationRuntime {
           listProviderConnections: () =>
             this.providerService.listProviderConnections(),
         }),
-      loadAgentTools: async (slug, spec) => [
+      loadAgentTools: async (slug, spec, provenanceGeneration) => [
         ...(await MCPManager.loadAgentTools(
           slug,
           spec,
@@ -2604,6 +2618,7 @@ export class StationRuntime {
           this.toolNameReverseMapping,
           this.logger,
           this.port,
+          provenanceGeneration!,
           this.secretBindingAdministration,
         )),
         // The built-in default bypasses persisted-agent framework loading.
@@ -2617,6 +2632,7 @@ export class StationRuntime {
       memoryAdapters: this.memoryAdapters,
       agentMetadataMap: this.agentMetadataMap,
       toolNameMapping: this.toolNameMapping,
+      mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
       agentFixedTokens: this.agentFixedTokens,
       agentHooksMap: this.agentHooksMap,
       // archive#1834 review round 2: the same guardian composition
@@ -2804,6 +2820,7 @@ export class StationRuntime {
           integrationMetadata: this.integrationMetadata,
           toolNameMapping: this.toolNameMapping,
           toolNameReverseMapping: this.toolNameReverseMapping,
+          mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
           agentFixedTokens: this.agentFixedTokens,
           agentHooksMap: this.agentHooksMap,
           resolveUnattendedGrant: this.resolveUnattendedGrant,
@@ -3468,6 +3485,7 @@ export class StationRuntime {
       integrationMetadata: this.integrationMetadata,
       toolNameMapping: this.toolNameMapping,
       toolNameReverseMapping: this.toolNameReverseMapping,
+      mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
       memoryAdapters: this.memoryAdapters,
       agentFixedTokens: this.agentFixedTokens,
       agentTools: this.agentTools,

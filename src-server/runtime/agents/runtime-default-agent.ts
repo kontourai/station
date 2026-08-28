@@ -9,6 +9,7 @@ import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
+import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { Logger } from '../../utils/logger.js';
 import { BUILTIN_STATION_DOCS_TOOL_SERVER_ID } from '../bootstrap/station-control-runtime-env.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
@@ -27,7 +28,13 @@ interface RuntimeDefaultAgentContext {
   replaceTemplateVariables: (text: string) => string;
   resolveDefaultModelHint: () => string | null;
   createModel: (spec: AgentSpec) => Promise<any>;
-  loadAgentTools: (slug: string, spec: AgentSpec) => Promise<any[]>;
+  loadAgentTools: (
+    slug: string,
+    spec: AgentSpec,
+    provenanceGeneration: MCPToolProvenanceGeneration | undefined,
+  ) => Promise<any[]>;
+  /** Runtime-owned generation forwarded to the default-agent startup loader. */
+  mcpToolProvenanceGeneration?: MCPToolProvenanceGeneration;
   guardTools?: (tools: any[]) => any[];
   activeAgents: Map<string, any>;
   agentTools: Map<string, any[]>;
@@ -259,7 +266,11 @@ export async function bootstrapRuntimeDefaultAgent(
   let defaultTools: any[] = [];
 
   try {
-    defaultTools = await context.loadAgentTools('default', defaultSpec);
+    defaultTools = await context.loadAgentTools(
+      'default',
+      defaultSpec,
+      context.mcpToolProvenanceGeneration,
+    );
     defaultTools = context.guardTools?.(defaultTools) ?? defaultTools;
     context.logger.info('Default agent tools loaded', {
       count: defaultTools.length,

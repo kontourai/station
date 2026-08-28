@@ -27,6 +27,7 @@ import {
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
+import { getLoadedMCPToolProvenance } from '../tools/mcp-tool-names.js';
 import type {
   AgentBundle,
   AgentCreationConfig,
@@ -381,6 +382,11 @@ export class StrandsFramework {
       logger: opts.logger,
       resolvedModel,
       getLastStreamUsage: () => wrapper._lastStreamUsage,
+      findMCPToolProvenance: (runtimeName) =>
+        tools
+          .filter((tool) => tool.name === runtimeName)
+          .map(getLoadedMCPToolProvenance)
+          .find((provenance) => provenance !== undefined),
     });
 
     return {

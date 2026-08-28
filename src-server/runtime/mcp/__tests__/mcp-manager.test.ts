@@ -20,9 +20,12 @@ vi.mock('../../../services/evidence/platform-mutation-gate.js', () => ({
 
 const {
   createRuntimeOAuthProvider,
-  loadAgentTools,
+  loadAgentTools: loadAgentToolsImplementation,
   releaseAllNativeStationControlConnections,
 } = await import('../mcp-manager.js');
+const { createMCPToolProvenanceGeneration } = await import(
+  '../../../services/orchestration/mcp-tool-provenance.js'
+);
 const { withTenantExecutionContext } = await import(
   '../../bootstrap/runtime-tenant-context.js'
 );
@@ -32,6 +35,16 @@ const { builtinStationControlServerPath } = await import(
 const { isTrustedNativeStationControlTool } = await import(
   '../../tools/tool-provenance.js'
 );
+
+/** Tests name their provenance issuer explicitly rather than using production fallback. */
+function loadAgentTools(...args: any[]) {
+  return loadAgentToolsImplementation(
+    ...args.slice(0, 9),
+    args[9],
+    createMCPToolProvenanceGeneration(),
+    ...args.slice(10),
+  );
+}
 
 describe('Station-owned MCP manager', () => {
   beforeEach(() => {
