@@ -42,6 +42,16 @@ export const CANONICAL_COMPLETION_LANE = 'full-regression';
 export const CANONICAL_COMPLETION_COMMAND = 'npm run full:regression';
 
 /**
+ * Hard execution ceiling for diagnostic per-push feedback. The hosted lane
+ * reached 4m55s before the old five-minute coordinator deadline canceled it,
+ * while the same base-pinned invocation completed locally in about 2m40s.
+ * Seven minutes retains a finite, non-completion lane while leaving measured
+ * headroom for the slower fleet host rather than treating its timeout as a
+ * changed-test failure.
+ */
+export const CI_FAST_TIMEOUT_MS = 7 * 60_000;
+
+/**
  * The full completion claim is phase-attested. The coordinator admits these
  * phases independently, so the full corpus only occupies exclusive capacity
  * for its own phase. Phase records are bound to the parent request and are
@@ -240,7 +250,7 @@ export const LANES = Object.freeze([
     diagnostic: true,
     // A hard coordinator deadline keeps feedback from silently becoming the
     // full corpus. The child runner passes the remaining budget to each gate.
-    timeoutMs: 5 * 60_000,
+    timeoutMs: CI_FAST_TIMEOUT_MS,
     // Reserve overlap with the full-regression test-full phase (80 + 20).
     // Fast feedback must be able to admit while completion work is in flight.
     weight: 20,
@@ -250,7 +260,7 @@ export const LANES = Object.freeze([
     ]),
     manifest: MANIFEST_TEST_IMPACT,
     trigger: 'per-push / bounded feedback',
-    scope: 'base-pinned affected Vitest tests + fixed static invariants (≤5m)',
+    scope: 'base-pinned affected Vitest tests + fixed static invariants (≤7m)',
     description:
       'Bounded fast feedback (trigger: per-push). Scope: the affected Vitest selection against STATION_CI_FAST_BASE (origin/main by default) followed by fixed runtime, lockfile, workflow, and verification-policy invariants. Its 20-unit weight is reserved alongside the 80-unit full-regression test phase, so completion work yields admission headroom for feedback. Full static gates and the full Vitest corpus belong only to full-regression. Evidence: diagnostic only; a deferred selector intentionally requires the full-regression completion gate. Invalidation: test-impact manifest plus the request workspace/HEAD/dependency/toolchain and STATION_CI_FAST_BASE environment identity.',
   }),

@@ -4,11 +4,13 @@ import { VERIFICATION_BEHAVIOR_ENVIRONMENT } from '../lib/test-reliability.mjs';
 import { PREPUSH_TEST_FILES } from '../prepush-test-manifest.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
+  CI_FAST_TIMEOUT_MS,
   LANES,
   renderFullRegressionPhaseSchedule,
   renderLaneCatalogTable,
 } from '../verification-lanes.mjs';
 import {
+  CI_FAST_DEADLINE_GUIDANCE,
   CI_FAST_RESERVED_WEIGHT,
   CI_FAST_STATIC_COMMANDS,
   DIRECT_OPT_IN,
@@ -258,6 +260,7 @@ describe('verification policy gate', () => {
 
   test('pins admission headroom for ci:fast beside the full test phase', () => {
     expect(CI_FAST_RESERVED_WEIGHT).toBe(20);
+    expect(CI_FAST_TIMEOUT_MS).toBe(7 * 60_000);
     expect(FULL_REGRESSION_TEST_WEIGHT).toBe(80);
     const crowded = LANES.map((lane) =>
       lane.id === 'full-regression'
@@ -273,6 +276,29 @@ describe('verification policy gate', () => {
     );
     expect(verificationPolicyErrors({ lanes: crowded })).toContain(
       'full-regression test-full-ordinary phase must use exactly 80 coordinator weight',
+    );
+  });
+
+  test('rejects a ci:fast deadline that drifts from the bounded runner budget', () => {
+    const drifted = LANES.map((lane) =>
+      lane.id === 'ci-fast' ? { ...lane, timeoutMs: 5 * 60_000 } : lane,
+    );
+    expect(verificationPolicyErrors({ lanes: drifted })).toContain(
+      'ci:fast must use the exact 7-minute bounded-feedback deadline',
+    );
+  });
+
+  test('pins the seven-minute deadline in every contributor-facing ci:fast guide', () => {
+    const stale = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
+      ...entry,
+      text: entry.marker.includes('seven-minute')
+        ? 'bounded five-minute feedback lane'
+        : '',
+    }));
+    expect(
+      verificationPolicyErrors({ ciFastDeadlineGuidance: stale }),
+    ).toContain(
+      "docs/guides/code-quality.md must state 'bounded seven-minute feedback'",
     );
   });
 

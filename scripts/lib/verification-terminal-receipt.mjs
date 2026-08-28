@@ -95,6 +95,30 @@ function boundedSummaryEnvelope(summary) {
     : envelope;
 }
 
+function primaryInterruptedCause(raw, result) {
+  if (result?.status === 'timed_out')
+    return 'verification execution timed out before terminal reporting';
+  if (result?.status === 'canceled')
+    return 'verification execution was canceled before terminal reporting';
+  if (result?.status !== 'infrastructure_error') return null;
+  const classified = raw?.infrastructureCause;
+  if (typeof classified === 'string' && classified.length > 0)
+    return `verification execution infrastructure error: ${boundedText(classified, 512)}`;
+  const message = raw?.error?.message;
+  return typeof message === 'string' && message.length > 0
+    ? `verification execution infrastructure error: ${boundedText(message, 512)}`
+    : 'verification execution ended with an infrastructure error before terminal reporting';
+}
+
+function preservesPrimaryTerminal(result) {
+  return (
+    (result?.status === 'failed' &&
+      Number.isInteger(result?.exitCode) &&
+      result.exitCode !== 0) ||
+    ['timed_out', 'canceled', 'infrastructure_error'].includes(result?.status)
+  );
+}
+
 /** Persists bounded command output and approved attachments into receipt artifacts. */
 export function reportExecution({ raw, result, cleanup, worktree, request }) {
   let artifacts = [];
@@ -214,11 +238,8 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
     // Only a result that CLAIMED success (or could not be classified) loses
     // its standing when its required evidence cannot be reported. The
     // reporting problem itself stays visible via reconcileNote below.
-    if (
-      result?.status === 'failed' &&
-      Number.isInteger(result?.exitCode) &&
-      result.exitCode !== 0
-    ) {
+    if (preservesPrimaryTerminal(result)) {
+      const primaryCause = primaryInterruptedCause(raw, result);
       const preserved = {
         ...result,
         reconcileNote,
@@ -248,11 +269,13 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
           terminal: preserved.status,
           counts: preserved.counts,
           cleanup,
-          firstCausalExcerpt: reconcileNote,
-          // station#4249: a reporting-path failure has exactly one known
-          // cause -- the reconcile note itself -- so the plural field is
-          // trivially the singleton list, never fabricated multiplicity.
-          causalExcerpts: [reconcileNote],
+          // The execution terminal is primary: a missing post-run attachment
+          // is secondary evidence loss, not a replacement for a timeout,
+          // cancellation, or spawn/infrastructure cause that already occurred.
+          firstCausalExcerpt: primaryCause ?? reconcileNote,
+          causalExcerpts: primaryCause
+            ? [primaryCause, reconcileNote]
+            : [reconcileNote],
           // station#4249 review: the disambiguator readers use to tell this
           // synthesized-diagnostic case apart from an ordinary observed
           // failure in the summary itself, not only in the persisted receipt.

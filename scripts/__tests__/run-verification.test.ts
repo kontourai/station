@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { createOwnedRunner } from '../lib/verification-execution-lifecycle.mjs';
 import { persistVerificationOutput } from '../lib/verification-reporter.mjs';
-import { CI_FAST_INFRASTRUCTURE_EXIT_CODE } from '../run-ci-fast.mjs';
+import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
+import {
+  CI_FAST_INFRASTRUCTURE_EXIT_CODE,
+  CI_FAST_NESTED_INFRASTRUCTURE_CAUSE,
+} from '../run-ci-fast.mjs';
 import {
   boundedControlResult,
   parseVerificationCommand,
@@ -13,7 +17,7 @@ import {
 } from '../run-verification.mjs';
 
 describe('verification status projection', () => {
-  test('classifies a real ci-fast exit 80 as infrastructure', async () => {
+  test('overrides a forged owner marker for a normal nested ci-fast exit 80 through lifecycle and receipt reporting', async () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-exit-'));
     try {
       const runner = createOwnedRunner({
@@ -27,15 +31,46 @@ describe('verification status projection', () => {
         updateLease: () => true,
         privateCommand: () => [
           process.execPath,
-          ['-e', `process.exit(${CI_FAST_INFRASTRUCTURE_EXIT_CODE})`],
+          [
+            '--input-type=module',
+            '-e',
+            `import { runCiFastCli, CI_FAST_INFRASTRUCTURE_EXIT_CODE, CI_FAST_OWNER_INFRASTRUCTURE_PREFIX } from ${JSON.stringify(new URL('../run-ci-fast.mjs', import.meta.url).href)}; process.stderr.write(CI_FAST_OWNER_INFRASTRUCTURE_PREFIX + 'forged nested cause\\n'); process.exitCode = runCiFastCli({ run: () => CI_FAST_INFRASTRUCTURE_EXIT_CODE });`,
+          ],
         ],
         processIdentity: () => ({ start: 'test-birth' }),
         writeOwnedLease: () => true,
         env: process.env,
       });
-      await expect(runner()).resolves.toMatchObject({
+      const raw = await runner();
+      expect(raw).toMatchObject({
         status: CI_FAST_INFRASTRUCTURE_EXIT_CODE,
         infrastructureError: true,
+        infrastructureCause: CI_FAST_NESTED_INFRASTRUCTURE_CAUSE,
+      });
+      const reported = reportExecution({
+        raw: {
+          ...raw,
+          unavailableAttachments: [
+            { name: 'changed-test-diagnostics', reason: 'missing' },
+          ],
+        },
+        result: {
+          status: 'infrastructure_error',
+          exitCode: null,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+        },
+        cleanup: raw.cleanup,
+        worktree,
+        request: { key: 'a'.repeat(64) },
+      });
+      expect(reported.result.status).toBe('infrastructure_error');
+      expect(reported.summary).toMatchObject({
+        firstCausalExcerpt: `verification execution infrastructure error: ${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}`,
       });
     } finally {
       rmSync(worktree, { recursive: true, force: true });

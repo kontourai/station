@@ -6,6 +6,7 @@ import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
 import { instructionGateErrors } from './agent-instructions-gate.mjs';
 import { FAST_STATIC_COMMANDS } from './run-ci-fast.mjs';
 import {
+  CI_FAST_TIMEOUT_MS,
   LANES,
   renderFullRegressionPhaseSchedule,
   renderLaneCatalogTable,
@@ -46,6 +47,20 @@ const guidance = [
   'docs/reference/verification-receipts.md',
   'docs/strategy/local-merge-readiness.md',
 ].map((file) => ({ file, text: readFileSync(resolve(root, file), 'utf8') }));
+export const CI_FAST_DEADLINE_GUIDANCE = Object.freeze([
+  Object.freeze({
+    file: 'docs/guides/testing.md',
+    marker: 'seven-minute coordinator deadline',
+  }),
+  Object.freeze({
+    file: 'docs/guides/code-quality.md',
+    marker: 'bounded seven-minute feedback',
+  }),
+]);
+const ciFastDeadlineDocs = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
+  ...entry,
+  text: readFileSync(resolve(root, entry.file), 'utf8'),
+}));
 export const DIRECT_OPT_IN = Object.freeze({
   'test:load-reliability':
     'host-local pressure experiment; no completion receipt',
@@ -212,7 +227,7 @@ const VERIFICATION_POLICY_SECTION_LINES = [
   'See `docs/reference/verification-receipts.md` for the field-by-field table.',
   '',
   '`ci:fast` is bounded diagnostic feedback, not completion evidence: it has a',
-  'five-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
+  'seven-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
   '`origin/main`) in its request identity, runs the affected selection before a',
   'fixed bounded static invariant set. A selector exit 3 is reported as a',
   'diagnostic defer after those invariants, never completion evidence; the',
@@ -369,6 +384,7 @@ export function verificationPolicyErrors({
   docs = guidance,
   lanes = LANES,
   ciFastStaticCommands = FAST_STATIC_COMMANDS,
+  ciFastDeadlineGuidance = ciFastDeadlineDocs,
 } = {}) {
   const errors = [];
   errors.push(...instructionGateErrors());
@@ -405,6 +421,16 @@ export function verificationPolicyErrors({
     errors.push(
       `ci:fast must reserve exactly ${CI_FAST_RESERVED_WEIGHT} coordinator weight`,
     );
+  if (ciFast?.timeoutMs !== CI_FAST_TIMEOUT_MS)
+    errors.push(
+      `ci:fast must use the exact ${CI_FAST_TIMEOUT_MS / 60_000}-minute bounded-feedback deadline`,
+    );
+  for (const entry of ciFastDeadlineGuidance) {
+    if (!entry?.text?.includes(entry?.marker))
+      errors.push(
+        `${entry?.file ?? 'ci:fast guidance'} must state '${entry?.marker ?? 'the bounded deadline'}'`,
+      );
+  }
   if (ciFast?.completion || ciFast?.diagnostic !== true)
     errors.push(
       'ci:fast selector deferrals must remain diagnostic and never completion evidence',

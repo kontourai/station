@@ -861,4 +861,59 @@ describe('reportExecution preserves genuine failures (station#4173)', () => {
       infrastructureErrors: 1,
     });
   });
+
+  test.each([
+    [
+      'timeout',
+      { status: 'timed_out', exitCode: null },
+      undefined,
+      'verification execution timed out before terminal reporting',
+    ],
+    [
+      'cancellation',
+      { status: 'canceled', exitCode: null },
+      undefined,
+      'verification execution was canceled before terminal reporting',
+    ],
+    [
+      'spawn failure',
+      { status: 'infrastructure_error', exitCode: null },
+      new Error('spawn EACCES'),
+      'verification execution infrastructure error: spawn EACCES',
+    ],
+  ] as const)(
+    'keeps a primary %s terminal cause ahead of an unavailable changed diagnostic',
+    (_label, terminal, error, primaryCause) => {
+      const reported = reportExecution({
+        raw: {
+          ...(error ? { error } : {}),
+          unavailableAttachments: [
+            { name: 'changed-test-diagnostics', reason: 'missing' },
+          ],
+        },
+        result: {
+          ...terminal,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+        },
+        cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+        worktree: process.cwd(),
+        request: { key: 'c'.repeat(64) },
+      });
+
+      expect(reported.result.status).toBe(terminal.status);
+      expect(reported.summary.firstCausalExcerpt).toBe(primaryCause);
+      expect(reported.summary.causalExcerpts).toEqual([
+        primaryCause,
+        'verification reporting failed: required attachment unavailable: changed-test-diagnostics (missing)',
+      ]);
+      expect(reported.summary.reconcileNote).toContain(
+        'required attachment unavailable',
+      );
+    },
+  );
 });
