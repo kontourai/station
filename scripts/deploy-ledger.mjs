@@ -276,7 +276,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
     '',
     '## Machine-readable source of truth',
     '',
-    `- JSON (stable location, newest first): [\`${DEPLOY_LEDGER_JSON_PATH}\`](${DEPLOY_LEDGER_JSON_PATH}) on \`main\`. This repository is private: an unauthenticated raw.githubusercontent fetch of that URL returns 404, so nothing outside the repo may treat the raw URL as readable.`,
+    `- JSON (stable location, newest first): [\`${DEPLOY_LEDGER_JSON_PATH}\`](deploy-ledger.json) on \`main\`. This repository is private: an unauthenticated raw.githubusercontent fetch of that URL returns 404, so nothing outside the repo may treat the raw URL as readable.`,
     '- This markdown view is generated from that JSON by `scripts/deploy-ledger.mjs`; it is a projection, never edited by hand.',
     '',
     '### JSON schema (one array element per ship)',

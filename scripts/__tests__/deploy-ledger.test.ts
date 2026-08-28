@@ -1,12 +1,13 @@
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   appendEntry,
   assertValidEntry,
   DEPLOY_LEDGER_CHANNELS,
   DEPLOY_LEDGER_JSON_PATH,
+  DEPLOY_LEDGER_MD_PATH,
   entryIdentityKey,
   main,
   previousShipSha,
@@ -19,6 +20,7 @@ import {
 const A_SHA = 'a'.repeat(40);
 const B_SHA = 'b'.repeat(40);
 const C_SHA = 'c'.repeat(40);
+const REPO_ROOT = resolve(import.meta.dirname, '../..');
 
 // Past dates: validateEntry rejects future timestamps beyond clock skew
 // (review LOW-1), so fixtures must be unambiguously in the past.
@@ -178,6 +180,27 @@ describe('deploy ledger append semantics', () => {
     expect(entryIdentityKey(entry({ artifacts: ['different'] }))).toBe(
       entryIdentityKey(entry()),
     );
+  });
+});
+
+describe('deploy ledger rendered source link', () => {
+  it('keeps the stable JSON label while linking to its sibling file', () => {
+    const markdown = renderLedgerMarkdown({
+      entries: [entry()],
+      githubRepo: 'kontourai/station',
+    });
+    expect(markdown).toContain(
+      `[\`${DEPLOY_LEDGER_JSON_PATH}\`](deploy-ledger.json)`,
+    );
+  });
+
+  it('keeps the checked-in Markdown byte-identical to the JSON projection', () => {
+    const entries = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, DEPLOY_LEDGER_JSON_PATH), 'utf8'),
+    );
+    expect(
+      renderLedgerMarkdown({ entries, githubRepo: 'kontourai/station' }),
+    ).toBe(readFileSync(resolve(REPO_ROOT, DEPLOY_LEDGER_MD_PATH), 'utf8'));
   });
 });
 
