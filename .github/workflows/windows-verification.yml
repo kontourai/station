@@ -60,6 +60,14 @@ jobs:
 
       - run: npm run dependencies:ci
 
+
+      # Self-heal the host's nvm4w junction before anything resolves node
+      # through it: the link rots (stale-symlink EPERM, first seen 2026-08-27
+      # as "Unexpected error attempting to determine if executable file
+      # exists 'C:\nvm4w\nodejs\node.EXE'"), and one `nvm use` rebuilds it.
+      - name: Rebuild the nvm4w node junction
+        shell: cmd
+        run: nvm use 24.5.0 && C:\nvm4w\nodejs\node.exe --version
       - name: Verify verification policy contract
         run: npm run verification:policy:gate
 
