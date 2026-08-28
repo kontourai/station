@@ -1458,6 +1458,8 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       name: /\d+ open chats?/,
     });
     const sessionsBeforeSwitch = await openChatsSummary.textContent();
+    const activeChatBeforeSwitch = new URL(page.url()).searchParams.get('chat');
+    expect(activeChatBeforeSwitch).toBeTruthy();
     await badge.click();
     await page
       .getByRole('dialog', { name: 'Switch project' })
@@ -1466,6 +1468,9 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     await expect(badge).toContainText('Beta Project');
     await expect(page.locator('.new-chat-modal')).toHaveCount(0);
     await expect(openChatsSummary).toHaveText(sessionsBeforeSwitch ?? '');
+    expect(new URL(page.url()).searchParams.get('chat')).toBe(
+      activeChatBeforeSwitch,
+    );
     await expect(page.locator('.chat-dock__project-context')).toContainText(
       'Beta Project',
     );

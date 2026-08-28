@@ -135,6 +135,7 @@ import {
 } from './projectChatRequest';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockViewModel } from './useChatDockViewModel';
+import { useLatestDeferredFocus } from './useLatestDeferredFocus';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -1257,9 +1258,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       activeSessionId,
       setActiveSessionId,
     });
+  const {
+    cancel: cancelPendingProjectBindingFocus,
+    schedule: scheduleProjectBindingFocus,
+  } = useLatestDeferredFocus((sessionId) =>
+    focusSession(sessionId, !isFullscreenPlacement),
+  );
   const focusSessionInPane = useCallback(
-    (sessionId: string) => focusSession(sessionId, !isFullscreenPlacement),
-    [focusSession, isFullscreenPlacement],
+    (sessionId: string) => {
+      cancelPendingProjectBindingFocus();
+      focusSession(sessionId, !isFullscreenPlacement);
+    },
+    [cancelPendingProjectBindingFocus, focusSession, isFullscreenPlacement],
   );
   const openChatForAgentInScopedPane = useCallback(
     (
@@ -1276,6 +1286,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       providerId?: string,
       providerType?: string,
     ) => {
+      cancelPendingProjectBindingFocus();
       if (routeToScopedChatProject(targetProjectSlug)) return;
       const effectiveProjectSlug = hasImmutableProjectScope
         ? projectSlug
@@ -1301,17 +1312,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       );
       if (!hasImmutableProjectScope && effectiveProjectSlug) {
         setActiveProjectSlug(effectiveProjectSlug);
-        setTimeout(() => focusSession(sessionId), 0);
+        scheduleProjectBindingFocus(sessionId);
       }
     },
     [
       hasImmutableProjectScope,
-      focusSession,
+      cancelPendingProjectBindingFocus,
       isFullscreenPlacement,
       openChatForAgent,
       projectSlug,
       projects,
       routeToScopedChatProject,
+      scheduleProjectBindingFocus,
       setActiveProjectSlug,
     ],
   );
