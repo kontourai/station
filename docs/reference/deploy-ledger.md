@@ -4,7 +4,7 @@ Every ship this repository makes, recorded by the workflow that shipped it — t
 
 ## Machine-readable source of truth
 
-- JSON (stable location, newest first): [`docs/reference/deploy-ledger.json`](deploy-ledger.json) on `main`.
+- JSON (stable location, newest first): [`docs/reference/deploy-ledger.json`](docs/reference/deploy-ledger.json) on `main`. This repository is private: an unauthenticated raw.githubusercontent fetch of that URL returns 404, so nothing outside the repo may treat the raw URL as readable.
 - This markdown view is generated from that JSON by `scripts/deploy-ledger.mjs`; it is a projection, never edited by hand.
 
 ### JSON schema (one array element per ship)
@@ -27,13 +27,14 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
-| 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station/actions/runs/33064078473) |
+| 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
 
 ## 2026-08-27T10:54:02Z · nightly-android · 0.1.2-nightly.2430
 
 - Ship SHA: `c4229f43f7569e96874c25356d1199fa01cbfec1`
 - Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243000
 - Artifact: workflow-artifact:station-nightly-243000 (7-day retention, archive outcome recorded in the run)
+- Note: PRE-RESET SHIP (2026-08-28 history reset): the sha and tags reference the archived pre-reset history (kontourai/station-archive) and do not exist in this repository's single-root history; the run URL has been repointed to the archive, where the run records live. The ship itself (Play internal, versionCode 243000) is real and unaffected.
 - Note: Seeded from observable history (station#4572): version 0.1.2-nightly.2430 = day 2430 build 0 = versionCode 243000; the immutable reservation tag refs/tags/nightly-version-code/243000 and the rolling refs/tags/nightly both point at the recorded sha; nightly run 33064078473 (created 2026-08-27T10:40:51Z) concluded success with its nightly job completing 2026-08-27T10:54:02Z — used verbatim as timestampUtc; the publish moment inside the job is not separately observable.
 - Note: Owner's brief dated this ship 2026-08-26 (local time); UTC day 2430 is 2026-08-27, which is what the version and run timestamps record.
 
