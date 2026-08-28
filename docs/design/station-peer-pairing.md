@@ -1,9 +1,9 @@
-# Design: Station-to-Station peer pairing (spike, archive#1123)
+# Design: Station-to-Station peer pairing (spike, station#1123)
 
 > Status: **spike deliverable — decision doc, no implementation**. Answers the
-> three decision points from the owner's reframing comment on archive#1123
-> (2026-07-28). Refs archive#1123, archive#1134, archive#1133, archive#1128, archive#1119, archive#1116, archive#1114/#1098,
-> archive#1131, archive#1143.
+> three decision points from the owner's reframing comment on #1123
+> (2026-07-28). Refs #1123, #1134, #1133, #1128, #1119, #1116, #1114/#1098,
+> #1131, #1143.
 
 > **Supersession note (added 2026-08-03).** §9 slices 1–3 **shipped** on
 > 2026-07-28 (`b4e0e887` and follow-ups). §1 "Current state, verified" now
@@ -25,7 +25,7 @@
 > | delegation resolves `kind: 'current' \| 'ssh'` only | `kind: 'current' \| 'ssh' \| 'peer'` — `src-server/tools/station-control-delegation.ts:100` |
 > | SSH calls carry "no `Authorization` header of any kind" | an `'ssh'` target attaches `Authorization: Bearer` when a peer credential exists for that `environmentId` — `station-control-delegation.ts:87-93,643-648` |
 > | "no way to express 'standard minus terminal'; a third preset is required" | the `delegation` preset exists — `environment-security.ts:174` (and a fourth, `inference`) |
-> | the loopback bypass "returns immediately: `if (effectivePeerClass === 'loopback') return next();`" | retired by archive#2051: ordinary protected callers, including direct loopback and SSH, require a bearer/device-session credential; only the exact internal-token attestation is separate |
+> | the loopback bypass "returns immediately: `if (effectivePeerClass === 'loopback') return next();`" | retired by station#2051: ordinary protected callers, including direct loopback and SSH, require a bearer/device-session credential; only the exact internal-token attestation is separate |
 > | the outbound credential "needs a **new** server-side store" | it exists — `src-server/services/peers/peer-credential-store.ts`, routes in `src-server/routes/environments/peer-credential-routes.ts`, CLI verbs `station environment peers list\|add\|remove` |
 >
 > Kept rather than rewritten because the doc's value is the *decision record*:
@@ -34,13 +34,13 @@
 
 ## 0. What changed in the reframe
 
-The original archive#1123 asked a narrower question: should `delegate_task` target any
+The original #1123 asked a narrower question: should `delegate_task` target any
 `KnownEnvironment`, not just SSH profiles. The owner's reframing comment
 replaced that with a bigger claim: pairing is symmetric by nature, so a single
 pairing act should establish *both* directions — "device may control Station"
 and "Station may delegate to peer" — at once. Under that model, SSH stops being
 a relationship and becomes one of several **access methods** (how you reach a
-peer with no direct HTTP path), and archive#1133's managed launch becomes a property of
+peer with no direct HTTP path), and #1133's managed launch becomes a property of
 that access method rather than of the peer relationship.
 
 This doc evaluates the reframe against the current code and answers the three
@@ -63,7 +63,7 @@ Three separate mechanisms exist today; none of them talk to each other.
   credential field at all** — trust is entirely "I can SSH to this host". The
   tunnel is a plain OpenSSH local forward
   (`src-server/services/ssh/openssh-environment-adapter.ts:148`).
-- **`KnownEnvironment`** (archive#1116, merged): an explicitly **client-side,
+- **`KnownEnvironment`** (#1116, merged): an explicitly **client-side,
   no-secrets, read-only reference model** that device-paired origins, the CLI
   host registry, and SSH profiles all project onto for display, joined by
   `environmentId` after a handshake
@@ -131,7 +131,7 @@ project slugs, agents, models) of *any SSH environment the grantor separately
 has configured*. Not new exposure — `standard` already carries it — but peer
 pairing makes this a **routine** grant rather than a rare one, which changes the
 risk calculus. Open item for the owner: accept as consistent with existing
-tiering, or add a targeted leaf override the way archive#1131 did (Slice 6).
+tiering, or add a targeted leaf override the way #1131 did (Slice 6).
 
 ## 3. Decision 2 — Mutual exchange mechanics
 
@@ -181,12 +181,12 @@ both directions; the affordance is a build detail, not part of this decision.
 
 **Rejected — always-symmetric with no toggles:** the implicit-grant failure mode,
 merely automated. **Rejected — keep them fully separate acts:** defeats the
-reframe and leaves archive#1134 unsolved.
+reframe and leaves #1134 unsolved.
 
-## 4. Historical decision record — The loopback bypass (pre-archive#2051)
+## 4. Historical decision record — The loopback bypass (pre-station#2051)
 
 > **Historical context only.** The recommendation and coexistence assumptions
-> below were written before archive#2051 retired the generic loopback/SSH
+> below were written before station#2051 retired the generic loopback/SSH
 > floor. They explain the original decision; the current contract is the
 > credential requirement summarized above.
 
@@ -236,7 +236,7 @@ changes: (a) the middleware reorder above, and (b) the SSH-target path must
 attach the minted peer credential's `Authorization: Bearer` on requests to
 `target.apiBase` when one exists for that `environmentId`.
 
-### Loopback scopes are not an exception (archive#1198)
+### Loopback scopes are not an exception (station#1198)
 
 The same rule applies to a credential stored by a desktop self-pairing flow or
 by the CLI for a Station on the current host. A Tauri webview and the bundled
@@ -256,7 +256,7 @@ entire installed base — presents nothing and falls through to exactly today's
 behavior. Nothing requires migrating or re-verifying a single existing
 environment.
 
-**What the floor still covers, and one thing it no longer does (archive#1490).**
+**What the floor still covers, and one thing it no longer does (station#1490).**
 The coexistence guarantee above is about *reach*, and it is unchanged. It was
 also, unintentionally, a guarantee about *approval*: a caller on the floor could
 approve its own pairing request and exchange it for a credential that outlived
@@ -326,14 +326,14 @@ inventing new vocabulary.
   delegating side presents it and the remote enforces real scope.
 - Upgrading an existing SSH environment should re-run peer pairing against the
   already-verified `environmentId` (`ssh-environment-profile-store.ts:34`), not
-  redo host/path setup (Slice 8) — cross-reference archive#1119's hub double-listing
+  redo host/path setup (Slice 8) — cross-reference #1119's hub double-listing
   concern so this doesn't reproduce it for a third source.
 - Every change is additive (optional fields, a new store, a new preset) — no
   schema bump, no forced re-pairing, matching the conventions of
   `StationCapabilityFlags` and `PairedDevice.scope`'s in-place migration
   (`remote-access-threat-model.md:219-224`).
 
-## 8. archive#1133's managed launch as a transport property
+## 8. #1133's managed launch as a transport property
 
 Managed launch is a capability of the `ssh-forward` access method's connect
 sequence, parallel to how `HostTunnelAccessMethod` already separates "how do I
@@ -357,7 +357,7 @@ store.
    otherwise leave open.
 4. **Mutual pairing exchange protocol (§3).** The largest slice; everything above
    is independently exercisable first.
-5. **"Add a peer" UI (archive#1134's collapse).** One code, two-sided independent
+5. **"Add a peer" UI (#1134's collapse).** One code, two-sided independent
    confirm, unified device+peer list.
 6. **Target-list unification + residual scope review.** Merge
    `discoverDelegationEnvironments`'s SSH-only read

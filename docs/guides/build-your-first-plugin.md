@@ -128,7 +128,7 @@ station_checkout=/absolute/path/to/station
 ```
 
 Over HTTP it is two calls, because an install carries the approval a preview
-produced (archive#4288) and `POST /api/plugins/install` refuses without one:
+produced (station#4288) and `POST /api/plugins/install` refuses without one:
 
 ```bash
 curl -X POST http://localhost:3141/api/plugins/preview \

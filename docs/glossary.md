@@ -84,10 +84,10 @@ distinction:
 
 ## Work identities
 
-- **Project-owned agent** — an agent whose record names an owning project (`AgentSpec.project`, `agent-engine-unification.md` §3.3, archive#1004 unification slice 7). Appears only inside its owning project (never subject to `ProjectConfig.agents`, never visible elsewhere, including the global/no-project context); deleting the owning project orphans it visibly (a validation state naming the missing project) rather than deleting it. Distinct from `ProjectConfig.agents`, which only opt-in-filters GLOBAL (unowned) agents.
+- **Project-owned agent** — an agent whose record names an owning project (`AgentSpec.project`, `agent-engine-unification.md` §3.3, station#1004 unification slice 7). Appears only inside its owning project (never subject to `ProjectConfig.agents`, never visible elsewhere, including the global/no-project context); deleting the owning project orphans it visibly (a validation state naming the missing project) rather than deleting it. Distinct from `ProjectConfig.agents`, which only opt-in-filters GLOBAL (unowned) agents.
 - **Task** — a durable work identity owned by a Project. A Task can retain an exact workspace binding and typed references and can be reopened after Station restarts.
 - **Task workspace** — the `/tasks/:taskId` surface for one durable Task. It keeps identity, files, diffs, artifacts, receipts, and exact Session correlation in context.
-- **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver** is Builder Kit-owned; **Learn** is Knowledge Kit-owned; **Operate** is Console-owned. The labels are provisional while archive#495 is experimental.
+- **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver** is Builder Kit-owned; **Learn** is Knowledge Kit-owned; **Operate** is Console-owned. The labels are provisional while #495 is experimental.
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
 - **Direct chat** — an immediate conversation entry point. Starting a direct chat does not silently create or infer a Task.
 - **Workspace availability** — `available`, `ambiguous`, or `unavailable`. Only `available` permits local inspection; the other states preserve the captured identity without claiming the path is still safe or current.
@@ -102,8 +102,8 @@ We do **not** use "runtime" as a user-facing word; it meant too many things. Eac
 | the `src-server` orchestrator | **Station core** / the server |
 | a `kind:'runtime'` connection | **Engine** connection |
 | "Runtime Chat" picker group | per-**engine** groups (§8.3) |
-| `executionMode: 'runtime'` | **external** (shipped, slice 6/archive#1003 — the VALUE itself is now `'external'`; a read-time shim normalizes older `'runtime'`-valued `agent.json`/remote payloads) |
-| `executionMode: 'provider-managed'` | **station** (shipped, slice 6/archive#1003 — same shim covers `'provider-managed'` → `'station'`) |
+| `executionMode: 'runtime'` | **external** (shipped, slice 6/station#1003 — the VALUE itself is now `'external'`; a read-time shim normalizes older `'runtime'`-valued `agent.json`/remote payloads) |
+| `executionMode: 'provider-managed'` | **station** (shipped, slice 6/station#1003 — same shim covers `'provider-managed'` → `'station'`) |
 
 ## Capabilities (Station agents own these; External agents can opt in to MCP or skills passthrough)
 
@@ -135,11 +135,11 @@ with two explicit, structurally identical exceptions, both off by default and ne
 
 - **Task** — Station's friendly label for a work item plus its dispatch affordance (the Tasks board on a project's page): create it, assign an agent/skill, and dispatch it into a session. Its statuses (`TaskStatus` in `@kontourai/station-contracts/task-graph`) are aligned to the flow-agents neutral work-item vocabulary — `todo`, `ready`, `triage`, `in_progress`, `blocked`, `review`, `verification`, `done` — with `canceled` kept as a documented **Station-local extension** (a task a user abandons before completion; the neutral contract itself has no such state).
 - **Work item** — the provider-neutral unit from `@kontourai/flow-agents`' work-item contract (`schemas/backlog-provider-settings.schema.json`, published by that package — not a file in this repo): a piece of backlog work identified independent of any one tracker (e.g. a GitHub issue). A Station `TaskRecord` may carry `sourceProvider`/`workItemRef` to reference the work item it originated from, without Station reaching into that provider's internals.
-- The direction of travel from the Session Board to a Console board (a work-item-aware view) is governed by epic **archive#580** — this glossary entry documents the vocabulary alignment (issue **archive#581**); the board convergence itself is tracked separately under that epic.
+- The direction of travel from the Session Board to a Console board (a work-item-aware view) is governed by epic **#580** — this glossary entry documents the vocabulary alignment (issue **#581**); the board convergence itself is tracked separately under that epic.
 
 ## The three "planes"
 
-"Plane" names three unrelated things across Station's docs and the Kontour suite. Keep them apart (issue **archive#587**, `docs/design/work-plane-composition.md` Decision 10):
+"Plane" names three unrelated things across Station's docs and the Kontour suite. Keep them apart (issue **#587**, `docs/design/work-plane-composition.md` Decision 10):
 
 - **Console operating plane** — Console's own read-only, cross-product aggregation: `OperatingState` (processes, gates, claims, evidence, timeline) folded from product-owned Console events/projections (console ADR 0001, "Console owns the integrated operating plane"). Console never holds semantic authority here — the producing product does (Surface owns claim trust state, Flow owns gate/run state, ...); Console only aggregates, correlates, and routes through that authority (console ADR 0002). Station builds this in-process via `@kontourai/console-core`; no hub is required at runtime. Not the same split as Console's separate **view plane / act plane** (`docs/design/work-plane-composition.md`): the operating plane is the projected *data*; view/act are how a host renders and routes intents against it.
 - **Emitter-sink control/record plane** — a data-taxonomy distinction inside a Console producer's emission pipeline, not a service boundary: every record is either **control-plane** (semantic, product-owned — events, projection snapshots, evidence refs, identity links, decisions, gates, `learning.*`) or **telemetry-plane** (operational — traces, metrics, logs, delivery diagnostics; never authoritative for product truth). Defined in console's Emitter/Sink/Plane contract (`docs/specs/emitter-sink-plane-contract.md` in the `kontourai/console` repo); `KontourEmitter`/`LocalFileSink`/`CompositeSink` are control-plane-first delivery roles. A shared `correlationId` may link a control-plane record to its telemetry without transferring authority between the two planes.
@@ -180,7 +180,7 @@ Station on this device**, so trusting one Station never extends to another.
   concept gets one word. Nothing scans copy for it, so it drifted back in
   three times: the pairing states are now worded once, in
   `packages/contracts/src/pairing-copy.ts`, whose own test asserts this rule
-  over every entry (archive#3849). Copy shared across the package boundary
+  over every entry (station#3849). Copy shared across the package boundary
   belongs there — it is the only module both `packages/connect` and `src-ui`
   may import.
 - Every surface that introduces the concept carries a one-line, plain-language
@@ -236,7 +236,7 @@ as interchangeable names for “the thing on screen.”
 
 ## Rename status
 
-This is the current pre-release vocabulary. Station does not preserve incompatible identity schemas: a non-empty unversioned or wrong-version home fails before data loading with `STATION_HOME_RESET_REQUIRED`, which names the supported `station home reset --confirm` command (archive#1913) rather than requiring a manual, improvised fix.
+This is the current pre-release vocabulary. Station does not preserve incompatible identity schemas: a non-empty unversioned or wrong-version home fails before data loading with `STATION_HOME_RESET_REQUIRED`, which names the supported `station home reset --confirm` command (station#1913) rather than requiring a manual, improvised fix.
 
 - **User-facing labels:** Connections and chat use **Provider** as the umbrella
   and **Model** for the option selected within it. Station/external and

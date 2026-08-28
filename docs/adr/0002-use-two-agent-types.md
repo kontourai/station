@@ -1,10 +1,10 @@
 # Use two agent types
 
-**Superseded (archive#975, 2026-07-27):** the agent-editor half of this ADR's model —
+**Superseded (station#975, 2026-07-27):** the agent-editor half of this ADR's model —
 a fixed `AgentType` (`managed`/`connected`/`acp`) driving a fixed editor tab set — is
 superseded by `docs/design/agent-engine-unification.md` §1/§4: an agent's editor
 surfaces and validation now derive from its bound engine's `EngineCapabilityMatrix`,
-not from a three-way type. **`AgentType` retired in slice 6 (archive#1003,
+not from a three-way type. **`AgentType` retired in slice 6 (station#1003,
 2026-07-27):** `AgentType`/`resolveAgentTypeFromRuntimeConnection` are deleted from
 `agent-capability-profile.ts`; the validator (`requiresAgentPromptForRuntime`) and
 registry (`isExternalEngineBoundAgent`) consumers now branch on

@@ -8,7 +8,7 @@ There are three entry points, and they are not the same program surface.
 
 ### The operator entry point: `npx @kontourai/station-cli@<channel>`
 
-Works once `@kontourai/station-cli` is published to npm (archive#4536 tracks
+Works once `@kontourai/station-cli` is published to npm (station#4536 tracks
 the bootstrap; `npm view @kontourai/station-cli` shows whether it's live
 yet) — until then this 404s, and the contributor entry point below
 (`./station` from a checkout) is the way to run the CLI.
@@ -194,7 +194,7 @@ What it does, in order:
 1. Finds a running Station through the instance registry
    (`@kontourai/station-shared/instance-registry`) and confirms it with a
    `GET /api/system/instance` probe.
-2. Mints a **one-time local UI-bootstrap token** (archive#1991) and opens your
+2. Mints a **one-time local UI-bootstrap token** (station#1991) and opens your
    browser at `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
    The page redeems the token for a device-session cookie and strips it from
    the URL immediately — see
@@ -211,7 +211,7 @@ Flags skip the prompt and name the path directly:
 | `--service` | Install and start a background service |
 | `--temp-home` | Start against a throwaway temp home |
 | `--port=<n>` / `--ui-port=<n>` | Ports for the started instance |
-| `--consent-port=<n>` | Consent-listener port (default: server port + 3, archive#3677) |
+| `--consent-port=<n>` | Consent-listener port (default: server port + 3, station#3677) |
 
 The launcher is **TTY-gated**: with no terminal (a script, a pipe, CI) and no
 action flag, `station` prints usage and starts nothing, exactly as it always
@@ -238,7 +238,7 @@ error and does nothing, so scripts see the same deterministic failure as before.
 
 ## Native installation
 
-When archive#818 publishes a required signed ring manifest, this no-clone macOS/Linux
+When #818 publishes a required signed ring manifest, this no-clone macOS/Linux
 path can install that exact portable GitHub release and start Station. Until
 then it is protocol documentation, not a currently available installer claim:
 
@@ -317,7 +317,7 @@ verbs, but only for a saved Station whose endpoint is loopback AND that
 records a local home (`localService.baseDir`, set by `station setup local`);
 a Station saved by pairing has no recorded home for these verbs to read its
 operator credential from, and still needs the explicit `STATION_HOME=<home>
---api-base=<loopback-url>` form (archive#4515).
+--api-base=<loopback-url>` form (station#4515).
 
 When a Station is selected, its credential reference is resolved through the
 operating-system keyring. Bearer material is absent from saved Station metadata,
@@ -361,7 +361,7 @@ comment.
 For a script or agent driving `./station` non-interactively against an
 instance it just started, exchange that secret directly instead of opening a
 browser. This is the exact sequence proven live against a real instance
-(archive#1860):
+(station#1860):
 
 ```bash
 # 1. Start an instance on unique, non-default ports (never 3141/3000).
@@ -418,7 +418,7 @@ one-time UI-bootstrap fragment (`mintBootstrapTokenForOpener` in
 `packages/cli/src/cli.ts`) — the sequence above uses it directly instead of
 through a browser redirect. There is currently no `station credential mint`
 convenience verb wrapping steps 2–4; that remains an open follow-up decision
-(archive#4085).
+(station#4085).
 
 ### Request deadlines and unreachable Stations
 
@@ -606,7 +606,7 @@ station config set registryUrl null      # unset
 ```
 
 **`config set` writes through Station's live `PUT /config/app` route by
-default** (archive#175): when a Station is reachable at the resolved
+default** (station#175): when a Station is reachable at the resolved
 `--api-base`/`--station`/`STATION_TARGET`, the write goes through the same
 sanitize/validate/reload path the Settings UI uses, so a running Station never
 silently diverges from the file on disk. A typed violation exits non-zero with
@@ -771,7 +771,7 @@ Environment. The controlling Station sends the canonical Environment + Agent
 target to that Environment for resolution. The CLI never selects an engine,
 connection, provider, tunnel, or remote API URL for execution.
 
-`--approval-mode`/`--effort`/`--thinking`/`--model-option` (archive#978) set
+`--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
 per-invocation settings on an Agent whose resolved engine supports them. A Station-engine Agent has no
 per-invocation engine settings surface and the CLI rejects these flags for
 one rather than silently dropping them. `--approval-mode` accepts exactly
@@ -805,7 +805,7 @@ validated fail-closed server-side (mirrors the `--project` behavior above):
 a `cwd` that doesn't exist on the target Station's filesystem fails the
 canonical execution request rather than silently spawning the adapter somewhere else.
 
-`--on-request=<wait|fail>` (archive#979, default `wait`) governs what
+`--on-request=<wait|fail>` (station#979, default `wait`) governs what
 happens when the target opens a pending request (approval/permission/
 confirmation/input) mid-turn — on both the orchestration (runtime) and
 managed (Station-agent) dispatch paths. Previously this hung the CLI
@@ -836,7 +836,7 @@ orchestration session (mirroring `station delegate`) rather than calling the
 managed chat route directly, so the chat lands an orchestration event-store
 row and appears in `station runs` with agent + model metadata, and
 `--on-request`/approvals ride the same canonical `request.opened` vocabulary
-as any other engine. **This is unconditional.** archive#1418/#1415 cut every
+as any other engine. **This is unconditional.** station#1418/#1415 cut every
 interactive caller over and `STATION_FEATURES=managed-chat-orchestration` was
 never flipped — it is inert and switches nothing, so do not reason about it
 as a toggle.
@@ -949,7 +949,7 @@ Discovering ready targets before delegating:
 station delegate targets --json
 ```
 
-Setting per-invocation engine settings (archive#978) — an External agent
+Setting per-invocation engine settings (station#978) — an External agent
 target only; a Station agent target rejects these
 flags rather than silently dropping them:
 
@@ -988,7 +988,7 @@ e.g. `delegate.create`, `delegate.status`, `delegate.events`,
 `delegate.continue`, `delegate.respond`, `delegate.interrupt`,
 `delegate.targets`.
 
-`--on-request=<wait|fail>` (archive#979, default `wait`, `create`/
+`--on-request=<wait|fail>` (station#979, default `wait`, `create`/
 conversation continuation only) — `delegate` dispatch is fire-and-forget (the server
 returns a `status: 'dispatched'` handle immediately; there is no live
 event stream open at the CLI call site to react to mid-turn, unlike
@@ -1112,7 +1112,7 @@ refresh: `GET /api/orchestration/sessions/:threadId` (seeds a session's full
 history), `GET /api/orchestration/sessions/:threadId/flow-run`
 (`getSessionFlowRun`), and `GET
 /api/orchestration/sessions/:threadId/builder-run` (`getSessionBuilderRun`,
-archive#189 S4).
+station#189 S4).
 
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent
@@ -1448,7 +1448,7 @@ does not depend on the order the log files happened to be read), it caps at
 5000, and `truncated` is reported only when rows were actually dropped.
 Content is redacted on read. A `--start`/`--end` that cannot be parsed is an
 error rather than a wider window. `--engine` reads the engine attribution added in
-archive#3074, so events written before it are excluded by that filter rather
+station#3074, so events written before it are excluded by that filter rather
 than guessed at. The rollup also reports `totalOutcomeUnknown` — tool results
 whose producer reported no terminal status, which are neither successes nor
 failures and would otherwise flatter the error rate.
@@ -1614,7 +1614,7 @@ survive restarts (verifying restart behaviour, for instance) wants `--home`.
 Shared-build actions (`--clean`, `fresh`, `--build`, and self-update) refuse to
 run while sibling instances from the same checkout are still live.
 
-**Every start names the home it resolved, and what chose it** (archive#4299):
+**Every start names the home it resolved, and what chose it** (station#4299):
 
 ```
   ✓ Home:   ~/.station/instances/stable (default)
@@ -1630,7 +1630,7 @@ isolation wrong does not produce an error or an unusable instance; it produces
 a working instance pointed at your own data, so this line is the only place
 the mistake is visible.
 
-#### Accessing Station remotely (archive#198)
+#### Accessing Station remotely (#198)
 
 The UI server's own origin is a genuine reverse proxy for backend HTTP + SSE
 calls (`/api/*` and the bare backend mounts — `/agents`, `/acp`, `/events`,
@@ -1689,7 +1689,7 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--build` | — | Force a rebuild before starting |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
-| `--allow-shared-home` | — | Start even though another live instance owns this home. Default: refuse — the stores are not multi-writer safe, so concurrent writers silently lose conversation data (archive#2904) |
+| `--allow-shared-home` | — | Start even though another live instance owns this home. Default: refuse — the stores are not multi-writer safe, so concurrent writers silently lose conversation data (station#2904) |
 | `--features=<flags>` | — | Comma-separated feature flags |
 | `--dry-run` | — | Print the resolved ports/instance/home and exit without starting |
 
@@ -1796,7 +1796,7 @@ station environment peers remove <environment-id>
   local`). A Station saved by pairing has no such home for these verbs to
   read its operator credential from and is refused with that reason; use
   `STATION_HOME=<home> --api-base=<loopback-url>` for it instead
-  (archive#4515). `approve`/`deny` accept either id printed by `access list`
+  (station#4515). `approve`/`deny` accept either id printed by `access list`
   — the request id or the offer id — or `--latest`.
 - `environment peers` manages the **outbound** peer-credential store: the
   credentials this Station presents when it delegates to another Station, as
@@ -1809,7 +1809,7 @@ station environment peers remove <environment-id>
   configuration and reports the effective host facts returned by `ssh -G`.
 - `environment add` saves a host alias and requested remote project directory;
   it never copies SSH keys, agent sockets, passwords, or private SSH options.
-  `--managed` (archive#1133) opts the environment into managed launch: on
+  `--managed` (station#1133) opts the environment into managed launch: on
   `connect`, if nothing answers on the configured remote port, Station runs a
   POSIX bootstrap over the same SSH connection to reuse a previously managed
   Station, attach to an already-running unmanaged one, or start one detached
@@ -1973,7 +1973,7 @@ station home restore --from=<backup-directory> --confirm [--home=<dir>] [--base=
 
 Archive (never delete) an incompatible Station home so a fresh one is
 scaffolded on next start. The command the `STATION_HOME_RESET_REQUIRED`
-error names (archive#1913) -- the supported bridge for a home an older
+error names (station#1913) -- the supported bridge for a home an older
 Station release wrote before the current schema marker existed.
 
 ```
@@ -1998,7 +1998,7 @@ station home reset --confirm --if-incompatible --base="$HOME/.station/instances/
 
 ### `checkpoints`
 
-Local diagnostics for workspace checkpoints (archive#2802). Checkpoint
+Local diagnostics for workspace checkpoints (station#2802). Checkpoint
 commits are pinned inside a project's own `.git` object database by their
 reflogs, and `git gc` deliberately cannot reclaim them for
 `gc.reflogExpire` days (default 90) — without this command a `.git` grown
@@ -2522,9 +2522,9 @@ chmod 700 .station/instances
 
 **Not the same thing as `<STATION_HOME>/instances.json`.** That is a
 separate, home-scoped (not CWD-scoped) cross-process instance registry
-(archive#1985) — see [`docs/design/instance-registry.md`](../design/instance-registry.md)
+(station#1985) — see [`docs/design/instance-registry.md`](../design/instance-registry.md)
 for the schema and the reasoning for keeping the two mechanisms distinct. As of
-archive#1983/#1672, `station service install` is the registry's first producer:
+station#1983/#1672, `station service install` is the registry's first producer:
 it writes `<STATION_HOME>/instances.json` as the durable authority for a user
 service's operator env (including `ALLOWED_ORIGINS`) and migrates the origins
 recorded in the pre-registry `<home>/service/*.json` manifest on first install.

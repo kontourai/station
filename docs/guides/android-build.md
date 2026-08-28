@@ -68,7 +68,7 @@ Android WebView does not reliably support CSS `env(safe-area-inset-*)` variables
 Android's WebView reports `env(safe-area-inset-*)` as **0 for system bars**
 (it only populates them for display cutouts in short-edges mode), so CSS
 alone cannot know the status-bar height — that is why the app used to draw
-under the clock (archive#2617). `MainActivity` therefore bridges the real
+under the clock (station#2617). `MainActivity` therefore bridges the real
 `WindowInsets` (systemBars ∪ displayCutout, in CSS px) to the page through a
 `StationAndroidInsets` JavascriptInterface installed in wry's
 `onWebViewCreate` hook, dispatching `station-android-insets` on change.
@@ -119,7 +119,7 @@ npx tauri android init
 npm run build:android
 
 # Confirm the packaged libraries' ELF p_align — the build passes either way.
-# This does not cover APK ZIP-entry alignment (zipalign -P 16); see archive#890.
+# This does not cover APK ZIP-entry alignment (zipalign -P 16); see #890.
 node scripts/check-android-16kb-alignment.mjs \
   src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 ```
@@ -131,13 +131,13 @@ The APK will be at `src-desktop/gen/android/app/build/outputs/apk/universal/debu
 Every APK carries `assets/station-build.json` — the same `{ sha, branch, builtAt }`
 artifact, produced by the same derivation, that the desktop bundle has carried
 at `Station.app/Contents/Resources/dist-server/station-build.json` since
-archive#1085. `npm run build:android` stages it via
+station#1085. `npm run build:android` stages it via
 `node scripts/write-android-build-manifest.mjs` before packaging, and both CI
 Android jobs stage it immediately after `tauri android init`.
 
 It exists because `versionName` never changes, so it was the *only* version
 signal a live device had: you could neither confirm a phone was current nor
-avoid overwriting a build newer than yours (archive#3592).
+avoid overwriting a build newer than yours (station#3592).
 
 ### Read it back off a connected device
 

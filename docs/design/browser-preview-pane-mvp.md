@@ -1,4 +1,4 @@
-# Browser Preview Pane MVP (Station archive#1375)
+# Browser Preview Pane MVP (Station #1375)
 
 Browser Preview is a Project-scoped Workspace Pane for a user-selected local
 HTTP(S) address. Its durable state contains only the canonical Project ID, a
@@ -20,7 +20,7 @@ opaque Pane instance and state keys do not encode the address or grant.
 ## Availability and rendering boundary
 
 - Browser Preview is discoverable from the known Pane catalog. Availability
-  composes the archive#1370 native capability adapter with a native-owned service
+  composes the #1370 native capability adapter with a native-owned service
   authority check at launch. A local-looking URL, platform name, browser user
   agent, or renderer connection cannot establish locality.
 - The Rust host resolves the running per-user service, then accepts only one
@@ -78,5 +78,5 @@ Child-webview hosting, remote targets, arbitrary request headers, credential
 transport to preview content, response rewriting, and browser automation are
 outside this MVP. Separate-window package interaction remains explicitly
 `NOT_VERIFIED` on macOS, Windows, Linux X11/Wayland; Web/PWA and Android/iOS
-remain unavailable. See the archive#1376 host spike for the conditional native-host
+remain unavailable. See the #1376 host spike for the conditional native-host
 record and scorecard.

@@ -168,12 +168,12 @@ service, and computer setup to Connections instead of duplicating those controls
 
 | Follow-on slice | Issue |
 |---|---|
-| Unified Providers home and readiness language | archive#1349 — shipped |
-| Provider detail and guided credential setup | archive#1350 — shipped |
-| Default-chat Model picker | archive#1351 — shipped |
-| Connection and tool prerequisite guidance | archive#1352 — shipped |
-| Keyboard shortcut editor | archive#1353 — shipped |
-| Settings integration and final interface polish | archive#1354 — shipped |
+| Unified Providers home and readiness language | #1349 — shipped |
+| Provider detail and guided credential setup | #1350 — shipped |
+| Default-chat Model picker | #1351 — shipped |
+| Connection and tool prerequisite guidance | #1352 — shipped |
+| Keyboard shortcut editor | #1353 — shipped |
+| Settings integration and final interface polish | #1354 — shipped |
 
 ---
 

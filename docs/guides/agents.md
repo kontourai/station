@@ -294,4 +294,4 @@ the owning session, and `review_pending` only opens that session. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session; attention clears only when its authoritative source changes. This is
-not a Flow gate inbox (archive#612 remains outside this projection).
+not a Flow gate inbox (#612 remains outside this projection).

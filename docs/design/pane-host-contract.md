@@ -1,12 +1,12 @@
 # The pane-host contract: one interface, two transports
 
-Status: design for archive#4201, feeding archive#4220 and archive#4190. Follows
+Status: design for station#4201, feeding #4220 and #4190. Follows
 `docs/design/pane-or-shell.md` (criterion, runtime tiers, and the iframe
 threat model).
 
 ## The problem, from evidence
 
-The Board extraction (archive#4200) found a first-party pane leaning on five shell
+The Board extraction (#4200) found a first-party pane leaning on five shell
 capabilities with no published equivalent, and resolved them for ONE pane by
 hand-injecting a typed host (`ConsoleBoardPaneHost`). The iframe runtime
 (`PluginFrameHost`) meanwhile speaks its own ad-hoc message set. Every future
@@ -14,7 +14,7 @@ extraction re-deriving its own host, and every iframe capability added ad
 hoc, is the same divergence this repo keeps paying for — two expressions of
 one need, drifting.
 
-The destination (archive#4220): a pane written against ONE host contract runs in
+The destination (#4220): a pane written against ONE host contract runs in
 either tier — direct calls in-process, postMessage across the iframe — and
 the runtime becomes a user trust decision. This document is that contract's
 design.
@@ -88,7 +88,7 @@ cases rather than staying bespoke).
    in-process adapter, and the Board's host refits onto them — deleting both
    component slots. The Board is the proof that tier 2 rides the contract.
 3. The frame adapter lands in `PluginFrameHost`, absorbing `navigate`/`toast`
-   into it. archive#4190's dogfood plugin is then written against the contract and
+   into it. #4190's dogfood plugin is then written against the contract and
    must run in BOTH tiers — one artifact, both runtimes, or the contract is
-   not done (archive#4220's success criterion).
-4. The install-time trust prompt (archive#4220) rides on 1–3.
+   not done (#4220's success criterion).
+4. The install-time trust prompt (#4220) rides on 1–3.

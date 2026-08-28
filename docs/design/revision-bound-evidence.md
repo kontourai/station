@@ -1,13 +1,13 @@
 # Design: revision-bound evidence
 
-> Status: implemented contract for [archive#2891](https://github.com/kontourai/station/issues/2891).
+> Status: implemented contract for [#2891](https://github.com/kontourai/station/issues/2891).
 
 ## Purpose
 
 `RevisionEvidenceModule` turns a settled, durable `SharedWorkingState` snapshot
 into an immutable Station revision receipt. It is neither a filesystem adapter
 nor a second synchronization mechanism. It restores untrusted input through
-the archive#2889 contract, rejects retained deferred causal work as `pending_state`,
+the #2889 contract, rejects retained deferred causal work as `pending_state`,
 then reconstructs a canonical `restored.snapshot()` before it hashes or
 retains anything. A valid but differently ordered input snapshot therefore
 creates the same receipt identity.
@@ -25,7 +25,7 @@ exported but deliberately does not enter the revision identity, so distinct
 valid authority tokens cannot change an otherwise identical receipt ID. Unknown fields—
 including local paths—are neither hashed nor exported. The
 `revision-evidence-v1:<sha256>` identity binds the canonical snapshot and
-Station attribution, while its embedded archive#2889 shared revision is the content
+Station attribution, while its embedded #2889 shared revision is the content
 witness. The interface bounds identifiers, labels, text,
 attestations, snapshots, records, import entry count, and total import bytes
 before durable admission.
@@ -70,7 +70,7 @@ parent's remaining byte budget after delimiters and keys, stopping without
 allocating a serialized whole string. Array and object limits are checked before
 element/property walks; sparse array holes are counted as JSON `null`, and
 malformed/proxy faults reject rather than throw.
-It rederives every record identity from its reconstructed archive#2889
+It rederives every record identity from its reconstructed #2889
 snapshot, validates parent closure and exact scope, and commits only a complete
 batch. It also asks a compatible authority to verify each opaque attestation
 against the exported revision ID, parents, scope/shared revision,

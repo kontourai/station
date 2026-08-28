@@ -2,19 +2,19 @@
 
 ## Context
 
-archive#1284 shipped a boot-time reconciliation pass that wrote a synthetic
+station#1284 shipped a boot-time reconciliation pass that wrote a synthetic
 `request.resolved{cancelled}` for requests stranded by an absent provider
-adapter. PR archive#1338 accumulated machinery that existed only
+adapter. PR #1338's four review rounds accumulated machinery that existed only
 to service the write-time shape: a `providerRegistrationSettled` startup
 barrier (the cancellation was irreversible, so it had to wait for plugin
 registration), a resting-state guard (the synthetic event permanently stamped
 lifecycle state), a four-state outcome type, a qualification counter, a
-receipt, and a metric. archive#1745 named the asymmetry — the pass converged on
+receipt, and a metric. station#1745 named the asymmetry — the pass converged on
 WRITE while the approval inbox converged on READ — and proposed projecting the
 answer at read time instead.
 
 Branch `feat/1686-shadow-counter-readable-1745-readtime-projection` (commit
-`aad1df6c`, PR archive#1765) implemented that: `projectRequestAnswerability`
+`aad1df6c`, PR #1765) implemented that: `projectRequestAnswerability`
 (`src-server/services/orchestration/open-requests.ts`) answers per read whether
 anything in THIS process can still answer an open request — thread attached →
 yes; session past resume (`completed`/`canceled`) → no (`past_resume`); provider
@@ -108,7 +108,7 @@ decision nobody made. The pitch: all consumers converge for free because they
 already fold events; supersession handles late registration.
 
 **Rejected, after steelmanning — its honest form contains the projection plus
-all the machinery archive#1745 exists to delete:**
+all the machinery #1745 exists to delete:**
 
 - **The cross-process lie.** The event log records session history — facts
   true for every reader. "No adapter in this process" is not such a fact.
@@ -119,7 +119,7 @@ all the machinery archive#1745 exists to delete:**
   observation about ME?" — a process-local read-time computation, i.e. the
   projection again, now with persistence bolted on.
 - **The barrier returns.** At boot, before plugins register, every provider
-  is "absent." An observer that writes at boot writes falsely (archive#1337
+  is "absent." An observer that writes at boot writes falsely (station#1337
   is exactly this misclassification); to avoid it, the write must wait for
   registration settlement — `providerRegistrationSettled` back from the
   grave. Supersession softens the *consequence* of a wrong write (it is no
@@ -251,9 +251,9 @@ ordering, supersession sweeps, and a silent-failure migration.
   `@ts-expect-error` construction test, not just convention.
 - The event log stays pure and replay-reproducible; `projectSessionLifecycle`
   is untouched.
-- Deletions from PR archive#1765 carry over: the barrier, the boot pass, the
+- Deletions from PR #1765 carry over: the barrier, the boot pass, the
   synthetic `request.resolved`, the resting-state guard, the qualification
-  counter, the receipt, and the orphan-reconciliation metric. archive#1337
+  counter, the receipt, and the orphan-reconciliation metric. station#1337
   (boot-timing misclassification) is mooted **for HTTP consumers** rather
   than fixed by more ordering: routes come up after plugin loading, so no
   client can observe the pre-registration window. The moot is not
@@ -276,13 +276,13 @@ ordering, supersession sweeps, and a silent-failure migration.
   same required member; the drifted SDK hand-copy of `SessionBoardItem`
   (`packages/sdk/src/query-domains/chatRuntimeTypes.ts:102`) is re-pointed at
   the contracts declaration rather than extended in place. `AgentRunSummary`
-  is the easy one to miss: its `status` folds
+  is the one whose omission the delta review caught: its `status` folds
   `waiting_for_approval` from the same raw open-request evidence, and on
   `main` the boot pass converged that at runtime, so leaving it undecorated
   left a regression on `/api/orchestration/runs` outside the enforcement the
   required member exists to provide. Carrying the decoration gives consumers
   the fact; teaching `status` itself to read it is a behaviour change tracked
-  separately (archive#1798).
+  separately (station#1798).
 
 - The fail-open window closes in a `finally`, not on the success path. The
   startup chain does unguarded store reads, so a rejection would otherwise
@@ -291,8 +291,8 @@ ordering, supersession sweeps, and a silent-failure migration.
   claims only what is true: this process attached whatever it managed to.
 - The work is re-sliced so each consumer surface lands independently
   reviewable, each with a rejection path a test executes — see the slice
-  issues cross-referenced on archive#1745. The 21 client-side decision sites
-  are NOT all fixed in this record: the surfaces that blocked merge (attention,
+  issues cross-referenced on station#1745. The 21 client-side decision sites
+  are NOT all fixed in this arc: the review-blocking surfaces (attention,
   notifications, session display/coordinator/sidebar, CLI approvals) get
   slices; the remainder (home lanes, mobile activity groups,
   background-tasks store, snapshot handlers, the delegation tool's own

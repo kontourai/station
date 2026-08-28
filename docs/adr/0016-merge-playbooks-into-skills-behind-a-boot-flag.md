@@ -41,7 +41,7 @@ an agent can activate from a catalog. They have separate stores
 identities (a UUID vs a directory name), separate routes, separate UI tabs, and
 separate MCP tools — and a user who wanted one had to guess which.
 
-Slice 1 (archive#3665) gave skills the affordances playbooks had: `command`
+Slice 1 (#3665) gave skills the affordances playbooks had: `command`
 (`enabled`/`name`/`global`), declared `variables`, run/outcome counters in a
 side store, `legacyIds` and `origin`. This slice moves the DATA and the callers.
 

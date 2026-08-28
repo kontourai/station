@@ -814,7 +814,7 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 
 ### API
 
-An install carries the approval a preview produced (archive#4288). `POST
+An install carries the approval a preview produced (station#4288). `POST
 /api/plugins/install` with no `consent` is refused with a 400 before the source
 is staged, so preview first — it is the only thing that reports the
 `contentDigest` the install has to name.
@@ -975,7 +975,7 @@ demand the first time a plugin bundle is about to run.
 it injects any bundle, so `require('@kontourai/station-sdk')`, `require('zod')`
 and the rest resolve exactly as before by the time your code executes.
 
-What changed (archive#883) is page-level access: reading
+What changed (station#883) is page-level access: reading
 `window.__station_ai_shared['@kontourai/station-sdk']` from a page script
 before any plugin has loaded is no longer guaranteed, because on a Station with
 no plugins installed nothing triggers the load. Await the readiness handle
@@ -1240,7 +1240,7 @@ root validator and shipped JSON Schemas, Surface's `buildTrustReport` and
 It is intentionally a bounded read model; Builder Kit and Flow remain the only
 lifecycle writers. Host-mediated enforcement of
 server-module filesystem authority is tracked in
-[Station archive#501](https://github.com/kontourai/station/issues/501).
+[Station #501](https://github.com/kontourai/station/issues/501).
 
 ### Minimal Layout (examples/minimal-layout)
 

@@ -1,10 +1,10 @@
 # Design: Agent–engine unification
 
-> Status: **direction recorded (owner sessions, 2026-07-26); tracking issue archive#893.** One
+> Status: **direction recorded (owner sessions, 2026-07-26); tracking issue #893.** One
 > agent definition for all of Station, executed by an engine. This doc is the contract
 > for the arc — the vocabulary migration, the unified `AgentSpec`, the engine capability
-> matrix, stable default-Agent registry, and the UI convergence plan. Child slices: archive#894
-> (engine vocabulary + chips), archive#895 (per-agent capability delivery), archive#896 (app-home
+> matrix, stable default-Agent registry, and the UI convergence plan. Child slices: #894
+> (engine vocabulary + chips), #895 (per-agent capability delivery), #896 (app-home
 > profiles). Revise this doc — not just the code — when direction changes.
 >
 > Supersedes the **taxonomy** halves of `docs/design/entity-hierarchy.md` (the
@@ -20,8 +20,8 @@ Station's former model was a two-type taxonomy (Station agent / External agent) 
 third shadow population of connection-shaped synthetic Agent records manufactured at
 request time. That taxonomy decided everything —
 editor tabs, badges, which capabilities an agent may even *have* — and it decides them
-wrongly at the margins: Claude Code sessions can now receive Station skills (archive#897) and
-ACP sessions can receive Station tool servers (archive#888), so "skills and integrations are
+wrongly at the margins: Claude Code sessions can now receive Station skills (#897) and
+ACP sessions can receive Station tool servers (#888), so "skills and integrations are
 Station-agent capabilities only" is already false in shipped code.
 
 The replacement model:
@@ -50,11 +50,11 @@ agent (`its engine`) instead of a type of agent.
 
 "Engine" becomes the user-facing word for what executes an agent, replacing the
 Station/External type language and absorbing "Agent app" (a connection *to* an engine).
-The Playbooks-rename precedent (archive#190/#204: one labels sweep + canonical routes with
+The Playbooks-rename precedent (#190/#204: one labels sweep + canonical routes with
 tested aliases + the zero-tolerance noun gate extended in the same commit + glossary
 updated together) is the template. Phasing:
 
-- **Phase A — labels + glossary (archive#894).** `docs/glossary.md` defines Engine first, then
+- **Phase A — labels + glossary (#894).** `docs/glossary.md` defines Engine first, then
   the UI sweep in the same arc: engine chips (§8.1) supersede the External/ACP badges,
   the Connections hub's "Agent apps" section and the new-chat picker group by engine,
   `scripts/noun-consistency-gate.mjs` learns the new canon. The gate's allowlist
@@ -63,15 +63,15 @@ updated together) is the template. Phasing:
   guidance prose learns the new canon and the banned-word list gains nothing. No
   data-model changes; internal identifiers are mapped to the new words at the UI
   boundary, exactly like Phase 1 of the Station/External rename.
-- **Phase B — internal identifiers (slice 6, archive#1003, shipped 2026-07-27).**
+- **Phase B — internal identifiers (slice 6, station#1003, shipped 2026-07-27).**
   `ConnectionKind` is `'model' | 'agent'`; `executionClass: 'managed' |
   'connected'` became `engineId: string`; `ExecutionMode` is `'external' |
   'station'`; and `AgentType`/`resolveAgentTypeFromRuntimeConnection` are retired.
-  archive#1417 completes the remaining synthetic-identity removal under §7. It is a
+  #1417 completes the remaining synthetic-identity removal under §7. It is a
   pre-release clean break: identity-bearing homes that do not have the current marker
   are rejected, rather than normalized, redirected, aliased, or migrated on read.
 
-Terminology fine print, decided now so archive#894 doesn't relitigate:
+Terminology fine print, decided now so #894 doesn't relitigate:
 
 - **Station's engine keeps its name.** The glossary already says "Station's engine" for
   VoltAgent/Strands; unification makes that literal — it is one engine among peers, not
@@ -135,7 +135,7 @@ interface AgentSpec {
 }
 ```
 
-And one additive field on the adapter seam — the structural keystone of archive#895:
+And one additive field on the adapter seam — the structural keystone of #895:
 
 ```ts
 interface ProviderSessionStartInput {
@@ -159,7 +159,7 @@ that model — the same record it always was. The existing side channels
 (`modelOptions.systemPrompt`, bootstrap-read `provideSkills`, connection-read
 `provideToolServers`) migrate onto this field and are then retired; connection-level
 settings remain as **engine defaults** that seed a new agent's spec and back the
-default agents (§7), so archive#888/#897 users lose nothing.
+default agents (§7), so #888/#897 users lose nothing.
 
 ### 3.3 Storage and scope
 
@@ -219,14 +219,14 @@ Seed matrix (initial honest state — entries move as slices land):
 
 | Capability | Station engine | Claude Code | Codex | ACP CLIs |
 | --- | --- | --- | --- | --- |
-| System prompt | native | session/flag — **shipped** (archive#895 wave B: SDK `systemPrompt` preset+append; authored prompt appends to the engine's own prompt) | session/wire — evidence-gathered, NOT shipped (archive#896 wave 2: `codex app-server generate-json-schema` against codex-cli 0.145.0 confirms `developerInstructions` on `ThreadStartParams`/`ThreadResumeParams`/`ThreadForkParams` — the wire channel this row names IS real — but the app-server protocol has no version/server-capability signal anywhere (`InitializeResponse` carries only `codexHome`/`platformFamily`/`platformOs`/`userAgent`; `InitializeParams`/`InitializeCapabilities` are client-declared only), so §5's version-skew honesty guard has nothing to gate on; authored prompts stay receipted `engine-unsupported` (archive#895 wave B) until a real signal exists) | unsupported — per-CLI initialize evidence recorded (archive#895 wave B probes: loadSession, mcp/prompt/session capabilities); no ACP CLI exposes a system-prompt surface; receipts unchanged |
-| MCP tool servers | native | session/subprocess — **shipped** (archive#1157: SDK `mcpServers` wired in `claude-adapter.ts buildOptions`; station-control-only token injection, safe because the SDK spawns each MCP server itself inside Station's own process) | session/wire — **shipped** (archive#1195, the Codex analog of archive#1157: `-c mcp_servers.<id>....` session-layer overrides appended to the `codex app-server` spawn argv, confirmed live against codex-cli 0.145.0; this superseded the app-home hypothesis this row originally seeded — `codex app-server` independently manages its own MCP connections, so the channel is 'wire' like ACP, not 'app-home'. The built-in station-control server is delivered via a per-session, short-lived, station-control-scoped bearer token riding the station-control HTTP/SSE MCP endpoint's URL query string — never env, since env can never safely cross a wire channel to an external process) | session/wire — shipped for `session/new` (archive#888) and `session/load` (archive#895 wave B) on loadSession-capable CLIs; a resume against a CLI without `loadSession` fails closed with a named error, never a silent fresh session. Authored passthrough stays stdio-only. The built-in station-control server (archive#1684) is the one HTTP entry: an ACP `type: 'http'` server whose `Authorization: Bearer` header carries the same per-session token Codex carries in a URL query string — the header rather than the URL because an ACP `session/new` payload is handed to the external agent app. `basis: 'runtime_observation'`, so it is delivered only to a connection whose live `initialize` advertised `mcpCapabilities.http` |
-| Skills | native | session/workspace-overlay — **shipped** (archive#897); app-home variant per archive#896 | session/app-home (if probe proves a skills surface; else unsupported) | unsupported (slash-command shims are a recorded follow-up) |
+| System prompt | native | session/flag — **shipped** (#895 wave B: SDK `systemPrompt` preset+append; authored prompt appends to the engine's own prompt) | session/wire — evidence-gathered, NOT shipped (#896 wave 2: `codex app-server generate-json-schema` against codex-cli 0.145.0 confirms `developerInstructions` on `ThreadStartParams`/`ThreadResumeParams`/`ThreadForkParams` — the wire channel this row names IS real — but the app-server protocol has no version/server-capability signal anywhere (`InitializeResponse` carries only `codexHome`/`platformFamily`/`platformOs`/`userAgent`; `InitializeParams`/`InitializeCapabilities` are client-declared only), so §5's version-skew honesty guard has nothing to gate on; authored prompts stay receipted `engine-unsupported` (#895 wave B) until a real signal exists) | unsupported — per-CLI initialize evidence recorded (#895 wave B probes: loadSession, mcp/prompt/session capabilities); no ACP CLI exposes a system-prompt surface; receipts unchanged |
+| MCP tool servers | native | session/subprocess — **shipped** (#1157: SDK `mcpServers` wired in `claude-adapter.ts buildOptions`; station-control-only token injection, safe because the SDK spawns each MCP server itself inside Station's own process) | session/wire — **shipped** (station#1195, the Codex analog of #1157: `-c mcp_servers.<id>....` session-layer overrides appended to the `codex app-server` spawn argv, confirmed live against codex-cli 0.145.0; this superseded the app-home hypothesis this row originally seeded — `codex app-server` independently manages its own MCP connections, so the channel is 'wire' like ACP, not 'app-home'. The built-in station-control server is delivered via a per-session, short-lived, station-control-scoped bearer token riding the station-control HTTP/SSE MCP endpoint's URL query string — never env, since env can never safely cross a wire channel to an external process) | session/wire — shipped for `session/new` (#888) and `session/load` (#895 wave B) on loadSession-capable CLIs; a resume against a CLI without `loadSession` fails closed with a named error, never a silent fresh session. Authored passthrough stays stdio-only. The built-in station-control server (station#1684) is the one HTTP entry: an ACP `type: 'http'` server whose `Authorization: Bearer` header carries the same per-session token Codex carries in a URL query string — the header rather than the URL because an ACP `session/new` payload is handed to the external agent app. `basis: 'runtime_observation'`, so it is delivered only to a connection whose live `initialize` advertised `mcpCapabilities.http` |
+| Skills | native | session/workspace-overlay — **shipped** (#897); app-home variant per #896 | session/app-home (if probe proves a skills surface; else unsupported) | unsupported (slash-command shims are a recorded follow-up) |
 | Commands | native | unsupported (native slash commands are the engine's own) | unsupported | unsupported |
 | Model + knobs | native (Model connection) | session (model, effort, thinking, fastMode) | session (model, approvalPolicy, sandbox, serviceTier) | model selection unavailable until the adapter invokes an ACP model-category configuration operation |
 | Approvals / interrupt / resume | per adapter metadata (`ConnectionCapability`) | yes/yes/yes | yes/yes/yes | per-CLI probe |
 
-### 4.1b Declared vs observed capability basis (archive#1549, slice 1)
+### 4.1b Declared vs observed capability basis (station#1549, slice 1)
 
 A matrix cell is *static per engine*. Some capabilities are not: ACP's HTTP
 MCP transport is an **optional capability of the connected CLI**, negotiated
@@ -267,23 +267,23 @@ derivation, following the Surface spec's declared-vs-observed distinction
 as the *same* predicate. They are now intentionally different questions —
 "does a reviewed mechanism exist for this engine class?" vs "does one exist
 AND is it verified for this subject?" — and they coincided in effect only
-while every shipped cell was `basis: 'declared'`. Since archive#1684 the
+while every shipped cell was `basis: 'declared'`. Since station#1684 the
 `acp` cell is observation-based, so they genuinely diverge: the resolver
 exempts station-control for every ACP session, and the per-subject truth
 belongs to the delivering adapter's **live** gate and its undelivered
 receipt, not to either static check.
 
-**Amendment to §4.1's archive#895 note.** "Probe capabilities are evidence only,
+**Amendment to §4.1's #895 note.** "Probe capabilities are evidence only,
 never gates the resolver's delivery map" remains true of the *session
 delivery map* (`sessionDeliveryChannels`, still purely static). It no longer
 holds for the *binding/picker* layer, which now consumes
 `mcpCapabilities.http` as evidence. Recorded here rather than left as a
 half-reversal — an unwritten half-reversal is how "ACP passthrough is
-intentionally stdio-only" became a wording artifact (archive#1379).
+intentionally stdio-only" became a wording artifact (#1379).
 
 Slice 1 was behaviour-neutral by construction: no shipped cell carried an
 observation basis, so the derivation's second argument was never consulted on
-any production surface. **Slice 2 (archive#1684) shipped**, flipping the `acp`
+any production surface. **Slice 2 (station#1684) shipped**, flipping the `acp`
 cell in the same indivisible change as the wire code — the capability appeared
 at the exact commit delivery works, in both directions. Delivery: an ACP
 `type: 'http'` MCP server entry whose `Authorization: Bearer` header carries
@@ -331,7 +331,7 @@ Two rules carried over from shipped work:
   result may *upgrade* an `unsupported` entry — never silently downgrade a session.
 - **The secret boundary is part of the matrix's semantics.** An env-bearing tool
   server is never deliverable over `wire` or `app-home` to an external engine — same
-  exclusion + disabled-reasoned-option UX as archive#888, now enforced at agent-spec
+  exclusion + disabled-reasoned-option UX as #888, now enforced at agent-spec
   resolution instead of per-connection.
 
 ### 4.2 Reconciling the three existing capability vocabularies
@@ -387,15 +387,15 @@ structural: honesty is a property of the contract, not a courtesy of each featur
 
 Base layer = the user's global engine config (`~/.claude`, `~/.codex`, XDG dirs),
 **read-only** to Station — with an optional explicit *import-as-snapshot* to fork a
-divergent Station-managed profile (archive#896). Station-managed additions stack per-session
+divergent Station-managed profile (#896). Station-managed additions stack per-session
 via three channels, and only these:
 
 1. **Wire** — config passed in the session protocol itself: ACP `session/new`
-   `mcpServers` (archive#888, shipped), Claude SDK per-session options, Codex `thread/start`
+   `mcpServers` (#888, shipped), Claude SDK per-session options, Codex `thread/start`
    params. Nothing touches disk. Preferred whenever the engine offers it.
 2. **App-home profile** — an env-pointed, Station-owned config home
    (`<STATION_HOME>/app-homes/<engineId>/…` via `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, XDG
-   overrides) layered for the session's process only (archive#896). **Wave 1 (shipped):** the
+   overrides) layered for the session's process only (#896). **Wave 1 (shipped):** the
    Claude spawn boundary is closed — `ClaudeAdapter`'s `query()` call now layers
    `CLAUDE_CONFIG_DIR` onto a full `process.env` spread whenever the `claude-runtime`
    connection's `config.useAppHome` opt-in is on (absent/false is the default, off);
@@ -423,12 +423,12 @@ via three channels, and only these:
    session's start and a later resume attempt (`docs/design/connections-onboarding.md`
    §1.1's toggle-boundary resume caveat).
 3. **Workspace overlay** — manifest-tracked materialization into the session cwd
-   (`.claude/skills/` per archive#897's hardened contract). Repo-rooted sessions only.
+   (`.claude/skills/` per #897's hardened contract). Repo-rooted sessions only.
 
 Selection order per capability, per session: **wire > app-home > workspace overlay** —
 prefer the channel that touches the least state. Two hard guards:
 
-- **Global-config refusal (shipped, archive#896 wave 1):** workspace materialization refuses
+- **Global-config refusal (shipped, #896 wave 1):** workspace materialization refuses
   any target that resolves — by real path, so a symlinked session cwd cannot dodge it —
   into global engine config, checked before any directory is created. This is a live
   hazard, not hypothetical: a dirless project or global agent defaults the session cwd
@@ -437,11 +437,11 @@ prefer the channel that touches the least state. Two hard guards:
   `packages/contracts/src/provider.ts`) — wave 1 is receipt-only; the app-home channel
   is the designated (not-yet-wired) fallback for exactly this case, tracked as a wave-2
   defer so the reason taxonomy stays stable when that wiring lands.
-- **The archive#897 hygiene contract is channel policy**, not a skills feature: per-session
+- **The #897 hygiene contract is channel policy**, not a skills feature: per-session
   manifests, resolved-root containment, refuse-don't-follow symlinks, tracked-only
   cleanup apply to anything any engine materializes via the workspace channel.
 
-### 6.2 archive#895: provisioning moves from connection to agent
+### 6.2 #895: provisioning moves from connection to agent
 
 The shipped opt-ins hang on the connection — one setting per engine, applied to every
 agent on it. Target: the **agent spec is the provisioning source**; the connection
@@ -457,7 +457,7 @@ Station uses one clean, pre-release identity schema. It does not read, convert,
 preserve, or repair the prior synthetic format. A non-empty Station home without the
 current schema marker, or with a different marker, fails before loading or mutating
 application data with `STATION_HOME_RESET_REQUIRED`, naming the supported
-`station home reset --confirm` command (archive#1913) rather than a manual reset.
+`station home reset --confirm` command (station#1913) rather than a manual reset.
 
 ### 7.1 Typed names and real defaults
 
@@ -490,7 +490,7 @@ custom Agent: it cannot be renamed, rebound, imported over, or directly deleted.
 #### 7.1.1 The `station` identity's engine is app state, not Agent state
 
 The one exception to "`AgentSpec.execution` is the engine binding" (§3.2), recorded
-here because leaving it implicit is what produced archive#3662:
+here because leaving it implicit is what produced station#3662:
 
 - **`AppConfig.builtinAgentEngineConnectionId` is the authority** for which engine
   runs the reserved `station` identity. It is a Settings field with its own editor
@@ -501,7 +501,7 @@ here because leaving it implicit is what produced archive#3662:
   that resolution only*. Writing the resolution into `agents/station/agent.json` would
   let one boot with an unready engine destroy the user's stored choice, and would
   freeze out the recovery where the same stored choice starts resolving again the
-  moment evidence arrives (archive#1549).
+  moment evidence arrives (station#1549).
 - **The persisted record therefore never carries `execution.agentConnectionId`**, and
   that is enforced twice, not merely asserted:
   - **A submitted binding is REFUSED at the service seam.** `AgentService`'s
@@ -563,7 +563,7 @@ no `forceClickRole` in new specs, and API parity for every action.
 
 ### 8.1 Engine chips supersede External/ACP badges
 
-The archive#881/#892 badge family (`AgentTypeBadge`: quiet "External" + "ACP" pills) is
+The #881/#892 badge family (`AgentTypeBadge`: quiet "External" + "ACP" pills) is
 replaced by **engine chips**: one chip naming the engine, everywhere agents render
 (new-chat picker, agent lists, session tabs, hub cards) — "Claude Code", "Codex",
 "OpenCode · GLM-4.7" (engine · model where the model is the distinguishing fact).
@@ -577,12 +577,12 @@ Decisions:
 - **ACP never appears on a chip.** Transport is not identity. The engine's name and
   icon come from its connection/registry entry.
 - The badge components/tests (`AgentTypeBadge.tsx`, `agentTypeBadgeKind`, their four
-  call sites and four spec files) are the replacement surface — archive#894 converts them in
+  call sites and four spec files) are the replacement surface — #894 converts them in
   place rather than layering chips beside badges.
 
 ### 8.2 Editors derive from the matrix
 
-`AgentEditorForm` already derives tabs via `getAgentCapabilityProfile`; archive#894/#895
+`AgentEditorForm` already derives tabs via `getAgentCapabilityProfile`; #894/#895
 re-key that derivation on the engine matrix (§4.2). Target tab semantics: **Basic**
 (always; includes engine selection — replacing the current "Station agent / External
 agent" type `<select>` with an engine picker), **Prompt/Skills/Tools/Commands** (each
@@ -605,17 +605,17 @@ ordinary members of their engine's group; Recent stays first.
 
 | # | Slice | Contents | Depends on |
 | --- | --- | --- | --- |
-| 0 | **This doc** (archive#893) | Direction + contracts; glossary staleness fixes (internal marker, rename-status table) | — |
-| 1 | **archive#895 per-agent capability delivery** | `ResolvedAgentDefinition` on `ProviderSessionStartInput`; move `provideToolServers`/`provideSkills` to agent spec with connection-level engine defaults; adapters provision from the agent; delivery-channel selection incl. system-prompt native flags (claude/codex) and per-CLI ACP probe; capability-honesty receipts | doc |
-| 2 | **archive#894 engine vocabulary + chips** | Glossary "Engine" entry first; labels sweep; engine chips replace badges; picker/hub regrouping; noun-gate + allowlist updated same commit; entity-hierarchy.md revised with the code | doc (parallel-safe with archive#895; glossary commit lands first) |
-| 3 | **archive#896 app-home profiles** | Per-CLI config-surface audit; `<STATION_HOME>/app-homes/<engineId>` via `CLAUDE_CONFIG_DIR`/`CODEX_HOME`/XDG; import-from-global snapshot; global-config refusal guard for workspace materialization | doc; archive#895's channel selection |
-| 4 | **archive#1417 stable default Agents** | Fresh-schema marker and registry-backed real defaults; clean typed-identity cutover removes synthetic manufacture, aliases, and promotion callbacks | archive#895, archive#894 |
-| 5 | **Matrix-driven editor completion (archive#975, shipped 2026-07-27)** | Engine picker in Basic; re-keyed capability profiles; validation states | archive#894, archive#895 |
-| 6 | **Phase B identifier renames (archive#1003, shipped 2026-07-27, §7.4)** | Engine identity (`engineId`) replaces `executionClass`; `ExecutionMode` values renamed (`external`/`station`); `AgentType` retired; archive#974 station-control strings. archive#1417 completes the remaining supported synthetic-identity removal as a clean break. | 4, 5 |
-| 7 | **Project-owned agents (archive#1004, shipped 2026-07-27)** | `AgentSpec.project` field end to end: schema + normalization, ownership-aware availability (the `project-reference-integrity` input-contract change of §3.3), orphan states, editor/picker surfacing | doc; archive#895's additive contract |
+| 0 | **This doc** (#893) | Direction + contracts; glossary staleness fixes (internal marker, rename-status table) | — |
+| 1 | **#895 per-agent capability delivery** | `ResolvedAgentDefinition` on `ProviderSessionStartInput`; move `provideToolServers`/`provideSkills` to agent spec with connection-level engine defaults; adapters provision from the agent; delivery-channel selection incl. system-prompt native flags (claude/codex) and per-CLI ACP probe; capability-honesty receipts | doc |
+| 2 | **#894 engine vocabulary + chips** | Glossary "Engine" entry first; labels sweep; engine chips replace badges; picker/hub regrouping; noun-gate + allowlist updated same commit; entity-hierarchy.md revised with the code | doc (parallel-safe with #895; glossary commit lands first) |
+| 3 | **#896 app-home profiles** | Per-CLI config-surface audit; `<STATION_HOME>/app-homes/<engineId>` via `CLAUDE_CONFIG_DIR`/`CODEX_HOME`/XDG; import-from-global snapshot; global-config refusal guard for workspace materialization | doc; #895's channel selection |
+| 4 | **#1417 stable default Agents** | Fresh-schema marker and registry-backed real defaults; clean typed-identity cutover removes synthetic manufacture, aliases, and promotion callbacks | #895, #894 |
+| 5 | **Matrix-driven editor completion (station#975, shipped 2026-07-27)** | Engine picker in Basic; re-keyed capability profiles; validation states | #894, #895 |
+| 6 | **Phase B identifier renames (station#1003, shipped 2026-07-27, §7.4)** | Engine identity (`engineId`) replaces `executionClass`; `ExecutionMode` values renamed (`external`/`station`); `AgentType` retired; #974 station-control strings. #1417 completes the remaining supported synthetic-identity removal as a clean break. | 4, 5 |
+| 7 | **Project-owned agents (station#1004, shipped 2026-07-27)** | `AgentSpec.project` field end to end: schema + normalization, ownership-aware availability (the `project-reference-integrity` input-contract change of §3.3), orphan states, editor/picker surfacing | doc; #895's additive contract |
 
-Slices 4–7 get their own issues when reached; 1–3 are archive#895/#894/#896 as filed.
-Note archive#894/#895/#896 do **not** ship the `project` field — §3.3 is slice 7's contract.
+Slices 4–7 get their own issues when reached; 1–3 are #895/#894/#896 as filed.
+Note #894/#895/#896 do **not** ship the `project` field — §3.3 is slice 7's contract.
 
 ## 10. Decisions
 
@@ -642,20 +642,20 @@ Note archive#894/#895/#896 do **not** ship the `project` field — §3.3 is slic
 
 ## 11. Contract impact on other docs
 
-- `docs/glossary.md` — archive#894 rewrites the taxonomy sections around Engine; archive#1417
+- `docs/glossary.md` — #894 rewrites the taxonomy sections around Engine; #1417
   removes synthetic-prefix terminology and records `AgentId` and
   `EngineConnectionId` as the clean identity boundary.
 - `docs/design/entity-hierarchy.md` — status note added now pointing here; substantive
   revision lands with each slice that moves a boundary (standing rule).
 - `docs/design/connections-onboarding.md` — §5 remains the passthrough mechanism
-  contract; archive#896 adds the app-home/overlay section beside the detection principle;
+  contract; #896 adds the app-home/overlay section beside the detection principle;
   §5's per-connection opt-ins become engine defaults per §6.2.
 - `docs/design/chat-composer.md` — its §3.4 badge spec is superseded by §8.1 (engine
   chips); the navigability principle and API-parity table are unchanged and binding.
-- `docs/reference/session-api.md` — archive#1417 revises session inputs and responses to
+- `docs/reference/session-api.md` — #1417 revises session inputs and responses to
   typed `AgentId`; synthetic `__acp:` redirects and alias-resolution behavior are
   removed with the supported surface.
 - `docs/adr/0002-use-two-agent-types.md` — superseded by this doc's §1: slice 5
-  (archive#975) shipped 2026-07-27, retiring the editor's fixed `AgentType`-driven tab
+  (station#975) shipped 2026-07-27, retiring the editor's fixed `AgentType`-driven tab
   set in favor of the engine capability matrix. `AgentType` itself survives in code
   (validator + registry consumers) until slice 6.

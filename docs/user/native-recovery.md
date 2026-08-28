@@ -17,7 +17,7 @@ commit must match that exact ticket; an old ticket cannot reveal a newer
 sidecar.
 
 This avoids showing a usable-looking window before its protected local surface
-is ready. The native-startup work is tracked by [archive#3808](https://github.com/kontourai/station/issues/3808).
+is ready. The native-startup work is tracked by [#3808](https://github.com/kontourai/station/issues/3808).
 
 ## When the window does not appear
 
@@ -91,12 +91,12 @@ native dialog, tray icon, or physical device behaved the same way.
 
 | Behavior | Current evidence | Status |
 | --- | --- | --- |
-| Hidden release window, exact ticket, timeout, retry, and activation deferral | Source configuration plus pure Rust/UI tests from the archive#3808 work | **NOT_VERIFIED** on packaged macOS, Windows, and Linux shells |
-| Hostile plugin IPC denial in a real Tauri WebView | Browser Playwright test attempts the hostile calls, but no in-shell harness exists | **NOT_VERIFIED**; tracked by [archive#2495](https://github.com/kontourai/station/issues/2495) |
-| Renderer/WebView death detection and bounded reload | No desktop implementation or kill-the-WebView test is present | **NOT_VERIFIED**; tracked by [archive#2006](https://github.com/kontourai/station/issues/2006) |
-| EPIPE/closed-stdio handling | No desktop/server EPIPE recovery proof is present | **NOT_VERIFIED**; tracked by [archive#2006](https://github.com/kontourai/station/issues/2006) |
-| macOS Finder/Dock Apple Event launch panic diagnosis | A reported abort has no recoverable panic payload or confirmed trigger | **NOT_VERIFIED**; tracked by [archive#3496](https://github.com/kontourai/station/issues/3496) |
-| Tray rendering, tray activation, and second-launch behavior on release builds | Pure-state/static routing from [archive#3808](https://github.com/kontourai/station/issues/3808) | **NOT_VERIFIED** on packaged macOS, Windows, and Linux |
-| Mobile startup and recovery | Desktop readiness code is desktop-only; no equivalent mobile recovery evidence is supplied here | **NOT_VERIFIED** on Android and iOS; documentation scope tracked by [archive#3817](https://github.com/kontourai/station/issues/3817) |
+| Hidden release window, exact ticket, timeout, retry, and activation deferral | Source configuration plus pure Rust/UI tests from the #3808 work | **NOT_VERIFIED** on packaged macOS, Windows, and Linux shells |
+| Hostile plugin IPC denial in a real Tauri WebView | Browser Playwright test attempts the hostile calls, but no in-shell harness exists | **NOT_VERIFIED**; tracked by [#2495](https://github.com/kontourai/station/issues/2495) |
+| Renderer/WebView death detection and bounded reload | No desktop implementation or kill-the-WebView test is present | **NOT_VERIFIED**; tracked by [#2006](https://github.com/kontourai/station/issues/2006) |
+| EPIPE/closed-stdio handling | No desktop/server EPIPE recovery proof is present | **NOT_VERIFIED**; tracked by [#2006](https://github.com/kontourai/station/issues/2006) |
+| macOS Finder/Dock Apple Event launch panic diagnosis | A reported abort has no recoverable panic payload or confirmed trigger | **NOT_VERIFIED**; tracked by [#3496](https://github.com/kontourai/station/issues/3496) |
+| Tray rendering, tray activation, and second-launch behavior on release builds | Pure-state/static routing from [#3808](https://github.com/kontourai/station/issues/3808) | **NOT_VERIFIED** on packaged macOS, Windows, and Linux |
+| Mobile startup and recovery | Desktop readiness code is desktop-only; no equivalent mobile recovery evidence is supplied here | **NOT_VERIFIED** on Android and iOS; documentation scope tracked by [#3817](https://github.com/kontourai/station/issues/3817) |
 
-The related native-startup implementation work is [archive#3808](https://github.com/kontourai/station/issues/3808). Consult the linked issues for live status rather than treating this table as a release checklist.
+The related native-startup implementation work is [#3808](https://github.com/kontourai/station/issues/3808). Consult the linked issues for live status rather than treating this table as a release checklist.

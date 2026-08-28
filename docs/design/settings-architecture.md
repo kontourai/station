@@ -3,16 +3,16 @@
 Status: incremental implementation (2026-07-30). Research base: comparative review of four reference
 agent-tooling products' settings systems (attributed analysis lives in the private
 ops workspace, per this repo's no-competitor-names policy), plus a full audit of
-Station's current settings surface at `73381430`. Companion backlog: archive#572 (navigation grouping),
-archive#536 (agent-oriented hierarchy), archive#175 (CLI config divergence), archive#983 (config watcher
-has no subscriber), archive#802 (layout removal discoverability).
+Station's current settings surface at `73381430`. Companion backlog: #572 (navigation grouping),
+#536 (agent-oriented hierarchy), #175 (CLI config divergence), #983 (config watcher
+has no subscriber), #802 (layout removal discoverability).
 
-The first visible increment shipped through archive#1354: `/settings` explains the
+The first visible increment shipped through #1354: `/settings` explains the
 Station, Defaults, and This-device scopes up front; provider, developer-service,
 and computer setup has one canonical home in Connections; host detection is
 clearly labeled as describing the Station host; Agent defaults remain behind
 progressive disclosure; and keyboard shortcuts use the versioned device-settings
-record. Slice 3 (epic archive#1269) then shipped the full scope-driven section rewrite
+record. Slice 3 (epic #1269) then shipped the full scope-driven section rewrite
 described below: `/settings` is now three registry-driven scope sections
 (Station / Defaults / This device) with a persistence-tier caption each; the
 previously hidden Station fields (`approvalGuardian`, `defaultMaxTurns`,
@@ -20,9 +20,9 @@ previously hidden Station fields (`approvalGuardian`, `defaultMaxTurns`,
 `surfaceTrustFromVeritasEvidence`, `knowledgeStores`,
 `disableDefaultSkillRegistries`, `registryUrl`, `distributionProfile`,
 `builtinAgentEngineConnectionId`) are surfaced with provenance badges; search is
-registry-driven; and archive#1359's parallel `station.device-settings` root
+registry-driven; and #1359's parallel `station.device-settings` root
 (keyboard-shortcut and model-picker preferences) converged onto the slice-2
-device-settings envelope. Slice 4 (archive#1273) then closed the chat-settings gap
+device-settings envelope. Slice 4 (#1273) then closed the chat-settings gap
 the original audit found: ChatSettingsPanel's reasoning/tool-details/font
 prefs move to the device-settings store and dock mode gains a device-scope
 fallback (§3 S4), and the save-model convention this design implied is now
@@ -55,8 +55,8 @@ Station's settings grew page-by-page, not model-first. The audit found:
   editable. The UI cannot tell the user which source wins.
 - **Weak write path.** `PUT /config/app` validates as `z.record(z.unknown())` at the
   route boundary (AJV catches problems late); `station config set` bypasses the live
-  route entirely (archive#175); the config watcher's agent/integration events reach no
-  subscriber (archive#983).
+  route entirely (#175); the config watcher's agent/integration events reach no
+  subscriber (#983).
 
 ## 2. What the reference products taught us
 
@@ -65,7 +65,7 @@ products; attributed per-product analysis lives in the private ops workspace):
 
 - **Per-field provenance** — the settings API tells clients where each value came
   from (file / env / default), so a surface can name the source instead of
-  guessing. (archive#1557: it reports the resolution that happens, never a
+  guessing. (station#1557: it reports the resolution that happens, never a
   prediction that an edit will be ignored.)
 - **One typed write path shared by every client** — UI, CLI, and tools mutate
   settings through the same validated route; no client writes the file directly.
@@ -89,7 +89,7 @@ implementations (observed in the wild as an explicit anti-pattern).
 
 The consensus across all four products, independently arrived at: **settings are
 organized by scope — who or what a setting controls and where it lives — not by
-whichever page first needed them.** That is also exactly what archive#572 and archive#536 ask
+whichever page first needed them.** That is also exactly what #572 and #536 ask
 for.
 
 ## 3. Target model: five scopes
@@ -133,7 +133,7 @@ Already mostly right; the revamp names it as a rule rather than an accident:
 - **Agent** → agent editor (engine, model, thinking/effort defaults, guardrails,
   region override, prompt/skills/tools/commands).
 - **Connection / engine / plugin / integration** → their own detail panels.
-- **Chat/session** → ChatSettingsPanel, re-founded (build slice 4, archive#1273,
+- **Chat/session** → ChatSettingsPanel, re-founded (build slice 4, #1273,
   shipped): display prefs (reasoning/tool details/font) are S3 device
   settings with an explicit per-session URL-param override; dock mode has a
   device-scope fallback.
@@ -177,11 +177,11 @@ Derived from the registry, so they can never drift:
 
 Write path: **all writers go through the live route** — UI, and `station config
 set` when a Station is reachable (falling back to direct file write only with an
-explicit `--offline` flag), closing archive#175. `GET /config/app` gains per-field
+explicit `--offline` flag), closing #175. `GET /config/app` gains per-field
 provenance (`default | file | env`) so the UI can name where a value came from
 (the §2 provenance pattern).
 
-**Corrected by archive#1557.** This originally said the UI would render
+**Corrected by station#1557.** This originally said the UI would render
 "overridden by operator env" badges "instead of accepting doomed edits", and
 the badge shipped that way: an active `envOverride` var disabled the control
 and labelled the stored value inert. No resolver in Station behaved that way.
@@ -237,7 +237,7 @@ it is not warranted by anything this slice found).
 
 ## 5. Navigation
 
-archive#2680 adds one flat UI catalog at
+station#2680 adds one flat UI catalog at
 `src-ui/src/views/settings/settings-catalog.ts`. Each rendered control target
 spreads `settingsRow(id)`, so its visible title, stable row anchor, search
 entry, and `data-catalog-id` completeness marker share one declaration.
@@ -249,7 +249,7 @@ with `?view=<section>&highlight=<row-id>`; the page scrolls and focuses it,
 pulses once (with a non-animated reduced-motion treatment), then removes only
 the consumed `highlight` parameter.
 
-archive#4138 projects that same typed target inventory into the command palette
+station#4138 projects that same typed target inventory into the command palette
 rather than creating a second command list or searching rendered DOM text.
 Each command has a stable identity, section, and truthful write authority;
 temporarily unavailable targets remain explanatory rows and do not masquerade
@@ -274,7 +274,7 @@ unsaved-changes guard, so Back retains the expected Settings intent.
   omits (project settings, model connections, per-agent settings by name).
 - Entity and Connections surfaces keep their routes; dead `/providers` alias is
   removed; Notifications toggle and `/notifications` inbox cross-link.
-- archive#572's Agents/Skills/Models customization grouping and archive#536's
+- #572's Agents/Skills/Models customization grouping and #536's
   provider-instance presentation remain their own issues; this design gives them
   the scope vocabulary and the registry to build on rather than absorbing them.
 
@@ -284,33 +284,33 @@ unsaved-changes guard, so Back retains the expected Settings intent.
    typed PUT schema, provenance in GET, completeness tests. No UI change yet.
 2. **Device store unification.** One versioned client-settings store; migrate the
    legacy localStorage keys; honest Export/Import.
-3. **/settings IA restructure. Shipped (station#settings-revamp epic archive#1269).**
+3. **/settings IA restructure. Shipped (station#settings-revamp epic #1269).**
    Station / Defaults / This-device sections from the registry; surfaced the
    hidden S1 fields (approvalGuardian, maxTurns, maxOutputTokens,
    terminalShell, mcpUiHost, surfaceTrustFromVeritasEvidence, knowledgeStores,
    disableDefaultSkillRegistries, registryUrl, distributionProfile,
    builtinAgentEngineConnectionId) with provenance badges; registry-driven
-   search; converged archive#1359's parallel device-settings root onto the slice-2
+   search; converged #1359's parallel device-settings root onto the slice-2
    envelope.
-4. **Chat settings persistence. Shipped (station#settings-revamp, archive#1273,
-   epic archive#1269).** Reasoning/tool-detail/font/dock-mode prefs moved to device
+4. **Chat settings persistence. Shipped (station#settings-revamp, #1273,
+   epic #1269).** Reasoning/tool-detail/font/dock-mode prefs moved to device
    scope (`chatShowReasoning`, `chatShowToolDetails`, `chatFontSize`,
    `dockSlotPlacement` in `DEVICE_SETTINGS_REGISTRY`) with explicit per-session
    URL-param override semantics (§3 S4); the save-model convention is
    recorded in §4.1 and every existing single-control surface audited
    against it.
-5. **Naming and cross-links. Partially shipped (archive#2679).** The three
+5. **Naming and cross-links. Partially shipped (station#2679).** The three
    Knowledge surfaces are named My knowledge store / Project knowledge /
    Knowledge infrastructure; Notifications and every other in-app Settings
    deep link use canonical `?view=` while the existing `?section=` fallback
    remains accepted. Effective-value chain work, the peer-credentials UI home,
    and `/providers` alias removal remain separate (the alias is owned by the
    concurrent routing lane).
-6. **Plumbing debt.** `station config set` via live route (archive#175); wire the config
-   watcher's events to the subscribers that S1 edits need (archive#983, scoped to what
+6. **Plumbing debt.** `station config set` via live route (#175); wire the config
+   watcher's events to the subscribers that S1 edits need (#983, scoped to what
    the settings surfaces consume).
 
-**Save-model and device-store convergence shipped (archive#2679).** `/settings`
+**Save-model and device-store convergence shipped (station#2679).** `/settings`
 now exposes exactly two behaviors by scope: the Station + Defaults server
 document is drafted behind Save/Discard (including `logLevel`), while This
 device controls persist immediately through the versioned envelope. The
@@ -331,5 +331,5 @@ Slices 1–2 are foundations; 3 is the visible revamp; 4–6 ride the new rails.
 - No project-level `config` files for app settings — project scope stays entity
   config (`project.json`), not a config layer.
 - Keyboard shortcut customization is now a device-scoped companion slice
-  (archive#1353). It uses the same versioned device-settings record as model-picker
+  (#1353). It uses the same versioned device-settings record as model-picker
   preferences and the same live command registry as the command palette.

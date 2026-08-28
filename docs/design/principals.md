@@ -2,7 +2,7 @@
 
 > Status: **decision record**. No implementation. Written 2026-08-03 to
 > reconcile five epics that had accumulated overlapping answers to "how do
-> people work here" (archive#1392, archive#1393, archive#1707, archive#741, archive#1859) and to record the small
+> people work here" (#1392, #1393, #1707, #741, #1859) and to record the small
 > number of decisions that are expensive to reverse.
 >
 > This document is the contract for the *principal* axis. The identity **seam**
@@ -50,15 +50,15 @@ Every permission grant in Station binds to a **device**, not a person
 
 | | Problem | What it needs | Issues |
 | --- | --- | --- | --- |
-| **(a)** | **One principal, many positions** — devices, browsers, the phone, and whole machines in a fleet | Capability tokens + attribution metadata. **Zero auth.** | archive#741, archive#1878, archive#1730, archive#1212, `access:approve` |
-| **(b)** | **Many principals, one surface** — a shared workspace with members | Person identity, membership, per-person audit | archive#1392 |
-| **(c)** | **Many customers, hosted, billed** | (b)'s identity at the login/billing edge only | archive#1393, archive#1707 |
+| **(a)** | **One principal, many positions** — devices, browsers, the phone, and whole machines in a fleet | Capability tokens + attribution metadata. **Zero auth.** | #741, #1878, #1730, #1212, `access:approve` |
+| **(b)** | **Many principals, one surface** — a shared workspace with members | Person identity, membership, per-person audit | #1392 |
+| **(c)** | **Many customers, hosted, billed** | (b)'s identity at the login/billing edge only | #1393, #1707 |
 
 Two classifications that are easy to get wrong, and were:
 
-- **archive#741 (personal fleet) is (a), not (b).** Every slice is one human whose
+- **#741 (personal fleet) is (a), not (b).** Every slice is one human whose
   positions happen to be entire machines. It needs no person model.
-- **archive#1707 (hosted foundation) involves no humans at all.** Tenant isolation
+- **#1707 (hosted foundation) involves no humans at all.** Tenant isolation
   works off URL authority; it is boundary-between-customers plumbing and is
   correctly proceeding today without any identity model. The service account
   and storage administrator that can write its home are trusted infrastructure
@@ -73,21 +73,21 @@ delegation problems — all (a).
 Recorded because each will otherwise be rediscovered by whoever picks up an
 epic.
 
-**C1 — two authorities, no composition rule.** archive#1392 authorizes by *membership*
+**C1 — two authorities, no composition rule.** #1392 authorizes by *membership*
 ("is it in the room?"). The shipped model authorizes by *credential scope
 subset* — one route→scope table (`src-server/security/pairing-route-scopes.ts`),
 subset rule at `environment-security.ts:220-235`. Nobody owns the rule for how
-they compose. **Resolution: archive#1859 owns the capability axis** and must be shaped
-before archive#1392 builds anything, or every extension point ends up answering to two
+they compose. **Resolution: #1859 owns the capability axis** and must be shaped
+before #1392 builds anything, or every extension point ends up answering to two
 authorities.
 
 **C2 — "tenant" means two things.** The landed `TenantId` is a DNS-authority
 deployment boundary with *zero people in it*, and its parsers reject extra keys
 (`tenancy.ts:39,197-206`), so there is deliberately nowhere to put a person.
-archive#1392's tenant is a community of members. **Resolution: three orthogonal axes,
+#1392's tenant is a community of members. **Resolution: three orthogonal axes,
 never merged** — see §4.
 
-**C3 — historical concern, resolved by archive#2051.** This document once
+**C3 — historical concern, resolved by station#2051.** This document once
 treated the credential-less loopback floor as load-bearing for peer delegation
 and the SSH installed base. Protected routes now require a bearer or
 device-session credential regardless of direct loopback or SSH transport; only
@@ -97,8 +97,8 @@ reintroducing implicit transport trust.
 
 **C4 — three epics assume an identity primitive; the seam already exists.**
 `identity.md` is **landed**: `VerifiedIdentity { provider, subject,
-federatedVia }` with an ordered source list. archive#1392 and archive#1393 cite it; **archive#741
-does not, and would plausibly build a parallel owner-id.** **Resolution: archive#741
+federatedVia }` with an ordered source list. #1392 and #1393 cite it; **#741
+does not, and would plausibly build a parallel owner-id.** **Resolution: #741
 slice 1's "stable user/account id" binds to `VerifiedIdentity.subject`. No new
 primitive.**
 
@@ -109,7 +109,7 @@ three are not.
 
 ### R1 — Attribution not captured at a boundary is gone forever
 
-This is the only item in the entire people space with **expiry cost**. archive#1878:
+This is the only item in the entire people space with **expiry cost**. #1878:
 `source` and `requester` are in hand at pairing approval and discarded before
 persistence, so every device paired before that is fixed is permanently
 unattributable — `PairedDevice` carries only `id, name, scope, kind, createdAt,
@@ -131,7 +131,7 @@ vocabulary growth once silently re-widened live grants.
 when it arrives, is a **separate additive field** on the grant record — exactly
 how `kind` was added (`environment-security.ts:406-414`). Adding a token is
 inert *provided* it stays out of `DEFAULT_GRANT_PAIRING_SCOPE`. Enforced by
-`PAIRING_SCOPE_GRANT_PATHS` (archive#1883): a token cannot compile without declaring
+`PAIRING_SCOPE_GRANT_PATHS` (#1883): a token cannot compile without declaring
 how a human obtains it.
 
 ### R3 — Tenant ≠ account ≠ member: three axes, three owners
@@ -140,15 +140,15 @@ how a human obtains it.
 | --- | --- | --- |
 | **Tenant** | deployment/customer boundary, keyed off request authority | `packages/contracts/src/tenancy.ts` |
 | **Account** | a verified human identity | `docs/design/identity.md` |
-| **Member** | an account's standing within a tenant | archive#1859's future capability model |
+| **Member** | an account's standing within a tenant | #1859's future capability model |
 
 **Rule:** `TenantId` must never be overloaded into a person id. Adding a
 principal dimension later is a deliberate, versioned contract change — fine —
 but only if nobody meanwhile treats these as the same axis.
 
-### R4 — archive#1707 trusts the storage writer; it does not manufacture a principal
+### R4 — #1707 trusts the storage writer; it does not manufacture a principal
 
-Hosted archive#1707's private-home boundary limits who can write the persisted store:
+Hosted #1707's private-home boundary limits who can write the persisted store:
 the Station service UID and the storage administrator that controls it are
 trusted. If either makes a syntactically valid rewrite from configured tenant
 alpha to configured tenant bravo, it changes the stored authority; that is
@@ -164,12 +164,12 @@ Written as observable events, so the decision is not a judgement call under
 pressure later.
 
 - **(b) fires when a second real human is granted access to any Station** — a
-  design partner, a collaborator. At that point **archive#1859's capability shaping
-  starts, before archive#1392's membership** (per C1). Not "when we think about
+  design partner, a collaborator. At that point **#1859's capability shaping
+  starts, before #1392's membership** (per C1). Not "when we think about
   collaboration"; when a second person actually has access.
 - **(c)'s identity work fires when BOTH:** the external Kontour token contract
   exists, **and** a hosted tenant not operated by us is real. Until then only
-  archive#1707 continues, because it is isolation work that needs no principals.
+  #1707 continues, because it is isolation work that needs no principals.
   `identity.md:41-43` already forbids implementing `KontourAccountIdentitySource`
   ahead of that contract.
 
@@ -182,12 +182,12 @@ Recorded so the temptation is answered once rather than re-litigated:
 
 - `KontourAccountIdentitySource` / OAuth / SSO — seam landed, upstream contract
   absent, `identity.md` forbids it
-- Membership, roles, invites — archive#1707's own contract defers it
+- Membership, roles, invites — #1707's own contract defers it
 - Replacing the cosmetic `os.userInfo()` alias — display-only; replacing it
   early manufactures a user model with one user
 - Passkeys for pairing — `identity.md:47-74` already rejects them on RP-ID
   grounds
-- User tables, DPoP, an OAuth server — archive#1098's recorded non-goals
+- User tables, DPoP, an OAuth server — #1098's recorded non-goals
 - Anything added to `DEFAULT_GRANT_PAIRING_SCOPE` (R2)
 
 ## 7. Where the work lives
@@ -196,9 +196,9 @@ Rule: **if closing it requires merging code into station, it lives in station's
 tracker; if closing it requires a decision about customers, money, or cross-repo
 sequencing, it lives in the ops workspace.**
 
-- **station:** archive#1859, archive#1707, archive#1425, archive#741, archive#1878, archive#1730, archive#1212, and archive#1392's
+- **station:** #1859, #1707, #1425, #741, #1878, #1730, #1212, and #1392's
   mechanics — engineering contracts.
-- **ops:** the commercial half of archive#1393 (tiers, pricing, hosted-vs-enterprise,
+- **ops:** the commercial half of #1393 (tiers, pricing, hosted-vs-enterprise,
   whitelabel), and the **trigger register** for §5 — demand-evidence watching,
   the same pattern the S5 extraction framework already runs. The station epics
   carry one line each: "blocked on trigger, see ops."

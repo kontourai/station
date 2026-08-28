@@ -32,9 +32,9 @@ The pre-push hook runs seven checks, in this order (the hook file,
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `node scripts/check-prepush-ui-bundle.mjs` | ~9s, and only when the push changes a UI build input | a tree over the entry-bundle ceiling |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
-| `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (archive#3208) |
-| `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (archive#3629) |
-| `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (archive#4572) will generate from |
+| `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
+| `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
+| `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
 The transfer check has a finite capture **liveness timeout**, which only bounds
 a hung subprocess; it is not a performance score or a product budget. Prepare
@@ -60,9 +60,9 @@ which runs after the whole Vitest corpus — so they failed on whoever gated
 next rather than on whoever caused the break, and each discovery cost a full
 gate cycle. On 2026-08-17 that shape cost six: `main` sat red for hours on one
 unformatted parameter list, with two lanes independently applying the identical
-three-second fix because neither could merge without carrying it (archive#3141); and
+three-second fix because neither could merge without carrying it (#3141); and
 the entry-bundle ceiling needed reconciling on five separate merges, with
-unowned raises consumed within hours (archive#3033). Run at push time, both become
+unowned raises consumed within hours (#3033). Run at push time, both become
 correctly attributed by construction: an over-ceiling UI tree cannot leave the
 machine, and a ceiling raise happens in the branch that spent the bytes.
 
@@ -107,7 +107,7 @@ server or desktop app is serving.
 There is deliberately no per-check escape hatch for either. Unlike a stale
 base, which can be a legitimate state of a branch you do not fully control,
 both of these are properties of your own tree that you can fix in seconds —
-and a bypass would reproduce exactly the unowned-raise loop archive#3033 exists to
+and a bypass would reproduce exactly the unowned-raise loop #3033 exists to
 close. `git push --no-verify` remains for a genuine emergency.
 
 **Why the merge-base check exists.** A pre-push gate verifies the branch you are pushing, not
@@ -233,7 +233,7 @@ The failure is not a missing guard. It is a *plausible set* of guards, each
 individually sensible, that collectively defend data which was never at risk.
 Nobody reviewing the list notices, because every entry on it is defensible.
 
-**The instance that produced this section** (archive#3205). A tool that removes
+**The instance that produced this section** (station#3205). A tool that removes
 finished git worktrees guarded on: not the primary checkout, not the current
 worktree, branch fully merged, no unpushed commits, no modified tracked files,
 nothing touched recently. Six guards, all reasonable, all tested.
@@ -249,10 +249,10 @@ keep a worktree alive`.
 
 Five of six guards defended data that was already safe in git. The sixth
 category was the one that could not be recovered, and it was the one waved
-through. Verified end to end: git refused, `--force`
+through. An independent review proved it end to end: git refused, `--force`
 deleted a hand-written source file, nothing recoverable.
 
-(That is the *corrected* version, not the shipped one — the tool now keeps any
+(That is the *reviewed* version, not the shipped one — the tool now keeps any
 worktree holding an untracked file git is not ignoring, and no longer passes
 `--force`. The point worth keeping is that the original guard list looked
 complete to its author and to its tests.)

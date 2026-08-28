@@ -1,6 +1,6 @@
 # Design: SSH-launched Environments
 
-> Status: proposed. Companion to archive#2577; the pairing side of environments is shipped, this is the launch side.
+> Status: proposed. Companion to station#2577; the pairing side of environments is shipped, this is the launch side.
 
 ## The gap
 
@@ -12,7 +12,7 @@ A launched environment is code WE started on a machine, which is a stronger clai
 
 1. **Launch and pairing stay separate acts.** The SSH flow ends by producing a pairing offer exactly as if the remote had run `station environment offer` itself. The desktop then pairs through the normal exchange — same credential issuance, same device record, same revocation. No SSH-derived bearer shortcuts.
 2. **The launched server proves its identity before first use.** The launcher records the remote build's provenance (sha, channel, `system-status` route output) into the environment record at creation. A later connect that reports a different install path or downgraded sha surfaces as a warning, not silently.
-3. **SSH credentials never enter the browser surface.** Launch is a desktop (Tauri) capability; the webview sees only the resulting environment. Same boundary the native credential store established in archive#2298.
+3. **SSH credentials never enter the browser surface.** Launch is a desktop (Tauri) capability; the webview sees only the resulting environment. Same boundary the native credential store established in #2298.
 
 ## Mechanics
 

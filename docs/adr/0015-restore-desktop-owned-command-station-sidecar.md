@@ -1,13 +1,13 @@
 # ADR 0015 — Desktop-owned Command Station sidecar without service attachment
 
-**Status:** Accepted. Supersedes the archive#1618 decision that Desktop is
-only a client of an installed durable service. archive#1987 restores
+**Status:** Accepted. Supersedes the station#1618 decision that Desktop is
+only a client of an installed durable service. station#1987 restores
 desktop-owned Command Station startup under the constraints recorded here.
 
 ## Context
 
 Station Desktop must be usable on a clean local home before a user elects to
-install an OS-managed background service. The prior archive#1618 doctrine made an
+install an OS-managed background service. The prior #1618 doctrine made an
 installed durable service the only Desktop target. That left first launch
 dependent on an opt-in host integration and conflated two intentionally
 different lifetimes.
@@ -90,5 +90,5 @@ reaped while an attached service is not signalled.
 
 ## References
 
-archive#1618, archive#1987, archive#1672, and
+station#1618, station#1987, station#1672, and
 [Instance Registry](../design/instance-registry.md).

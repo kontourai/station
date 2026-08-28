@@ -33,7 +33,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_SERVICE_NAME=station
 ```
 
-## Resource Attributes, and a Breaking Rename (archive#2484)
+## Resource Attributes, and a Breaking Rename (station#2484)
 
 Every exported metric and trace carries two resource attributes:
 
@@ -63,7 +63,7 @@ to an export directory before they leave the configured retention window. Files
 that do not use Station's `events-YYYY-MM-DD.ndjson` naming scheme are excluded
 from automatic retention.
 
-## A Counter Is Not a Local Read Path (archive#1686)
+## A Counter Is Not a Local Read Path (station#1686)
 
 Because the SDK only starts when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, every
 instrument in `src-server/telemetry/metrics.ts` **discards its writes** on an
@@ -77,13 +77,13 @@ If a metric is load-bearing for a decision, it needs a local record as well.
 Station's own server logs are one instance of this: `station.logs.read` counts
 read-path *queries*, but the durable local record is the NDJSON store itself
 (`<STATION_HOME>/logs/server/`) plus its self-read path — `GET
-/api/diagnostics/logs` and the `read_logs` MCP tool (archive#1896 slice 2, see
+/api/diagnostics/logs` and the `read_logs` MCP tool (station#1896 slice 2, see
 [docs/reference/config.md#logging](../reference/config.md#logging)) — so the logs
 this section's own counters describe are themselves locally readable, not just
 counted.
 
 The worked example is the project-resource migration shadow
-(archive#1501 slice 3a): alongside `station.project_resource.shadow_comparisons`
+(station#1501 slice 3a): alongside `station.project_resource.shadow_comparisons`
 it appends every comparison, with the same dimensions, to a durable per-home
 record at `<STATION_HOME>/project-resource-shadow.json`
 (`src-server/services/projects/project-resource-shadow-record.ts`). Read it
@@ -101,7 +101,7 @@ observed is **absent**, never a zero row, and a home with no record at all
 answers `NOT OBSERVED` for every question rather than `0`. "The observer ran
 and saw agreement" and "the observer never ran" are different answers.
 
-**What a passing `--gate` does not prove (archive#1775).** The gate states its
+**What a passing `--gate` does not prove (station#1775).** The gate states its
 own limits: it prints a `WHAT THIS PASS DOES NOT PROVE` block alongside a
 passing verdict, and `--json` carries the same strings as `gateLimits`. Read
 them there rather than here — one of the two is *derived from the record* (the
@@ -111,7 +111,7 @@ stops matching the thing it limits.
 
 The short version, for orientation only: coverage is a statement about a
 *home's history*, not about the resolver currently on disk. Do not cite a pass
-as sufficient authority for slice 3c's one-way flip without either archive#1775
+as sufficient authority for slice 3c's one-way flip without either #1775
 deriving the provenance or the gap being accepted explicitly.
 
 The write is deliberately `tear-safe` rather than fsync-durable: it happens
@@ -166,7 +166,7 @@ All instruments are defined in `src-server/telemetry/metrics.ts` and are safe to
 | `station.tokens.input`     | Input tokens consumed                                    | `agent`        |
 | `station.tokens.output`    | Output tokens consumed                                   | `agent`        |
 | `station.tokens.context`   | Fixed context tokens per request (system prompt + MCP tools) | `agent`   |
-| `station.tool.calls`       | Tool INVOCATIONS by an agent (definition CRUD moved to `station.tool.definitions.operations`, archive#3077) | `tool` (omitted when unreported, archive#3073) |
+| `station.tool.calls`       | Tool INVOCATIONS by an agent (definition CRUD moved to `station.tool.definitions.operations`, station#3077) | `tool` (omitted when unreported, station#3073) |
 | `station.chat.errors`      | Total chat errors                                        | `agent`        |
 | `station.cost.estimated`   | Estimated cost in USD (cumulative)                       | `agent`        |
 
@@ -187,7 +187,7 @@ All instruments are defined in `src-server/telemetry/metrics.ts` and are safe to
 | `station.layout.operations`  | Layout CRUD operations   | `operation` |
 | `station.project.operations` | Project CRUD operations  | `operation` |
 | `station.prompt.operations`  | Prompt CRUD operations   | `operation` |
-| `station.tool.definitions.operations` | Tool DEFINITION management — add/remove/list/reconnect. Split out of `station.tool.calls` (archive#3077), which counted these alongside actual tool invocations. | `op` |
+| `station.tool.definitions.operations` | Tool DEFINITION management — add/remove/list/reconnect. Split out of `station.tool.calls` (station#3077), which counted these alongside actual tool invocations. | `op` |
 
 #### Providers & Infrastructure
 
@@ -407,21 +407,21 @@ GenAI attributes (set per operation type):
 | `gen_ai.conversation.id` | all agent events | Conversation ID |
 | `gen_ai.usage.input_tokens` | agent complete | Input token count |
 | `gen_ai.usage.output_tokens` | agent complete | Output token count |
-| `gen_ai.tool.name` | tool call/result | Tool name. **Omitted when the producer reported none** (archive#3073) — absence is absence, never a tool named `unknown`. Events written before that change carry the literal string, so the two eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
-| `gen_ai.provider.name` | tool call/result | The engine that ran the tool (archive#3074): `station` for Station's own runtime, the dispatch provider for external engines. Absent on events written before that change, so any engine grouping must handle a pre-change window rather than fill it with a fallback. |
+| `gen_ai.tool.name` | tool call/result | Tool name. **Omitted when the producer reported none** (station#3073) — absence is absence, never a tool named `unknown`. Events written before that change carry the literal string, so the two eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
+| `gen_ai.provider.name` | tool call/result | The engine that ran the tool (station#3074): `station` for Station's own runtime, the dispatch provider for external engines. Absent on events written before that change, so any engine grouping must handle a pre-change window rather than fill it with a fallback. |
 | `gen_ai.request.model` | tool call/result | Session-configured model at dispatch — not observed per call. |
-| `station.tool.duration_ms` | tool result | Elapsed milliseconds from call to result, rounded (archive#3077). Recorded on the EVENT because the OTel histogram is a no-op unless an exporter endpoint is configured. Absent when the matching call was never seen. |
+| `station.tool.duration_ms` | tool result | Elapsed milliseconds from call to result, rounded (station#3077). Recorded on the EVENT because the OTel histogram is a no-op unless an exporter endpoint is configured. Absent when the matching call was never seen. |
 | `gen_ai.tool.call.id` | tool call/result | Unique call ID |
 
 Station extensions:
 
 | Attribute | Description |
 |-----------|-------------|
-| `station.agent.slug` | Agent identifier. **Omitted when the session reported none** (archive#3082) — absence is absence, never an agent named `unknown`. Events written before that change carry the literal, so the eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
+| `station.agent.slug` | Agent identifier. **Omitted when the session reported none** (station#3082) — absence is absence, never an agent named `unknown`. Events written before that change carry the literal, so the eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
 | `station.agent.steps` | Steps taken in agent loop |
 | `station.input.chars` | Input character count |
 | `station.output.chars` | Output character count |
-| `station.user.id` | User identifier. Omitted when the session reported none (archive#3082), same discipline as the agent slug. |
+| `station.user.id` | User identifier. Omitted when the session reported none (station#3082), same discipline as the agent slug. |
 | `station.reasoning.text` | Extended thinking content |
 
 ### Emitter Methods

@@ -249,7 +249,7 @@ This boundary deliberately trusts the Station service account and any storage
 administrator able to write `STATION_HOME`. A trusted writer can replace a
 valid persisted `tenant_execution_context` from one configured tenant with
 another (for example, alpha with bravo), changing the stored authority. That is
-outside archive#1707's request-isolation promise. Station therefore does **not** claim
+outside #1707's request-isolation promise. Station therefore does **not** claim
 that a MAC over only the tenant column solves this problem: the same writer can
 also rewrite the corresponding session, event, cursor, or related store state.
 Whole-store authenticated integrity with key authority outside that writer is
@@ -323,10 +323,10 @@ app's initial state instead of the built-in empty/new-project prompt. This is
 the supported provisioning mechanism — there is no separate plugin API for
 seeding projects.
 
-A brand-new `STATION_HOME` with no `projects/` directory and no pre-archive#1628
+A brand-new `STATION_HOME` with no `projects/` directory and no pre-#1628
 `<STATION_HOME>/layouts/*` content boots with zero projects, landing on the
 Home view's "Start direct chat" / "Open local project" actions rather than a
-seeded `Default` project. A pre-archive#1628 home with earlier
+seeded `Default` project. A pre-#1628 home with earlier
 `<STATION_HOME>/layouts/*/layout.json` content is the one exception: it still
 migrates to a `Default` project on first boot, carrying its layouts over,
 exactly as before. See [Distribution Profiles](./distribution-profiles.md)
@@ -447,7 +447,7 @@ for the full npx / `./station` / `station-dev` story. Environment-security
 verbs (`environment access list|approve|deny`) are host-local (they read
 secrets that only exist on the machine running the Station) and only run
 through `./station` — they are not reachable through `npx`/the published
-CLI, regardless of targeting. They do accept `--station=<name>` (archive#4515),
+CLI, regardless of targeting. They do accept `--station=<name>` (station#4515),
 so once a Station is saved under a name, `./station environment access list
 --station=<name>` is equivalent to the explicit `--api-base` pair below; the
 worked example spells out the pair explicitly rather than assuming a
@@ -480,7 +480,7 @@ curl -sk https://<device-fqdn>:<public-port>/api/system/status   # FQDN as shown
 | Device stuck "waiting for approval"; host sees no request | Serve mapping fronts a port nothing owns (dangling proxy) | `curl` the public URL (000 = dangling) and `lsof -nP -iTCP:<local-port> -sTCP:LISTEN` |
 | Device: "isn't the one this device paired with" | The public endpoint fronts a different instance (another channel, a rebuilt home, or a stray locally-started server on that port) than the one the device paired with | Confirm which pid owns the mapped local port, then its `STATION_HOME` via `ps eww` |
 | CLI: "loopback Station identity does not match this local Station home" | `STATION_HOME` doesn't match the server behind `--api-base` | Read the server's real home from its process env (above); never guess from directory names |
-| Buttons in the device's connection UI appear dead | Their requests POST into a dangling endpoint and fail silently (archive#4475) | Same dangling-proxy check as row one |
+| Buttons in the device's connection UI appear dead | Their requests POST into a dangling endpoint and fail silently (station#4475) | Same dangling-proxy check as row one |
 | A CLI invocation boots a whole runtime and collides on ports | `dist-server/command-station.js` is the **server** entry, not an operator CLI — use the repo launcher `./station` | — |
 | A mystery local server answers Station endpoints | Orphaned test/stage instances re-parented to launchd (worktree perf runs, synthetic stage-phone proxies) linger for weeks and answer probes convincingly | `ps -o ppid= -p <pid>` — ppid 1 from a dead lane is an orphan; sweep it |
 
@@ -600,7 +600,7 @@ placed below the supervisor/release directories.
 The installer is for a fresh named instance and fails closed if any selected
 loopback port is already occupied. The API port must be at most 65532, and the
 API, terminal (`API + 1`), voice (`API + 2`), consent (`API + 3`,
-archive#3677), and UI ports must be five distinct ports; all five are checked
+station#3677), and UI ports must be five distinct ports; all five are checked
 for unmanaged listeners. It never guesses that an unmanaged listener
 is safe to stop or adopt. For an existing ad-hoc dogfood service, first stage
 and verify the repository-owned supervisor on unused ports with a separate

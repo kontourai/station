@@ -536,7 +536,7 @@ App (OTel SDK) → Collector (:4318) → Prometheus (:8889) → Grafana (:3333)
 
 The OTel SDK bootstraps in `src-server/telemetry.ts` (must be imported before all other modules). Metric instruments are defined in `src-server/telemetry/metrics.ts`. Both are no-ops when `OTEL_EXPORTER_OTLP_ENDPOINT` is not set.
 
-**A no-op counter is not evidence (archive#1686).** On an install without a
+**A no-op counter is not evidence (station#1686).** On an install without a
 collector every `.add()` is discarded, unbuffered and unrecoverable, so a
 counter a gate is supposed to read produces the same silence as the outcome it
 was meant to rule out. If a metric is load-bearing for a decision, give it a

@@ -38,7 +38,7 @@ clearly mark the stale document.
 - **[Strategy](strategy/)** — durable identity, decisions, historical phase
   records, and private execution context.
 - **[Plans](plans/)** — implementation plans and staged initiatives; lifecycle
-  cleanup is tracked separately in issue archive#273.
+  cleanup is tracked separately in issue #273.
 - **[Patterns](patterns/)** — frontend and backend implementation conventions.
 - **[ADRs](adr/)** — numbered architecture decision records; supersession is
   recorded inside the record or by a named successor.

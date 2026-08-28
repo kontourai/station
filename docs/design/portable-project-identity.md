@@ -1,7 +1,7 @@
 # Design: portable Project identity — remote-keyed resources, per-Station bindings
 
 > Status: **draft for owner review (2026-08-01, revision 2); tracking issue
-> [archive#1425](https://github.com/kontourai/station/issues/1425).** Twelve open
+> [#1425](https://github.com/kontourai/station/issues/1425).** Twelve open
 > questions are open — see §9, each with a recommendation; OQ-12 is explicitly
 > owner-pending rather than merely undecided. This doc is the
 > proposed contract for the arc: the manifest/binding split, the membership /
@@ -27,26 +27,26 @@
 > generalize rather than a doc-only pattern (§2.8, §4.2).
 >
 > Every claim about current behavior carries file:line evidence; §11 lists what
-> is UNVERIFIED. Refs archive#1392 (multi-tenant tier — the consumer that forces the
-> split), archive#1398/[inference-fleet](inference-fleet.md) (contribution pattern,
-> binding-aware routing constraints), archive#1123 (delegate_task targeting), archive#1302
-> (project scoping designed but dead), archive#1409 (shareable provenance), archive#741
+> is UNVERIFIED. Refs #1392 (multi-tenant tier — the consumer that forces the
+> split), #1398/[inference-fleet](inference-fleet.md) (contribution pattern,
+> binding-aware routing constraints), #1123 (delegate_task targeting), #1302
+> (project scoping designed but dead), #1409 (shareable provenance), #741
 > (personal fleet).
 
 ## 0. Naming and one repo-policy note
 
 This repo does not name competitors (`AGENTS.md:21`; precedent
 `docs/design/settings-architecture.md:3-5`). The open-source forge whose
-multi-repo project entity archive#1425 cites as prior art is called **"the reference
+multi-repo project entity #1425 cites as prior art is called **"the reference
 forge"** throughout this doc. The one fact this doc borrows from it — that its
 *only* custom event kind is a multi-repo project grouping, signed by one
-principal and spanning repos owned by different people — lives in archive#1425's body
+principal and spanning repos owned by different people — lives in #1425's body
 and in the private ops workspace analysis (ops#131). Nothing here depends on
 reading them.
 
 "Resource" in this doc means a thing a Project references — today: a git repo,
 a knowledge root, an agent, an MCP integration, a layout. It does **not** mean
-a generalized resource graph; archive#1425 rules that out of scope and so does §8.
+a generalized resource graph; #1425 rules that out of scope and so does §8.
 
 ## 1. Problem: three concerns fused into one optional string
 
@@ -75,23 +75,23 @@ because a path is the only thing there is.
 
 Three consumers now need the split, and none of them can be served by a path:
 
-- **archive#1392 maps channels to projects.** A channel is shared state on a server;
+- **#1392 maps channels to projects.** A channel is shared state on a server;
   a machine-local path cannot be the shared half of that mapping. Two members
   of one channel have different checkouts of the same repo at different paths,
   and one of them may have no checkout at all — and, per §4.1, may never want
   one.
-- **archive#1123 wants "run this on a Station that has repo X."** Today
+- **#1123 wants "run this on a Station that has repo X."** Today
   `delegate_task` takes an explicit `environmentId` plus a `projectSlug`, and
   the slug join is only sound if both Stations independently happen to have
   created a project with the same slug
   (`src-server/tools/station-control-delegation.ts:97-124`). There is no
   portable identity to constrain on.
-- **archive#1409 wants location-independent provenance.** Content-addressed snapshot
+- **#1409 wants location-independent provenance.** Content-addressed snapshot
   refs are already location-independent, but R6 requires every source read to
   be "authorized in the caller's current Project/room context" — and a
   path-keyed project cannot be a shared authorization context.
 
-archive#1302 already recorded the symptom from the other end: project scoping is
+#1302 already recorded the symptom from the other end: project scoping is
 "designed but dead" — `ConversationRecord.projectId` exists and is never
 written, `projectSlug` is emitted on the wire and thrown away by the route's
 return type. Scoping stayed dead partly because there was nothing durable to
@@ -131,7 +131,7 @@ in one repo; any new contract has to land in both or converge them first.
 
 ### 2.2 `workingDirectory` is the only local field, and its consumers concentrate in five seams (**the "five seams" claim was wrong — see §2.2.1**)
 
-> **Correction, slice 3b (archive#1501).** The five-seam claim in this
+> **Correction, slice 3b (station#1501).** The five-seam claim in this
 > section's heading and table **understated the surface**. §11 flagged it as a
 > grep sweep that was never exhaustively re-derived; slice 3b re-derived it and
 > found **eight further forward-resolution consumers** the table never named,
@@ -167,7 +167,7 @@ Three things ride outside the seams and matter for migration:
   was auto-injected into a new coding layout's `config`, backfilled on read, and
   re-injected on catalog apply. This was the warning about what happens when a
   local path is copied rather than resolved, and it is the pattern the binding
-  layer must not repeat. **Closed by slice 0 (archive#1497):** the value is now
+  layer must not repeat. **Closed by slice 0 (station#1497):** the value is now
   derived from the owning project on read and stripped on every write
   (`src-server/routes/projects/layout-working-directory.ts`), so a copy already
   on disk is inert immediately and cleared by the next write. The residual is
@@ -195,7 +195,7 @@ for the unbound case, because there is no consistent one today. §4.1 argues
 that the split is not accidental — the two subsystems are answering for two
 different kinds of participation.
 
-### 2.2.1 The re-derived sweep (slice 3b, archive#1501) — the five-seam claim understated the surface
+### 2.2.1 The re-derived sweep (slice 3b, station#1501) — the five-seam claim understated the surface
 
 §11 recorded that "~40 consumers reduce to five seams" came from a grep sweep,
 was spot-checked only at the five named places, and **would not show a consumer
@@ -240,19 +240,19 @@ already-resolved path (not a read of the field).
 | # | file:line (2026-08-02) | What it does | Class | Slice 3b |
 |---|---|---|---|---|
 | S1 | `orchestration-service.ts:616-688` (callers `:1980`, `:4759`) | `resolveStartSessionCwd` — every engine session's cwd | S | **out of scope** — slice 3a shadows it, slice 3c flips it |
-| S2 | `runtime-routes.ts:902-909` | `resolveWorkspacePath` → Flow, Veritas, Survey review store, workflow sidecars, work-items, operating-state | S | **deferred** — migrated in slice 3b's first round and **reverted** after review. The contract gap that forced the revert is closed by archive#1594; the re-migration (onto the *directory-question* adapter) is its own follow-up. See the note below |
+| S2 | `runtime-routes.ts:902-909` | `resolveWorkspacePath` → Flow, Veritas, Survey review store, workflow sidecars, work-items, operating-state | S | **deferred** — migrated in slice 3b's first round and **reverted** after review. The contract gap that forced the revert is closed by station#1594; the re-migration (onto the *directory-question* adapter) is its own follow-up. See the note below |
 | S3 | `knowledge-scan-utils.ts:88-106` | `resolveKnowledgeScanPath` | S | **migrated** |
 | S4 | `task-graph-service.ts:726-790` | `readProjectWorkingDirectory` / `deriveWorkspaceBinding` | S | **migrated** |
-| S5 | `attached-session-follow-service.ts:388-430`, fed at `:148-151` | `resolveAttachedProjectRoot` roots | S | **migrated** (root *sourcing* only; the archive#1462 tie-break is untouched) |
+| S5 | `attached-session-follow-service.ts:388-430`, fed at `:148-151` | `resolveAttachedProjectRoot` roots | S | **migrated** (root *sourcing* only; the #1462 tie-break is untouched) |
 | A1 | `runtime-routes.ts:1000-1035` | trust-bundle `resolveLocations` — workspace path + Veritas evidence dirs | A | deferred — falsely attributed to S2; independent failure semantics (returns `undefined` for the whole location set) |
 | A2 | `runtime-routes.ts:1041-1055` | diff-comments `resolveStorePath` | A | deferred — same false attribution; per-project store path |
 | A3 | `runtime-routes.ts:1058-1068` | diff-comments aggregate `listStorePaths` | A | deferred — **reads `ProjectMetadata.workingDirectory` off `listProjects()`**, the exact class §11 warned about; an N-project fan-out that a per-project async resolver changes the cost model of |
 | A4 | `chat-request-preparation.ts:141-145` | Flow Agents workflow-steering cwd for managed chat | A | deferred — fail-open by design; lives on the chat request path that slice 3c is already reshaping |
-| A5 | `execution-target-resolver.ts` | Exact remote-POSIX identity match of a project dir against `access.verifiedProjectPath` | **X** | **closed (archive#1870)** — `deps.getProject(access, slug)` remains a possibly-remote HTTP read, so this uses no local filesystem seam; remote verification supplies `remoteHome` for exact `~/` expansion and legacy SSH profiles fail closed |
-| A6 | `station-control-delegation.ts` | Delegation target project path + `slugJoin` corroboration | **X** | **closed (archive#1870)** — same remote-only contract: both sites share the pure-string comparator, and corroboration remains stricter raw byte equality |
+| A5 | `execution-target-resolver.ts` | Exact remote-POSIX identity match of a project dir against `access.verifiedProjectPath` | **X** | **closed (station#1870)** — `deps.getProject(access, slug)` remains a possibly-remote HTTP read, so this uses no local filesystem seam; remote verification supplies `remoteHome` for exact `~/` expansion and legacy SSH profiles fail closed |
+| A6 | `station-control-delegation.ts` | Delegation target project path + `slugJoin` corroboration | **X** | **closed (station#1870)** — same remote-only contract: both sites share the pure-string comparator, and corroboration remains stricter raw byte equality |
 | A7 | `station-runtime.ts:560-567` → consumed at `task-graph-service.ts:1020`, `:1220`, `:1411`, `:1491` | `setProjectWorkspaceResolver` — assignment-claim artifact roots | A | **migrated** — it is seam S4's second input, not a separate surface |
 | A8 | `orchestration-service.ts:4017-4041` | `resolveAdoptionProject` — second caller of `resolveAttachedProjectRoot` | A | deferred — in `orchestration-service.ts`, owned by slices 3a/3c |
-| A9 | `projects.ts:114-116`, emitted at `:340`, `:381`, `:496`, `:590` via `layout-working-directory.ts:83-95` | Derives a coding layout's `config.workingDirectory` on read | A | deferred — the **layout-config class** §11 warned about; slice 0 (archive#1497) owns this file, and its output is consumed client-side (C1, C2), so it migrates with slice 4 |
+| A9 | `projects.ts:114-116`, emitted at `:340`, `:381`, `:496`, `:590` via `layout-working-directory.ts:83-95` | Derives a coding layout's `config.workingDirectory` on read | A | deferred — the **layout-config class** §11 warned about; slice 0 (#1497) owns this file, and its output is consumed client-side (C1, C2), so it migrates with slice 4 |
 | B1 | `project-icon-discovery.ts:123-126`, called from `routes/projects/projects.ts:195-204` | `discoverProjectIconCandidates(workspacePath)` — scans a **client-supplied** `?path=` for icon candidates | B | **not a `workingDirectory` read at all** (correction, slice 3b review): the file contains no reference to the field. Same class as B2 — an execution boundary over a path the client already chose |
 | B2 | `terminal-service.ts:62-74` | Refuses an empty cwd, expands `~` on a **client-supplied** path | B | execution boundary for C1, not a project read |
 | W1 | `project-service.ts:53-54` | Derives a default project name from the directory at create | W | write path |
@@ -301,10 +301,10 @@ That was not fixable inside the seam: `ResourceResolutionResult` could not say
 a path. A route that only needs *a directory to read `.flow`/`.veritas` in* is
 asking a different question from an operation that targets a named repository,
 and the contract had one answer for both. It is the same family of gap as
-archive#1594 (`unbound` conflating "no working directory" with "the declared
+station#1594 (`unbound` conflating "no working directory" with "the declared
 directory is gone") — indeed the same root defect from the other end.
 
-**Resolved by archive#1594 (slice 3c-pre); S2's re-migration is a follow-up.**
+**Resolved by station#1594 (slice 3c-pre); S2's re-migration is a follow-up.**
 `stale` and `drifted` now carry a required `unverifiedPath` (§3.6), and the
 directory-question that S2 is actually asking is folded once, as
 `resolveProjectDirectoryOutcome` in
@@ -506,7 +506,7 @@ takes an explicit `environmentId` and the caller names the machine; nothing
 evaluates a predicate over candidates. `DelegationTargetOption.capabilities`
 (`:145-160`) is a booleans bag rendered for a human chooser, per-agent, not
 per-Station. `inference-fleet.md:962-985` (§6.3) states the design opening and
-cites archive#1425 by name: the receipt schema should carry a general `constraints[]`
+cites #1425 by name: the receipt schema should carry a general `constraints[]`
 channel with binding constraints as its first member, and it warns that
 "claiming binding-aware inference routing as a v1 user-facing feature would be
 overselling it" — token generation does not need the repo; **task** delegation
@@ -599,8 +599,8 @@ by convention:
 - **`schemaVersion` gates parsing.** An unknown major version is refused with a
   named error, not cast. (§2.5's `KnownEnvironment` lesson.)
 - **`id` is portable and opaque.** It is generated once at manifest creation
-  and is the join key for channels (archive#1392), delegation (archive#1123), and provenance
-  (archive#1409). It is *not* derived from any repo, path, or machine — a project may
+  and is the join key for channels (#1392), delegation (#1123), and provenance
+  (#1409). It is *not* derived from any repo, path, or machine — a project may
   span repos, change repos, or have none.
 
 ### 3.3 Decision: remote canonicalization and the alias problem
@@ -665,7 +665,7 @@ Two residual cases, handled honestly rather than cleverly:
   wall (§5).
 
   **The manifest-local id grammar is `^local:[A-Za-z0-9._-]+$`** (adopted
-  slice 1, archive#1498; it was previously only implied by §3.2's illustrative
+  slice 1, station#1498; it was previously only implied by §3.2's illustrative
   `"local:scratch"`). This is not cosmetic. §5's migration turns a
   directory-only project into a `local-only` resource, and the only value on
   hand to make its id from is the working directory — so without a grammar the
@@ -721,13 +721,13 @@ layer carries the value.
 ### 3.5 The binding store
 
 Per Station, per member. In today's single-tenant Station the member is
-implicit; the shape reserves the slot so archive#1392 does not have to reshape it.
+implicit; the shape reserves the slot so #1392 does not have to reshape it.
 
 ```jsonc
 // <home>/config/project-bindings.json
 {
   "schemaVersion": 1,
-  "memberId": "local",                 // reserved; "local" until archive#1392
+  "memberId": "local",                 // reserved; "local" until #1392
   "hostAliases": { "github-work": "github.com" },
   "bindings": [
     {
@@ -748,7 +748,7 @@ implicit; the shape reserves the slot so archive#1392 does not have to reshape i
 
 Properties that are design commitments, not incidental:
 
-- **It never leaves the Station.** Not replicated by archive#741 slice 3, not included
+- **It never leaves the Station.** Not replicated by #741 slice 3, not included
   in any export, not part of the manifest, and *not* what a peer reads. The
   privacy argument for everything downstream reduces to this one sentence, and
   §4.3 is what it buys.
@@ -785,7 +785,7 @@ resolveProjectResource(projectSlug, resourceId?): {
 `resourceId` is optional so that today's single-repo projects — and every
 existing caller — keep working unchanged by resolving the `primary` repo.
 
-**Primary cardinality, settled (slice 1, archive#1498).** The sentence above
+**Primary cardinality, settled (slice 1, station#1498).** The sentence above
 assumed a primary exists and is unique, and nothing required either — `role` is
 optional, so the most common manifest (one repo, no `role`) had no primary at
 all and a resolver would have had to invent a rule. The contract is now:
@@ -836,12 +836,12 @@ rather than a degenerate one.
 | `not-portable` | A `local-only` resource authored by someone else | Nothing; it was never shareable |
 | `ambiguous` | No single resource could be named — several resources with no unique `primary`, or none declared | Declare a primary, or ask for a specific `resourceId` |
 
-**archive#1594 (slice 3c-pre) split `unbound`/`missing` and made the result type
+**station#1594 (slice 3c-pre) split `unbound`/`missing` and made the result type
 a discriminated union.** The table above had no state for "a working directory
 is declared and it is gone" — the resolver reported that as `unbound`, the same
 state as "nothing is recorded here", with the difference living only in the
 prose of `reason`. The session-cwd seam owes those two OPPOSITE behaviour
-(archive#1023's `$HOME` terminus vs archive#791's fail-closed throw), so no mapping from the
+(#1023's `$HOME` terminus vs #791's fail-closed throw), so no mapping from the
 state alone could serve both and slice 3c was blocked on it.
 
 The `missing` row's original wording ("Binding recorded, path no longer exists")
@@ -872,14 +872,14 @@ directory-question ("this project's realized directory, for `.flow`/`.veritas`
 or a session cwd") is `path ?? unverifiedPath`, folded exactly once in
 `src-server/services/projects/project-workspace-path.ts` and never at a seam.
 
-`ambiguous` was added in slice 2 (archive#1499) because the table had no state
+`ambiguous` was added in slice 2 (station#1499) because the table had no state
 for it and both alternatives lie: `unbound` implies a resource exists that is
 merely not set up here, and `unresolvable` means "you were denied", which
 collapses a configuration problem into an access one. It is the one state that
 names no resource — `resourceId` is empty and every candidate is in the reason,
 because the state exists precisely because no single resource could be named.
 
-Three honesty constraints on `unresolvable`, which is the state archive#1425 cares
+Three honesty constraints on `unresolvable`, which is the state #1425 cares
 most about:
 
 1. **It renders only in response to an attempt.** A member who tried to bind or
@@ -895,7 +895,7 @@ most about:
    project, the resource reads `unbound` ("not set up here"), which is a
    different sentence from "you don't have access." Guessing the stronger claim
    is the exact dishonesty this design exists to prevent.
-3. **When it does render, it is never an empty result.** Per archive#1409 AC5's idiom,
+3. **When it does render, it is never an empty result.** Per #1409 AC5's idiom,
    the resource is named, its state is `unresolvable`, and no path, branch, or
    content is disclosed. A silent skip is a bug, not a degradation.
 
@@ -969,7 +969,7 @@ not a redesign:
 |---|---|---|
 | `{ kind: 'fleet' }` | Your own machines; one implicit owner | Shipped (`fleetContribution`) |
 | `{ kind: 'project', projectId }` | A project's members | This doc (§10 slice 2.5) |
-| `{ kind: 'channel', channelId }` | A channel's members | archive#1392 |
+| `{ kind: 'channel', channelId }` | A channel's members | #1392 |
 
 One schema, three scopes. Carrying the scope dimension in v1 is what keeps the
 fleet instance and the future per-space instances from becoming two contracts
@@ -1123,7 +1123,7 @@ Design constraints, each with a precedent:
   two banned behaviors apply verbatim: never drop a capability without a
   diagnostic, never silently fall back.
 - **The requirements vocabulary is bounded by what can be truthfully attested
-  or probed.** This is the archive#1430 lesson generalized: `fleet-contribution.ts:20-27`
+  or probed.** This is the #1430 lesson generalized: `fleet-contribution.ts:20-27`
   omits a tool-surface column *because no producer populates it*, so the column
   "would be a placeholder that reads as an observation and invites
   tool-capability routing that cannot be honest." A project must therefore not
@@ -1153,7 +1153,7 @@ Design constraints, each with a precedent:
 Deliberately not proposed here: a policy *engine*. `inference-fleet.md:860-880`
 decided "design the seam, ship no policy engine" for the fleet, on the grounds
 that there is no tenant to publish a policy and no proven pattern to adopt.
-That reasoning holds identically for projects until archive#1392 exists, so the v1
+That reasoning holds identically for projects until #1392 exists, so the v1
 shape is a single named function over `(manifest requirements, offer, evidence)`
 returning one of the four states — not a rules language.
 
@@ -1188,7 +1188,7 @@ repo X"*, and it is what §6.1's constraint actually asks.
 ### 4.6 The local-only invariant, and progressive disclosure at join time
 
 This is a design constraint on everything above, and the collaboration tier
-(archive#1392) inherits it.
+(#1392) inherits it.
 
 > **The local-only experience must not degrade.** Station stays fully
 > functional and zero-config for a purely local user, with no member,
@@ -1206,7 +1206,7 @@ Three consequences, each checkable:
    data* (`docs/strategy/constitution.md:48-50`: "No cloud account required")
    applied to vocabulary as well as to data — a local-first product that makes
    you learn a membership model before you can use it is local-first in storage
-   only. archive#741 R7 states the same invariant from the fleet side ("Local-only
+   only. #741 R7 states the same invariant from the fleet side ("Local-only
    Station continues to work without a hosted service"), and its acceptance
    criteria include "single-machine/local-only mode passes unchanged."
 2. **First-run onboarding is unchanged. Join-time onboarding is where the new
@@ -1242,7 +1242,7 @@ contributions × binding attestations × liveness:
 Four honesty rules, each with an existing precedent rather than a new
 invention:
 
-1. **Liveness is never claimed without a fresh check.** archive#741 requires "no false
+1. **Liveness is never claimed without a fresh check.** #741 requires "no false
    'online' state from stale discovery," and the only liveness fact that exists
    today is `AccessEndpoint.lastVerifiedAt`
    (`packages/contracts/src/known-environment.ts:69-80`) — the last successful
@@ -1260,8 +1260,8 @@ invention:
    and `contributed-unavailable` render as distinct sentences; an empty
    resource list is never the signal.
 
-**This is the join point to the collaboration tier.** archive#1392 gives the room and
-archive#741 gives the fleet; contribution is what connects "who is in the room" to
+**This is the join point to the collaboration tier.** #1392 gives the room and
+#741 gives the fleet; contribution is what connects "who is in the room" to
 "what can actually run" — members' machines are the compute a project runs on,
 and contribution is the mechanism by which a machine gets brought. The view is
 deliberately sketched, not specified: it needs a room to be rendered in, and
@@ -1307,7 +1307,7 @@ The path is additive at every step:
    startup migration, no bulk rewrite of `project.json`, nothing to roll back.
 
 **What breaks if nothing migrates: nothing.** That is the design intent and
-also the risk. archive#1302 is the cautionary precedent — a scoping design that landed
+also the risk. #1302 is the cautionary precedent — a scoping design that landed
 partially and stayed dead, with `ConversationRecord.projectId` written by
 nobody. Two concrete defenses:
 
@@ -1319,15 +1319,15 @@ nobody. Two concrete defenses:
   on read — a second, drifting copy of a local path. Slice 0 stops that write,
   because the same mistake made at the binding layer would be much worse.
 
-The cost of *never* migrating, stated plainly so the tradeoff is legible: archive#1392
-cannot map channels to projects, archive#1123 cannot express a target constraint,
-archive#1409 R6 cannot express a shared authorization context, there is no place to
+The cost of *never* migrating, stated plainly so the tradeoff is legible: #1392
+cannot map channels to projects, #1123 cannot express a target constraint,
+#1409 R6 cannot express a shared authorization context, there is no place to
 record what a machine offers, and a moved checkout keeps silently breaking
 every project-scoped surface.
 
 ## 6. Consumers
 
-### 6.1 Routing constraints (archive#1398)
+### 6.1 Routing constraints (#1398)
 
 The constraint is a manifest-level predicate evaluated against **contribution
 projections**, not against bindings and not against paths:
@@ -1373,7 +1373,7 @@ channel** — moving token generation does not require the repo, and
 ("completions only. It is not `delegate_task`"). Task delegation is where
 contribution constraints do the work, and this doc claims only that.
 
-### 6.2 `delegate_task` targeting (archive#1123)
+### 6.2 `delegate_task` targeting (#1123)
 
 Today the caller names the machine (`environmentId`) and passes a `projectSlug`
 or an explicit `projectPath`/`cwd`, and the delegation path *deliberately* skips
@@ -1399,13 +1399,13 @@ an existence check on the path because the target may be remote
 `DelegationTarget.projectPath` (`:76-89`) stays for the explicit-path escape
 hatch; it just stops being the only way to express intent.
 
-### 6.3 Channels (archive#1392)
+### 6.3 Channels (#1392)
 
 A channel binds to a manifest `id`. Membership gates reading the manifest;
 bindings never cross; contribution projections cross only when asked. Every
 member sees the same project state and materializes it locally — or does not,
 per §4.1, which is a normal outcome and not a gap. The manifest is the
-tenant-scoped row that archive#1392's "every table keyed by tenant id" rule requires;
+tenant-scoped row that #1392's "every table keyed by tenant id" rule requires;
 the binding store is explicitly *not* a tenant table, because it is not on the
 server at all; and contribution config is per-Station settings, which is also
 not a tenant table.
@@ -1413,7 +1413,7 @@ not a tenant table.
 The backing view (§4.7) is the channel-side rendering of all three, and it is
 where "agents are members, not bots" meets "machines are what members bring."
 
-### 6.4 Shareable provenance (archive#1409)
+### 6.4 Shareable provenance (#1409)
 
 Content-addressed snapshot refs are already location-independent. The gap is
 two-sided:
@@ -1491,19 +1491,19 @@ What v1 should record and show:
 
 | Deferred | Why | Revisit when |
 |---|---|---|
-| A generalized resource graph | archive#1425 rules it out; v1 models only what `ProjectConfig` already references | A resource kind arrives that is neither repo, knowledge, agent, nor integration |
-| The backing **view** (§4.7) as a shipped surface | It needs a room to render in, and a single-member fleet's backing board is a status page for one person | archive#1392 ships channels (§9 OQ-11) |
-| A presence/liveness contract for Stations | None exists; `lastVerifiedAt` is a last-seen, and archive#741 forbids inventing a green dot | archive#741's fleet inventory slice |
+| A generalized resource graph | #1425 rules it out; v1 models only what `ProjectConfig` already references | A resource kind arrives that is neither repo, knowledge, agent, nor integration |
+| The backing **view** (§4.7) as a shipped surface | It needs a room to render in, and a single-member fleet's backing board is a status page for one person | #1392 ships channels (§9 OQ-11) |
+| A presence/liveness contract for Stations | None exists; `lastVerifiedAt` is a last-seen, and #741 forbids inventing a green dot | #741's fleet inventory slice |
 | Project **requirements** and offer compliance (§4.4) | Sketched only; the owner flagged it for further thought and the requirements vocabulary has no bound yet | §9 OQ-12 is answered |
-| A policy *engine* for project requirements | `inference-fleet.md:860-880` decided "design the seam, ship no policy engine" for the fleet on the same grounds — no tenant to publish one | archive#1392, with a requirements vocabulary already bounded |
+| A policy *engine* for project requirements | `inference-fleet.md:860-880` decided "design the seam, ship no policy engine" for the fleet on the same grounds — no tenant to publish one | #1392, with a requirements vocabulary already bounded |
 | Multi-repo checkout orchestration (clone-all, layout, sync) | v1 *records* bindings; creating them is a separate product with its own failure modes | Multi-repo projects exist and manual binding is the observed friction |
 | Cross-forge identity federation (proving two remotes are one project automatically) | Unsolvable without a trusted mapping; manifest `aliases[]` covers the deliberate cases | A forge publishes a verifiable move/mirror record |
 | Deriving host aliases from `~/.ssh/config` | Reading a user's ssh config to change matching behavior should be explicit | The manual alias map is in use and the friction is measured |
-| Tenant scoping of the manifest | That is archive#1392's job; this doc reserves `memberId` and stops | archive#1392 ships membership |
-| Per-field redaction when sharing a manifest (base URLs, private forge hosts) | No sharing mechanism exists yet, so the policy would be unenforceable | A manifest actually crosses a tenant boundary (archive#1392) |
-| Contributing **tools** or **knowledge** (vs execution/agents/inference) | The fleet arc already defers tool contribution because tool-surface data is structurally unknowable (archive#1430); knowledge contribution has no consumer | archive#1430 closes; a consumer asks for shared knowledge roots |
+| Tenant scoping of the manifest | That is #1392's job; this doc reserves `memberId` and stops | #1392 ships membership |
+| Per-field redaction when sharing a manifest (base URLs, private forge hosts) | No sharing mechanism exists yet, so the policy would be unenforceable | A manifest actually crosses a tenant boundary (#1392) |
+| Contributing **tools** or **knowledge** (vs execution/agents/inference) | The fleet arc already defers tool contribution because tool-surface data is structurally unknowable (#1430); knowledge contribution has no consumer | #1430 closes; a consumer asks for shared knowledge roots |
 | Enforcing exclusive occupancy / auto-worktree isolation | Requires deciding what happens when the gate fires; observation ships first (§7) | Contention is visible and measured (§9 OQ-6) |
-| Replicating bindings across a member's own Stations | A binding corpus is a machine inventory; consent lives in the replication slice | archive#741 slice 3 |
+| Replicating bindings across a member's own Stations | A binding corpus is a machine inventory; consent lives in the replication slice | #741 slice 3 |
 | Non-git resource kinds (object stores, artifact registries) | No consumer | A consumer exists |
 | Removing `slug` as the local routing key | ~40 sites, every route and on-disk path | Never, unless something forces it (§9 OQ-5) |
 
@@ -1597,9 +1597,9 @@ Each carries a recommendation. Deciding these unblocks slice 1.
   contract is cheap now and expensive to retrofit — if project contribution
   arrives after channels, `station.fleet-contribution/v1` becomes the *second*
   noun for one concept rather than the first instance of one. The view needs a
-  room: archive#1392 has no channels yet, and a backing board for a single-member
+  room: #1392 has no channels yet, and a backing board for a single-member
   fleet is a status page for one person. And the constraint work (§6.1) needs
-  the contract, not the view, so archive#1123 is unblocked either way. Shape the
+  the contract, not the view, so #1123 is unblocked either way. Shape the
   contract so the shipped fleet manifest is literally its first instance —
   reuse the four-state participation, the two-clock freshness split, the
   default-off allowlist, and the no-self-asserted-identity rule verbatim rather
@@ -1620,7 +1620,7 @@ Each carries a recommendation. Deciding these unblocks slice 1.
     the existing manifests already carry truthfully* — canonical remote
     identity (§3.3), model presence from the contributed inventory, and
     declared capability fields that have a real producer. Nothing whose
-    producer hardcodes a placeholder. This is the archive#1430 lesson as a rule: if a
+    producer hardcodes a placeholder. This is the #1430 lesson as a rule: if a
     field would be a placeholder that reads as an observation, a project must
     not be able to require it. Anything outside the bound yields
     `attested-unverified`, never manufactured compliance.
@@ -1700,7 +1700,7 @@ Sized by dependency and shippability, not estimates.
   authenticated projection route, the `project-contribution` constraint, and
   `delegate_task` targeting by constraint with a Dispatch receipt citing named
   rejections. Depends on slice 2.5 for the contract, and on the fleet arc's
-  receipt work (`inference-fleet.md` §3.4, §6.3) and archive#1123.
+  receipt work (`inference-fleet.md` §3.4, §6.3) and #1123.
 
 - **Slice 7 — Occupancy surface.** `workspace_key` + `project_slug` on the
   session state row with an index, the live-session query, and the
@@ -1715,8 +1715,8 @@ second contribution noun when it arrives.
 design is adopted — it fixes a live correctness bug. If the arc has to stop
 somewhere, **stopping after slice 4 leaves a coherent, honest, shipped
 product**: single-repo projects that survive a moved checkout, tell the truth
-about what they cannot resolve, and carry a portable identity that archive#1392 and
-archive#1123 can join on later. Slice 2.5 is worth including even in that truncated
+about what they cannot resolve, and carry a portable identity that #1392 and
+#1123 can join on later. Slice 2.5 is worth including even in that truncated
 form, because it is small and it fixes the vocabulary before two nouns exist.
 Slices 5–7 are the collaboration and fleet payoff and each depends on an arc
 outside this one.
@@ -1743,7 +1743,7 @@ knows it has.
   re-derivation, and a consumer reading `workingDirectory` off `ProjectMetadata`
   or off a layout config rather than through a seam would not appear in it.
   Slice 3 must re-derive the list before migrating.~~
-  **CLOSED by slice 3b (archive#1501): the claim was wrong.** The
+  **CLOSED by slice 3b (station#1501): the claim was wrong.** The
   re-derivation is §2.2.1. Both suspected blind spots were real — a
   `ProjectMetadata` consumer (A3, the diff-comments aggregate) and a
   layout-config consumer (A9) — plus six more, two false attributions inside
@@ -1759,7 +1759,7 @@ knows it has.
   contribution exists, and whether its four decisions survive contact with a
   non-model resource axis — execution for a repo has a *binding* behind it,
   which a model connection does not — is unproven until slice 2.5.~~
-  **CLOSED by slice 2.5 (archive#1500): all four survived.** One WIDENED rather
+  **CLOSED by slice 2.5 (station#1500): all four survived.** One WIDENED rather
   than carrying over unchanged — decision 3's clock. A model connection's
   observation is the inventory's single `observedAt`; execution's is a
   *per-binding* `verifiedAt`, one per repo. So `sourceObservedAt` is derived as
@@ -1820,7 +1820,7 @@ knows it has.
   discloses only what was deliberately offered, and that occupancy stays local
   — are arguments, not a threat-model review. Slice 6 owes a real one,
   including whether projection *timing* is itself a signal.
-- **archive#1392's channel mapping (§6.3) is inferred from the epic body.** No channel
+- **#1392's channel mapping (§6.3) is inferred from the epic body.** No channel
   code exists; the manifest `id` being the right join key is a design claim
   that the multi-tenant arc can still invalidate.
 - **The seven resolution states have no UI test**, and §4.1's not-backing path
@@ -1828,7 +1828,7 @@ knows it has.
   distinguishable enough to be worth four separate states, or collapse in
   practice, is unproven until slice 4.
 
-### 11.2 What slice 5 (archive#1503) established by shipping
+### 11.2 What slice 5 (station#1503) established by shipping
 
 - **The compat working-directory fallback stands in for AT MOST ONE resource.**
   §5 makes `workingDirectory` the compat-era binding, and one declared directory
@@ -1860,7 +1860,7 @@ knows it has.
   primary's record whichever row was used. An unknown id is refused by name,
   never answered by binding the primary.
 
-### 11.1 Corrections that slice 4 (archive#1502) established by shipping
+### 11.1 Corrections that slice 4 (station#1502) established by shipping
 
 - **§10's "includes the single-repo bind/clone convenience" was over-promised
   by the slice-1 contract.** Slice 4 ships the **bind** half. The clone half is
@@ -1876,7 +1876,7 @@ knows it has.
 - **`unresolvable` and `not-portable` ship as renderers with no producer.**
   Nothing in Station asserts either today: `unresolvable` is scoped to an
   attempt that was denied and slice 4 performs no authenticated remote
-  operation, and `not-portable` needs the membership model (archive#1392) to know a
+  operation, and `not-portable` needs the membership model (#1392) to know a
   `local-only` resource was authored by someone else. Both arms exist and are
   covered by tests over the contract type; neither is reachable from the
   server. This is disclosed rather than implied — a reader-without-a-producer

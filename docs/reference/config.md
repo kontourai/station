@@ -116,7 +116,7 @@ An attachment's bytes are never stored inside the event log. `turn.started`
 records the attachment's name, type and size and a content-addressed reference;
 the bytes themselves live under `<STATION_HOME>/attachments/<aa>/<sha256>`,
 addressed by the SHA-256 of their decoded content, so the same image pasted
-into many turns is stored once (archive#3374).
+into many turns is stored once (station#3374).
 
 Deleting a conversation deletes its attachments' bytes, not merely its access
 to them: the binding is dropped and any blob left with no bindings is reclaimed
@@ -132,7 +132,7 @@ rather than re-sending it without the image.
 
 The transcript's own reads are byte-budgeted and hand on the reference rather
 than the bytes, so the browser fetches previews from
-`GET /api/attachments/:ref` (archive#3385) — an authenticated, same-origin
+`GET /api/attachments/:ref` (station#3385) — an authenticated, same-origin
 route that serves inert `application/octet-stream` and 404s once a blob is
 reclaimed.
 
@@ -147,15 +147,15 @@ home (`CHAT_ATTACHMENT_MAX_SESSION_ENCODED_BYTES`,
 `packages/contracts/src/chat-attachment.ts`); a turn that would exceed either is
 refused before it is dispatched.
 
-### Reading Station's own logs (archive#1896)
+### Reading Station's own logs (station#1896)
 
 The write side above has a matching self-read path — Station can answer "what did you just log" without an operator tailing a file by hand.
 
 - **`GET /api/diagnostics/logs`** — query params `level` (minimum severity floor, `trace`..`fatal`; invalid values 400 naming the accepted list), `since`/`until` (ISO 8601 bounds, inclusive; invalid format 400), `q` (case-insensitive substring matched against the rendering **the caller will actually receive**, never the other one — a remote caller can only search what a remote caller could see; `q=[REDACTED]` matches any redacted-path entry that had a field redacted), `limit` (default 200, hard cap 1000, clamped rather than rejected). Scans the daily files newest-first, reading each one backward in bounded chunks (never a whole-file load), and returns the **last N matches ordered by parsed timestamp** (tail semantics; a multi-writer day file is not assumed to be in strict append order), stopping early once `limit` is satisfied or a 32 MiB per-query scan budget (`DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES`) is spent. Response: `{ entries, truncated, scannedFiles, unreadableFiles, oldestScannedDay, skippedMalformedLines, scanBudgetExhausted }` — the reader is explicit about what it actually covered: an unopenable day file counts in `unreadableFiles` (and forces `truncated: true`) rather than silently shrinking coverage (a successfully-opened but 0-byte day file yields no lines and is excluded from `scannedFiles`/`oldestScannedDay`; content coverage is unaffected), and `scanBudgetExhausted` names the I/O cap specifically when it's the reason for truncation. Gated at the same pairing-scope tier as `GET /api/diagnostics/bundle` (`src-server/security/pairing-route-scopes.ts`). Locality does not change who may hit the route; it changes whether the body is redacted.
 - **`read_logs`** MCP tool (station-control) — the same query, for an agent debugging Station's own runtime behavior. station-control is a local hop (`x-station-proxy-caller: local` + the per-boot internal token), so it receives unredacted lines through the same HTTP handler.
-- **Redaction on egress** (archive#1922, UX audit D6): a **remote or paired** caller receives every entry through `redactDeep` (secret-named fields, e.g. nested `config.apiKey`) and `redactSecrets` on every string leaf (secret-*shaped* text inside free-form fields like `msg`/`err.message`/`err.stack` — a connection string or bearer token embedded in error text, not just a suspiciously-named field). A **local** caller (`isLocalRuntimeCaller` — mint-time `locality: 'home-possession'`) receives the unredacted store bytes, including filesystem paths that used to render as `[REDACTED_PATH]`. Slice 1's write-time seam still deep-redacts each write's *context* object before it reaches **pino/stdout**; the durable store is written unredacted so the local operator's Developer surface is usable. The read path remains the boundary that redacts the whole entry uniformly, `msg` included, for every non-local client.
+- **Redaction on egress** (station#1922, UX audit D6): a **remote or paired** caller receives every entry through `redactDeep` (secret-named fields, e.g. nested `config.apiKey`) and `redactSecrets` on every string leaf (secret-*shaped* text inside free-form fields like `msg`/`err.message`/`err.stack` — a connection string or bearer token embedded in error text, not just a suspiciously-named field). A **local** caller (`isLocalRuntimeCaller` — mint-time `locality: 'home-possession'`) receives the unredacted store bytes, including filesystem paths that used to render as `[REDACTED_PATH]`. Slice 1's write-time seam still deep-redacts each write's *context* object before it reaches **pino/stdout**; the durable store is written unredacted so the local operator's Developer surface is usable. The read path remains the boundary that redacts the whole entry uniformly, `msg` included, for every non-local client.
 
-### Correlating `read_logs` output with monitoring events (archive#1897)
+### Correlating `read_logs` output with monitoring events (station#1897)
 
 Every adopted call site binds `logger.child(bindings)` with the SAME key strings `src-server/monitoring/emitter.ts`'s `MonitoringEmitter` uses for OTel GenAI monitoring events (`src-shared/monitoring-keys.ts`'s `K`, re-exported — never re-declared — by `src-server/utils/logger-correlation.ts`'s `LOG_BINDING_KEYS`). Querying `read_logs`/`GET /api/diagnostics/logs` with `q=<conversationId>` (or an agent slug, or a Station user id) returns every bound log line for that value; the SAME id also keys the `gen_ai.conversation.id` field on that conversation's monitoring events (`GET /api/monitoring` and friends), so a single id correlates both surfaces (one disclosed asymmetry: the **remote** log-read path runs every string value through the shared secret-pattern redaction while the monitoring side does not, so a binding VALUE that happens to look secret-shaped — an `sk-`/`gh_`-prefixed id, an AWS-key-shaped string — reads back as `[REDACTED]` from a remote/paired `read_logs` and the join degrades to the monitoring side only; a local operator sees the binding unredacted. Today's id shapes (UUID-derived conversation ids, OS-username user ids) cannot trip this, and the trade-off is pinned by a test rather than weakening redaction for hypothetical future id shapes):
 
@@ -250,7 +250,7 @@ but not prompts, credentials, endpoints, connection IDs, or model configuration.
 | `minimumEvidence` | `"unavailable"` \| `"declared"` \| `"confirmed"` | Excludes any candidate graded below this level. Default `"unavailable"` (every candidate passes). |
 | `requiredCapabilities` | string[] | Excludes any candidate missing one of these capability strings. Default `[]` (no requirement). |
 
-**Both are derived, honest signals as of archive#1426 — not operator-typed
+**Both are derived, honest signals as of station#1426 — not operator-typed
 claims.** Each candidate's evidence level comes from its model connection's
 live readiness state (`discovered` → `prerequisite-ready` → `catalog-ready` →
 `smoke-passed`, the same ladder shown on the Connections page), mapped onto
@@ -272,7 +272,7 @@ upstream once its evidence goes stale — a smoke result that has aged out
 stops being reported as `smoke-passed` at the source, rather than arriving
 here as a stale `smoke-passed`. `requiredCapabilities` is judged against the
 same live grading: `abort`/`usage` are present once a candidate has any live
-evidence at all. `"structured-tools"` (archive#1430) is present once a
+evidence at all. `"structured-tools"` (station#1430) is present once a
 candidate additionally has any live evidence AND its bound model's own
 provider catalog genuinely reported tool-calling support — the same
 `toolSurface` shown on the Connections page's model inventory, resolved
@@ -280,7 +280,7 @@ fresh every TTL window through the same deterministic, compute-on-demand
 inventory accessor as the rest of this grading (never a cache that depends
 on whether the Connections page happened to be open). It is satisfiable
 today, but only for a connection whose provider adapter actually reports
-this: as of archive#1430, that is Ollama (`/api/show`'s `capabilities`
+this: as of station#1430, that is Ollama (`/api/show`'s `capabilities`
 array) — Bedrock, OpenAI-compatible, Anthropic, and Google all leave it
 `undefined` because none of their model-listing APIs expose a real
 capability signal (see each adapter's own comment in
@@ -290,7 +290,7 @@ model connection can actually earn it; every other connection excludes with
 a named reason rather than silently failing.
 
 **Evidence is graded lazily, behind a 60-second TTL, not baked in at agent
-(re)build (archive#1431).** Dispatch candidates are still assembled when the
+(re)build (station#1431).** Dispatch candidates are still assembled when the
 agent instance itself is built, but each candidate's evidence grade is
 resolved per Dispatch invocation rather than fixed for the model's lifetime:
 within a 60-second window a call reuses the last grade (still one batched

@@ -1,6 +1,6 @@
 # Shared working-state protocol
 
-Issue archive#2889 defines the pre-UI contract for a shared **text document**. This
+Issue #2889 defines the pre-UI contract for a shared **text document**. This
 is not the channel conversation log: `docs/design/conversation-state.md`
 remains the authority for conversation messages, moderation, and their
 single-home sequencing.

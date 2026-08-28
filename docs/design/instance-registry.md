@@ -11,7 +11,7 @@
 
 ## Why this file exists
 
-The Command Station epic (archive#1672) needs a durable, host-wide record of every
+The Command Station epic (#1672) needs a durable, host-wide record of every
 Station instance running on a machine — not just the one a given CLI invocation
 happens to be talking to. `<STATION_HOME>/instances.json` is that record: one
 file per Station home, keyed by an arbitrary instance id, describing each
@@ -71,14 +71,14 @@ future reader who finds one does not assume it is the same thing as the other.
   publish.
 - `upsertInstance(id, partial, home?)` — locked create-or-merge-update.
   Merge semantics make it wrong for producers publishing a complete entry
-  over a possibly-foreign one (archive#3047): every field the partial omits
+  over a possibly-foreign one (station#3047): every field the partial omits
   survives from the existing entry.
 - `claimInstanceEntry(id, entry, { home?, protectedTypes? })` — locked,
-  ownership-checked **replacement** (archive#3047): refuses a
+  ownership-checked **replacement** (station#3047): refuses a
   `protectedTypes` entry (dead or alive) or an entry owned by a live process
   (birth-aware, fail-open; `entry.pid` may refresh its own), else writes
   exactly `entry`. The guard runs inside the mutation lock — this is the
-  owned-upsert primitive archive#2904's review asked for.
+  owned-upsert primitive #2904's review asked for.
 - `replaceInstance(id, entry, home?)` — locked unconditional exact write; for
   compensation paths restoring a captured prior entry.
 - `updateStatus(id, status, pid?, home?)` — locked status/pid update.
@@ -96,13 +96,13 @@ future reader who finds one does not assume it is the same thing as the other.
 
 The sibling HTTP route this slice also adds
 (`src-server/routes/system/system-status-routes.ts`, `GET /api/system/instance`,
-archive#1985/#1983) self-reports `component: 'command-station'` alongside
+station#1985/#1983) self-reports `component: 'command-station'` alongside
 whatever build/port fields it can determine — it does not read this registry
 file (see [Explicit non-goals of this slice](#explicit-non-goals-of-this-slice)).
 It is documented here because both concepts share this design doc's context.
 
 - **Value space today: exactly `'command-station'`.** That is the server
-  runtime's name per the archive#1983 naming decision — the frontend bundle stays
+  runtime's name per the #1983 naming decision — the frontend bundle stays
   named "Station" (the product name a user sees); `'command-station'` is the
   server-side runtime process a prober is actually talking to.
 - **Why it exists.** A future Station bundle (a plugin host, a worker
@@ -129,7 +129,7 @@ CLI's lifecycle journal uses, and it already lives in `packages/shared`.
 Every mutating call (`writeInstanceRegistry`, `upsertInstance`, `updateStatus`,
 `removeInstance`) acquires `<path>.mutation` exactly once for its whole
 read-modify-write, closing the TOCTOU/CAS gap named in this repo's
-"serialized-updater" learning (archive#1588/#1600/#1606: a JSON-file store
+"serialized-updater" learning (station#1588/#1600/#1606: a JSON-file store
 without a lock around its read-modify-write has a race). The payload publish
 itself is temp-write + `fsyncSync` + `renameSync` + a directory `fsync` (via
 `fsyncDirectorySync` from `packages/shared/src/fs-windows-compat.ts`, already
@@ -171,9 +171,9 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
 ## Producers, consumers, and remaining non-goals
 
 - **Durable-service producer: `station service install`.** As of
-  archive#1983/#1672, `station service install` writes the registry as the
+  station#1983/#1672, `station service install` writes the registry as the
   durable authority for a user service's operator environment, including
-  `env.ALLOWED_ORIGINS`. As of archive#3047 that write is a
+  `env.ALLOWED_ORIGINS`. As of station#3047 that write is a
   `claimInstanceEntry` (replace, never merge): installing over a foreign
   (CLI) entry previously inherited its pid/birth into a `type: 'service'`
   chimera that could flip Desktop's home-ownership decision off a live CLI
@@ -188,7 +188,7 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   'sidecar'` record through the same bridge. Rust never writes
   `instances.json` directly, so owner checks, atomic publishing, and the
   cross-process mutation lock remain shared-module responsibilities.
-- **Producers (updated, archive#2904 slice 2).** `station start` now publishes
+- **Producers (updated, station#2904 slice 2).** `station start` now publishes
   into this registry (`'worktree'` when the checkout's `.git` is a file,
   `'inline'` otherwise; pid + birth fingerprint; best-effort with a stderr
   note on failure) and `station stop` removes the entry — identity-checked on
@@ -202,7 +202,7 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   **The one-owner invariant** this registry serves: every server process has
   exactly one owner that assigned its identity, port, and data dir, enforced
   at the layer native to each surface — the OS-level single-instance lock for
-  the Desktop app (archive#3045), this registry plus the shared-home warning (and a
+  the Desktop app (#3045), this registry plus the shared-home warning (and a
   planned same-home refuse) for the CLI, and the home-scoped sidecar claim as
   the cross-surface floor. Producers never adopt or delete an entry another
   surface owns.
@@ -231,7 +231,7 @@ not a naming collision to "fix":
 |---|---|---|
 | Scope | Per-checkout (CWD-anchored) | Per-home (host-wide) |
 | Cardinality | One file per instance | One file, many instances inside it |
-| Owner | `station start`/`station stop` (CLI lifecycle) | `station service install` (durable service), Desktop's shared-registry bridge (desktop-owned sidecar), and — since archive#2904 slice 2 — `station start`/`stop` themselves (types `'inline'`/`'worktree'`) |
+| Owner | `station start`/`station stop` (CLI lifecycle) | `station service install` (durable service), Desktop's shared-registry bridge (desktop-owned sidecar), and — since station#2904 slice 2 — `station start`/`stop` themselves (types `'inline'`/`'worktree'`) |
 | Purpose | "Which PID/port did *this checkout* start, so I can stop it?" | "What instances exist under *this home*, across checkouts?" |
 
 A future slice may derive one from the other, or keep them independent
