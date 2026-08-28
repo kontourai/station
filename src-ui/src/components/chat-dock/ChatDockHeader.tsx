@@ -58,9 +58,15 @@ export interface ChatDockWorkspaceControls {
   backgroundTasksRunningCount: number;
   isBackgroundTasksOpen: boolean;
   onToggleBackgroundTasks: () => void;
-  isSessionInventoryOpen: boolean;
-  sessionInventoryControlsId: string;
-  onToggleSessionInventory: (trigger: HTMLElement) => void;
+  sessionInventory?: {
+    chatStoreId: string;
+    executionId: string;
+    projectId?: string;
+    executionRead: 'present' | string;
+    mountRef: React.RefObject<HTMLDivElement | null>;
+    dockMode: DockMode;
+    fullscreen: boolean;
+  };
   onOpenConversation: () => void;
   /** New-chat with the single-ready-agent shortcut (opens directly). */
   onNewChat: () => void;

@@ -1,15 +1,68 @@
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import {
   ArrowLeftGlyph,
   ArrowRightGlyph,
   MessageGlyph,
-  PlusGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
+import { createPortal } from 'react-dom';
+import { useEffect, useRef } from 'react';
+import { LazyBoundary } from '../LazyBoundary';
+import {
+  closeSessionInventoryOccurrence,
+  openSessionInventoryOccurrence,
+  registerSessionInventoryHost,
+  useSessionInventoryOccurrence,
+} from './sessionInventoryOccurrence';
+
+const loadSessionInventoryEntryPoint = () =>
+  import('./SessionInventoryEntryPoint').then((module) => ({
+    default: module.SessionInventoryEntryPoint,
+  }));
+
+function NewChatGlyph() {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 16 16">
+      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
 
 export function ChatDockWorkspaceControls(props: Controls) {
+  const authority = useHostRequestAuthorityScope();
+  const hostId = useRef(`session-inventory:${crypto.randomUUID()}`).current;
+  const inventory = props.sessionInventory;
+  const occurrence = useSessionInventoryOccurrence(hostId);
+  useEffect(
+    () =>
+      registerSessionInventoryHost(
+        hostId,
+        authority && inventory
+          ? {
+              authorityKey: authority.authorityKey,
+              chatStoreId: inventory.chatStoreId,
+              executionId: inventory.executionId,
+            }
+          : null,
+      ),
+    [authority, hostId, inventory],
+  );
+  const toggleInventory = (trigger: HTMLElement) => {
+    if (!inventory || !authority) return;
+    if (occurrence) return closeSessionInventoryOccurrence(hostId);
+    openSessionInventoryOccurrence({
+      hostId,
+      authorityKey: authority.authorityKey,
+      activeSessionId: inventory.chatStoreId,
+      executionSessionId: inventory.executionId,
+      projectId: inventory.projectId,
+      executionRead: inventory.executionRead,
+      trigger,
+    });
+  };
   return (
     <div className="chat-dock__header-workspace">
       {props.showInboxToggle && (
@@ -50,18 +103,37 @@ export function ChatDockWorkspaceControls(props: Controls) {
           </span>
         )}
       </button>
-      <button
-        type="button"
-        className="chat-dock__inbox-toggle"
-        onClick={(event) => props.onToggleSessionInventory(event.currentTarget)}
-        title="Session inventory"
-        aria-label="Session inventory"
-        aria-pressed={props.isSessionInventoryOpen}
-        aria-expanded={props.isSessionInventoryOpen}
-        aria-controls={props.sessionInventoryControlsId}
-      >
-        <span aria-hidden="true">◫</span>
-      </button>
+      {inventory ? (
+        <button
+          type="button"
+          className="chat-dock__inbox-toggle"
+          onClick={(event) => toggleInventory(event.currentTarget)}
+          title="Session inventory"
+          aria-label="Session inventory"
+          aria-pressed={Boolean(occurrence)}
+          aria-expanded={Boolean(occurrence)}
+          aria-controls={`session-inventory-${hostId}`}
+        >
+          <span aria-hidden="true">◫</span>
+        </button>
+      ) : null}
+      {occurrence && inventory?.mountRef.current
+        ? createPortal(
+            <LazyBoundary
+              load={loadSessionInventoryEntryPoint}
+              pending={null}
+              componentProps={{
+                launch: occurrence,
+                isMobile: false,
+                dockMode: inventory.dockMode,
+                fullscreen: inventory.fullscreen,
+                controlsId: `session-inventory-${hostId}`,
+                onClose: () => closeSessionInventoryOccurrence(hostId),
+              }}
+            />,
+            inventory.mountRef.current,
+          )
+        : null}
     </div>
   );
 }
@@ -93,7 +165,7 @@ export function ChatDockWorkspaceActions({
         onClick={onNewChat}
         title={withShortcutHint('New Chat', 'chat.new', () => newShortcut)}
       >
-        <PlusGlyph />
+        <NewChatGlyph />
         <span className="chat-dock__new-label">New</span>
       </button>
     </div>

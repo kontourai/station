@@ -26,6 +26,10 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '',
 }));
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 import {
   ChatDockHeader,
   type ChatDockWorkspaceControls as WorkspaceControls,
@@ -42,9 +46,6 @@ function workspaceControls(
     backgroundTasksRunningCount: 0,
     isBackgroundTasksOpen: false,
     onToggleBackgroundTasks: vi.fn(),
-    isSessionInventoryOpen: false,
-    sessionInventoryControlsId: 'session-inventory-test',
-    onToggleSessionInventory: vi.fn(),
     onOpenConversation: vi.fn(),
     onNewChat: vi.fn(),
     ...overrides,
@@ -148,23 +149,6 @@ describe('header background tasks button (from #1064 AC3)', () => {
   });
 });
 
-describe('header Session inventory toggle', () => {
-  test('exposes its real open state and controls relationship without claiming a popup', async () => {
-    const controls = workspaceControls({ isSessionInventoryOpen: true });
-    renderHeader({ workspaceControls: controls });
-
-    const button = await screen.findByRole('button', {
-      name: 'Session inventory',
-    });
-    expect(button.getAttribute('aria-pressed')).toBe('true');
-    expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect(button.getAttribute('aria-controls')).toBe('session-inventory-test');
-    expect(button.hasAttribute('aria-haspopup')).toBe(false);
-    fireEvent.click(button);
-    expect(controls.onToggleSessionInventory).toHaveBeenCalledWith(button);
-  });
-});
-
 describe('one-bar rule (#3309)', () => {
   test('Open/New live in the header while the pane is open', async () => {
     const controls = workspaceControls();
@@ -186,10 +170,8 @@ describe('one-bar rule (#3309)', () => {
     const left = header.querySelector('.chat-dock__title')!;
     const right = header.querySelector('.chat-dock__header-actions')!;
     expect(
-      left.contains(
-        await screen.findByRole('button', { name: 'Session inventory' }),
-      ),
-    ).toBe(true);
+      left.contains(await screen.findByTitle('Open Conversation')),
+    ).toBe(false);
     expect(left.contains(screen.getByTestId('chat-identity'))).toBe(true);
     expect(right.contains(await screen.findByTitle('Open Conversation'))).toBe(
       true,
