@@ -35,6 +35,7 @@ describe('CodeQL SARIF policy', () => {
     expect(document.runs[0].tool.driver.rules).toEqual([]);
     expect(evaluateCodeqlSarif(document)).toEqual({
       findings: [],
+      staleBaseline: [],
       blocked: [],
       baselined: [],
       advisories: [],
@@ -47,6 +48,7 @@ describe('CodeQL SARIF policy', () => {
     ).toEqual({
       input: 'input.sarif',
       runs: 1,
+      staleBaseline: [],
       baselined: [],
       advisories: [],
     });
@@ -70,7 +72,7 @@ describe('CodeQL SARIF policy', () => {
     ).toThrow('CodeQL SARIF policy blocked 1 error-level result(s)');
   });
 
-  test('the checked-in baseline grandfathers the real error result and only that result', () => {
+  test('the checked-in baseline grandfathers every error result matching an entry (rule + path + lineHash)', () => {
     const document = parseFixture('pinned-codeql-finding.sarif');
     // The finding fixture carries one error result matching a baseline entry;
     // the remaining checked-in entries would be stale against this document,
@@ -97,7 +99,38 @@ describe('CodeQL SARIF policy', () => {
     expect(result.advisories).toHaveLength(1);
   });
 
-  test('a baseline entry matching no error-level result is stale and fails the policy', () => {
+  test('one baseline entry grandfathers multiple results sharing rule, path, and lineHash — the computed breadth', () => {
+    // Mirrors the real corpus: scripts/phone-ui-server.mjs line 44 carries two
+    // distinct path-injection results under one fingerprint. The entry admits
+    // both; the disclosed trade-off is that a NEW dataflow landing on an
+    // already-baselined line is also admitted.
+    const document = parseFixture('pinned-codeql-finding.sarif');
+    const errorResult = document.runs[0].results[0];
+    document.runs[0].results = [errorResult, { ...errorResult }];
+    const entry = errorBaseline().findings.find(
+      (candidate: { rule: string }) => candidate.rule === 'js/request-forgery',
+    );
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: { findings: [entry] },
+    });
+    expect(verdict.blocked).toEqual([]);
+    expect(verdict.baselined).toHaveLength(2);
+    expect(verdict.staleBaseline).toEqual([]);
+  });
+
+  test('an error result without partialFingerprints blocks — it can never be baselined', () => {
+    const document = parseFixture('pinned-codeql-finding.sarif');
+    const errorResult = document.runs[0].results[0];
+    delete errorResult.partialFingerprints;
+    document.runs[0].results = [errorResult];
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: { findings: errorBaseline().findings },
+    });
+    expect(verdict.blocked).toHaveLength(1);
+    expect(verdict.blocked[0]).toContain(BASELINED_ERROR_SUMMARY_PREFIX);
+  });
+
+  test('a stale baseline entry fails by default and warns under --stale-baseline=warn', () => {
     const document = parseFixture('pinned-codeql-clean.sarif');
     const verdict = evaluateCodeqlSarif(document, {
       baseline: {
@@ -106,9 +139,54 @@ describe('CodeQL SARIF policy', () => {
         ],
       },
     });
-    expect(verdict.findings.join('\n')).toContain(
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.staleBaseline.join('\n')).toContain(
       'no longer matches any error-level result; remove it',
     );
+    // validateCodeqlSarif and the CLI default keep stale entries failing.
+    expect(
+      validateCodeqlSarif(document, {
+        baseline: {
+          findings: [
+            { rule: 'js/gone', path: 'src/removed.ts', lineHash: 'dead:1' },
+          ],
+        },
+      }).join('\n'),
+    ).toContain('no longer matches');
+    const staleFiles = {
+      'input.sarif': fixture('pinned-codeql-clean.sarif'),
+      'baseline.json': JSON.stringify({
+        findings: [
+          { rule: 'js/gone', path: 'src/removed.ts', lineHash: 'dead:1' },
+        ],
+      }),
+    };
+    expect(() =>
+      runCodeqlSarifPolicy(
+        ['--input=input.sarif', '--baseline=baseline.json'],
+        readFiles(staleFiles),
+      ),
+    ).toThrow('no longer matches');
+    // warn mode: the PR-event posture — reported, not failing.
+    const warned = runCodeqlSarifPolicy(
+      [
+        '--input=input.sarif',
+        '--baseline=baseline.json',
+        '--stale-baseline=warn',
+      ],
+      readFiles(staleFiles),
+    );
+    expect(warned.staleBaseline).toHaveLength(1);
+    expect(() =>
+      runCodeqlSarifPolicy(
+        [
+          '--input=input.sarif',
+          '--baseline=baseline.json',
+          '--stale-baseline=never',
+        ],
+        readFiles(staleFiles),
+      ),
+    ).toThrow('--stale-baseline must be fail or warn');
   });
 
   test('a baseline entry does not grandfather a moved or edited finding (fingerprint mismatch)', () => {
@@ -122,7 +200,7 @@ describe('CodeQL SARIF policy', () => {
       },
     });
     expect(verdict.blocked).toHaveLength(1);
-    expect(verdict.findings.join('\n')).toContain('no longer matches');
+    expect(verdict.staleBaseline.join('\n')).toContain('no longer matches');
   });
 
   test('rejects a malformed baseline instead of silently enforcing without it', () => {

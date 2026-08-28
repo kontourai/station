@@ -239,9 +239,11 @@ function resultLocation(result) {
     : undefined;
 }
 
-function baselineMatches(result, entry) {
+// Match on the RESOLVED rule id, not raw result.ruleId — resolution admits
+// rule.id-only references, and the two must not diverge in baseline behavior.
+function baselineMatches(result, resolvedRuleId, entry) {
   return (
-    entry.rule === result.ruleId &&
+    entry.rule === resolvedRuleId &&
     entry.path ===
       result.locations?.[0]?.physicalLocation?.artifactLocation?.uri &&
     entry.lineHash === result.partialFingerprints?.primaryLocationLineHash
@@ -322,7 +324,9 @@ function validateResult(
       verdicts.advisories.push(summary);
       return;
     }
-    const matched = baseline.find((entry) => baselineMatches(result, entry));
+    const matched = baseline.find((entry) =>
+      baselineMatches(result, rule.id, entry),
+    );
     if (matched) {
       baseline.matchedEntries.add(matched);
       verdicts.baselined.push(summary);
@@ -437,33 +441,41 @@ function validateRun(run, index, findings, verdicts, baseline) {
  * - `baselined` are error-level results grandfathered by the baseline (#688).
  * - `advisories` are warning/note results — reported, never blocking.
  *
- * A baseline entry that matches no error-level result is stale and becomes a
- * structural finding: the change that resolved the finding must also remove
- * its entry, so the baseline can only shrink truthfully.
+ * A baseline entry that matches no error-level result is stale and is
+ * reported in `staleBaseline`. The caller decides its severity: the workflow
+ * fails on it for push-to-main (the merged tree must keep baseline and
+ * findings in lockstep) but only warns on pull_request_target — the gate
+ * reads the baseline from the BASE checkout there, so a PR that fixes a
+ * baselined finding and removes its entry in the same change would otherwise
+ * red on an entry it cannot see removed, and the baseline could never shrink
+ * through a green gate.
  */
 export function evaluateCodeqlSarif(document, { baseline } = {}) {
   const findings = [];
   const verdicts = { blocked: [], baselined: [], advisories: [] };
+  const staleBaseline = [];
   const baselineEntries =
     baseline === undefined ? [] : validateBaseline(baseline, findings);
   baselineEntries.matchedEntries = new Set();
-  if (!validateAdmission(document, findings)) return { findings, ...verdicts };
+  if (!validateAdmission(document, findings))
+    return { findings, staleBaseline, ...verdicts };
   for (const [index, run] of document.runs.entries())
     validateRun(run, index, findings, verdicts, baselineEntries);
   for (const entry of baselineEntries) {
     if (!baselineEntries.matchedEntries.has(entry))
-      findings.push(
+      staleBaseline.push(
         issue(
           'baseline',
           `entry ${entry.rule} at ${entry.path} (${entry.lineHash}) no longer matches any error-level result; remove it.`,
         ),
       );
   }
-  return { findings, ...verdicts };
+  return { findings, staleBaseline, ...verdicts };
 }
 
 export function validateCodeqlSarif(document, options) {
-  return evaluateCodeqlSarif(document, options).findings;
+  const { findings, staleBaseline } = evaluateCodeqlSarif(document, options);
+  return [...findings, ...staleBaseline];
 }
 
 export function parseSarifBytes(bytes, { requireTerminalNewline = true } = {}) {
@@ -541,14 +553,17 @@ export function runCodeqlSarifPolicy(
     }
     baseline = parsed;
   }
+  const staleBaselineMode = optionValue(argv, 'stale-baseline') ?? 'fail';
+  if (!['fail', 'warn'].includes(staleBaselineMode))
+    throw new Error('--stale-baseline must be fail or warn.');
   const document = parseSarifBytes(read(input));
-  const { findings, blocked, baselined, advisories } = evaluateCodeqlSarif(
-    document,
-    { baseline },
-  );
-  if (findings.length)
+  const { findings, staleBaseline, blocked, baselined, advisories } =
+    evaluateCodeqlSarif(document, { baseline });
+  const failing =
+    staleBaselineMode === 'fail' ? [...findings, ...staleBaseline] : findings;
+  if (failing.length)
     throw new Error(
-      `CodeQL SARIF policy failed:\n${findings.map((finding) => `- ${finding}`).join('\n')}`,
+      `CodeQL SARIF policy failed:\n${failing.map((finding) => `- ${finding}`).join('\n')}`,
     );
   if (blocked.length > 0)
     throw new Error(
@@ -560,6 +575,7 @@ export function runCodeqlSarifPolicy(
   return {
     input,
     runs: document.runs.length,
+    staleBaseline,
     baselined,
     advisories,
   };
@@ -568,6 +584,13 @@ export function runCodeqlSarifPolicy(
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   try {
     const result = runCodeqlSarifPolicy();
+    if (result.staleBaseline.length > 0)
+      console.log(
+        renderBounded(
+          `WARNING: ${result.staleBaseline.length} stale baseline entr(ies) — remove them in this change:`,
+          result.staleBaseline,
+        ),
+      );
     if (result.baselined.length > 0)
       console.log(
         renderBounded(
