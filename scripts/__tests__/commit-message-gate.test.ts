@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   COMMIT_TYPES,
+  FROZEN_IMMUTABLE_HISTORY_RECORDS,
   matchingExemption,
+  matchingFrozenImmutableHistoryRecord,
   parsePrepushLines,
   pushedCommits,
   subjectFromMessage,
@@ -471,6 +473,27 @@ describe('.githooks/commit-msg wiring (a wrapper that never refused is unproven)
 });
 
 describe('corpus: the vocabulary constant must fit the repo it governs', () => {
+  it('matches only the named immutable history record', () => {
+    const [record] = FROZEN_IMMUTABLE_HISTORY_RECORDS;
+    expect(matchingFrozenImmutableHistoryRecord(record)).toBe(record);
+
+    for (const changed of [
+      { ...record, sha: `${record.sha.slice(0, -1)}0` },
+      {
+        ...record,
+        parents: `${record.parents} 0000000000000000000000000000000000000000`,
+      },
+      { ...record, subject: `${record.subject} changed` },
+    ]) {
+      expect(matchingFrozenImmutableHistoryRecord(changed)).toBeNull();
+    }
+
+    expect(validateSubject(record.subject).ok).toBe(false);
+    expect(
+      validateSubject('Fix: future uppercase subject remains rejected').ok,
+    ).toBe(false);
+  });
+
   /**
    * Known pre-gate residue (out of the last 1500 subjects, ~1.2%): `wip:`,
    * `checkpoint:`, `docs+test:`, `fix/test:`, lowercase `merge:`/`revert:`
@@ -529,13 +552,13 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
     // exemptions refuse is a push this gate would strand mid-merge.
     const rows = execFileSync(
       'git',
-      ['log', 'origin/main', '-3000', '--format=%P%x00%s'],
+      ['log', 'origin/main', '-3000', '--format=%H%x00%P%x00%s'],
       { encoding: 'utf8', maxBuffer: 1 << 24, windowsHide: true },
     )
       .split('\n')
       .filter(Boolean)
       .map((line) => line.split('\0'));
-    const merges = rows.filter(([parents]) => parents.includes(' '));
+    const merges = rows.filter(([, parents]) => parents.includes(' '));
     // Post history-reset the merge population rebuilds from zero (the
     // single-root history starts with none). Assert over every merge that
     // exists rather than a fixed floor — and make the zero-merge state
@@ -550,12 +573,32 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
       return;
     }
 
-    const failures = merges
-      .map(([, subject]) => ({ subject, verdict: validateSubject(subject) }))
-      .filter(({ verdict }) => !verdict.ok);
+    const immutableCounts = new Map(
+      FROZEN_IMMUTABLE_HISTORY_RECORDS.map((record) => [record.sha, 0]),
+    );
+    const verdicts = merges.map(([sha, parents, subject]) => {
+      const immutable = matchingFrozenImmutableHistoryRecord({
+        sha,
+        parents,
+        subject,
+      });
+      if (immutable) {
+        immutableCounts.set(
+          immutable.sha,
+          (immutableCounts.get(immutable.sha) ?? 0) + 1,
+        );
+      }
+      return { subject, verdict: validateSubject(subject), immutable };
+    });
+    const failures = verdicts.filter(({ verdict, immutable }) =>
+      immutable ? false : !verdict.ok,
+    );
 
     console.log(
-      `commit-message-gate corpus: ${merges.length - failures.length}/${merges.length} merge subjects are exempt-or-conform`,
+      `commit-message-gate corpus: ${merges.length - failures.length}/${merges.length} merge subjects are exempt, conform, or exact immutable records`,
+    );
+    expect([...immutableCounts.entries()]).toEqual(
+      FROZEN_IMMUTABLE_HISTORY_RECORDS.map((record) => [record.sha, 1]),
     );
     expect(failures.map((f) => f.subject)).toEqual([]);
   });

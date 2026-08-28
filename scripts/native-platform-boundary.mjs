@@ -8,6 +8,20 @@ import { existsSync, readFileSync } from 'node:fs';
 
 export const TAURI_CAPABILITY_MANIFEST =
   'src-desktop/capabilities/default.json';
+// Split from the shared manifest above (#575): tauri-plugin-updater and
+// tauri-plugin-process are desktop-only Cargo dependencies, so a shared
+// manifest referencing their permissions fails ACL resolution outright on a
+// mobile build — the plugins are not compiled there to define them. The
+// `platforms` scope excludes android/iOS entirely rather than granting and
+// leaving unreachable.
+export const TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST =
+  'src-desktop/capabilities/desktop-updater.json';
+export const EXPECTED_DESKTOP_UPDATER_PERMISSIONS = [
+  'updater:allow-check',
+  'updater:allow-download-and-install',
+  'process:allow-restart',
+];
+export const EXPECTED_DESKTOP_UPDATER_PLATFORMS = ['macOS', 'windows', 'linux'];
 export const TAURI_BASE_CONFIG = 'src-desktop/tauri.conf.json';
 export const TAURI_DESKTOP_CONFIGS = [
   'src-desktop/tauri.macos.conf.json',
@@ -97,6 +111,8 @@ export const TAURI_ADAPTER_FILES = new Set([
   'src-ui/src/platform/native/notifier.ts',
   // Mobile haptics via the official Tauri plugin (station#1954).
   'src-ui/src/platform/native/haptics.ts',
+  // Desktop self-update via the official Tauri plugins (station#575).
+  'src-ui/src/platform/native/desktopUpdate.ts',
 ]);
 export const TAURI_NONCE_MARKER_PATTERN =
   /<script\s+data-station-csp-nonce(?:="")?\s+nonce="__TAURI_SCRIPT_NONCE__"\s*><\/script>/;
@@ -147,7 +163,10 @@ export function findNativeBoundaryViolations(files, readFile) {
   return findings;
 }
 
-export function findCapabilityManifestViolations(content) {
+export function findCapabilityManifestViolations(
+  content,
+  expectedPermissions = EXPECTED_TAURI_PERMISSIONS,
+) {
   let manifest;
   try {
     manifest = JSON.parse(content);
@@ -157,16 +176,47 @@ export function findCapabilityManifestViolations(content) {
 
   if (
     !Array.isArray(manifest.permissions) ||
-    manifest.permissions.length !== EXPECTED_TAURI_PERMISSIONS.length ||
-    !EXPECTED_TAURI_PERMISSIONS.every(
+    manifest.permissions.length !== expectedPermissions.length ||
+    !expectedPermissions.every(
       (permission, index) => manifest.permissions[index] === permission,
     )
   ) {
     return [
-      `Tauri JavaScript permissions must be exactly ${EXPECTED_TAURI_PERMISSIONS.join(', ')}`,
+      `Tauri JavaScript permissions must be exactly ${expectedPermissions.join(', ')}`,
     ];
   }
   return [];
+}
+
+/**
+ * The desktop-updater capability manifest additionally needs the `platforms`
+ * scope pinned: dropping it grants the permissions on every target, which
+ * fails mobile ACL resolution the same way a shared manifest entry would
+ * (the plugins are not compiled there — see the manifest constant's comment).
+ */
+export function findDesktopUpdaterCapabilityViolations(content) {
+  const violations = findCapabilityManifestViolations(
+    content,
+    EXPECTED_DESKTOP_UPDATER_PERMISSIONS,
+  );
+  let manifest;
+  try {
+    manifest = JSON.parse(content);
+  } catch {
+    return violations;
+  }
+  if (
+    !Array.isArray(manifest.platforms) ||
+    manifest.platforms.length !== EXPECTED_DESKTOP_UPDATER_PLATFORMS.length ||
+    !EXPECTED_DESKTOP_UPDATER_PLATFORMS.every(
+      (platform, index) => manifest.platforms[index] === platform,
+    )
+  ) {
+    violations.push(
+      `${TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST} platforms must be exactly ${EXPECTED_DESKTOP_UPDATER_PLATFORMS.join(', ')}`,
+    );
+  }
+  return violations;
 }
 
 function hasExactTauriCsp(csp) {
@@ -343,6 +393,9 @@ function main() {
   const manifestFindings = findCapabilityManifestViolations(
     readFileSync(TAURI_CAPABILITY_MANIFEST, 'utf8'),
   );
+  const desktopUpdaterManifestFindings = findDesktopUpdaterCapabilityViolations(
+    readFileSync(TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST, 'utf8'),
+  );
   const cspFindings = findTauriCspViolations(
     readFileSync(TAURI_BASE_CONFIG, 'utf8'),
   );
@@ -361,6 +414,7 @@ function main() {
   if (
     findings.length === 0 &&
     manifestFindings.length === 0 &&
+    desktopUpdaterManifestFindings.length === 0 &&
     cspFindings.length === 0 &&
     nonceMarkerFindings.length === 0 &&
     resourceFindings.length === 0 &&
@@ -381,6 +435,9 @@ function main() {
   for (const finding of credentialFindings) console.error(`  ${finding}`);
   for (const finding of manifestFindings) {
     console.error(`  ${TAURI_CAPABILITY_MANIFEST}: ${finding}`);
+  }
+  for (const finding of desktopUpdaterManifestFindings) {
+    console.error(`  ${TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST}: ${finding}`);
   }
   for (const finding of cspFindings) {
     console.error(`  src-desktop/tauri.conf.json: ${finding}`);

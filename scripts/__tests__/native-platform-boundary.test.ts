@@ -3,9 +3,12 @@ import { describe, expect, test } from 'vitest';
 import {
   EXPECTED_APPIMAGE_REMOVED_RESOURCES,
   EXPECTED_APPIMAGE_RUNTIME_FILES,
+  EXPECTED_DESKTOP_UPDATER_PERMISSIONS,
+  EXPECTED_DESKTOP_UPDATER_PLATFORMS,
   EXPECTED_TAURI_CSP,
   EXPECTED_TAURI_PERMISSIONS,
   findCapabilityManifestViolations,
+  findDesktopUpdaterCapabilityViolations,
   findNativeBoundaryViolations,
   findTauriCspViolations,
   findTauriNonceMarkerViolations,
@@ -14,6 +17,7 @@ import {
   TAURI_APPIMAGE_CONFIG,
   TAURI_BASE_CONFIG,
   TAURI_DESKTOP_CONFIGS,
+  TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
   TAURI_IMPORT_PATTERN,
   TAURI_MOBILE_CONFIGS,
 } from '../native-platform-boundary.mjs';
@@ -80,6 +84,39 @@ describe('native-platform-boundary', () => {
         JSON.stringify({ permissions: ['core:default'] }),
       ),
     ).toEqual([expect.stringContaining('core:event:allow-listen')]);
+  });
+
+  test('scopes the desktop-updater permissions to platforms where the plugins are actually dependencies', () => {
+    const manifest = JSON.parse(
+      readFileSync(TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST, 'utf8'),
+    );
+    expect(
+      findDesktopUpdaterCapabilityViolations(JSON.stringify(manifest)),
+    ).toEqual([]);
+    expect(manifest.permissions).toEqual(EXPECTED_DESKTOP_UPDATER_PERMISSIONS);
+    expect(manifest.platforms).toEqual(EXPECTED_DESKTOP_UPDATER_PLATFORMS);
+
+    // A dropped `platforms` scope grants the permissions on every target,
+    // which is exactly what fails mobile ACL resolution — the plugins are
+    // not compiled there to define `updater:allow-check` at all.
+    expect(
+      findDesktopUpdaterCapabilityViolations(
+        JSON.stringify({ ...manifest, platforms: undefined }),
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        `${TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST} platforms must be exactly`,
+      ),
+    ]);
+    expect(
+      findDesktopUpdaterCapabilityViolations(
+        JSON.stringify({ ...manifest, permissions: ['updater:default'] }),
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        'updater:allow-check, updater:allow-download-and-install',
+      ),
+    ]);
   });
 
   test('requires the exact least-privilege desktop CSP and Tauri CSP mutation', () => {

@@ -101,6 +101,39 @@ export const SUBJECT_EXEMPTIONS = Object.freeze([
   { name: 'autosquash marker', pattern: /^(fixup|squash)! / },
 ]);
 
+/**
+ * Frozen history records accepted only by the corpus check. These are not
+ * subject exemptions: an exact immutable record may document an already
+ * published merge, but it must never admit a future commit with the same
+ * non-conforming subject.
+ */
+export const FROZEN_IMMUTABLE_HISTORY_RECORDS = Object.freeze([
+  Object.freeze({
+    sha: '61e40b2efd0b744ebd4866117a66bffdc321b73e',
+    parents:
+      '52687b3cfe4a1b603db2bbf160298db54f6781c9 2c979c096b54a64963467a0faf8e65eaf3a44dc3',
+    subject: 'Fix real legacy service manifest quarantine (#621)',
+    reason:
+      'published immutable service-manifest quarantine merge predating the subject gate',
+  }),
+]);
+
+/** Exact immutable-history match; no subject-only or partial-record exception. */
+export function matchingFrozenImmutableHistoryRecord({
+  sha,
+  parents,
+  subject,
+}) {
+  return (
+    FROZEN_IMMUTABLE_HISTORY_RECORDS.find(
+      (record) =>
+        record.sha === sha &&
+        record.parents === parents &&
+        record.subject === subject,
+    ) ?? null
+  );
+}
+
 /** Which exemption (if any) covers this subject. `null` when none does. */
 export function matchingExemption(subject) {
   const line = String(subject ?? '');

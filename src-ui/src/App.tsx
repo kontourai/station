@@ -88,6 +88,14 @@ const loadCoreUpdateLaunchCheck = () =>
     default: module.CoreUpdateLaunchCheck,
   }));
 
+// The desktop shell's own self-update (station#575), distinct from the
+// connected-Station check above. Same reasoning for staying out of the
+// entry chunk: asynchronous chrome, never first-paint content.
+const loadDesktopUpdateLaunchCheck = () =>
+  import('./components/DesktopUpdateLaunchCheck').then((module) => ({
+    default: module.DesktopUpdateLaunchCheck,
+  }));
+
 const loadOutboundQueueFlushMount = () =>
   import('./hooks/OutboundQueueFlushMount').then((module) => ({
     default: module.OutboundQueueFlushMount,
@@ -538,6 +546,11 @@ function App() {
             load={loadCoreUpdateLaunchCheck}
             pending={null}
             componentProps={{ apiBase: API_BASE }}
+          />
+          <LazyBoundary
+            load={loadDesktopUpdateLaunchCheck}
+            pending={null}
+            componentProps={{}}
           />
           <LazyBoundary
             load={loadOutboundQueueFlushMount}

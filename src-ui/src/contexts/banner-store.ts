@@ -182,6 +182,8 @@ export const BANNER_IDS = {
   resourcePosture: 'chrome:resource-posture',
   updateCheck: 'chrome:update:check',
   updateAvailable: 'chrome:update:available',
+  desktopUpdateAvailable: 'chrome:update:desktop',
+  desktopUpdateInstallFailure: 'chrome:update:desktop-install-failure',
 } as const;
 
 export type BannerPresentInput = Omit<BannerItem, 'phase' | 'collapsed'>;

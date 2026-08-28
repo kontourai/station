@@ -318,9 +318,11 @@ export function createNightlyConfig({
  * `nightlyVersion()`/`nightlyIdentifier()` identity as the Android build (so
  * both artifacts shipped from one day carry the same version string), plus
  * the updater plugin's config fields (pubkey, endpoints) that a built app
- * WOULD read to find its rolling-prerelease manifest. This overlay only
- * writes config; no updater runtime ships in this app yet (the check/apply
- * plugin itself is separate work), so nothing consumes these fields today.
+ * reads to find its rolling-prerelease manifest. The desktop runtime (#575)
+ * registers `tauri-plugin-updater` only when both fields are present and
+ * non-empty, which this overlay always supplies together — so a nightly
+ * build DOES consume these fields; stable/beta builds carry the pubkey alone
+ * today and stay inert until each also gets an endpoint.
  * There is no Android-style version-code reservation here: Tauri's updater
  * orders releases by the SemVer `version` string, not a numeric build
  * index, so this needs no monotonic allocation.
