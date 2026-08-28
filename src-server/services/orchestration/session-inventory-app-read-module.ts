@@ -115,10 +115,27 @@ export function createSessionInventoryAppReadModule(input: {
   }): boolean;
   isEnabled: () => boolean | Promise<boolean>;
   now?: () => number;
+  /** Test seam only; production retains the fixed occurrence limits. */
+  limits?: Partial<{
+    sessions: number;
+    perCaller: number;
+    pages: number;
+    rateCallers: number;
+    readsPerWindow: number;
+  }>;
 }): SessionInventoryAppReadModule {
   const sessions = new Map<string, State>();
   const rates = new Map<string, { startedAt: number; count: number }>();
   const now = input.now ?? Date.now;
+  const limits = {
+    sessions: input.limits?.sessions ?? SESSION_INVENTORY_APP_READ_MAX_SESSIONS,
+    perCaller:
+      input.limits?.perCaller ?? SESSION_INVENTORY_APP_READ_MAX_PER_CALLER,
+    pages: input.limits?.pages ?? SESSION_INVENTORY_APP_READ_MAX_PAGES,
+    rateCallers:
+      input.limits?.rateCallers ?? SESSION_INVENTORY_APP_READ_MAX_RATE_CALLERS,
+    readsPerWindow: input.limits?.readsPerWindow ?? MAX_CALLER_READS_PER_WINDOW,
+  };
   const unavailable = (): SessionInventoryAppReadOutcome => ({
     status: 'unavailable',
   });
@@ -148,10 +165,7 @@ export function createSessionInventoryAppReadModule(input: {
     const at = now();
     for (const [key, value] of rates)
       if (at - value.startedAt >= RATE_WINDOW_MS) rates.delete(key);
-    if (
-      !rates.has(callerBinding) &&
-      rates.size >= SESSION_INVENTORY_APP_READ_MAX_RATE_CALLERS
-    )
+    if (!rates.has(callerBinding) && rates.size >= limits.rateCallers)
       rates.delete(rates.keys().next().value!);
     const previous = rates.get(callerBinding);
     const next =
@@ -159,7 +173,7 @@ export function createSessionInventoryAppReadModule(input: {
         ? { startedAt: at, count: 1 }
         : { ...previous, count: previous.count + 1 };
     rates.set(callerBinding, next);
-    return next.count <= MAX_CALLER_READS_PER_WINDOW;
+    return next.count <= limits.readsPerWindow;
   };
   const continuations = (state: State): SessionInventoryAppContinuation[] =>
     [...state.continuations.entries()].map(([groupId, value]) => ({
@@ -266,7 +280,7 @@ export function createSessionInventoryAppReadModule(input: {
       state.inFlight ||
       !continuation ||
       continuation.token !== continuationToken ||
-      state.pages >= SESSION_INVENTORY_APP_READ_MAX_PAGES
+      state.pages >= limits.pages
     )
       return unavailable();
     state.inFlight = true;
@@ -347,10 +361,10 @@ export function createSessionInventoryAppReadModule(input: {
         !validScope(scope) ||
         !validBinding(callerBinding) ||
         !takeRate(callerBinding) ||
-        sessions.size >= SESSION_INVENTORY_APP_READ_MAX_SESSIONS ||
+        sessions.size >= limits.sessions ||
         [...sessions.values()].filter(
           (state) => state.callerBinding === callerBinding,
-        ).length >= SESSION_INVENTORY_APP_READ_MAX_PER_CALLER
+        ).length >= limits.perCaller
       )
         return unavailable();
       const state: State = {

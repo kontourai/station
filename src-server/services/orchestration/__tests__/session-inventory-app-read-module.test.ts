@@ -31,6 +31,14 @@ const projection = {
 } as unknown as SessionInventoryProjection;
 
 describe('SessionInventoryAppReadModule', () => {
+  const make = (
+    options: Parameters<typeof createSessionInventoryAppReadModule>[0] = {
+      read: async () => ({ status: 'found' as const, projection }),
+      page: async () => ({ status: 'unavailable' as const }),
+      authorize: () => true,
+      isEnabled: () => true,
+    },
+  ) => createSessionInventoryAppReadModule(options);
   test('reserves before owner I/O and binds a completed occurrence to exact scope, caller, authority, and route family', async () => {
     const read = vi.fn(async () => ({ status: 'found' as const, projection }));
     const module = createSessionInventoryAppReadModule({
@@ -118,6 +126,72 @@ describe('SessionInventoryAppReadModule', () => {
         routeFamily: 'orchestration',
         callerBinding: caller,
         authority: { mode: 'hosted' } as never,
+      }),
+    ).resolves.toMatchObject({ status: 'available' });
+  });
+
+  test('enforces bounded global, per-caller, and rate admissions without large loops', async () => {
+    const module = make({
+      read: async () => ({ status: 'found' as const, projection }),
+      page: async () => ({ status: 'unavailable' as const }),
+      authorize: () => true,
+      isEnabled: () => true,
+      limits: { sessions: 2, perCaller: 1, rateCallers: 1, readsPerWindow: 2 },
+    });
+    const open = (callerBinding = caller) =>
+      module.open({
+        scope: projection.scope,
+        routeFamily: 'orchestration',
+        callerBinding,
+        authority: authority(),
+      });
+    expect((await open()).status).toBe('available');
+    await expect(open()).resolves.toEqual({ status: 'unavailable' });
+    expect((await open('other_'.padEnd(32, 'b'))).status).toBe('available');
+    await expect(open('third_'.padEnd(32, 'c'))).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+
+  test('revoke and TTL purge make a live occurrence unreplayable', async () => {
+    let at = 0;
+    const module = make({
+      read: async () => ({ status: 'found' as const, projection }),
+      page: async () => ({ status: 'unavailable' as const }),
+      authorize: () => true,
+      isEnabled: () => true,
+      now: () => at,
+    });
+    const opened = await module.open({
+      scope: projection.scope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    if (opened.status !== 'available') throw new Error('expected occurrence');
+    module.revoke({
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      occurrenceId: opened.occurrenceId,
+    });
+    await expect(
+      module.page({
+        scope: projection.scope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: 'token_'.padEnd(24, 'a'),
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    at = 5 * 60_000 + 1;
+    await expect(
+      module.open({
+        scope: projection.scope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
       }),
     ).resolves.toMatchObject({ status: 'available' });
   });
