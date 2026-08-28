@@ -287,7 +287,6 @@ export function ChatDockMobileHeader({
           what the whole bar is attached to. */}
       {dockToggle && (
         <button
-          ref={chatActionsTriggerRef}
           type="button"
           className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-dock-toggle"
           aria-label={
@@ -315,6 +314,7 @@ export function ChatDockMobileHeader({
 
       {showDrawerToggle && (
         <button
+          ref={chatActionsTriggerRef}
           type="button"
           className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
           aria-label="Toggle menu"

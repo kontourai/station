@@ -36,7 +36,7 @@ export function SessionInventoryEntryPoint({
   onClose(): void;
 }) {
   const authority = useHostRequestAuthorityScope();
-  const [prepared, setPrepared] = useState(false);
+  const [preparedKey, setPreparedKey] = useState<string | null>(null);
   const sessionId =
     launch.requestedScope?.sessionId ??
     launch.executionSessionId ??
@@ -47,6 +47,13 @@ export function SessionInventoryEntryPoint({
   useEffect(() => {
     if (!valid) onClose();
   }, [onClose, valid]);
+  const scope =
+    launch.requestedScope ??
+    (sessionId ? { kind: 'whole-session' as const, sessionId } : undefined);
+  const preparationKey =
+    authority && scope
+      ? JSON.stringify([authority.apiBase, authority.authorityKey, scope])
+      : null;
   useLayoutEffect(() => {
     if (!valid || !sessionId || !authority) return;
     const scope = launch.requestedScope ?? {
@@ -57,13 +64,14 @@ export function SessionInventoryEntryPoint({
     const current = readSessionInventorySelection(key);
     if (JSON.stringify(current?.scope) !== JSON.stringify(scope))
       commitSessionInventorySelection(key, { scope, groupId: 'inputs' });
-    setPrepared(true);
-  }, [authority, launch.requestedScope, sessionId, valid]);
-  if (!valid || !sessionId || !prepared) return null;
+    setPreparedKey(preparationKey);
+  }, [authority, launch.requestedScope, preparationKey, sessionId, valid]);
+  if (!valid || !sessionId || !scope || preparedKey !== preparationKey)
+    return null;
   return (
     <div id={controlsId}>
       <SessionInventoryHost
-        scope={launch.requestedScope ?? { kind: 'whole-session', sessionId }}
+        scope={scope}
         projectId={launch.projectId}
         chatStoreId={launch.activeSessionId ?? sessionId}
         hostId={launch.hostId}

@@ -2033,18 +2033,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       isBackgroundTasksOpen,
                       onToggleBackgroundTasks: () =>
                         setIsBackgroundTasksOpen((open) => !open),
-                      sessionInventory:
-                        inventoryChatStoreId && inventoryExecutionId
-                          ? {
-                              chatStoreId: inventoryChatStoreId,
-                              executionId: inventoryExecutionId,
-                              projectId: inventoryProjectId,
-                              executionRead: activeOrchestrationSessionRead,
-                              mountRef: sessionInventoryMountRef,
-                              dockMode: effectiveDockSlotPlacement,
-                              fullscreen: isFullscreenPlacement,
-                            }
-                          : undefined,
+                      sessionInventory: inventoryExecutionId
+                        ? {
+                            chatStoreId: inventoryChatStoreId!,
+                            executionId: inventoryExecutionId,
+                            projectId: inventoryProjectId,
+                            executionRead: activeOrchestrationSessionRead,
+                            mountRef: sessionInventoryMountRef,
+                            dockMode: effectiveDockSlotPlacement,
+                            fullscreen: isFullscreenPlacement,
+                          }
+                        : undefined,
                       onOpenConversation: () => setShowSessionPicker(true),
                       onNewChat: openNewChatDirect,
                     }
