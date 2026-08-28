@@ -315,7 +315,7 @@ export function useSessionEventStream(
       recoveredCapabilityKey.current === capabilityKey;
     if (capabilityWasRecovered) recoveredCapabilityKey.current = undefined;
     let windowCapable = capabilityWasRecovered;
-    // archive#3458 fix-round finding : hydration used to gate on a
+    // archive#3458: hydration used to gate on a
     // `streamOpened` flag written only by `onOpen` — a reasonable proxy for
     // "the host answered us" pre-archive#3458, when `onOpen` fired for EVERY
     // response, ok or not. Once `onOpen` only fires for a response the
@@ -572,7 +572,7 @@ export function useSessionEventStream(
       recoveryTimers.add(recoveryTimer);
     };
     const negotiateWindow = () => {
-      // archive#3437 2 : the guard now lives here, so
+      // archive#3437: the guard now lives here, so
       // EVERY entry (manual retry, onError, the automatic re-probe timer,
       // and this effect's own start) shares it, not just the manual one.
       if (capabilityProbeInFlight) return;

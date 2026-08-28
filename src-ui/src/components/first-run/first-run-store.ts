@@ -49,7 +49,7 @@ const KNOWN_FIRST_RUN_CHAPTERS: Record<FirstRunChapter, true> = {
 };
 
 /**
- * `Object.hasOwn`, never `in` : `in` walks the prototype
+ * `Object.hasOwn`, never `in`: `in` walks the prototype
  * chain, so `'toString'`, `'constructor'`, `'valueOf'` and `'__proto__'` all
  * read as known chapters. That is reachable — `firstRunProgress` is a
  * composite device setting with no shape validator, so Settings Import

@@ -628,7 +628,7 @@ describe('SplitPaneLayout', () => {
       ),
     ).toHaveLength(3);
 
-    // Fix round : count/nesting alone did not catch the rhythm actually
+    // Count/nesting alone did not catch the rhythm actually
     // drifting when the local skeletons were collapsed onto the shared
     // primitives — the shared circle defaults to 28px, visibly taller than
     // what this replaced. The icon size is a directly-binding CSS property

@@ -586,7 +586,7 @@ describe('ReviewQueueView', () => {
 });
 
 describe('the double-empty rule (station#4463 slice 2)', () => {
-  // The : with an empty queue, Review rendered TWO
+  // The 2026-08-26 shell audit: with an empty queue, Review rendered TWO
   // empty states at once — the list pane's "Nothing to review" beside the
   // detail pane's "Select an item" (select from what?). This pins Review as
   // the proving case for `SplitPaneLayout`'s single-empty-message rule,

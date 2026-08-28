@@ -378,7 +378,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     });
   });
 
-  // review : Retry after an unbound-workspace refusal used
+  // Retry after an unbound-workspace refusal used
   // to resubmit the chat's unchanged projectSlug, which supplies the same
   // project workspace and reproduces the identical refusal — a button that
   // deterministically repeats a failure.

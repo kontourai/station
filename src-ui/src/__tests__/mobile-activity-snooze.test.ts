@@ -190,7 +190,7 @@ describe('groupMobileActivity answerability (station#1783, re-adjudicated by #32
   });
 
   it('next-9am stays calendar-correct across a DST boundary', () => {
-    // US DST spring-forward : 02:00 -> 03:00. Adding 24h of
+    // US DST spring-forward 2026-03-08: 02:00 -> 03:00. Adding 24h of
     // milliseconds would land at 10am; setting calendar fields must not.
     const beforeSpring = new Date(2026, 2, 7, 22, 0, 0); // Mar 7, 10pm local
     const wake = new Date(

@@ -51,7 +51,7 @@ import './FlowRunConsole.css';
 // project layout can include it as a tab:
 //   { "component": { "kind": "builtin-component", "name": "flow-run-console" } }
 //
-// Styled on the Console Kit contract : `.panel` section chrome,
+// Styled on the Console Kit contract: `.panel` section chrome,
 // `Badge` + tone classes for run statuses, `Metric` for the evidence-manifest
 // status counts, `Empty` for empty states, `--k-*` tokens throughout. Gate
 // cards keep the shared `.flow-gate-card--*` verdict mapping from

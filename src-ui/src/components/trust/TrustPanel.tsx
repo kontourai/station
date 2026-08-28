@@ -19,7 +19,7 @@ import './TrustPanel.css';
 // transparency gaps. Secondary, collapsible surface — it sits next to the
 // readiness panel in the coding layout without crowding it.
 //
-// Styled on the Console Kit contract : `.panel`/`.panel-head`
+// Styled on the Console Kit contract: `.panel`/`.panel-head`
 // chrome, `Badge` + tone classes for claim statuses, `Empty` for the empty
 // state, `--k-*` tokens throughout (primitives from @kontourai/ui/react;
 // see TrustPanel.css for the adoption notes).

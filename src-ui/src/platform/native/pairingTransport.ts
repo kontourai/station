@@ -65,7 +65,7 @@ async function awaitNativePairingExchange<T>(
  */
 function toPairingTransportError(error: unknown): Error {
   const { code, message } = readNativeCommandError(error);
-  // archive#1818 1 : `code` stays `undefined` for an
+  // archive#1818: `code` stays `undefined` for an
   // uncoded (not-yet-converted, or legacy) rejection rather than falling
   // back to the raw message text — putting prose in `.code` would let a
   // future `.code`-switching consumer accidentally match on a sentence,

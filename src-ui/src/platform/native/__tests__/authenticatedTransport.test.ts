@@ -301,7 +301,7 @@ describe('native authenticated transport', () => {
    * a bare string — preserved as the error's text, with `code` falling back
    * to that same text (an unrecognized code, not a crash). */
   /**
-   * archive#1818 1 : a legacy/uncoded rejection's raw
+   * archive#1818: a legacy/uncoded rejection's raw
    * prose must NOT become `.code` — that would let a future `.code`
    * consumer accidentally match on a sentence, reopening the FFI-boundary
    * prose-matching this mechanism replaced. The message itself is still

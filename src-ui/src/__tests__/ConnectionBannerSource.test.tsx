@@ -258,7 +258,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
   });
 
   /**
-   * archive#4470 + : removing the
+   * archive#4470: removing the
    * active connection is destructive, so it takes two deliberate taps — the
    * same MECHANISM PairedDeviceList.tsx's inline revoke confirm already
    * uses: an explicit Confirm and an explicit Cancel (not just a relabeled

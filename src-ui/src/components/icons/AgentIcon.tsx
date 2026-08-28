@@ -39,7 +39,7 @@ export function AgentIcon({
       // archive#1424: deterministic identicon fallback — same agent always
       // gets the same hue, so two unbranded agents without artwork stay
       // visually distinguishable instead of rendering the same flat tile.
-      // archive#1424 fix : seeded ONLY from a committed
+      // archive#1424: seeded ONLY from a committed
       // identifier (slug/id), never `agent.name` — a live-typed form value
       // (`AgentEditorIdentityFields`'s name/icon preview during agent
       // creation) would otherwise cycle the hue on every keystroke. A call

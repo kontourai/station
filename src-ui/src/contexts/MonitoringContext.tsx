@@ -115,7 +115,7 @@ const identityCache = new WeakMap<object, string>();
  * id is used when it has one. Otherwise the key is the event's own
  * canonicalized content — not a hash of it.
  *
- *still-open : this used to be a 32-bit FNV-1a digest
+ * Still-open: this used to be a 32-bit FNV-1a digest
  * of that canonical form, and a 32-bit digest used as an EQUALITY key is a
  * claim that two payloads are the same event when all that matched is 4 bytes
  * of hash. The review's probe found a real pair —

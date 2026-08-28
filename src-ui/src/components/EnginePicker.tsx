@@ -178,7 +178,7 @@ export function EnginePicker({
   // connection per mount: a probe is a real child process, and re-firing it
   // on every render (or for connections whose answer is already known)
   // would turn an explanation into a spawn loop.
-  // `mutateAsync`, NOT `mutate` with an `onSettled` option :
+  // `mutateAsync`, NOT `mutate` with an `onSettled` option:
   // a `useMutation` observer holds ONE options slot and ONE current mutation,
   // so a second `mutate(...)` in the same pass overwrites the first's
   // callbacks and detaches its observer — with two unobserved connections,

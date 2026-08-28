@@ -728,7 +728,7 @@ export function useChatInput({
     });
     // Resetting is choosing the default: forget the remembered choice so
     // the next New Chat opens on the default too, not the one the user
-    // just walked away from. Two exceptions :
+    // just walked away from. Two exceptions:
     // - Station-engine sessions never touch this memory (same live-state
     //   gate as the select path).
     // - When the session's default IS the remembered choice

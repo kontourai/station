@@ -25,7 +25,7 @@ interface ProjectsQueryResult {
  * its 409 — so the modal and the route cannot describe the same collision
  * differently.
  *
- * This one reads the CACHE, so it is advisory and never blocks :
+ * This one reads the CACHE, so it is advisory and never blocks:
  * `['projects']` stays fresh for five minutes and the app disables both
  * refetch-on-mount and refetch-on-focus, so an entry deleted by another device,
  * the CLI, or another tab survives here long after the name became free. A veto

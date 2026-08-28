@@ -52,7 +52,7 @@ describe('chat dock "Start a chat" action (station audit F6)', () => {
       indexCss,
       '.chat-dock__header-actions button.chat-dock__counter-action',
     );
-    // Positive power : post-fix this selector has NO rules
+    // Positive power: post-fix this selector has NO rules
     // at all, so the loop above is vacuous by design — pin that emptiness
     // explicitly, and pin the shared sibling rule the button now inherits.
     expect(overrides).toHaveLength(0);

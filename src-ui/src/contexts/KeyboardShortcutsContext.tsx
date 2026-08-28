@@ -170,7 +170,7 @@ interface ShortcutRegistryStore {
 /**
  * The registry's complete OBSERVABLE identity — everything a reader can see.
  *
- * Three things belong in it that a first cut left out :
+ * Three things belong in it that a first cut left out:
  *
  *  - registration ORDER, because equal-priority dispatch resolves by it and
  * `getAllShortcuts` returns it. Sorting it away meant two registrations

@@ -59,7 +59,7 @@ describe('activatable', () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-  // Native semantics : Enter fires on keydown; Space fires
+  // Native semantics: Enter fires on keydown; Space fires
   // on KEYUP with the scroll default suppressed on keydown — a full
   // press-and-release of either activates a button exactly once.
   test.each(['Enter', ' '])(

@@ -271,7 +271,7 @@ describe('translateChatError', () => {
     expect(`${result.title} ${result.body}`).not.toMatch(/credential/i);
   });
 
-  // archive#1207 2 : the orchestration bridge's stall
+  // archive#1207: the orchestration bridge's stall
   // (station-agent-adapter.ts's consumeChatStream watchdog) surfaces as a
   // `turnRejectionMessage`-wrapped runtime.error, not the direct path's
   // raw `ChatStreamStallError` text. Under `managed-chat-orchestration`

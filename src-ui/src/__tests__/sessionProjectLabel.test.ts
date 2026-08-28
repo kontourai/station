@@ -140,7 +140,7 @@ describe('sessionProjectLabel', () => {
  * row vanished entirely (no slug on either field). Both now go through
  * `sessionProjectLabel`, so these assertions are what pins them together.
  *
- * archive#3227 A3 : the cross-surface pin here used to compare the
+ * archive#3227 A3: the cross-surface pin here used to compare the
  * label against `sessionProjectSection`, which DERIVED its value from the
  * same call — it could not fail. Home is the surface that genuinely computed
  * a second answer (`session.projectSlug || 'No project'`, which dropped a

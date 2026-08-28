@@ -48,7 +48,7 @@ interface Session {
   id: string;
   agentSlug: string;
   /**
-   * archive#1424 fix : the session's own threaded
+   * archive#1424: the session's own threaded
    * agent name (`ChatSession.agentName`, already carries a slug/'Unknown
    * Agent' attribution chain from `deriveSession`) — the attribution strip's
    * fallback when `agents.find` misses (e.g. the agent was deleted after

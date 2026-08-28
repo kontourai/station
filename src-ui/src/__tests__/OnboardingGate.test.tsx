@@ -57,7 +57,7 @@ vi.mock('../hooks/useSystemStatus', () => ({
     isLoading,
     isPending,
     isError,
-    // archive#1818 1 : while `isConnectPending` is true
+    // archive#1818: while `isConnectPending` is true
     // (still retrying), the real `@tanstack/query-core` reducer only ever
     // populates `failureReason` — `error` is set exclusively by the
     // `'error'` action, which simultaneously flips `status` to `'error'`

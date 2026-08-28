@@ -63,7 +63,7 @@ describe('provider-settings utils', () => {
   });
 });
 
-// / TESTS(d) : the persisted config must OMIT the
+// TESTS(d): the persisted config must OMIT the
 // fields the selected authMode doesn't use, not merely empty them.
 describe('finalizeConnectionConfig — Bedrock auth-mode persistence', () => {
   test('chain mode omits authMode, profile, and apiKey entirely', () => {

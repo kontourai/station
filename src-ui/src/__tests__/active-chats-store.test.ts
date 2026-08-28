@@ -337,7 +337,7 @@ describe('ActiveChatsStore', () => {
   });
 });
 
-// review : the previous round's test called
+// The previous round's test called
 // `serializeActiveChats`/`hydrateActiveChats` DIRECTLY, which bypasses the
 // store's persistence decision entirely — so it passed while enqueueing a
 // follow-up called `notify(false)` and scheduled no write at all. These drive
@@ -513,7 +513,7 @@ describe('ActiveChatsStore queued follow-up retention (UX audit T3)', () => {
     expect(store.getSnapshot()['agent:q']?.queuedMessages).toHaveLength(1);
   });
 
-  // 3 : the latch was store-wide, so a write
+  // The latch was store-wide, so a write
   // that failed while no chat held a queue consumed it, and every queue
   // created afterwards stayed silent until some write happened to succeed.
   test('a queue created after the first refused write is still told', () => {

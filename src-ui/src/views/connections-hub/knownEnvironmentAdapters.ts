@@ -75,7 +75,7 @@ export function savedConnectionsToKnownEnvironments(
 
 /**
  * True when a saved connection can actually be used to control the Station
- * it points at right now — archive#1134 1 : a connection
+ * it points at right now — archive#1134: a connection
  * can be `saved` (present in `ConnectionStore`) without ever having
  * completed authorization, e.g. the user cancelled
  * `ConnectionManagerModalContent`'s authorize panel, leaving

@@ -87,7 +87,7 @@ export function SkillsView({
   // fact and threw it away. `isPending` is the initial-read signal (a
   // background refetch must NOT blank a populated list back to skeletons).
   //
-  // The `= []` default is the second half of the same defect : a
+  // The `= []` default is the second half of the same defect: a
   // FAILED read also settles with no data, so `isPending === false` plus an
   // empty array rendered "No installed skills yet" over a 500 — a definitive
   // claim about the user's Guidance that Station had not measured. `error` is

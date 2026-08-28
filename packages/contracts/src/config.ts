@@ -161,7 +161,7 @@ export interface AppConfig {
   userProfile?: UserProfileSettings;
   /**
    * Whether the guided first run has been offered on THIS HOME, and what the
-   * person did with it (archive#3591).
+   * person did with it (archive#3591 / UX audit RT-02, SHELL-12).
    *
    * The durable fact the first-run gate reads. It replaces the old rule —
    * "only a session that saw the connect launcher is a first run" — which

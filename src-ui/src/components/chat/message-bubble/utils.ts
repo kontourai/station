@@ -52,8 +52,8 @@ function readEnvelope(msg: TurnIdentitySource): TurnProvenanceEnvelope | null {
  *
  * Two things this deliberately does not do:
  *
- * - It never reads the agent's CURRENT engine binding. That was archive#1424
- * review fix : an agent's engine connection can be rebound after a turn
+ * - It never reads the agent's CURRENT engine binding. That was archive#1424:
+ * an agent's engine connection can be rebound after a turn
  *   ran, and deriving from live state silently relabels history. The
  *   envelope is a per-turn record, so it cannot drift.
  * - It never infers an engine from a model id. Station has no

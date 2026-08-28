@@ -243,7 +243,7 @@ export function BrandIcon({
         {
           width: size,
           height: size,
-          // archive#1424 fix : `.brand-icon__initials`'s
+          // archive#1424: `.brand-icon__initials`'s
           // font-size is a percentage of THIS custom property, not of `size`
           // directly — a bare percentage font-size resolves against the
           // inherited ambient text size, not this element's own box

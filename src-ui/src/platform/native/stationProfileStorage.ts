@@ -454,7 +454,7 @@ export class NativeStationProfileStorage
     // live verification against an actual `~/.station/config/profiles.json`
     // showed the wiring never even invoked the native command.
     //
-    // archive#1818 1 : this function used to ALSO
+    // archive#1818: this function used to ALSO
     // skip any profile already carrying `credentialRef` + `configured`,
     // re-encoding the exact defect this fix exists to close — a stranded
     // profile after a bundle-swap keychain ACL mismatch looks EXACTLY like

@@ -570,7 +570,7 @@ export function describeStopTurnOutcome(outcome: StopTurnOutcome): string {
           // label describing something the server did not do.
           return 'Stopped. The turn was interrupted and the engine is kept warm for this conversation.';
         case 'forced':
-          // review : "ended its process" is not uniformly
+          // "ended its process" is not uniformly
           // evidenced — `stopSession` closes the engine's handles and some
           // adapters (Claude's SDK path among them) return without observing
           // an OS process exit. What IS evidenced end to end is that the

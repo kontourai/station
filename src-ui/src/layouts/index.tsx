@@ -271,7 +271,7 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 };
 
 builtinRegistry.default = DefaultLayout;
-// Project-wide Flow run console : include in a layout via
+// Project-wide Flow run console: include in a layout via
 // { kind: 'builtin-component', name: 'flow-run-console' }.
 builtinRegistry['flow-run-console'] = () => <FlowRunConsole />;
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;

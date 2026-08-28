@@ -72,7 +72,7 @@ class SharedAnswerErrorBoundary extends Component<
             perfectly valid — nothing about the answer is being shown, because
             nothing was successfully read.
           </p>
-          {/* : `reloadSharePage`, never a bare `location.reload`. The
+          {/* `reloadSharePage`, never a bare `location.reload`. The
               page clears the token out of the address bar as soon as it has
               read it, so a plain reload would land on the missing-token
               state — a recovery button guaranteed to fail. */}

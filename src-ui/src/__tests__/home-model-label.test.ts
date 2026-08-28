@@ -108,7 +108,7 @@ describe('Home names a model the same way its sibling card does (station#3391)',
   });
 
   /**
-   * archive#3391 /. The prettifier is a display transformation,
+   * archive#3391. The prettifier is a display transformation,
    * and a transformation that produces a blank string or a fabricated product
    * name is worse than the id it started from.
    */

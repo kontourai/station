@@ -63,7 +63,7 @@ export function ACPConnectionDetailModal({
       integration.kind === 'mcp' && integration.transport === 'stdio',
   );
 
-  // Serialization : rapid toggles must never lose a
+  // Serialization: rapid toggles must never lose a
   // selection to a reversed-completion race. `desiredRef` is the
   // latest-wanted selection, updated synchronously on every toggle;
   // `lastSentRef` is what the most recent dispatch actually sent;

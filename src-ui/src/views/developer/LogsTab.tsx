@@ -74,7 +74,7 @@ export default function LogsTab() {
       {isLoading ? <Skeleton variant="block" /> : null}
       {error ? (
         // A transient outage's error must not read as a permanently broken
-        // tab (owner report; live diagnosis : server + scope
+        // tab (owner report; live diagnosis 2026-08-14: server + scope
         // healthy, the cached error simply had no way out).
         <ErrorState
           variant="compact"

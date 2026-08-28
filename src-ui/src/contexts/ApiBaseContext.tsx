@@ -350,7 +350,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   // wake every `fetchSSE` stream currently blocked on a terminal auth
   // failure once the SAME connection's credential regains authority —
   // mirrors `@kontourai/station-connect`'s `useConnectionStatus` equivalent
-  // wake for the health-poll path (/, already shipped in).
+  // wake for the health-poll path (already shipped).
   // Keyed on the connection id too, so switching to a different connection (a
   // legitimately different credential) does not spuriously fire this.
   //

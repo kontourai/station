@@ -264,7 +264,7 @@ export function ConnectionBannerSource() {
               // has genuinely changed (a reset/reinstalled host, or a
               // different machine now answering at this address).
               //
-              // Review round : a third action ("Try now") does not fit
+              // A third action ("Try now") does not fit
               // this banner collapsed at a phone viewport — measured with a
               // real Chromium page at 390px, three non-shrinkable
               // `.banner-host__action`s in the collapsed 52px bar clip the
@@ -295,7 +295,7 @@ export function ConnectionBannerSource() {
               // banner's own message, which already names what is being
               // removed.
               //
-              // Micro-round : an armed confirm has to stay reachable
+              // An armed confirm has to stay reachable
               // AND cancellable, which a relabeled single button sitting
               // inside a possibly-collapsed 52px bar was neither — arming
               // force-expands the card (forcedExpandRef, above) so the

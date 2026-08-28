@@ -118,7 +118,7 @@ export function HeaderActions({
   // access request against a REACHABLE host reads as "Awaiting approval"
   // here too instead of the generic "Can't connect" a device with no
   // credential yet otherwise produces (every probe 401s until it is
-  // approved). : the hook decides its own tick from whether a
+  // approved). The hook decides its own tick from whether a
   // pending record exists, not from `connStatus`.
   const pendingApproval = usePendingPairingApproval(
     activeConnection?.url ?? apiBase,
@@ -163,7 +163,7 @@ export function HeaderActions({
   // `idle` a state this chip actually reaches: `useConnectionStatus` only ever
   // reports connecting/connected/error, so nothing else here can produce it.
   //
-  // PRECEDENCE : `hasStation` is the LAST thing consulted, not
+  // PRECEDENCE: `hasStation` is the LAST thing consulted, not
   // the first. It deliberately excludes injected host connections (`cli-base`,
   // `managed-loopback`), which can be the ACTIVE connection and can never earn
   // a `lastSuccessAt` — so leading with it rendered a terminal auth failure,

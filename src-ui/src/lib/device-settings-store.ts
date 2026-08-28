@@ -152,7 +152,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Parses a raw prior shared-root string (archive#settings-revamp
+ * Parses a raw prior shared-root string (archive#settings-revamp slice 3
  * archive#1359 convergence) into a plain object, or `null` when the raw value is
  * absent, malformed JSON, or not an object — the caller then just skips a
  * `null` root rather than crashing app boot on a corrupt prior value.
@@ -686,7 +686,7 @@ class DeviceSettingsStore {
   private migrateFromPriorStorage(): DeviceSettingsEnvelope {
     const values: Partial<DeviceSettings> = {};
     // A Set: entries sharing one priorStorageKey (archive#settings-revamp
-    // archive#1359 convergence — `shortcutOverrides`/`modelPickerPreferences`
+    // slice 3 archive#1359 convergence — `shortcutOverrides`/`modelPickerPreferences`
     // both read `station.device-settings`) must only queue that key once.
     const migratedPriorKeys = new Set<string>();
     // Parsed-once cache for shared-root (`priorRead`) keys, keyed by

@@ -210,7 +210,7 @@ function safeAgentLabel({
 }
 
 /**
- * archive#1097 /: one connected SSH environment's remote orchestration
+ * archive#1097: one connected SSH environment's remote orchestration
  * sessions, as returned by the server's `/api/environments/ssh/sessions`
  * aggregation endpoint (`useRemoteSessionsQuery`, `@kontourai/station-sdk`).
  */
@@ -247,7 +247,7 @@ export function buildHomeWorkItems({
   tasks?: TaskRecord[];
   agents: AgentSummary[];
   /**
-   * archive#1097 /: optional remote-session read augmentation, never a
+   * archive#1097: optional remote-session read augmentation, never a
    * precondition — omitting it (or passing `[]`, its default) returns
    * exactly the local-only result `mergeHomeWorkItems` always produced
    * (the local-first invariant). Callers fetch this independently of

@@ -897,7 +897,7 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
-  // archive#1073 closure : pin both sides of isStreamingSession's fallback.
+  // archive#1073 closure: pin both sides of isStreamingSession's fallback.
   test('a legacy running summary without the turn fold stays conservatively locked', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -3072,7 +3072,7 @@ describe('SessionsView', () => {
      * The composer suppression only ever fires when a LIVE attention item
      * owns the response affordance, so the test must seed one — without it
      * `hideGenericCompose` is already false and the assertion has no power
-     * (found by : removing the guard left it green).
+     * (found by fault injection: removing the guard left it green).
      */
     function seedLiveApprovalItem() {
       attentionItems = [

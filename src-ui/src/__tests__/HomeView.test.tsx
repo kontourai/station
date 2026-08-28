@@ -895,7 +895,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     // environment badge, using the plain (non-remote) "Session" kind label.
     expect(within(recent).getAllByText(/Session · No project/).length).toBe(1);
 
-    // archive#1097 2 : REMOTE_SESSION (env-a, "Brian
+    // archive#1097: REMOTE_SESSION (env-a, "Brian
     // media") is the single most-recent item across every environment here
     // (14:00 vs. the local session's 13:00 and OTHER_REMOTE_SESSION's prior
     // day) — exactly the case that silently no-opped before the fix. The
@@ -931,7 +931,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  // archive#1097 2 : when every visible item is a
+  // archive#1097: when every visible item is a
   // read-only remote card (no local work at all), the primary CTA — which
   // can only ever continue a LOCAL item — must not render rather than
   // silently target a remote card that no-ops on click.

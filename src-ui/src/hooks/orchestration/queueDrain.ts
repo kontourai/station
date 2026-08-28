@@ -39,7 +39,7 @@ const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
   // retried. Dropping the message here discarded the only user-owned copy
   // before that binding could happen.
   'continuation_workspace_direct_mismatch',
-  // A conversation that was NEVER bound to a workspace : the
+  // A conversation that was NEVER bound to a workspace: the
   // caller can continue it as it is or bind one, so the follow-up must be
   // retained for that retry, not discarded as a permanent rejection.
   'continuation_workspace_unbound',
@@ -71,7 +71,7 @@ function isDefinitiveClientRejection(error: unknown): boolean {
 }
 
 /**
- * review : the Retry on a `continuation_workspace_unbound`
+ * The Retry on a `continuation_workspace_unbound`
  * refusal resubmitted through the same drain with the chat's unchanged
  * `projectSlug`, which supplies the same project workspace — so it reproduced
  * the identical refusal, deterministically, every time. The server's own

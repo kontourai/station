@@ -24,7 +24,7 @@ import './ReadinessPanel.css';
 // only styles against Console Kit --k-* tokens and has no hooks into
 // Station tokens, so we render from the JSON trust report instead.
 //
-// Styled on the Console Kit contract : `.panel`/`.panel-head`
+// Styled on the Console Kit contract: `.panel`/`.panel-head`
 // chrome, `StatusBadge` for the overall verdict, `Badge` + tone classes for
 // requirement/claim statuses, `--k-*` tokens throughout. Tone mapping for the
 // seven readiness statuses lives in components/kontour/station-tones.ts.

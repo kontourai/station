@@ -1269,7 +1269,7 @@ button:hover {
      through, so the dock clearance is reserved here for all of them
      (station#3902) rather than by whichever pages remembered to. */
   padding-bottom: var(--dock-bottom-clearance);
-  /* The same shell fact, declared for PROGRAMMATIC scrolling :
+  /* The same shell fact, declared for PROGRAMMATIC scrolling:
      the dock — `--layer-dock` — overlays the bottom band of this scrollport,
      so a scrollIntoView (focus moves, user agents, test runners) that parks
      its target "visible" inside that band has parked it under the dock,
@@ -9078,7 +9078,7 @@ button.tool-call__line:hover {
     justify-content: center;
   }
 
-  /* The dock-slot header's occupant picker : the trigger and every menu
+  /* The dock-slot header's occupant picker: the trigger and every menu
      entry are the touched primary controls of a docked non-chat pane. */
   .dock-occupant-picker__trigger,
   .dock-occupant-menu .dock-placement-menu__item {

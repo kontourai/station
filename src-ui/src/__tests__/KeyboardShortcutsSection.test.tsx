@@ -69,7 +69,7 @@ describe('KeyboardShortcutsSection', () => {
     });
     expect(dialog.textContent).toContain('Close workspace');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    // Cancelling records nothing (archive#settings-revamp archive#1359
+    // Cancelling records nothing (archive#settings-revamp slice 3 archive#1359
     // convergence: shortcut overrides now live in the registry-driven
     // envelope's `shortcutOverrides` entry, not the retired
     // `station.device-settings` root).

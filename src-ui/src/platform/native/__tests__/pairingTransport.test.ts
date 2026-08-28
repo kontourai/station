@@ -110,7 +110,7 @@ describe('native pairing transport', () => {
   });
 
   /**
-   * archive#1818 1 : a legacy/uncoded rejection's raw
+   * archive#1818: a legacy/uncoded rejection's raw
    * prose must NOT become `.code` — that would let a future `.code`
    * consumer accidentally match on a sentence, reopening the FFI-boundary
    * prose-matching this mechanism replaced. The message itself is still

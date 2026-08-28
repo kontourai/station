@@ -72,7 +72,7 @@ function isNamespacedWorkItemRef(ref: string): boolean {
  * whose (namespaced) `workItemRef` already matches a local task's
  * `workItemRef` is excluded too, so a task that has already joined its
  * upstream work item doesn't render twice. Read-only this slice: no
- * dispatch/write for these rows (/FA2-post-bump territory).
+ * dispatch/write for these rows (S4/FA2-post-bump territory).
  */
 function externalProviderItems(
   providers: Array<{ identity: { kind: string }; items: ProviderWorkItem[] }>,

@@ -162,7 +162,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
     expect(screen.getByText('Nothing selected')).toBeTruthy();
   });
 
-  // Fix round : `PluginManagementView` never passed `searchValue`, so
+  // `PluginManagementView` never passed `searchValue`, so
   // `SplitPaneLayout`'s FilteredEmpty branch was production-unreachable — a
   // search matching no installed plugin fell through to the list's
   // genuinely-empty title, "No plugins installed yet", which is false when

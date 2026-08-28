@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * archive#1424 fix : pins the actual reported defect end-to-end
+ * archive#1424: pins the actual reported defect end-to-end
  * through the real `ChatMessageList` -> `MessageBubble` render path, not
  * just the pure `resolveTurnEngine` unit (see message-bubble-utils.test.ts).
  * Before the fix, a PERSISTED assistant row derived its engine chip from

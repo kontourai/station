@@ -74,7 +74,7 @@ const justFinished = session({
 /**
  * A SECOND waiting session, so at least one lane holds more than one row.
  *
- * Also the product of an uncaught : `projectLiveCount` returning
+ * Also the product of an uncaught fault injection: `projectLiveCount` returning
  * `lanes.length` instead of the total number of sessions passed the whole
  * suite, because every lane in every fixture happened to hold exactly one
  * session. A count that agrees with its list only at cardinality one is not

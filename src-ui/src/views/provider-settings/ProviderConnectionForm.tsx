@@ -320,7 +320,7 @@ export function ProviderConnectionForm({
         </div>
       </div>
 
-      {/* : an unreachable endpoint carries a reason the
+      {/* An unreachable endpoint carries a reason the
           operator needs just as much as a refusal does — "Station could not
           reach this provider" with what it tried, not a silent card. */}
       {!isNew &&
@@ -772,7 +772,7 @@ export function ProviderConnectionForm({
           >
             {isTesting ? 'Testing…' : 'Test Connection'}
           </button>
-          {/* : the contract used to call this non-billable,
+          {/* The contract used to call this non-billable,
               and the button said nothing at all. It asks the provider for its
               model list, and when there is no list to ask for it sends one
               minimal chat request — which some providers bill. Say so before

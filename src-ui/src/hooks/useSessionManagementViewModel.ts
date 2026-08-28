@@ -101,7 +101,7 @@ export function useSessionManagementViewModel(
         agentContext = resolvedAgent.plugin;
         agentLabel = resolvedAgent.name;
       }
-      // /: every resolved agent gets an engine chip, not just
+      // Every resolved agent gets an engine chip, not just
       // ACP ones — this surface used to render a literal "ACP" pill for
       // the acp branch and no chip at all for Station/plugin-engine
       // conversations; agentEngineDescriptor already returns null for an

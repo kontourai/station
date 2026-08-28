@@ -189,7 +189,7 @@ export async function parseImportedSettingsFile(
     // An OLD export (from the archive#1359/slice-2 coexistence window) can still
     // carry the shared root verbatim in `sharedDeviceRoot` — migrate its
     // fields onto the envelope's own entries instead of writing the raw
-    // root back to localStorage (archive#settings-revamp archive#1359
+    // root back to localStorage (archive#settings-revamp slice 3 archive#1359
     // convergence: the envelope is now the sole home for those fields).
     const priorPartial = migrateSharedDeviceRoot(
       (record as { sharedDeviceRoot?: unknown }).sharedDeviceRoot,

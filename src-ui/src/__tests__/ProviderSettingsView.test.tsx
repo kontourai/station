@@ -123,7 +123,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(button.disabled).toBe(false);
   });
 
-  // archive#4463 (then /):
+  // archive#4463:
   // four states through the real view, each with exactly ONE empty message
   // the detail panel's own "nothing to select" label used to restate
   // whichever fact the list pane had already stated (genuinely-empty OR
@@ -574,7 +574,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     );
   });
 
-  // / TESTS(d) : saving a Bedrock connection must
+  // TESTS(d): saving a Bedrock connection must
   // persist only the fields the selected authMode uses — a stale apiKey
   // left over from a prior mode switch must never reach the saved config.
   test('saving a profile-mode Bedrock connection omits the unused apiKey field entirely', () => {

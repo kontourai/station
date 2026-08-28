@@ -34,7 +34,7 @@ vi.mock(
   async () => import('../../../src-shared/monitoring-keys'),
 );
 
-// fix-round : a mutable fixture (rather than a fixed return value) so one
+// fix-round L-4: a mutable fixture (rather than a fixed return value) so one
 // test below can flip `useFleetRoutingReceiptsQuery` into an error state —
 // the exact case the bare-mock-factory bug in this file could not survive —
 // and prove the `importOriginal`-and-spread fix below is load-bearing, not
@@ -61,7 +61,7 @@ const orchestrationSessionsFixture: {
 } = { data: [], status: 'success', refetch: () => {} };
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
-  // fix-round : `FleetRoutingReceipts.tsx` imports `StationHttpError` as a
+  // fix-round L-4: `FleetRoutingReceipts.tsx` imports `StationHttpError` as a
   // runtime value (`error instanceof StationHttpError`) — a bare mock
   // factory leaves that binding `undefined`, which throws on `instanceof`
   // the moment any fixture here becomes an error state. Keep the real module
@@ -114,7 +114,7 @@ vi.mock('../contexts/ModelsContext', () => ({
 // Keep the real module and stub only the hook: the view and the log stream
 // both read `monitoringEventIdentity` from here as a runtime value (the
 // identity-based new-event highlight), and a bare factory leaves that binding
-// undefined — the same fix-round trap this file documents for the SDK.
+// undefined — the same fix-round L-4 trap this file documents for the SDK.
 vi.mock('../contexts/MonitoringContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/MonitoringContext')>()),
   useMonitoring: () => ({
@@ -291,7 +291,7 @@ describe('MonitoringView shell port', () => {
   });
 
   /**
-   * fix-round : the bare `vi.mock('@kontourai/station-sdk',...)` factory
+   * fix-round L-4: the bare `vi.mock('@kontourai/station-sdk', ...)` factory
    * this file used to have does not export `StationHttpError`, so
    * `FleetRoutingReceipts.tsx`'s `error instanceof StationHttpError` check
    * throws the moment the fixture becomes an error state — a class of crash

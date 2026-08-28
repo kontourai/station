@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * archive#1424 3, refined : the streaming row
+ * archive#1424: the streaming row
  * and the persisted row it becomes must render the SAME attribution
  * fields — no transition delta, no chip that appears while streaming and
  * then vanishes (or vice versa) the instant the turn settles.

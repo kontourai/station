@@ -282,7 +282,7 @@ describe('ChatDockInboxPanel', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
-  // archive#1295 archive#1311: snoozing keys on
+  // archive#1295 / archive#1311: snoozing keys on
   // `item.id` (`conversationId || storeKey`), which changes the moment a
   // brand-new chat's first send assigns a conversationId. The migration
   // that keeps a pre-assignment snooze alive happens where both ids are

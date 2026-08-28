@@ -108,7 +108,7 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     // one shape, so `classifyNativeTransportRefusal` never has to guess
     // which path produced the `Error` it is given.
     //
-    // archive#1818 1 : `code` is `string | undefined`,
+    // archive#1818: `code` is `string | undefined`,
     // not defaulted to the raw message text, on purpose. A command not yet
     // converted to `NativeCommandError` rejects with a bare, uncoded
     // string — passing THAT string through as `.code` would let arbitrary

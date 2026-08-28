@@ -221,7 +221,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * archive#3458 fix-round : `onOpen` firing only for a response
+   * archive#3458: `onOpen` firing only for a response
    * the transport actually consumes means a live stream stuck retrying a
    * 5xx/network failure never sets `streamOpened` — and hydration used to be
    * gated on exactly that flag, so a session opened while Station sits

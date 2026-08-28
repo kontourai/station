@@ -259,7 +259,7 @@ export function FirstRunHomeChapter() {
       // load — the honest outcome, and strictly better than a UI that says
       // "saved" over a write that did not land.
       //
-      // A dedicated transition endpoint, not the config write : the
+      // A dedicated transition endpoint, not the config write: the
       // server decides whether the move is legal and stamps when it happened,
       // so neither this browser nor any other caller of the generic route can
       // re-arm a home or claim a completion.

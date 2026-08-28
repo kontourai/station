@@ -533,7 +533,7 @@
   padding-bottom: 0;
 }
 
-/* Declared unconditionally — see the note on `.app__main >.main-content`
+/* Declared unconditionally — see the note on `.app__main > .main-content`
    above: the motion primitive owns the reduced-motion decision.
    `height` in the list below is collapse/expand, and the tail of the exit.
    Both ends are lengths whenever a measurement exists; when one is `auto`

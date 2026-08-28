@@ -845,7 +845,7 @@ export function mergeChatUpdates(
     // would just be wasted work.
     'currentModeId' in nextUpdates ||
     'planArtifact' in nextUpdates ||
-    // review : both of these ARE part of the persisted
+    // Both of these ARE part of the persisted
     // shape (`serializeActiveChats`), and leaving them out of this decision
     // is why enqueueing a follow-up, or recording the reason a drain refused
     // one, called `notify(false)` and scheduled no write at all. Reload

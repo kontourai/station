@@ -98,7 +98,7 @@ export function RunBoardSummary({
       {buckets.map((bucket) => {
         const presentation = statusGlyphPresentation(bucket.state);
         const label = presentation.ariaLabel.toLowerCase();
-        // Review + delta /: when the SILENCE is the sole reason this
+        // When the SILENCE is the sole reason this
         // cluster is emphasized (state itself unremarkable), activation lands
         // on the member that caused it and the name says why — in the USER'S
         // words for this observation ("no recent progress", aligned with

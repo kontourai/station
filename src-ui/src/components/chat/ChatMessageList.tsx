@@ -449,7 +449,7 @@ function ChatMessageListComponent({
   // resulting transition is additive (nothing claimed, then a fact once it
   // is observed), never a retraction — pinned by
   // `MessageAttribution.streamingParity.test.tsx`.
-  // archive#1424 fix : falls back to the session's own
+  // archive#1424: falls back to the session's own
   // threaded `agentName` (never blank) when `agents.find` misses — e.g. the
   // agent was deleted after this session started — so the row still reads
   // as attributable instead of silently dropping the identity text.

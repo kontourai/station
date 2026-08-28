@@ -203,7 +203,7 @@ export function useChatDockKeyboardShortcuts({
       // The same one derivation the composer's Stop control reads.
       if (!activeSession || !isTurnInFlight(activeSession)) return;
       const sessionId = activeSession.id;
-      // Same derivation as the composer's Stop button : report
+      // Same derivation as the composer's Stop button: report
       // what the stop settled as, never the intent that started it.
       void cancelMessage(sessionId).then((outcome) => {
         if (outcome.kind === 'not-running') return;

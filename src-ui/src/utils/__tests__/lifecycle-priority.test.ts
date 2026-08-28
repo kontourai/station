@@ -28,7 +28,7 @@ describe('lifecycle-priority (station#1100 AC4)', () => {
   });
 
   test('lifecycleLabelText translates the one member that is not user language', () => {
-    // Review's secondary : every sibling is already the user's word, and
+    // Every sibling is already the user's word, and
     // `Unanswerable` was the only enum leaking verbatim to two surfaces.
     expect(lifecycleLabelText('Unanswerable')).toBe("Can't answer here");
     for (const label of HOME_LIFECYCLE_LABELS) {

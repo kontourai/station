@@ -278,7 +278,7 @@ describe('the web fleet routing surface', () => {
     expect(screen.queryByText(/No turn has been fleet-routed/)).toBeNull();
   });
 
-  // fix-round : `!error && !data` is also true before a fetch has even
+  // `!error && !data` is also true before a fetch has even
   // begun — e.g. while `PersistQueryClientProvider` is still restoring from
   // IndexedDB, `isLoading` reads `false` because nothing has started
   // fetching yet. That must render as the ordinary loading state, never as
@@ -324,7 +324,7 @@ describe('the web fleet routing surface', () => {
     expect(text).toContain('will not retry automatically');
   });
 
-  // fix-round : "retrying automatically" is honest only for a
+  // "retrying automatically" is honest only for a
   // TRANSPORT failure (no Response ever arrived) — the query keeps its
   // unconditional 30s poll, but so does a non-terminal HTTP-status failure,
   // and that case has its own arm below because the host DID respond.
@@ -337,7 +337,7 @@ describe('the web fleet routing surface', () => {
     expect(text).not.toContain("Couldn't load");
   });
 
-  // fix-round : the string this class of defect keeps re-deleting.
+  // The string this class of defect keeps re-deleting.
   // A response DID arrive (a non-terminal HTTP status, or a 2xx body
   // reporting failure) — "Station isn't responding" would be false, so this
   // must be the neutral copy, not the transport-failure one.
@@ -430,7 +430,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     expect(text).not.toContain('has not served any fleet inference yet');
   });
 
-  // fix-round : mirrors the routing side's sibling above.
+  // Mirrors the routing side's sibling above.
   test('renders the loading state, not an error alert, when there is no error and no data yet', () => {
     const text = renderServe({});
     expect(text).toContain('Reading what this Station has served');
@@ -457,7 +457,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     expect(text).toContain('will not retry automatically');
   });
 
-  // fix-round : mirrors the routing side's sibling pair above.
+  // Mirrors the routing side's sibling pair above.
   test('says retrying automatically for a genuine transport failure (no response ever arrived)', () => {
     const text = renderServe({
       error: new TypeError('Failed to fetch'),
