@@ -154,6 +154,7 @@ export function JoinDevicePairingPanel({
   directConnectionId,
   directLabel,
   initialPairingPayload,
+  onReviewDismissed,
 }: {
   onPaired: (result: PairingResult) => void | Promise<void>;
   onCancel: () => void;
@@ -199,6 +200,8 @@ export function JoinDevicePairingPanel({
   directLabel?: string;
   /** A protocol-validated QR/CLI payload that still requires confirmation. */
   initialPairingPayload?: string;
+  /** Safe parser-authored rejection copy displayed beside an accepted review. */
+  onReviewDismissed?: () => void;
 }) {
   const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(initialMode);
   const [deviceName, setDeviceName] = useState(
@@ -673,7 +676,10 @@ export function JoinDevicePairingPanel({
         </button>
         <button
           type="button"
-          onClick={() => setReviewOffer(null)}
+          onClick={() => {
+            setReviewOffer(null);
+            onReviewDismissed?.();
+          }}
           style={secondaryBtnStyle}
         >
           Choose method

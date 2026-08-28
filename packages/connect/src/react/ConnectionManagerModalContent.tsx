@@ -81,6 +81,8 @@ interface ConnectionManagerModalContentProps {
   initialPanel?: ConnectionManagerPanel;
   /** A decoded, one-time pairing payload awaiting the user's confirmation. */
   initialPairingPayload?: string;
+  pairingLinkError?: string;
+  onPairingReviewDismissed?: () => void;
   /**
    * True when the page origin is a usable direct-request target (served by a
    * Station host). Passed through to the request-access panel; defaults to
@@ -155,6 +157,8 @@ export function ConnectionManagerModalContent({
   checkCompatibility,
   initialPanel = 'list',
   initialPairingPayload,
+  pairingLinkError,
+  onPairingReviewDismissed,
   originIsStation = true,
   hostAppName,
   allowManualCredentials = true,
@@ -845,6 +849,7 @@ export function ConnectionManagerModalContent({
             </svg>
           </button>
         </div>
+        {pairingLinkError && <div role="alert">{pairingLinkError}</div>}
 
         {compatBlock && (
           <Suspense fallback={null}>
@@ -1012,6 +1017,7 @@ export function ConnectionManagerModalContent({
         {panel === 'pair-device' && (
           <JoinDevicePairingPanel
             initialPairingPayload={initialPairingPayload}
+            onReviewDismissed={onPairingReviewDismissed}
             hostAppName={hostAppName}
             onCancel={() => setPanel('list')}
             onPaired={handlePaired}
