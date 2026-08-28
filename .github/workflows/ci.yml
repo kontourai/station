@@ -10,6 +10,12 @@ on:
     types: [opened, synchronize, reopened, edited]
   # Manual trigger for bounded fast feedback and the completion gate on demand.
   workflow_dispatch:
+    inputs:
+      fast_only:
+        description: Temporary candidate-proof mode; skips full regression.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -267,7 +273,7 @@ jobs:
     # Avoid the weight-6, roughly 65-minute heavy-host lease on every push or
     # PR; dispatch remains available for an explicitly requested completion gate.
     needs: [classify, fast-checks]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' && inputs.fast_only != true }}
     concurrency:
       group: ci-full-regression-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true

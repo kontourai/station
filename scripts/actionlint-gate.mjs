@@ -329,7 +329,7 @@ echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 `;
 const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
   classify: `\${{ github.event_name != 'pull_request_target' }}`,
-  'full-regression': `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}`,
+  'full-regression': `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' && inputs.fast_only != true }}`,
   'browser-smoke':
     "github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')",
 });
