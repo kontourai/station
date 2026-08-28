@@ -1,11 +1,105 @@
-import type { SessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
+import {
+  SESSION_INVENTORY_GROUP_IDS,
+  type SessionInventoryGroupPage,
+  type SessionInventoryProjection,
+} from '@kontourai/station-contracts/session-inventory';
+import { createStationAnswerBinding } from '@kontourai/station-contracts/task-basis';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { composeBasisProjection } from '@kontourai/surface/basis';
 import { describe, expect, test, vi } from 'vitest';
 import { createSessionInventoryAppReadModule } from '../session-inventory-app-read-module.js';
 
 const authority = () =>
   sessionReadAuthorityFromRequest('fixture-user', undefined, undefined);
 const caller = 'caller_'.padEnd(32, 'a');
+const pageScope = {
+  kind: 'current-answer' as const,
+  sessionId: 'page-session',
+  turnId: 'page-turn',
+};
+const pageRow = (key: string) => ({
+  kind: 'thread-authored-input' as const,
+  key,
+  owner: { owner: 'thread', id: 'v1' },
+  relations: ['contributed-to'] as const,
+  sessionId: pageScope.sessionId,
+  eventId: key,
+  turnId: pageScope.turnId,
+  inputKind: 'message' as const,
+  attachmentDescriptors: [],
+});
+function validProjection(cursor: string): SessionInventoryProjection {
+  const binding = createStationAnswerBinding({
+    sessionId: pageScope.sessionId,
+    turnId: pageScope.turnId,
+    messageId: 'answer',
+  });
+  const basis = composeBasisProjection({
+    version: 'surface.basis-projection/v1',
+    answer: {
+      owner: { authority: '@kontourai/thread' },
+      state: 'available',
+      observedAt: '2026-01-01T00:00:00.000Z',
+      value: {
+        ref: binding.answer,
+        fact: 'answer-observed',
+        observedAt: '2026-01-01T00:00:00.000Z',
+      },
+    },
+    assessment: {
+      owner: { authority: '@kontourai/surface' },
+      state: 'not-captured',
+      observedAt: '2026-01-01T00:00:00.000Z',
+    },
+    contributions: [],
+  });
+  return {
+    version: 'station.session-inventory/v1',
+    scope: pageScope,
+    basis,
+    basisBinding: binding,
+    groups: SESSION_INVENTORY_GROUP_IDS.map((id) =>
+      id === 'inputs'
+        ? {
+            id,
+            owner: { owner: 'thread', id: 'v1' },
+            state: 'available' as const,
+            count: { kind: 'at-least' as const, value: 2 },
+            continuation: cursor,
+            items: [pageRow('one')],
+            gaps: [],
+          }
+        : {
+            id,
+            owner: { owner: 'station', id: 'v1' },
+            state: 'empty' as const,
+            count: { kind: 'exact' as const, value: 0 },
+            items: [],
+            gaps: [],
+          },
+    ),
+  } as SessionInventoryProjection;
+}
+function validPage(cursor?: string): SessionInventoryGroupPage {
+  const p = validProjection('ignored');
+  return {
+    version: 'station.session-inventory/v1',
+    scope: pageScope,
+    basis: p.basis,
+    basisBinding: p.basisBinding,
+    group: {
+      id: 'inputs',
+      owner: { owner: 'thread', id: 'v1' },
+      state: 'available',
+      count: cursor
+        ? { kind: 'at-least', value: 2 }
+        : { kind: 'exact', value: 2 },
+      ...(cursor ? { continuation: cursor } : {}),
+      items: [pageRow('two')],
+      gaps: [],
+    },
+  } as SessionInventoryGroupPage;
+}
 const projection = {
   version: 'station.session-inventory/v1',
   scope: { kind: 'whole-session', sessionId: 'fixture-session' },
@@ -194,5 +288,41 @@ describe('SessionInventoryAppReadModule', () => {
         authority: authority(),
       }),
     ).resolves.toMatchObject({ status: 'available' });
+  });
+  test('accepts differing opaque owner cursors, rotates from the second page read, and removes terminal continuation', async () => {
+    let reads = 0;
+    let pages = 0;
+    const module = make({
+      read: async () => ({
+        status: 'found' as const,
+        projection: validProjection(`open-${++reads}`),
+      }),
+      page: async () => ({
+        status: 'found' as const,
+        page: validPage(pages++ === 0 ? 'page-a' : 'page-b'),
+      }),
+      authorize: () => true,
+      isEnabled: () => true,
+    });
+    const opened = await module.open({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    if (opened.status !== 'available') throw new Error('expected valid open');
+    const first = opened.continuations[0]!.continuationToken;
+    const paged = await module.page({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+      occurrenceId: opened.occurrenceId,
+      groupId: 'inputs',
+      continuationToken: first,
+    });
+    expect(paged).toMatchObject({ status: 'available' });
+    if (paged.status !== 'available') return;
+    expect(paged.continuations[0]!.continuationToken).not.toBe(first);
   });
 });
