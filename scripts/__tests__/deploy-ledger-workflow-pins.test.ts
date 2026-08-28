@@ -48,6 +48,8 @@ const NIGHTLY_ANDROID_LEDGER_STEP =
   'Record the nightly Android ship in the deploy ledger';
 const NIGHTLY_NPM_LEDGER_STEP =
   'Record the nightly CLI npm ship in the deploy ledger';
+const NIGHTLY_DESKTOP_LEDGER_STEP =
+  'Record the nightly desktop ship in the deploy ledger';
 const STABLE_LEDGER_STEP = 'Record the stable release in the deploy ledger';
 const NPM_LEDGER_STEP = 'Record published npm packages in the deploy ledger';
 const LEDGER_SCRIPT = 'node scripts/deploy-ledger.mjs';
@@ -152,6 +154,62 @@ describe('the nightly workflow records what it ships', () => {
     expect(retain).toContain('continue-on-error: true');
     expect(retain).toContain('deploy-ledger-nightly-');
     expect(retain).toContain('always()');
+  });
+});
+
+describe('the desktop nightly workflow records what it ships (station#575)', () => {
+  // Bounded to the next top-level job key, not EOF (station#575 fix round
+  // L8): a future job appended after this one must not leak into these
+  // indexOf-based assertions.
+  const desktopJobStart = nightly.indexOf('\n  nightly-desktop:');
+  const desktopNextJob = nightly
+    .slice(desktopJobStart + 1)
+    .match(/\n {2}[A-Za-z0-9_-]+:\s*\n/);
+  const desktopJobEnd = desktopNextJob
+    ? desktopJobStart + 1 + (desktopNextJob.index ?? 0)
+    : nightly.length;
+  const desktopJob = nightly.slice(desktopJobStart, desktopJobEnd);
+
+  it('records the desktop ship only after the rolling prerelease publish', () => {
+    const publish = desktopJob.indexOf(
+      'name: Publish the rolling desktop nightly prerelease',
+    );
+    const ledger = desktopJob.indexOf(`name: ${NIGHTLY_DESKTOP_LEDGER_STEP}`);
+    expect(publish).toBeGreaterThanOrEqual(0);
+    expect(ledger).toBeGreaterThan(publish);
+    const step = stepBlock(desktopJob, NIGHTLY_DESKTOP_LEDGER_STEP);
+    expect(step).toContain(COMMIT_SCRIPT);
+    expect(step).toContain(LEDGER_SCRIPT);
+    expect(step).toContain('--channel nightly-desktop');
+    // The same decided ship SHA the gate verdicted and the build shipped —
+    // this job's OWN decide step, never a re-derivation.
+    expect(step).toContain(
+      'DEPLOY_LEDGER_SHA: $' + '{{ steps.decide.outputs.head_sha }}',
+    );
+    expect(step).toContain('--sha "$DEPLOY_LEDGER_SHA"');
+    expect(step).not.toMatch(/git rev-parse/);
+    expect(step).toContain(
+      'DEPLOY_LEDGER_VERSION: $' + '{{ steps.identity.outputs.version }}',
+    );
+    expect(step).toMatch(/docs\(ledger\):/);
+  });
+
+  it('lets a ledger failure redden the job without blocking any ship', () => {
+    expect(stepBlock(desktopJob, NIGHTLY_DESKTOP_LEDGER_STEP)).not.toContain(
+      'continue-on-error',
+    );
+    const retain = stepBlock(desktopJob, LEDGER_RETAIN_STEP);
+    expect(retain).toContain('continue-on-error: true');
+    expect(retain).toContain('deploy-ledger-nightly-desktop-');
+    expect(retain).toContain('always()');
+  });
+
+  it('uses the DEPLOY_LEDGER_CHANNELS vocabulary, not a literal string only the workflow knows', () => {
+    const ledgerScript = readFileSync(
+      resolve(root, 'scripts/deploy-ledger.mjs'),
+      'utf8',
+    );
+    expect(ledgerScript).toContain("'nightly-desktop'");
   });
 });
 

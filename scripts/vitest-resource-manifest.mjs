@@ -229,6 +229,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
   'scripts/__tests__/native-release-config.test.ts',
+  // CLI round-trip: drives the updater-manifest script as a real child
+  // process to prove its output matches the direct function call.
+  'scripts/__tests__/tauri-updater-manifest.test.ts',
   // Generates and signs temporary Java archives through keytool/jar/jarsigner
   // to prove strict Android App Bundle signature outcomes, including the
   // combined chain-validation plus unsigned-entry exit bitmask.
