@@ -72,7 +72,7 @@ export const EXPECTED_TAURI_PERMISSIONS = [
   'haptics:allow-impact-feedback',
   'haptics:allow-notification-feedback',
   'haptics:allow-selection-feedback',
-  // Narrow station://pair association (station#1957). The default plugin ACL
+  // Narrow channel-specific pairing association (station#1957). The default plugin ACL
   // permits reading launch URLs and subscribing to registered deep-link events;
   // application validation still accepts only one pairing payload and never
   // opens or navigates to an inbound URL.

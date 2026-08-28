@@ -10,6 +10,7 @@ import {
   resolveDevOffset,
   resolveWorktreePath,
 } from '../packages/cli/src/commands/dev-ports.js';
+import { devPairingDeepLinkScheme } from '../packages/connect/src/core/pairingDeepLinkChannels.generated.js';
 
 export interface DesktopDevContract {
   readonly productName: string;
@@ -19,6 +20,7 @@ export interface DesktopDevContract {
   readonly serverPort: number;
   readonly uiPort: number;
   readonly devUrl: string;
+  readonly pairingDeepLinkScheme: string;
 }
 export function desktopTauriIdentifier(instance: string) {
   const label = instance
@@ -27,6 +29,9 @@ export function desktopTauriIdentifier(instance: string) {
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
   return `io.kontourai.station.dev.${label || 'instance'}`;
+}
+export function desktopDevPairingDeepLinkScheme(instance: string) {
+  return devPairingDeepLinkScheme(instance);
 }
 function probePort(port: number): Promise<boolean> {
   return new Promise((done) => {
@@ -70,6 +75,7 @@ export async function resolveDesktopDevContract({
     serverPort: ports.serverPort,
     uiPort: ports.uiPort,
     devUrl: `http://127.0.0.1:${ports.uiPort}`,
+    pairingDeepLinkScheme: desktopDevPairingDeepLinkScheme(instance),
   };
 }
 export function desktopDevEnvironment(
@@ -91,6 +97,12 @@ export function desktopDevTauriConfig(contract: DesktopDevContract) {
     identifier: contract.identifier,
     build: { devUrl: contract.devUrl },
     app: { windows: [{ title: contract.productName }] },
+    plugins: {
+      'deep-link': {
+        mobile: [{ scheme: [contract.pairingDeepLinkScheme], appLink: false }],
+        desktop: { schemes: [contract.pairingDeepLinkScheme] },
+      },
+    },
     bundle: {
       icon: [
         'icons/dev/32x32.png',

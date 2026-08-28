@@ -27,5 +27,11 @@
       "icons/beta/icon.icns",
       "icons/beta/icon.ico"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [{ "scheme": ["station-beta"], "appLink": false }],
+      "desktop": { "schemes": ["station-beta"] }
+    }
   }
 }

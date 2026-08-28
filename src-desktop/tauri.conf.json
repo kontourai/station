@@ -62,9 +62,9 @@
   },
   "plugins": {
     "deep-link": {
-      "mobile": [{ "scheme": ["station"], "appLink": false }],
+      "mobile": [{ "scheme": ["station-stable"], "appLink": false }],
       "desktop": {
-        "schemes": ["station"]
+        "schemes": ["station-stable"]
       }
     }
   }

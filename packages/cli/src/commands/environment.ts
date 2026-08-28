@@ -6,6 +6,11 @@ import {
   exchangeDevicePairing,
   requestCurrentStationAccess,
 } from '@kontourai/station-connect/device-pairing';
+import {
+  encodePairingDeepLink,
+  PAIRING_LINK_REMEDY,
+  type PairingDeepLinkChannel,
+} from '@kontourai/station-connect/pairing-deep-link';
 import type {
   DevicePairingOffer,
   StationProfileCredentialRef,
@@ -220,7 +225,7 @@ const USAGE = `Usage:
   station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
-  station environment offer [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
+  station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
   station environment hosts [--api-base=<url>]
   station environment list [--api-base=<url>]
   station environment show <id> [--api-base=<url>]
@@ -380,6 +385,7 @@ interface EnvironmentOfferInvocation {
   tailscaleServePort?: number;
   payloadOnly: boolean;
   advertiseUrl?: string;
+  clientChannel: Exclude<PairingDeepLinkChannel, 'dev'>;
 }
 
 interface VerifiedLocalOfferHost {
@@ -412,6 +418,7 @@ function parseEnvironmentOfferInvocation(
       'tailscale-serve-port',
       'payload-only',
       'advertise-url',
+      'client-channel',
     ]) ||
     (parsed.flags.tailscale !== undefined && parsed.flags.tailscale !== true) ||
     (parsed.flags['payload-only'] !== undefined &&
@@ -420,6 +427,15 @@ function parseEnvironmentOfferInvocation(
     throw usageError();
   }
   const advertiseUrl = parsed.flags['advertise-url'];
+  const clientChannel = parsed.flags['client-channel'];
+  if (
+    clientChannel !== undefined &&
+    clientChannel !== 'stable' &&
+    clientChannel !== 'beta' &&
+    clientChannel !== 'nightly'
+  ) {
+    throw usageError();
+  }
   const tailscaleServePort = parsed.flags['tailscale-serve-port'];
   if (
     tailscaleServePort !== undefined &&
@@ -445,6 +461,7 @@ function parseEnvironmentOfferInvocation(
       ? { tailscaleServePort: Number(tailscaleServePort) }
       : {}),
     payloadOnly: parsed.flags['payload-only'] === true,
+    clientChannel: clientChannel ?? 'stable',
     ...(advertiseUrl ? { advertiseUrl } : {}),
   };
 }
@@ -550,6 +567,7 @@ function formatEnvironmentOfferOutput(input: {
   payload: string;
   qr: string;
   publication?: TailscaleOfferEndpoint;
+  pairingLink: string;
 }): string {
   const endpoint = new URL(input.offer.endpoint).origin;
   const expires = new Date(input.offer.expiresAt).toISOString();
@@ -562,6 +580,10 @@ function formatEnvironmentOfferOutput(input: {
       : 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.',
     'Payload (one-time pairing offer; scan or paste into Join):',
     input.payload,
+    'Open in selected Station client:',
+    input.pairingLink,
+    'If the operating system has no app for that custom scheme:',
+    `  ${PAIRING_LINK_REMEDY}`,
     'Terminal QR:',
     input.qr,
     ...(input.publication
@@ -602,12 +624,17 @@ async function runEnvironmentOfferCommand(
   }
   const renderQr = dependencies.offer?.renderQr ?? renderTerminalQr;
   const qr = await renderQr(payload);
+  const pairingLink = encodePairingDeepLink({
+    payload,
+    clientChannel: invocation.clientChannel,
+  });
   (dependencies.stdout ?? console.log)(
     formatEnvironmentOfferOutput({
       offer,
       payload,
       qr,
       publication,
+      pairingLink,
     }),
   );
   return true;
