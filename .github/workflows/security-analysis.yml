@@ -85,4 +85,4 @@ jobs:
             exit 1
           fi
           node base-policy/scripts/codeql-sarif-normalize.mjs --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-          node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF"
+          node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF" --baseline=base-policy/scripts/codeql-error-baseline.json

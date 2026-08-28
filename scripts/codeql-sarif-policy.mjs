@@ -9,7 +9,12 @@ export const SARIF_SCHEMA_URLS = Object.freeze([
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
   'https://json.schemastore.org/sarif-2.1.0.json',
 ]);
-export const CODEQL_TOOL_NAME = 'CodeQL command-line toolchain';
+// CodeQL CLI 2.26.x names its driver "CodeQL"; the pinned action's own SARIF
+// testdata (and older CLIs) use the long form. Both are the same toolchain.
+export const CODEQL_TOOL_NAMES = Object.freeze([
+  'CodeQL',
+  'CodeQL command-line toolchain',
+]);
 export const MAX_SARIF_BYTES = 50 * 1024 * 1024;
 export const MAX_RESULT_SUMMARIES = 20;
 export const MAX_RESULT_MESSAGE_LENGTH = 240;
@@ -45,31 +50,75 @@ function validateAdmission(document, findings) {
   return findings.length === 0;
 }
 
-function resultRule(result, rules, path, findings) {
-  const hasRuleIndex = result.ruleIndex !== undefined;
-  const hasRuleId = nonEmptyString(result.ruleId);
+function componentRules(component) {
+  return Array.isArray(component?.rules) ? component.rules : [];
+}
+
+/**
+ * Resolve a result to its reporting rule per SARIF 2.1.0. Current CodeQL puts
+ * every rule in `tool.extensions[]` (one component per query pack, the driver's
+ * own rules array empty) and references them through
+ * `result.rule.toolComponent.index` + `result.rule.index`; older emitters put
+ * rules on the driver and reference them with `ruleIndex`/`ruleId`. Both forms
+ * must resolve, and every ambiguity fails closed.
+ */
+function resultRule(result, components, path, findings) {
+  const { driver, extensions } = components;
+  const reference = result.rule;
+  const hasReference = reference !== undefined;
+  if (hasReference && (typeof reference !== 'object' || reference === null)) {
+    findings.push(issue(path, 'has a malformed rule reference.'));
+    return undefined;
+  }
+  let component = driver;
+  if (hasReference && reference.toolComponent !== undefined) {
+    const componentIndex = reference.toolComponent?.index;
+    if (
+      !Number.isInteger(componentIndex) ||
+      componentIndex < 0 ||
+      componentIndex >= extensions.length
+    ) {
+      findings.push(
+        issue(path, 'has an invalid rule.toolComponent reference.'),
+      );
+      return undefined;
+    }
+    component = extensions[componentIndex];
+  }
+  const ruleIndex = hasReference
+    ? (reference.index ?? result.ruleIndex)
+    : result.ruleIndex;
+  const ruleId = hasReference ? (reference.id ?? result.ruleId) : result.ruleId;
+  const hasRuleIndex = ruleIndex !== undefined && ruleIndex !== null;
+  const hasRuleId = nonEmptyString(ruleId);
   if (!hasRuleIndex && !hasRuleId) {
     findings.push(
-      issue(path, 'must reference a rule with ruleIndex or ruleId.'),
+      issue(path, 'must reference a rule with ruleIndex, ruleId, or rule.'),
     );
     return undefined;
   }
   let rule;
   if (hasRuleIndex) {
+    const rules = componentRules(component);
     if (
-      !Number.isInteger(result.ruleIndex) ||
-      result.ruleIndex < 0 ||
-      result.ruleIndex >= rules.length
+      !Number.isInteger(ruleIndex) ||
+      ruleIndex < 0 ||
+      ruleIndex >= rules.length
     ) {
       findings.push(issue(path, 'has an invalid ruleIndex reference.'));
       return undefined;
     }
-    rule = rules[result.ruleIndex];
+    rule = rules[ruleIndex];
   }
   if (hasRuleId) {
-    const matches = rules.filter(
-      (candidate) => candidate?.id === result.ruleId,
-    );
+    // With an index resolved, the id is a cross-check within that component.
+    // Without one, search the referenced component when the reference names
+    // it, otherwise every component — requiring a globally unique id.
+    const searchSpace =
+      hasRuleIndex || (hasReference && reference.toolComponent !== undefined)
+        ? componentRules(component)
+        : [driver, ...extensions].flatMap(componentRules);
+    const matches = searchSpace.filter((candidate) => candidate?.id === ruleId);
     if (matches.length !== 1) {
       findings.push(
         issue(path, 'has an unknown or ambiguous ruleId reference.'),
@@ -94,12 +143,68 @@ function boundedMessage(message) {
     : compact;
 }
 
-function validateResult(result, rules, path, findings, summaries) {
+function resultLocation(result) {
+  const physical = result.locations?.[0]?.physicalLocation;
+  const uri = physical?.artifactLocation?.uri;
+  const line = physical?.region?.startLine;
+  return nonEmptyString(uri)
+    ? `${uri}${Number.isInteger(line) ? `:${line}` : ''}`
+    : undefined;
+}
+
+function baselineMatches(result, entry) {
+  return (
+    entry.rule === result.ruleId &&
+    entry.path ===
+      result.locations?.[0]?.physicalLocation?.artifactLocation?.uri &&
+    entry.lineHash === result.partialFingerprints?.primaryLocationLineHash
+  );
+}
+
+export function validateBaseline(baseline, findings) {
+  if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)) {
+    findings.push(issue('baseline', 'must be an object.'));
+    return [];
+  }
+  if (!Array.isArray(baseline.findings)) {
+    findings.push(issue('baseline.findings', 'must be an array.'));
+    return [];
+  }
+  const entries = [];
+  for (const [index, entry] of baseline.findings.entries()) {
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      !nonEmptyString(entry.rule) ||
+      !nonEmptyString(entry.path) ||
+      !nonEmptyString(entry.lineHash)
+    ) {
+      findings.push(
+        issue(
+          `baseline.findings[${index}]`,
+          'must contain nonblank rule, path, and lineHash.',
+        ),
+      );
+      continue;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
+function validateResult(
+  result,
+  components,
+  path,
+  findings,
+  verdicts,
+  baseline,
+) {
   if (!result || typeof result !== 'object') {
     findings.push(issue(path, 'must be an object.'));
     return;
   }
-  const rule = resultRule(result, rules, path, findings);
+  const rule = resultRule(result, components, path, findings);
   const level = result.level ?? rule?.defaultConfiguration?.level;
   if (!RESULT_LEVELS.has(level))
     findings.push(
@@ -121,37 +226,66 @@ function validateResult(result, rules, path, findings, summaries) {
   if (rule && RESULT_LEVELS.has(level) && nonEmptyString(message?.text)) {
     const severity =
       securitySeverity === undefined ? level : `${level}/${securitySeverity}`;
-    summaries.push(`${rule.id} [${severity}] ${boundedMessage(message.text)}`);
+    const location = resultLocation(result);
+    const summary = `${rule.id} [${severity}]${location ? ` ${location}` : ''} ${boundedMessage(message.text)}`;
+    if (level !== 'error') {
+      verdicts.advisories.push(summary);
+      return;
+    }
+    const matched = baseline.find((entry) => baselineMatches(result, entry));
+    if (matched) {
+      baseline.matchedEntries.add(matched);
+      verdicts.baselined.push(summary);
+    } else {
+      verdicts.blocked.push(summary);
+    }
   }
 }
 
-function validateRun(run, index, findings, summaries) {
+function validateRun(run, index, findings, verdicts, baseline) {
   const path = `runs[${index}]`;
   if (!run || typeof run !== 'object') {
     findings.push(issue(path, 'must be an object.'));
     return;
   }
   const driver = run.tool?.driver;
-  if (!driver || driver.name !== CODEQL_TOOL_NAME)
-    findings.push(
-      issue(path, `must identify tool.driver.name as ${CODEQL_TOOL_NAME}.`),
-    );
-  if (!Array.isArray(driver?.rules) || driver.rules.length === 0)
+  const extensions = Array.isArray(run.tool?.extensions)
+    ? run.tool.extensions
+    : [];
+  if (!driver || !CODEQL_TOOL_NAMES.includes(driver.name))
     findings.push(
       issue(
         path,
-        'must include CodeQL driver rules; empty rules are synthetic or incomplete evidence.',
+        `must identify tool.driver.name as one of: ${CODEQL_TOOL_NAMES.join(', ')}.`,
+      ),
+    );
+  const components = { driver, extensions };
+  const allRules = [driver, ...extensions].flatMap(componentRules);
+  if (allRules.length === 0)
+    findings.push(
+      issue(
+        path,
+        'must declare CodeQL rules on the driver or its extensions; a rule-free run is synthetic or incomplete evidence.',
       ),
     );
   else {
-    for (const [ruleIndex, rule] of driver.rules.entries()) {
-      if (!nonEmptyString(rule?.id))
-        findings.push(
-          issue(
-            `${path}.tool.driver.rules[${ruleIndex}]`,
-            'must contain a nonblank id.',
-          ),
-        );
+    for (const [componentIndex, component] of [
+      driver,
+      ...extensions,
+    ].entries()) {
+      const componentPath =
+        componentIndex === 0
+          ? `${path}.tool.driver`
+          : `${path}.tool.extensions[${componentIndex - 1}]`;
+      for (const [ruleIndex, rule] of componentRules(component).entries()) {
+        if (!nonEmptyString(rule?.id))
+          findings.push(
+            issue(
+              `${componentPath}.rules[${ruleIndex}]`,
+              'must contain a nonblank id.',
+            ),
+          );
+      }
     }
   }
   if (run.invocations !== undefined && !Array.isArray(run.invocations))
@@ -183,24 +317,49 @@ function validateRun(run, index, findings, summaries) {
   for (const [resultIndex, result] of run.results.entries())
     validateResult(
       result,
-      driver?.rules ?? [],
+      components,
       `${path}.results[${resultIndex}]`,
       findings,
-      summaries,
+      verdicts,
+      baseline,
     );
 }
 
-export function evaluateCodeqlSarif(document) {
+/**
+ * Evaluate a CodeQL SARIF document against the policy.
+ *
+ * - `findings` are structural violations; any entry fails the policy.
+ * - `blocked` are error-level results outside the baseline; any entry fails.
+ * - `baselined` are error-level results grandfathered by the baseline (#688).
+ * - `advisories` are warning/note results — reported, never blocking.
+ *
+ * A baseline entry that matches no error-level result is stale and becomes a
+ * structural finding: the change that resolved the finding must also remove
+ * its entry, so the baseline can only shrink truthfully.
+ */
+export function evaluateCodeqlSarif(document, { baseline } = {}) {
   const findings = [];
-  const summaries = [];
-  if (!validateAdmission(document, findings)) return { findings, summaries };
+  const verdicts = { blocked: [], baselined: [], advisories: [] };
+  const baselineEntries =
+    baseline === undefined ? [] : validateBaseline(baseline, findings);
+  baselineEntries.matchedEntries = new Set();
+  if (!validateAdmission(document, findings)) return { findings, ...verdicts };
   for (const [index, run] of document.runs.entries())
-    validateRun(run, index, findings, summaries);
-  return { findings, summaries };
+    validateRun(run, index, findings, verdicts, baselineEntries);
+  for (const entry of baselineEntries) {
+    if (!baselineEntries.matchedEntries.has(entry))
+      findings.push(
+        issue(
+          'baseline',
+          `entry ${entry.rule} at ${entry.path} (${entry.lineHash}) no longer matches any error-level result; remove it.`,
+        ),
+      );
+  }
+  return { findings, ...verdicts };
 }
 
-export function validateCodeqlSarif(document) {
-  return evaluateCodeqlSarif(document).findings;
+export function validateCodeqlSarif(document, options) {
+  return evaluateCodeqlSarif(document, options).findings;
 }
 
 export function parseSarifBytes(bytes, { requireTerminalNewline = true } = {}) {
@@ -225,13 +384,28 @@ export function parseSarifBytes(bytes, { requireTerminalNewline = true } = {}) {
   }
 }
 
+function optionValue(argv, name) {
+  const prefix = `--${name}=`;
+  const match = argv.find((argument) => argument.startsWith(prefix));
+  if (match === undefined) return undefined;
+  if (match.length === prefix.length)
+    throw new Error(`--${name} requires a value.`);
+  return match.slice(prefix.length);
+}
+
 export function parseInputPath(argv) {
-  const input = argv.find((argument) => argument.startsWith('--input='));
-  if (!input || input.length === '--input='.length)
+  const input = optionValue(argv, 'input');
+  if (!input)
     throw new Error(
-      'Usage: codeql-sarif-policy.mjs --input=<CodeQL SARIF file>.',
+      'Usage: codeql-sarif-policy.mjs --input=<CodeQL SARIF file> [--baseline=<error baseline JSON>].',
     );
-  return input.slice('--input='.length);
+  return input;
+}
+
+function renderBounded(label, summaries) {
+  const rendered = summaries.slice(0, MAX_RESULT_SUMMARIES);
+  const omitted = summaries.length - rendered.length;
+  return `${label}\n${rendered.map((summary) => `- ${summary}`).join('\n')}${omitted > 0 ? `\n- … ${omitted} additional result(s) omitted.` : ''}`;
 }
 
 /**
@@ -250,27 +424,62 @@ export function runCodeqlSarifPolicy(
   read = (path) => readFileSync(path),
 ) {
   const input = parseInputPath(argv);
+  const baselinePath = optionValue(argv, 'baseline');
+  let baseline;
+  if (baselinePath !== undefined) {
+    let parsed;
+    try {
+      parsed = JSON.parse(read(baselinePath).toString());
+    } catch (error) {
+      throw new Error(
+        `CodeQL error baseline is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    baseline = parsed;
+  }
   const document = parseSarifBytes(read(input));
-  const { findings, summaries } = evaluateCodeqlSarif(document);
+  const { findings, blocked, baselined, advisories } = evaluateCodeqlSarif(
+    document,
+    { baseline },
+  );
   if (findings.length)
     throw new Error(
       `CodeQL SARIF policy failed:\n${findings.map((finding) => `- ${finding}`).join('\n')}`,
     );
-  if (summaries.length > 0) {
-    const rendered = summaries.slice(0, MAX_RESULT_SUMMARIES);
-    const omitted = summaries.length - rendered.length;
+  if (blocked.length > 0)
     throw new Error(
-      `CodeQL SARIF policy blocked ${summaries.length} result(s):\n${rendered.map((summary) => `- ${summary}`).join('\n')}${omitted > 0 ? `\n- … ${omitted} additional result(s) omitted.` : ''}`,
+      renderBounded(
+        `CodeQL SARIF policy blocked ${blocked.length} error-level result(s):`,
+        blocked,
+      ),
     );
-  }
-  return { input, runs: document.runs.length };
+  return {
+    input,
+    runs: document.runs.length,
+    baselined,
+    advisories,
+  };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   try {
     const result = runCodeqlSarifPolicy();
+    if (result.baselined.length > 0)
+      console.log(
+        renderBounded(
+          `Baselined ${result.baselined.length} grandfathered error-level result(s) (#688):`,
+          result.baselined,
+        ),
+      );
+    if (result.advisories.length > 0)
+      console.log(
+        renderBounded(
+          `Reported ${result.advisories.length} advisory (warning/note) result(s):`,
+          result.advisories,
+        ),
+      );
     console.log(
-      `Validated ${result.runs} CodeQL SARIF run(s) from ${result.input}.`,
+      `Validated ${result.runs} CodeQL SARIF run(s) from ${result.input}: 0 blocking, ${result.baselined.length} baselined, ${result.advisories.length} advisory.`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

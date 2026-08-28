@@ -304,7 +304,7 @@ if [ "\${#SARIF_FILES[@]}" -ne 1 ]; then
   exit 1
 fi
 node base-policy/scripts/codeql-sarif-normalize.mjs --input="\${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF"`;
+node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF" --baseline=base-policy/scripts/codeql-error-baseline.json`;
 const FORK_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
 const FORK_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
