@@ -86,7 +86,12 @@ jobs:
     # one unit: every other desktop-win reservation is capped at nine, so a
     # compliant heavyweight cannot consume the bounded feedback headroom.
     runs-on: [self-hosted, Linux, X64, fast-feedback]
-    timeout-minutes: 15
+    # Five minutes of capacity admission, a bounded 20-minute Chromium
+    # installation, the twelve-minute raw ci:fast budget, and post checks
+    # cannot fit inside fifteen minutes. Forty-five minutes is a job-level
+    # containment fence for those declared stages, not a broader raw-test
+    # budget or completion claim.
+    timeout-minutes: 45
     steps:
       - name: Check out base policy for pull-request title gate
         if: ${{ github.event_name == 'pull_request_target' }}

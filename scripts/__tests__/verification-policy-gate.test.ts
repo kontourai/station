@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { VERIFICATION_BEHAVIOR_ENVIRONMENT } from '../lib/test-reliability.mjs';
 import { PREPUSH_TEST_FILES } from '../prepush-test-manifest.mjs';
@@ -36,6 +37,19 @@ import {
 } from '../verification-policy-gate.mjs';
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+const TESTING_GUIDE_FILE = 'docs/guides/testing.md';
+// Capture the policy reader's generated-document input once at collection.
+// The absolute, module-anchored path remains correct regardless of test cwd.
+const TESTING_GUIDE_TEXT = readFileSync(
+  resolve(import.meta.dirname, '../../docs/guides/testing.md'),
+  'utf8',
+);
+
+function guideText(file: string) {
+  return file === TESTING_GUIDE_FILE
+    ? TESTING_GUIDE_TEXT
+    : readFileSync(file, 'utf8');
+}
 
 const trackedVitestFixture = Object.freeze([
   'scripts/__tests__/ordinary.test.ts',
@@ -338,8 +352,8 @@ describe('verification policy gate', () => {
       verificationPolicyErrors({
         docs: [
           {
-            file: 'docs/guides/testing.md',
-            text: readFileSync('docs/guides/testing.md', 'utf8'),
+            file: TESTING_GUIDE_FILE,
+            text: TESTING_GUIDE_TEXT,
           },
           {
             file: 'whitespace.md',
@@ -363,12 +377,10 @@ describe('verification policy gate', () => {
   });
 
   test('requires browser-test admission and pruning policy in canonical guidance', () => {
-    for (const file of ['docs/guides/testing.md']) {
-      const text = readFileSync(file, 'utf8');
-      for (const marker of E2E_POLICY_MARKERS) expect(text).toContain(marker);
-      for (const marker of TEST_RESOURCE_POLICY_MARKERS)
-        expect(text).toContain(marker);
-    }
+    for (const marker of E2E_POLICY_MARKERS)
+      expect(TESTING_GUIDE_TEXT).toContain(marker);
+    for (const marker of TEST_RESOURCE_POLICY_MARKERS)
+      expect(TESTING_GUIDE_TEXT).toContain(marker);
 
     const docs = [
       {
@@ -401,13 +413,13 @@ describe('verification policy gate', () => {
   test('pins the rendered lane catalog table in docs/guides/testing.md', () => {
     // The real docs/guides/testing.md must carry the exact catalog render (no drift either
     // way); the baseline assertion is the top-of-file `toEqual([])` check.
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     expect(agentsText).toContain(renderLaneCatalogTable());
   });
 
   test('pins catalog-derived scheduling and checkpoint resume guidance in every contributor document', () => {
     for (const file of VERIFICATION_SCHEDULING_DOCS) {
-      const text = readFileSync(file, 'utf8');
+      const text = guideText(file);
       expect(text).toContain(VERIFICATION_SCHEDULING_SECTION);
       expect(text).toContain(renderFullRegressionPhaseSchedule());
       expect(text).toContain(
@@ -421,7 +433,7 @@ describe('verification policy gate', () => {
   test('rejects a stale phase weight or weakened checkpoint resume clause in either document', () => {
     const docs = VERIFICATION_SCHEDULING_DOCS.map((file) => ({
       file,
-      text: readFileSync(file, 'utf8'),
+      text: guideText(file),
     }));
     const staleWeight = docs.map((doc) =>
       doc.file === 'docs/guides/testing.md'
@@ -455,7 +467,7 @@ describe('verification policy gate', () => {
   });
 
   test('keeps the ignored latest-E2E gallery pointer in docs/guides/testing.md', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     for (const marker of E2E_LATEST_GUIDANCE_MARKERS)
       expect(agentsText).toContain(marker);
     const missingSync = agentsText.replaceAll(
@@ -498,10 +510,7 @@ describe('verification policy gate', () => {
   test('fails when the doc table is hand-trimmed', () => {
     const table = renderLaneCatalogTable();
     const trimmed = table.split('\n').slice(0, -1).join('\n');
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8').replace(
-      table,
-      trimmed,
-    );
+    const agentsText = TESTING_GUIDE_TEXT.replace(table, trimmed);
     expect(
       verificationPolicyErrors({
         docs: [{ file: 'docs/guides/testing.md', text: agentsText }],
@@ -512,7 +521,7 @@ describe('verification policy gate', () => {
   });
 
   test('requires the failure-diagnosis and lane-reuse clauses in docs/guides/testing.md', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     // Sanity: the real docs/guides/testing.md carries every clause.
     for (const marker of [...FAILURE_DIAGNOSIS_MARKERS, ...LANE_REUSE_MARKERS])
       expect(agentsText).toContain(marker);
@@ -542,7 +551,7 @@ describe('verification policy gate', () => {
   test('requires detached submission handoff guidance in every contributor guide', () => {
     const docs = SUBMISSION_HANDOFF_GUIDANCE_DOCS.map((file) => ({
       file,
-      text: readFileSync(file, 'utf8'),
+      text: guideText(file),
     }));
     for (const { text } of docs) {
       for (const marker of SUBMISSION_HANDOFF_GUIDANCE_MARKERS)
@@ -570,7 +579,7 @@ describe('verification policy gate', () => {
   // ways that retain every marker phrase yet must still fail.
 
   test('rejects deletion of the flaky-triage clause while retaining markers', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     // Drop "and disclosed, never hidden by repetition." but keep both
     // failure-diagnosis marker phrases intact above it.
     const mutated = agentsText.replace(
@@ -591,7 +600,7 @@ describe('verification policy gate', () => {
   });
 
   test('rejects deletion of the do-not-start clause while retaining markers', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     // Drop "so do not start a" but keep the "redundant same-digest run" and
     // "join or reuse the existing lease" marker phrases.
     const mutated = agentsText.replace(
@@ -610,7 +619,7 @@ describe('verification policy gate', () => {
   });
 
   test('rejects a dropped identity field in the invalidation caption', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     // Remove `arch` from the enumerated identity set, leaving the rest intact.
     const mutated = agentsText.replace(
       '`toolchain`, `platform`,\n`arch` (whose SHA-256',
@@ -627,7 +636,7 @@ describe('verification policy gate', () => {
   });
 
   test('rejects truncated invalidation caption prose (sentence portion removed)', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     // Truncate the caption mid-sentence by removing its final clause.
     const mutated = agentsText.replace(
       '\nSee `docs/reference/verification-receipts.md` for the field-by-field table.',
@@ -644,7 +653,7 @@ describe('verification policy gate', () => {
   });
 
   test('rejects reordered paragraphs while every marker fragment survives', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     // Reverse the four paragraph blocks inside the section. Every marker
     // phrase still appears, so `includes` checks pass — only the byte-exact
     // section check catches the reorder.
@@ -679,7 +688,7 @@ describe('verification policy gate', () => {
   });
 
   test('rejects a duplicated verification-policy section', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     const mutated = agentsText.replace(
       VERIFICATION_POLICY_SECTION,
       `${VERIFICATION_POLICY_SECTION}\n\n${VERIFICATION_POLICY_SECTION}`,
@@ -694,7 +703,7 @@ describe('verification policy gate', () => {
   });
 
   test('rejects a stray duplicate section start marker', () => {
-    const agentsText = readFileSync('docs/guides/testing.md', 'utf8');
+    const agentsText = TESTING_GUIDE_TEXT;
     const mutated = agentsText.replace(
       VERIFICATION_POLICY_SECTION_END,
       `${VERIFICATION_POLICY_SECTION_END}\n${VERIFICATION_POLICY_SECTION_START}`,

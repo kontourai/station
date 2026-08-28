@@ -225,6 +225,7 @@ const MAX_PHYSICAL_HOST_CAPACITY_JOB_TIMEOUT_MINUTES = Math.floor(
 );
 const DESKTOP_WIN_HOST_ID = 'desktop-win';
 const FAST_FEEDBACK_LEASE_WEIGHT = 1;
+export const FAST_CHECKS_JOB_TIMEOUT_MINUTES = 45;
 const MAX_NON_FAST_DESKTOP_WIN_LEASE_WEIGHT = 9;
 const REQUIRED_CAPACITY_INPUTS = [
   'coordination-root',
@@ -579,6 +580,15 @@ function physicalHostCapacityFindings(file, jobId, document, job) {
     });
 
   const timeoutMinutes = job?.['timeout-minutes'];
+  if (
+    isFastFeedbackJob(file, jobId) &&
+    timeoutMinutes !== FAST_CHECKS_JOB_TIMEOUT_MINUTES
+  )
+    findings.push({
+      file,
+      jobId,
+      message: `ci.yml fast-checks must set timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
+    });
   if (
     typeof timeoutMinutes !== 'number' ||
     timeoutMinutes < 1 ||

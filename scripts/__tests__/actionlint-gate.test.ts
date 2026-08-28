@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   classifyActionlintEvaluation,
   compareToBaseline,
+  FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
   parseFindings,
   persistentRunnerPolicyFindings,
@@ -1882,7 +1883,7 @@ describe('persistent runner policy', () => {
             'fast-checks': {
               'runs-on': ['self-hosted', 'Linux', 'X64', 'fast-feedback'],
               if: SAME_REPOSITORY_FAST_CHECKS_CONDITION,
-              'timeout-minutes': 15,
+              'timeout-minutes': FAST_CHECKS_JOB_TIMEOUT_MINUTES,
               steps: [
                 {
                   uses: `kontourai/.github/actions/physical-host-capacity@${REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA}`,
@@ -1905,6 +1906,42 @@ describe('persistent runner policy', () => {
     expect(findings.map(({ message }) => message)).toEqual([
       'ci.yml fast-checks must reserve exactly 1 physical-host capacity unit',
     ]);
+  });
+
+  test('rejects a fifteen-minute fast-checks job even when a step advertises forty-five minutes', () => {
+    const findings = persistentRunnerPolicyFindings([
+      {
+        file: '.github/workflows/ci.yml',
+        document: {
+          jobs: {
+            'fast-checks': {
+              'runs-on': ['self-hosted', 'Linux', 'X64', 'fast-feedback'],
+              if: SAME_REPOSITORY_FAST_CHECKS_CONDITION,
+              'timeout-minutes': 15,
+              steps: [
+                {
+                  uses: `kontourai/.github/actions/physical-host-capacity@${REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA}`,
+                  with: {
+                    'coordination-root': '/mnt/e/kontour-runner-capacity',
+                    'host-id': 'desktop-win',
+                    'capacity-units': 10,
+                    'lease-weight': 1,
+                    'timeout-seconds': 300,
+                    'owner-lifetime-seconds': 7800,
+                  },
+                },
+                { name: 'Longer step cannot widen job', 'timeout-minutes': 45 },
+              ],
+            },
+          },
+        },
+      },
+    ]);
+    expect(findings).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message: `ci.yml fast-checks must set timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
+    });
   });
 
   test('caps every other desktop-win capacity reservation at nine units', () => {
@@ -2102,7 +2139,7 @@ describe('persistent runner policy', () => {
             'fast-checks': {
               'runs-on': ['self-hosted', 'Linux', 'X64', 'kontour-linux'],
               if: SAME_REPOSITORY_FAST_CHECKS_CONDITION,
-              'timeout-minutes': 15,
+              'timeout-minutes': FAST_CHECKS_JOB_TIMEOUT_MINUTES,
               steps: [],
             },
             heavy: {

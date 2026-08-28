@@ -17,6 +17,11 @@ import {
   validatePullRequestTitle,
   validateSubject,
 } from '../commit-message-gate.mjs';
+import {
+  bindVerificationRequestEnvironment,
+  resolveVerificationHistoryRef,
+  STATION_VERIFICATION_HISTORY_REF,
+} from '../lib/verification-request-environment.mjs';
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const gatePath = resolve(scriptsDir, '../commit-message-gate.mjs');
@@ -625,6 +630,82 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
     ).toBe(false);
   });
 
+  it('freezes both corpora to the request history tip instead of a later origin/main', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-history-ref-'));
+    const git = (...args: string[]) =>
+      execFileSync('git', args, {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim();
+    let sequence = 0;
+    const commit = (subject: string) => {
+      const path = `fixture-${sequence++}.txt`;
+      writeFileSync(join(root, path), `${subject}\n`);
+      git('add', path);
+      git('commit', '-qm', subject);
+      return git('rev-parse', 'HEAD');
+    };
+    const subjectsAt = (ref: string) =>
+      git('log', '--format=%s', ref).split('\n').filter(Boolean);
+
+    try {
+      git('init', '-q');
+      git('config', 'user.email', 'history@test.invalid');
+      git('config', 'user.name', 'history gate');
+      commit('chore: initialize history fixture');
+      const baseline = commit('fix: freeze verification baseline');
+      git('update-ref', 'refs/remotes/origin/main', baseline);
+      const boundEnv = bindVerificationRequestEnvironment(
+        { [STATION_VERIFICATION_HISTORY_REF]: 'origin/main' },
+        { headSha: baseline },
+      );
+      const boundRef = resolveVerificationHistoryRef(boundEnv);
+
+      const later = commit('Later main subject that does not conform');
+      git('update-ref', 'refs/remotes/origin/main', later);
+
+      expect(boundRef).toBe(baseline);
+      expect(subjectsAt(boundRef)).not.toContain(
+        'Later main subject that does not conform',
+      );
+      expect(subjectsAt('origin/main')).toContain(
+        'Later main subject that does not conform',
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts only an exact request SHA and overwrites hostile inherited history refs', () => {
+    const sha = 'a'.repeat(40);
+    expect(resolveVerificationHistoryRef({})).toBe('origin/main');
+    expect(
+      bindVerificationRequestEnvironment(
+        { [STATION_VERIFICATION_HISTORY_REF]: '--all' },
+        { headSha: sha },
+      ),
+    ).toMatchObject({ [STATION_VERIFICATION_HISTORY_REF]: sha });
+
+    for (const invalid of [
+      'A'.repeat(40),
+      'a'.repeat(39),
+      'a'.repeat(41),
+      '--all',
+      'HEAD',
+      'origin/main',
+    ]) {
+      expect(() =>
+        resolveVerificationHistoryRef({
+          [STATION_VERIFICATION_HISTORY_REF]: invalid,
+        }),
+      ).toThrow(/exact lowercase 40-character hexadecimal commit SHA/);
+    }
+    expect(() =>
+      bindVerificationRequestEnvironment({}, { headSha: 'origin/main' }),
+    ).toThrow(/exact lowercase 40-character hexadecimal commit SHA/);
+  });
+
   /**
    * Known pre-gate residue (out of the last 1500 subjects, ~1.2%): `wip:`,
    * `checkpoint:`, `docs+test:`, `fix/test:`, lowercase `merge:`/`revert:`
@@ -633,14 +714,15 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
    * reds below 95%, the vocabulary constant is wrong — fix the constant,
    * not the corpus.
    */
-  it('passes >= 95% of the last up-to-100 non-merge subjects on origin/main', () => {
+  it('passes >= 95% of the last up-to-100 non-merge subjects on the request-bound history ref', () => {
     // %P first: the parentless ROOT commit (the 2026-08-28 history reset's
     // ceremonial founding commit, "Found Station: …") is structural history,
     // not push traffic — there is exactly one, it can never recur, and the
     // gate governs pushes going forward. Everything with a parent counts.
+    const historyRef = resolveVerificationHistoryRef();
     const subjects = execFileSync(
       'git',
-      ['log', '--format=%P%x00%s', '--no-merges', 'origin/main', '-100'],
+      ['log', '--format=%P%x00%s', '--no-merges', historyRef, '-100'],
       { encoding: 'utf8', windowsHide: true },
     )
       .split('\n')
@@ -663,7 +745,7 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
 
     const rate = ((subjects.length - failures.length) / subjects.length) * 100;
     console.log(
-      `commit-message-gate corpus: ${subjects.length - failures.length}/${subjects.length} (${rate.toFixed(1)}%) of the last 100 non-merge origin/main subjects conform`,
+      `commit-message-gate corpus: ${subjects.length - failures.length}/${subjects.length} (${rate.toFixed(1)}%) of the last 100 non-merge subjects on ${historyRef} conform`,
     );
     for (const { subject } of failures) {
       console.log(`  known pre-gate residue: ${subject}`);
@@ -675,15 +757,16 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
     ).toBeGreaterThanOrEqual(95);
   });
 
-  it('covers every merge subject among the last 3000 origin/main commits as exempt-or-conform', () => {
+  it('covers every merge subject among the last 3000 commits on the request-bound history ref as exempt-or-conform', () => {
     // The test above excludes merges entirely (--no-merges), which was a
     // blindspot: the exemptions govern exactly the population it skipped.
     // This asserts over merge commits by parent count (>= 2), the same
     // truth git uses, and requires 100% — a genuine merge subject the
     // exemptions refuse is a push this gate would strand mid-merge.
+    const historyRef = resolveVerificationHistoryRef();
     const rows = execFileSync(
       'git',
-      ['log', 'origin/main', '-3000', '--format=%H%x00%P%x00%s'],
+      ['log', historyRef, '-3000', '--format=%H%x00%P%x00%s'],
       { encoding: 'utf8', maxBuffer: 1 << 24, windowsHide: true },
     )
       .split('\n')
@@ -699,7 +782,7 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
     // new history has a real merge population to pin.)
     if (merges.length === 0) {
       console.log(
-        'commit-message-gate corpus: 0 merge commits exist on origin/main yet (post-reset single-root history) — nothing to check',
+        `commit-message-gate corpus: 0 merge commits exist on ${historyRef} yet (post-reset single-root history) — nothing to check`,
       );
       return;
     }
