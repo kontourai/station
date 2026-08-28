@@ -542,7 +542,7 @@ describe('SessionInventoryAppReadModule', () => {
           return new Promise<any>((done) => {
             resolve = () => done({ status: 'found', page: validPage('next') });
           });
-          return { status: 'found' as const, page: validPage('next') };
+        return { status: 'found' as const, page: validPage('next') };
       },
       authorize: () => true,
       isEnabled: () => true,
@@ -570,5 +570,38 @@ describe('SessionInventoryAppReadModule', () => {
     });
     resolve();
     await expect(first).resolves.toMatchObject({ status: 'available' });
+  });
+  test('purges an unconsumed valid continuation after TTL expiry', async () => {
+    let at = 0;
+    const module = make({
+      read: async () => ({
+        status: 'found' as const,
+        projection: validProjection('open'),
+      }),
+      page: async () => ({ status: 'found' as const, page: validPage() }),
+      authorize: () => true,
+      isEnabled: () => true,
+      now: () => at,
+    });
+    const opened = await module.open({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    if (opened.status !== 'available')
+      throw new Error('expected live occurrence');
+    at = 5 * 60_000 + 1;
+    await expect(
+      module.page({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: opened.continuations[0]!.continuationToken,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
   });
 });
