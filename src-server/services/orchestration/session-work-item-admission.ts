@@ -11,6 +11,7 @@ import {
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
 import {
+  isIssuedSessionWorkItemCandidate,
   parseSessionWorkItemCandidate,
   type SessionWorkItemCandidate,
 } from './session-work-item-candidate.js';
@@ -43,6 +44,12 @@ export type SessionWorkItemAdmissionTakeOutcome =
       kind: 'taken';
       claim: SessionWorkItemAdmissionClaim;
       association: SessionWorkItemAssociation;
+    }
+  | {
+      /** A terminal failure has no association, but still closes this tuple. */
+      kind: 'closed';
+      claim: SessionWorkItemAdmissionClaim;
+      reason: 'failed' | 'cancelled' | 'authority-lost';
     }
   | {
       kind: 'refused';
@@ -187,16 +194,6 @@ export function createSessionWorkItemAdmissionRegistry(
     if (sessionEntries?.size === 0)
       pendingBySession.delete(entry.candidate.sessionId);
   };
-  const closePending = (key: string, eventId?: string) => {
-    const entry = pending.get(key);
-    if (!entry) return;
-    removePending(key);
-    closed.set(key, {
-      sessionId: entry.candidate.sessionId,
-      eventId,
-      expiresAt: now() + ttlMs,
-    });
-  };
   const prune = () => {
     const at = now();
     for (const [key, entry] of pending) {
@@ -220,6 +217,8 @@ export function createSessionWorkItemAdmissionRegistry(
       prune();
       if (!isCurrent(current))
         return { kind: 'refused', reason: 'authority-lost' };
+      if (!isIssuedSessionWorkItemCandidate(candidate))
+        return { kind: 'refused', reason: 'invalid-candidate' };
       const parsed = parseSessionWorkItemCandidate(candidate);
       if (!parsed) return { kind: 'refused', reason: 'invalid-candidate' };
       const key = keyOf(parsed);
@@ -235,7 +234,7 @@ export function createSessionWorkItemAdmissionRegistry(
       if (!isCurrent(current))
         return { kind: 'refused', reason: 'authority-lost' };
       pending.set(key, {
-        candidate: parsed,
+        candidate,
         current,
         expiresAt: now() + ttlMs,
       });
@@ -269,16 +268,22 @@ export function createSessionWorkItemAdmissionRegistry(
       if (!entry) return { kind: 'refused', reason: 'missing' };
       if (completion.method !== 'tool.completed')
         return { kind: 'refused', reason: 'mismatch' };
-      if (completion.status !== 'success') {
-        closePending(key, completion.eventId);
-        return {
-          kind: 'refused',
-          reason: completion.status === 'cancelled' ? 'cancelled' : 'failed',
-        };
-      }
-      if (!isCurrent(entry.current)) {
-        closePending(key, completion.eventId);
-        return { kind: 'refused', reason: 'authority-lost' };
+      const closeReason =
+        completion.status !== 'success'
+          ? completion.status === 'cancelled'
+            ? ('cancelled' as const)
+            : ('failed' as const)
+          : !isCurrent(entry.current)
+            ? ('authority-lost' as const)
+            : undefined;
+      if (closeReason) {
+        removePending(key);
+        const claim = Object.freeze({
+          [admissionClaimBrand]: true as const,
+        }) as SessionWorkItemAdmissionClaim;
+        claims.set(claim, { ...entry, key, eventId: completion.eventId });
+        claimsByKey.set(key, claim);
+        return { kind: 'closed', claim, reason: closeReason };
       }
       const association = parseSessionWorkItemAssociation({
         ...entry.candidate,

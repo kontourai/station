@@ -10,10 +10,23 @@ import {
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
 
-/** Server-only pre-terminal shape. It is intentionally not a durable record. */
-export type SessionWorkItemCandidate = Omit<
+const candidateBrand = Symbol('session-work-item-candidate');
+const issuedCandidates = new WeakSet<object>();
+
+/** Structural facts validated before the projector issues a runtime capability. */
+export type SessionWorkItemCandidateFields = Omit<
   SessionWorkItemAssociation,
   'eventId' | 'observedAt'
+>;
+
+/**
+ * Server-only pre-terminal capability. It is not structural: the reviewed
+ * result projector is the only issuer, and staging checks its exact identity.
+ */
+export type SessionWorkItemCandidate = Readonly<
+  SessionWorkItemCandidateFields & {
+    readonly [candidateBrand]: true;
+  }
 >;
 
 const encoder = new TextEncoder();
@@ -45,7 +58,7 @@ function bounded(value: unknown, maxBytes: number): value is string {
  */
 export function parseSessionWorkItemCandidate(
   value: unknown,
-): SessionWorkItemCandidate | null {
+): SessionWorkItemCandidateFields | null {
   try {
     if (!plain(value)) return null;
     const keys = Object.keys(value);
@@ -125,4 +138,27 @@ export function parseSessionWorkItemCandidate(
   } catch {
     return null;
   }
+}
+
+/** Internal projector bridge; no route or EventStore caller receives an issuer. */
+export function issueSessionWorkItemCandidateFromProjector(
+  value: unknown,
+): SessionWorkItemCandidate | null {
+  const parsed = parseSessionWorkItemCandidate(value);
+  if (!parsed) return null;
+  const issued = { ...parsed } as SessionWorkItemCandidate;
+  Object.defineProperty(issued, candidateBrand, {
+    value: true,
+    enumerable: false,
+  });
+  Object.freeze(issued);
+  issuedCandidates.add(issued);
+  return issued;
+}
+
+/** Admission boundary: parseable lookalikes are not runtime-issued candidates. */
+export function isIssuedSessionWorkItemCandidate(
+  value: unknown,
+): value is SessionWorkItemCandidate {
+  return !!value && typeof value === 'object' && issuedCandidates.has(value);
 }

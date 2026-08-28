@@ -11,22 +11,48 @@ import {
 } from '../work-item-result-projector.js';
 
 function candidate(
-  overrides: Partial<SessionWorkItemCandidate> = {},
+  overrides: Partial<
+    Pick<
+      SessionWorkItemCandidate,
+      | 'associationId'
+      | 'sessionId'
+      | 'conversationId'
+      | 'turnId'
+      | 'toolCallId'
+      | 'nativeId'
+    >
+  > = {},
 ): SessionWorkItemCandidate {
-  return {
-    version: 'station.session-work-item/v1',
+  const values = {
     associationId: 'association-a',
     sessionId: 'session-a',
     conversationId: 'conversation-a',
     turnId: 'turn-a',
     toolCallId: 'call-a',
-    relation: 'created',
-    provider: { id: 'github', host: 'github.com' },
-    workItemRef: 'github:kontourai/station#235',
-    repository: { owner: 'kontourai', name: 'station' },
     nativeId: '1234567890',
     ...overrides,
   };
+  const projected = new WorkItemResultProjector().project({
+    ...values,
+    terminalStatus: 'success',
+    provenance: mintWorkItemResultProjectorProvenanceForReviewedLoader(),
+    githubArguments: {
+      owner: 'kontourai',
+      repo: 'station',
+      title: 'Capture issue work',
+    },
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          id: values.nativeId,
+          url: 'https://github.com/kontourai/station/issues/235',
+        }),
+      },
+    ],
+  });
+  if (!projected) throw new Error('expected official candidate');
+  return projected;
 }
 
 function completion(
@@ -66,6 +92,12 @@ describe('Session work-item admission registry', () => {
     const registry = createSessionWorkItemAdmissionRegistry();
     expect(
       registry.stage({
+        candidate: { ...source } as unknown as SessionWorkItemCandidate,
+        current: () => true,
+      }),
+    ).toEqual({ kind: 'refused', reason: 'invalid-candidate' });
+    expect(
+      registry.stage({
         candidate: {
           ...source,
           eventId: 'invented-event',
@@ -78,8 +110,12 @@ describe('Session work-item admission registry', () => {
       kind: 'staged',
     });
     const claimed = take(registry, source);
-    expect(claimed.association).toEqual({
-      ...source,
+    expect(claimed.association).toMatchObject({
+      associationId: source.associationId,
+      sessionId: source.sessionId,
+      conversationId: source.conversationId,
+      turnId: source.turnId,
+      toolCallId: source.toolCallId,
       eventId: 'event-a',
       observedAt: '2026-08-28T12:00:00.000Z',
     });
@@ -222,10 +258,10 @@ describe('Session work-item admission registry', () => {
       ).toEqual({
         kind: 'staged',
       });
-      expect(registry.take(completion(source, terminal))).toEqual({
-        kind: 'refused',
-        reason,
-      });
+      const closed = registry.take(completion(source, terminal));
+      expect(closed).toMatchObject({ kind: 'closed', reason });
+      if (closed.kind !== 'closed') throw new Error('expected closure claim');
+      expect(registry.commit(closed.claim)).toEqual({ kind: 'committed' });
       expect(
         registry.stage({ candidate: source, current: () => true }),
       ).toEqual({
@@ -245,14 +281,31 @@ describe('Session work-item admission registry', () => {
       kind: 'staged',
     });
     current = false;
-    expect(registry.take(completion(source))).toEqual({
-      kind: 'refused',
+    const closed = registry.take(completion(source));
+    expect(closed).toMatchObject({
+      kind: 'closed',
       reason: 'authority-lost',
     });
+    if (closed.kind !== 'closed') throw new Error('expected closure claim');
+    expect(registry.commit(closed.claim)).toEqual({ kind: 'committed' });
     expect(registry.stage({ candidate: source, current: () => true })).toEqual({
       kind: 'refused',
       reason: 'closed',
     });
+  });
+
+  test('rolls an uncommitted failed-terminal closure back to its pending candidate', () => {
+    const registry = createSessionWorkItemAdmissionRegistry();
+    const source = candidate();
+    expect(registry.stage({ candidate: source, current: () => true })).toEqual({
+      kind: 'staged',
+    });
+    const closed = registry.take(completion(source, { status: 'error' }));
+    if (closed.kind !== 'closed') throw new Error('expected closure claim');
+    expect(registry.rollback(closed.claim)).toEqual({ kind: 'rolled-back' });
+    expect(
+      registry.take(completion(source, { status: 'cancelled' })),
+    ).toMatchObject({ kind: 'closed', reason: 'cancelled' });
   });
 
   test('expires pending candidates and bounds total pending, claims, and closed replay fences', () => {
