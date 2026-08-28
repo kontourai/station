@@ -1,16 +1,16 @@
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import {
   ArrowLeftGlyph,
   ArrowRightGlyph,
   MessageGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
-import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
-import { createPortal } from 'react-dom';
-import { useEffect, useRef } from 'react';
 import { LazyBoundary } from '../LazyBoundary';
+import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
   closeSessionInventoryOccurrence,
   openSessionInventoryOccurrence,

@@ -1923,7 +1923,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     ? {
                         sessionId: inventoryExecutionId,
                         chatStoreId: inventoryChatStoreId,
-                        projectId: inventoryProjectId,
                       }
                     : undefined,
                 // Collapsing must clear Maximized (#795) — an independent

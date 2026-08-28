@@ -169,9 +169,9 @@ describe('one-bar rule (#3309)', () => {
     const header = document.querySelector('.chat-dock__header')!;
     const left = header.querySelector('.chat-dock__title')!;
     const right = header.querySelector('.chat-dock__header-actions')!;
-    expect(
-      left.contains(await screen.findByTitle('Open Conversation')),
-    ).toBe(false);
+    expect(left.contains(await screen.findByTitle('Open Conversation'))).toBe(
+      false,
+    );
     expect(left.contains(screen.getByTestId('chat-identity'))).toBe(true);
     expect(right.contains(await screen.findByTitle('Open Conversation'))).toBe(
       true,

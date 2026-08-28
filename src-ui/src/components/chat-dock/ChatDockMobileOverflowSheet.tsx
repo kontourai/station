@@ -1,10 +1,10 @@
+import { useState } from 'react';
+import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
-import { useState } from 'react';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
-import { LazyBoundary } from '../LazyBoundary';
 
 const loadSessionInventoryFullFallback = () =>
   import('./SessionInventoryFullFallback').then((module) => ({
@@ -47,7 +47,6 @@ export function ChatDockMobileOverflowSheet({
             kind: 'whole-session' as const,
             sessionId: overflow.sessionInventory.sessionId,
           },
-          projectId: overflow.sessionInventory.projectId,
           chatStoreId: overflow.sessionInventory.chatStoreId,
           trigger: returnFocusTarget ?? null,
           forceFallback: true,

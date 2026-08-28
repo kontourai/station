@@ -43,7 +43,6 @@ export interface ChatDockMobileOverflowActions {
   sessionInventory?: {
     sessionId: string;
     chatStoreId: string;
-    projectId?: string;
   };
   /**
    * Dock-height controls. The header carries one visible expand/collapse
@@ -314,7 +313,6 @@ export function ChatDockMobileHeader({
 
       {showDrawerToggle && (
         <button
-          ref={chatActionsTriggerRef}
           type="button"
           className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
           aria-label="Toggle menu"
@@ -407,6 +405,7 @@ export function ChatDockMobileHeader({
           </span>
         </button>
         <button
+          ref={chatActionsTriggerRef}
           type="button"
           className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
           aria-haspopup="menu"
