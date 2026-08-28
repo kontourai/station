@@ -1922,7 +1922,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   activeOrchestrationSessionRead === 'present'
                     ? {
                         sessionId: inventoryExecutionId,
-                        chatStoreId: inventoryChatStoreId,
+                        chatStoreId: activeSession!.id,
                       }
                     : undefined,
                 // Collapsing must clear Maximized (#795) — an independent
