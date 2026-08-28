@@ -14,7 +14,7 @@ export const MAX_SARIF_BYTES = 50 * 1024 * 1024;
 export const MAX_RESULT_SUMMARIES = 20;
 export const MAX_RESULT_MESSAGE_LENGTH = 240;
 
-const RESULT_LEVELS = new Set(['error', 'warning', 'note']);
+const RESULT_LEVELS = new Set(['note', 'warning', 'error']);
 
 function issue(path, message) {
   return `${path}: ${message}`;
@@ -100,7 +100,10 @@ function validateResult(result, rules, path, findings, summaries) {
     return;
   }
   const rule = resultRule(result, rules, path, findings);
-  const level = result.level ?? rule?.defaultConfiguration?.level;
+  // SARIF 2.1 defines an omitted result.level as warning. Explicit none is
+  // narrower than this security policy: result.kind defaults to fail, so none
+  // alone cannot turn a finding into clean evidence.
+  const level = result.level ?? rule?.defaultConfiguration?.level ?? 'warning';
   if (!RESULT_LEVELS.has(level))
     findings.push(
       issue(path, 'must resolve severity level error, warning, or note.'),
@@ -132,6 +135,7 @@ function validateRun(run, index, findings, summaries) {
     return;
   }
   const driver = run.tool?.driver;
+  const rules = Array.isArray(driver?.rules) ? driver.rules : [];
   if (!driver || driver.name !== CODEQL_TOOL_NAME)
     findings.push(
       issue(path, `must identify tool.driver.name as ${CODEQL_TOOL_NAME}.`),
@@ -144,7 +148,7 @@ function validateRun(run, index, findings, summaries) {
       ),
     );
   else {
-    for (const [ruleIndex, rule] of driver.rules.entries()) {
+    for (const [ruleIndex, rule] of rules.entries()) {
       if (!nonEmptyString(rule?.id))
         findings.push(
           issue(
@@ -183,7 +187,7 @@ function validateRun(run, index, findings, summaries) {
   for (const [resultIndex, result] of run.results.entries())
     validateResult(
       result,
-      driver?.rules ?? [],
+      rules,
       `${path}.results[${resultIndex}]`,
       findings,
       summaries,

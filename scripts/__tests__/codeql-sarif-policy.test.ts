@@ -49,6 +49,43 @@ describe('CodeQL SARIF policy', () => {
     ).toThrow('CodeQL SARIF policy blocked 1 result(s)');
   });
 
+  test('treats the CodeQL 2.26.3 no-level result as SARIF-warning evidence, not malformed input', () => {
+    const document = parseFixture('codeql-2.26.3-no-level.sarif');
+    expect(document.runs[0].tool.driver.name).toBe(CODEQL_TOOL_NAME);
+    expect(document.runs[0].tool.driver.semanticVersion).toBe('2.26.3');
+    expect(document.runs[0].tool.driver.rules).toHaveLength(1);
+    expect(document.runs[0].results[0]).not.toHaveProperty('level');
+    expect(evaluateCodeqlSarif(document)).toEqual({
+      findings: [],
+      summaries: [
+        'js/path-injection [warning/8.1] Untrusted input reaches a filesystem path.',
+      ],
+    });
+    expect(() =>
+      runCodeqlSarifPolicy(
+        ['--input=codeql-2.26.3.sarif'],
+        readBytes(fixture('codeql-2.26.3-no-level.sarif')),
+      ),
+    ).toThrow('CodeQL SARIF policy blocked 1 result(s)');
+  });
+
+  test('rejects an explicit SARIF none level because it does not clear a default failing result', () => {
+    const document = parseFixture('codeql-2.26.3-no-level.sarif');
+    document.runs[0].results[0].level = 'none';
+    expect(evaluateCodeqlSarif(document)).toEqual({
+      findings: [
+        'runs[0].results[0]: must resolve severity level error, warning, or note.',
+      ],
+      summaries: [],
+    });
+    expect(() =>
+      runCodeqlSarifPolicy(
+        ['--input=none.sarif'],
+        readBytes(`${JSON.stringify(document)}\n`),
+      ),
+    ).toThrow('CodeQL SARIF policy failed');
+  });
+
   test('bounds the policy log summary when many findings are present', () => {
     const finding = parseFixture('pinned-codeql-finding.sarif');
     finding.runs[0].results = Array.from(
