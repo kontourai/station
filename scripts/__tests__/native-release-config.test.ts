@@ -180,4 +180,24 @@ describe('native release configuration', () => {
     });
     expect(NATIVE_UPDATER_ARTIFACT_MODE).toBe('v1Compatible');
   });
+
+  test('the pubkey path this file writes is the one the desktop Rust runtime reads (#575)', () => {
+    // `createNativeReleaseConfig` writes the signing key at
+    // `plugins.updater.pubkey`. `desktop_updater_plugin_configured` in
+    // `src-desktop/src/lib.rs` reads that same path (plus `endpoints`,
+    // supplied by a separate build-time overlay) to decide whether to
+    // register the updater plugin at all — see that function's doc comment
+    // for why an unconditional registration would crash every build without
+    // it. A rename on either side must fail one of these two assertions.
+    const config = createNativeReleaseConfig({
+      tag: 'v1.2.3',
+      updaterPublicKey: 'pin-check-key',
+    });
+    expect(config.plugins?.updater?.pubkey).toBe('pin-check-key');
+
+    const rust = readFileSync('src-desktop/src/lib.rs', 'utf8');
+    expect(rust).toContain('.get("updater")');
+    expect(rust).toContain('.get("pubkey")');
+    expect(rust).toContain('.get("endpoints")');
+  });
 });
