@@ -1,8 +1,8 @@
 import {
   SESSION_INVENTORY_GROUP_IDS,
   type SessionInventoryGroup,
-  type SessionInventoryGroupPage,
   type SessionInventoryGroupId,
+  type SessionInventoryGroupPage,
   type SessionInventoryProjection,
   type SessionInventoryRow,
   type SessionInventoryScope,

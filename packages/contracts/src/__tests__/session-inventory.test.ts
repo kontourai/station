@@ -8,13 +8,13 @@ import {
   SESSION_INVENTORY_GROUP_IDS,
   SESSION_INVENTORY_V1,
 } from '../session-inventory.js';
-import { createStationAnswerBinding } from '../task-basis.js';
 import {
   buildStationSessionInventoryMcpEnvelope,
   buildStationSessionInventoryMcpGroupPageEnvelope,
   parseStationSessionInventoryMcpEnvelope,
   parseStationSessionInventoryMcpInput,
 } from '../session-inventory-mcp.js';
+import { createStationAnswerBinding } from '../task-basis.js';
 
 function projection(): any {
   return {

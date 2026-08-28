@@ -4,8 +4,8 @@ import type { SessionInventoryProjection } from '@kontourai/station-contracts/se
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { SessionInventory } from '../SessionInventory';
-import { buildSessionInventoryViewModel } from '../session-inventory-view';
 import { renderSessionInventoryDom } from '../session-inventory-dom';
+import { buildSessionInventoryViewModel } from '../session-inventory-view';
 
 const projection: SessionInventoryProjection = {
   version: 'station.session-inventory/v1',

@@ -1,8 +1,7 @@
 import {
-  SESSION_INVENTORY_MAX_SERIALIZED_BYTES,
-  SESSION_INVENTORY_GROUP_IDS,
   parseSessionInventoryGroupPage,
   parseSessionInventoryProjection,
+  SESSION_INVENTORY_GROUP_IDS,
   type SessionInventoryGroupId,
   type SessionInventoryGroupPage,
   type SessionInventoryProjection,
