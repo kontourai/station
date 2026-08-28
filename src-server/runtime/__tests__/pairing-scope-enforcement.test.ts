@@ -1,5 +1,5 @@
 /**
- * Scoped pairing (station#1098) AC1: a read-only credential can read and
+ * Scoped pairing (archive#1098) AC1: a read-only credential can read and
  * stream state but 403s on EVERY mutation and terminal route. This sweeps
  * `PAIRING_SCOPE_ROUTE_TABLE` itself — the same table
  * `runtime-http.ts`'s middleware consults — rather than a hand-picked list
@@ -186,7 +186,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
       const { request } = createHarness();
       const response = await request(path, method, READ_ONLY_CREDENTIAL);
       expect(response.status, `${method} ${path}`).toBe(403);
-      // station#1097 review round 2: HEAD only entered this operate-tier
+      // archive#1097 review round 2: HEAD only entered this operate-tier
       // sweep once the /api/environments/ssh/sessions leaf override added
       // the table's first HEAD:orchestration:operate rule — every prior
       // operate-tier case was a POST/PUT/PATCH/DELETE, which all carry a
@@ -214,7 +214,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     }
   });
 
-  // station#1097 review round 2 (HIGH): a dedicated, literal-path exercise
+  // archive#1097 review round 2 (HIGH): a dedicated, literal-path exercise
   // of the cross-station-reads tightening — deliberately NOT via `/probe`
   // like the table-driven sweep above, so this proves the real production
   // route (no trailing segment) resolves the same way, not just its prefix.
@@ -250,7 +250,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     expect(familyRead.status).not.toBe(403);
   });
 
-  // station#4181: dedicated, literal-path exercise of the board mutation
+  // archive#4181: dedicated, literal-path exercise of the board mutation
   // tightening — same posture as the SSH sessions test above: proves the
   // real production leaves (no `/probe` synthetic suffix the table-driven
   // sweep appends) resolve to the raised `orchestration:operate` tier, not
@@ -290,7 +290,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     }
   });
 
-  // station#4075 stage 3 slice 2: dedicated, literal-path exercise of the
+  // archive#4075 stage 3 slice 2: dedicated, literal-path exercise of the
   // presence-roster endpoint — same posture as the SSH-sessions and board
   // tests above, proving the real production leaf (no `/probe` synthetic
   // suffix) resolves at the family's `orchestration:read` tier for BOTH a
@@ -404,7 +404,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
 });
 
 /**
- * station#2051: the credential requirement means a presented credential is
+ * archive#2051: the credential requirement means a presented credential is
  * checked identically whether the direct peer is loopback or
  * remote — this is the SSH-tunnel-shaped case (an SSH local forward is
  * loopback at the TCP layer), so it re-runs a representative slice of the

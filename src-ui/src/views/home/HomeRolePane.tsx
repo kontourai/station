@@ -15,7 +15,7 @@ import {
 
 /**
  * Mounts the Workspace Pane the Home role grant names, above the built-in
- * floor (station#3122 stage 3). The grant this receives is server-derived —
+ * floor (archive#3122). The grant this receives is server-derived —
  * `HomeView` mounts this component only for a `granted` status the server
  * re-checked against the live installation, reparsed fail-closed on the
  * client — so nothing browser-writable ever reaches this file as authority.

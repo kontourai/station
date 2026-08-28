@@ -61,7 +61,7 @@ describe('UsageAggregator', () => {
   });
 
   test('a stray temp file does not inflate the conversation count', async () => {
-    // station#2252 made destructive message rewrites publish via
+    // archive#2252 made destructive message rewrites publish via
     // `<conv>.ndjson.<pid>.<uuid>.tmp` in this very directory, so a crash
     // between the write and the rename leaves one behind. The count Set was
     // built from an unfiltered readdir, and `.replace('.ndjson','')` leaves
@@ -133,7 +133,7 @@ describe('UsageAggregator orchestration substrate (station#3245)', () => {
   test('an orchestration-only home no longer reports zero lifetime usage', async () => {
     // The filed defect: `fullRescan` walked `agents/*/memory/sessions` only,
     // so a home whose entire history is external-engine turns showed a
-    // Profile of zeros even after station#3243 made the per-session numbers
+    // Profile of zeros even after archive#3243 made the per-session numbers
     // real.
     const home = await newHome();
     const stats = await new UsageAggregator(
@@ -288,7 +288,7 @@ describe('UsageAggregator orchestration substrate (station#3245)', () => {
   });
 
   test('an unreported measurement contributes nothing, and the total says so', async () => {
-    // station#3201's rule inside a SUM: `undefined` is "never reported", and
+    // archive#3201's rule inside a SUM: `undefined` is "never reported", and
     // adding it as 0 would republish the fabrication that issue removed. The
     // partial sum therefore ships with its own denominator.
     const home = await newHome();

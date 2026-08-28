@@ -1,5 +1,5 @@
 /**
- * Station's own trace/debug/info/warn/error/fatal logging seam (station#1895,
+ * Station's own trace/debug/info/warn/error/fatal logging seam (archive#1895,
  * logging slice 1).
  *
  * This is the ONE file in the codebase that talks to pino directly. Every
@@ -49,7 +49,7 @@ const EMIT_LEVELS: readonly LogLevel[] = [...CONFIGURABLE_LOG_LEVELS, 'fatal'];
 
 /**
  * The full trace..fatal severity ordering, ascending — the single seam any
- * caller uses to compare `LogLevel`s (station#1896 logging slice 2: the
+ * caller uses to compare `LogLevel`s (archive#1896 logging slice 2: the
  * server-log reader's `level` query param is a MINIMUM severity floor, and
  * needs the same ordering the emit path already uses rather than a second,
  * possibly-drifting copy of `trace < debug < info < warn < error < fatal`).

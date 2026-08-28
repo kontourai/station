@@ -1,5 +1,5 @@
 /**
- * station#settings-revamp slice 3 (docs/design/settings-architecture.md's
+ * archive#settings-revamp (docs/design/settings-architecture.md's
  * "Config with no UI" list). A new leaf section, registry-driven, for the
  * Station-scope `AppConfig` fields that had zero Settings UI before this
  * slice: `defaultMaxTurns`, `defaultMaxOutputTokens`, `terminalShell`,

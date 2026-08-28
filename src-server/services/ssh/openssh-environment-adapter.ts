@@ -296,7 +296,7 @@ export class OpenSshTunnel {
   private operation: TunnelOperation | null = null;
   private startPromise: Promise<OpenSshTunnelState> | null = null;
   /**
-   * station#1133 live-verification finding (BLOCKER): the port the worker
+   * archive#1133 live-verification finding (BLOCKER): the port the worker
    * probe should check ON THE REMOTE HOST. Starts as `options.remotePort`
    * and is updated by `retarget()` — a managed launch's `-L` forward moving
    * to a new local port is only half of "point at the launched port";
@@ -367,7 +367,7 @@ export class OpenSshTunnel {
   }
 
   /**
-   * station#1133 R1/R3: runs the managed-launch bootstrap over the same
+   * archive#1133 R1/R3: runs the managed-launch bootstrap over the same
    * multiplexed control master used for the worker probe — no separate
    * authentication round trip. Only meaningful once `state.phase ===
    * 'connected'` (an initial forward already succeeded); the caller decides
@@ -401,7 +401,7 @@ export class OpenSshTunnel {
   }
 
   /**
-   * station#1133 R3: re-points the loopback forward at a different remote
+   * archive#1133 R3: re-points the loopback forward at a different remote
    * port than the tunnel was originally created with — needed when a
    * managed launch picks its own free port rather than the profile's
    * configured `remotePort`. Adds a second `-L` binding on the same control
@@ -452,7 +452,7 @@ export class OpenSshTunnel {
         }
         // The forward now reaches `remotePort`; probeWorker must ask the
         // remote script to check that same port, not the tunnel's original
-        // construction-time options.remotePort (station#1133 live-verified
+        // construction-time options.remotePort (archive#1133 live-verified
         // blocker — see the activeRemotePort field doc comment).
         this.activeRemotePort = remotePort;
         return this.state;

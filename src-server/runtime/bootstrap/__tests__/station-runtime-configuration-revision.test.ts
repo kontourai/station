@@ -883,9 +883,9 @@ describe('StationRuntime agent configuration revision', () => {
       expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledOnce();
       expect(runtime.getStableAgentConfigurationRevision()).toBe(2);
 
-      // station#983 scoped advance: a path outside `agents/`/`integrations/`
+      // archive#983 scoped advance: a path outside `agents/`/`integrations/`
       // (e.g. `config/hosts.json`) must not trigger a reload or an event —
-      // #983's scope is exactly the agent/integration events, not every
+      // archive#983's scope is exactly the agent/integration events, not every
       // watched config file (`app.json` already has its own dedicated
       // launchability-revision path exercised above). The reload+emit
       // behavior for an in-scope path is covered in its own dedicated

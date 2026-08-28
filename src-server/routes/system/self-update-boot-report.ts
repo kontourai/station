@@ -7,7 +7,7 @@ import {
 
 /**
  * The other half of `updateRestartState` in system-update-routes.ts
- * (station#1903): that write existed for years with nothing on the read
+ * (archive#1903): that write existed for years with nothing on the read
  * side, so a self-update that killed the host stayed silent until a human
  * happened to notice. Called once at boot; a source-checkout install with a
  * `failed` or long-`pending` restart record gets a warning instead of quiet

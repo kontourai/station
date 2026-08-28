@@ -37,11 +37,11 @@ export interface AgentMetadata {
   /** Owning project slug; absent = global scope (agent-engine-unification.md §3.3). */
   project?: string;
   /**
-   * station#1194 (epic #1191, slice B): carried through for the built-in
+   * archive#1194 (epic archive#1191, slice B): carried through for the built-in
    * default agent (`bootstrapRuntimeDefaultAgent`) when it's bound to an
    * external engine, so `enriched-agents.ts`'s `defaultSpec()` projection
    * classifies it exactly like every other external-engine-bound agent
-   * record (station#954's `execution.agentConnectionId` convention).
+   * record (archive#954's `execution.agentConnectionId` convention).
    */
   execution?: AgentExecutionConfig;
 }
@@ -87,7 +87,7 @@ export class UnknownEngineIdentityError extends Error {
 /**
  * A write tried to bind the reserved `station` identity to an engine.
  *
- * station#3662 delta-2 HIGH. The write boundary already strips such a binding
+ * archive#3662 delta-2 HIGH. The write boundary already strips such a binding
  * (`withoutReservedStationBinding` in `saveAgentConfigWithOwnedLock`), which
  * keeps the FILE honest — but on its own that made
  * `PUT /agents/station {"execution":{"agentConnectionId":"claude"}}` and
@@ -166,11 +166,11 @@ export const RUNTIME_DEFAULT_AGENT_KEY = 'default';
  * The engine binding the RUNTIME resolved for the reserved Station identity
  * this boot, or `undefined` when it runs on Station's own engine.
  *
- * THIS IS THE AUTHORITY, and station#3662 review HIGH-3 is what makes saying
+ * THIS IS THE AUTHORITY, and archive#3662 review HIGH-3 is what makes saying
  * so necessary. The selection a user makes lives in
  * `AppConfig.builtinAgentEngineConnectionId`, but the BINDING is resolved from
  * it per boot against live state — readiness, control-plane capability, and
- * (since station#1549) a per-connection runtime observation. That resolution
+ * (since archive#1549) a per-connection runtime observation. That resolution
  * is deliberately not persisted:
  *
  *  - `resolveBuiltinAgentEngineBinding` fails safe to Station "for THIS
@@ -179,7 +179,7 @@ export const RUNTIME_DEFAULT_AGENT_KEY = 'default';
  *    an unready engine destroy the user's choice — precisely the
  *    clobber-back that `runtime-default-agent.ts` records this in metadata to
  *    avoid;
- *  - station#1549's payoff is that the same stored choice starts resolving
+ *  - archive#1549's payoff is that the same stored choice starts resolving
  *    the moment evidence arrives, with no user action. A frozen record would
  *    defeat that.
  *  - and a derived copy in the Agent record would be a SECOND record of one
@@ -201,7 +201,7 @@ export function runtimeStationEngineExecution(
  * per-boot runtime resolution when there is one, and no binding at all
  * otherwise.
  *
- * THE ONE PROJECTION POINT (station#3662 delta H3). Round 1 applied this
+ * THE ONE PROJECTION POINT (archive#3662 delta H3). Round 1 applied this
  * overlay per reader, inside `enriched-agents.ts`; that made the runtime a
  * second authority which every current and future reader had to consult
  * correctly, and two already did not — `GET /api/agents/:slug/binding` (the
@@ -313,7 +313,7 @@ export class AgentService {
             slug: agent.id,
             // Out of the box a coding runtime presents itself the way its
             // CLI does — "Claude Code", "Codex" — not as a bare slug (owner
-            // direction on #1575). The matrix lookup is gated on the
+            // direction on archive#1575). The matrix lookup is gated on the
             // connection actually being NATIVE: an ACP/plugin connection
             // whose id merely collides with a matrix key must keep its own
             // identity, never wear the engine's brand (the matrix's own
@@ -451,7 +451,7 @@ export class AgentService {
           : (readiness?.reason ??
             (agent.slug === 'station'
               ? 'Station default Agent is not registered with the managed runtime.'
-              : // station#3742: a connection id is not a user noun, and this
+              : // archive#3742: a connection id is not a user noun, and this
                 // path has no connection record to name — only the binding it
                 // could not resolve. Say what is true instead.
                 'The engine this agent runs on is not ready yet.')),
@@ -531,8 +531,8 @@ export class AgentService {
     // `config-loader-agents.ts`'s `updateAgentConfig` deletes the key for,
     // under the per-Agent persistence lock:
     //
-    //  - `project: null` — the ownership-clearing signal (station#1004 §4);
-    //  - `execution: null` — the engine-clearing signal (station#3662 review
+    //  - `project: null` — the ownership-clearing signal (archive#1004 §4);
+    //  - `execution: null` — the engine-clearing signal (archive#3662 review
     //    HIGH-2 / delta H2). Moving an Agent from Codex to Station's own
     //    engine means it must LOSE `execution.agentConnectionId`, and an
     //    omitted key cannot say that: `undefined` means "no change"

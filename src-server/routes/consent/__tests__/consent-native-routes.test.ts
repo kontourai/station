@@ -9,7 +9,7 @@ import type { ConsentTargetSnapshot } from '../../../services/consent/consent-tr
 import { registerConsentNativeRoutes } from '../consent-native-routes.js';
 
 /**
- * station#3677 PR 3 — the native broker's server half. The threat model is
+ * archive#3677 PR 3 — the native broker's server half. The threat model is
  * the same as the listener's (same-origin plugin code must not self-approve;
  * the reviewed target must be the granted target); what changes is the
  * authority proof: the request principal's mint-time `home-possession`
@@ -35,7 +35,7 @@ const LOCAL_GRANT_MINTED: RuntimeAuthenticatedRequestPrincipal = {
 };
 
 /**
- * The discriminating principal (station#3677 PR 3): SAME possession proof,
+ * The discriminating principal (archive#3677 PR 3): SAME possession proof,
  * different custody — a UI-bootstrap mint's credential lives in host-browser
  * JS, where same-origin plugin code runs. It reads unredacted logs; it must
  * never approve.
@@ -292,7 +292,7 @@ describe('consent native broker routes (station#3677 PR 3)', () => {
   // listener state for an already-created transaction — which is what the
   // header claims. It deliberately creates through the store rather than a
   // production creator, because both creators still refuse while the
-  // listener is down (station#3731). A test that dressed this up as
+  // listener is down (archive#3731). A test that dressed this up as
   // end-to-end listener independence would be asserting a capability the
   // product does not have.
   test('the browser LISTENER being down does not refuse an already-created transaction on the native path', async () => {

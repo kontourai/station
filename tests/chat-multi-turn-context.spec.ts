@@ -16,7 +16,7 @@ import {
 } from './helpers/ollama-fixture';
 
 /**
- * station#4537 item 3: multi-turn context retention, UNCOVERED anywhere per
+ * archive#4537 item 3: multi-turn context retention, UNCOVERED anywhere per
  * the flow-coverage audit.
  *
  * Sends message 1, then message 2, through the REAL
@@ -27,13 +27,12 @@ import {
  * evidence is the captured request body, not the response text. Both turns'
  * distinct prompts and the (identical) reply render in the transcript too.
  *
- * RED BY DESIGN, proving station#4571: turn 2's captured request is missing
+ * RED BY DESIGN, proving archive#4571: turn 2's captured request is missing
  * turn 1's exchange entirely for this Station/model-engine agent. Quarantined
- * in tests/e2e-manifest.mjs (fix round HIGH-1/MED-1) so this doesn't red
- * verify:e2e:full — it re-enters a running bucket once #4571 is fixed.
+ * in tests/e2e-manifest.mjs so this doesn't red
+ * verify:e2e:full — it re-enters a running bucket once archive#4571 is fixed.
  *
- * Fix round (review MED-2, correcting 8e31a0ccd's commit-message
- * attribution): the mechanism is `conversation-lineage.ts`'s
+ * The mechanism: `conversation-lineage.ts`'s
  * `continuationLaunchContext` — it OMITS `transcriptSeed` (the prior-turn
  * text a resumed session would otherwise be re-primed with) whenever the
  * session already carries a `resumeCursor` for the SAME execution identity,
@@ -44,7 +43,7 @@ import {
  * one the cursor/history belongs to) — so VoltAgent's memory lookup for that
  * new id finds nothing, and neither mechanism (the omitted transcriptSeed,
  * nor VoltAgent's session-keyed memory) actually carries turn 1's exchange
- * into turn 2's request. station#4571 has the full trace.
+ * into turn 2's request. archive#4571 has the full trace.
  */
 
 const FIXTURE_CONNECTION_ID = 'e2e-multi-turn-context-fixture';

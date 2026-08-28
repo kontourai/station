@@ -512,7 +512,7 @@ describe('SessionModelPicker', () => {
         name: 'Remove Claude Sonnet (Bedrock · Prod) from favorites',
       }),
     ).toBeTruthy();
-    // station#settings-revamp slice 3 (#1359 convergence): model-picker
+    // archive#settings-revamp (archive#1359 convergence): model-picker
     // preferences now live in the registry-driven envelope's
     // `modelPickerPreferences` entry, not the retired
     // `station.device-settings` root.
@@ -535,7 +535,7 @@ describe('SessionModelPicker', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  // station#1806: the Thinking effort <select> and the Adaptive
+  // archive#1806: the Thinking effort <select> and the Adaptive
   // thinking/Fast mode/Auto mode checkboxes rendered as bare, unstyled
   // native controls inside an otherwise fully themed surface. The select
   // must carry the app's shared themed-select class (`editor-select`,
@@ -575,7 +575,7 @@ describe('SessionModelPicker', () => {
     }
   });
 
-  // station#1806: the selected-model check glyph used to fall into the
+  // archive#1806: the selected-model check glyph used to fall into the
   // grid's implicit placement (sharing only the model-name row), pinning it
   // to the top of the two-line name+id cell instead of centering against
   // the option's full height. It must render through a class the CSS can

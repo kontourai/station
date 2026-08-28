@@ -1,9 +1,9 @@
 /**
  * Leaf-level route discovery for the pairing-scope coverage guard
- * (station#1131). `pairing-route-scopes.test.ts`'s `scanMountedRouteBases()`
- * (station#1098 R2) proves every mount **base** in `runtime-routes.ts`
+ * (archive#1131). `pairing-route-scopes.test.ts`'s `scanMountedRouteBases()`
+ * (archive#1098 R2) proves every mount **base** in `runtime-routes.ts`
  * resolves to a scope, but a new **leaf** registered under an
- * already-covered base is invisible to it — the exact gap PR #1128 hit with
+ * already-covered base is invisible to it — the exact gap PR archive#1128 hit with
  * `GET /api/environments/ssh/sessions` (see `pairing-route-scopes.ts`'s
  * module docblock and `docs/security/remote-access-threat-model.md`'s
  * "Cross-station reads" section).
@@ -30,7 +30,7 @@
  * 4. A factory file with no wrapping function (the `models.ts` pattern —
  *    routes attached to a module-top-level `const app = new Hono()`,
  *    `export default app`) falls back to a whole-file scan.
- * 5. Composition helpers (station#1131 review round 1, HIGH): a factory
+ * 5. Composition helpers (archive#1131 review round 1, HIGH): a factory
  *    that does `const app = new Hono()` and then hands that SAME local
  *    variable to sibling `registerFooRoutes(app, deps)` /
  *    `configureFooRoutes(app, deps)` calls — `plugins.ts`'s
@@ -58,7 +58,7 @@
  * handed to a `register*Routes`/`configure*Routes` sibling), nothing else is
  * walked. In particular `configureDevicePairingHostRoutes(context.app, ...)`
  * (registering every `/api/pairing/**` leaf) is NOT walked — audited by
- * hand instead (station#1131 review round 1): every route family reached
+ * hand instead (archive#1131 review round 1): every route family reached
  * that way already carries its own hand-authored, all-methods
  * `PairingScopeRouteRule` entry (`origin: 'explicit'`, `/api/pairing:manage`
  * in `pairing-route-scopes.ts`), so any leaf under it — present or future —
@@ -81,7 +81,7 @@ export interface DiscoveredLeafRoute {
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
 
 /**
- * `app.all(...)` (station#1131 review round 1: `plugin-public-routes.ts`'s
+ * `app.all(...)` (archive#1131 review round 1: `plugin-public-routes.ts`'s
  * `/:name/*` plugin-server forwarding catch-all) matches every method, but
  * this scan's declaration schema is per-CONCRETE-method (same as
  * `PAIRING_SCOPE_FAMILY_INHERITED_LEAVES` and the real runtime request path
@@ -204,7 +204,7 @@ function escapeRegExp(value: string): string {
 /**
  * True when `source` binds `varName` to a fresh `new Hono(...)` instance
  * (`const app = new Hono()`, optionally with generic type args). This is
- * the narrow signal the composition-helper pattern (station#1131 review
+ * the narrow signal the composition-helper pattern (archive#1131 review
  * round 1) keys on: `varName` being passed to a sibling
  * `register*Routes`/`configure*Routes` call only counts as "attach routes
  * to the app we're scanning" when it's genuinely a locally-owned Hono app,
@@ -534,7 +534,7 @@ function scanBody(
     );
   }
 
-  // Composition-helper pattern (station#1131 review round 1, HIGH): only
+  // Composition-helper pattern (archive#1131 review round 1, HIGH): only
   // fires for a bare (dot-free) appVar that this exact file genuinely binds
   // via `const <appVar> = new Hono(...)` — see the module docblock's point 5
   // for exactly why `context.app` (the top-level scan, and

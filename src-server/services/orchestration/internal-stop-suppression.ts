@@ -15,18 +15,18 @@ export interface InternalStopSuppressionDeps {
 }
 
 /**
- * Internal-stop push suppression (epic #4024 slice 4, #4144): the C5 cluster
+ * Internal-stop push suppression (epic archive#4024, archive#4144): the C5 cluster
  * from the seam map — the cleanest ownership island in the service (one Set,
  * four methods, one external consumer via the service's
  * `consumeInternalStopSuppression` forwarder). The field's full rationale —
- * station#3525 and both fix rounds — moves with it, verbatim, below.
+ * archive#3525 and both fix rounds — moves with it, verbatim, below.
  */
 export class InternalStopSuppression {
   /**
-   * station#3525: turn ids whose owning session is being stopped by internal
+   * archive#3525: turn ids whose owning session is being stopped by internal
    * Station machinery (a credential-profile recovery restart, or connection-
    * smoke cleanup) rather than a user action or a genuine unattended
-   * mid-turn death. `stopSession` on some adapters (codex, station#3473)
+   * mid-turn death. `stopSession` on some adapters (codex, archive#3473)
    * synthesizes a turn-scoped `runtime.error` for a still-open turn before
    * `session.exited` — correct when a user's session actually died, but
    * wrong here IF the internal stop's own follow-through actually happens:
@@ -54,7 +54,7 @@ export class InternalStopSuppression {
    * the restart rejects, the orphaned `runtime.error` for the stopped turn
    * lands durably, and — before this fix — the push that SHOULD fire
    * (nothing is retrying any more) was silently swallowed instead, trading
-   * #3525's false positive for a false negative on the same surface #3525
+   * archive#3525's false positive for a false negative on the same surface archive#3525
    * itself calls "the one surface that reaches a user who is deliberately
    * not looking." `arm()` returns the armed turn id (or
    * `undefined`) so every caller can `rescind()` it
@@ -78,7 +78,7 @@ export class InternalStopSuppression {
    * lifecycle-method row supersedes the open turn's own `turn.started`, that
    * fold silently returns the CLOSED turn 1 instead of the genuinely open
    * one. `listEvents` fixed the correctness bug but is the wrong instrument:
-   * station#3559 fix round correction — the cost `listEventsByMethods`
+   * archive#3559 fix round correction — the cost `listEventsByMethods`
    * actually avoids here is fewer SQL rows plus skipping `JSON.parse` of
    * every excluded row's payload, NOT attachment-blob hydration:
    * `mapEventRow`'s `hydrateAttachments` fires only on `turn.started`, which
@@ -124,7 +124,7 @@ export class InternalStopSuppression {
   }
 
   /**
-   * station#3525: arms turn-id-scoped push suppression for a stop this
+   * archive#3525: arms turn-id-scoped push suppression for a stop this
    * process is about to initiate as internal machinery — call immediately
    * before invoking whatever mechanism actually tears the session down
    * (`adapter.stopSession`, or the `stopSession` command dispatch). A no-op
@@ -135,7 +135,7 @@ export class InternalStopSuppression {
    * rescind it explicitly — see `rescind` and its call sites for why that
    * matters (fix round, FIX 1).
    *
-   * station#3525 fix round FIX 2: reads via
+   * archive#3525 fix round FIX 2: reads via
    * `deps.listActiveTurnFoldEventPayloads` — `listEventsByMethods` narrowed
    * to `ACTIVE_TURN_FOLD_METHODS`, exactly the canonical terminal/lifecycle
    * methods `nextActiveTurnId`'s fold actually inspects — not the unbounded
@@ -145,7 +145,7 @@ export class InternalStopSuppression {
    * the full log (pinned by a differential test against all 27 canonical
    * methods), at a fraction of the read cost — fewer rows returned by the
    * SQL query plus skipping `JSON.parse` of every excluded row's payload
-   * (station#3559 fix round: NOT attachment-blob hydration, which fires only
+   * (archive#3559 fix round: NOT attachment-blob hydration, which fires only
    * on `turn.started` and is retained by this list either way, so is paid
    * identically by both variants — measured ~8x on a 12k-row synthetic
    * thread with no attachments, an upper bound that narrows toward 1x as

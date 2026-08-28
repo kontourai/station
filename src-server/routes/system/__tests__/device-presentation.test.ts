@@ -9,7 +9,7 @@ import {
 import { resolveDevicePresentation } from '../device-presentation.js';
 
 /**
- * The derivation, per locality (station#3843 §1 proof).
+ * The derivation, per locality (archive#3843 §1 proof).
  *
  * Every case goes through `bindRuntimeLocalOperator` — the auth boundary's
  * ONE write — rather than reaching into the projection with a hand-made

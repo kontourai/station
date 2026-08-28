@@ -48,7 +48,7 @@ interface Session {
   id: string;
   agentSlug: string;
   /**
-   * station#1424 review fix (round 3 NEW-6): the session's own threaded
+   * archive#1424: the session's own threaded
    * agent name (`ChatSession.agentName`, already carries a slug/'Unknown
    * Agent' attribution chain from `deriveSession`) — the attribution strip's
    * fallback when `agents.find` misses (e.g. the agent was deleted after
@@ -67,7 +67,7 @@ interface Session {
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 
-// Hoisted (station#1424 review fix N4) so `agent || FALLBACK_AGENT` doesn't
+// Hoisted (archive#1424 fix N4) so `agent || FALLBACK_AGENT` doesn't
 // allocate a fresh object — and therefore a fresh `<AgentIcon>` element
 // identity — on every render. Only feeds the avatar glyph (which needs some
 // name for its initials source); the attribution strip below never uses
@@ -93,7 +93,7 @@ interface MessageBubbleProps {
   ) => void;
   anchorKey?: string;
   /**
-   * "via <Station>" row attribution (station#2585), resolved by callers from
+   * "via <Station>" row attribution (archive#2585), resolved by callers from
    * the active saved Station. Omitted call sites (e.g. a narrower test render)
    * simply render no Station chip.
    */
@@ -223,7 +223,7 @@ function MessageBubbleComponent({
           // real `agentName` at turn time, and it names exactly this slug
           // whenever the row's agent IS the session's agent. Reaching for
           // the slug-derived placeholder first discards a human-readable
-          // name in favour of an identifier (station#1424 NEW-6).
+          // name in favour of an identifier (archive#1424).
           name:
             rowAgentSlug === activeSession.agentSlug && activeSession.agentName
               ? activeSession.agentName
@@ -235,12 +235,12 @@ function MessageBubbleComponent({
   ) : (
     <UserIcon size={20} />
   );
-  // station#1424 review fix (M1), wired to its authority in station#1434:
+  // archive#1424 fix, wired to its authority in archive#1434:
   // `msg` is a COMPLETED, persisted turn, so its engine chip reads only the
   // turn's own provenance envelope (see `resolveTurnEngine`'s doc comment),
   // never `agent`'s current live binding.
   const engine = isAssistant ? resolveTurnEngine(msg) : null;
-  // station#1434: this component composes the row's identity surfaces, so it
+  // archive#1434: this component composes the row's identity surfaces, so it
   // is the one place that decides where each fact is stated — the strip
   // states the engine, the badge row states the model(s), and the card's
   // collapsed headline stands down for whatever they already said.
@@ -253,7 +253,7 @@ function MessageBubbleComponent({
   // `modelOptions` (effort, thinking, …) describe Station's REQUEST, so they
   // ride the claim that names the requested model. When the envelope observed
   // only the model the engine reported back, they ride that claim instead —
-  // never silently dropped (the pre-#1434 badge always carried them), and
+  // never silently dropped (the pre-archive#1434 badge always carried them), and
   // always prefixed so they cannot read as something the engine reported.
   const requestOptionsSlot =
     modelIdentity.source === 'envelope'
@@ -355,7 +355,7 @@ function MessageBubbleComponent({
             </div>
           )}
 
-        {/* station#1434: with an envelope on the row, model identity comes
+        {/* archive#1434: with an envelope on the row, model identity comes
             from it and only from it, and each slot it observed is named. */}
         {isAssistant &&
           modelIdentity.source === 'envelope' &&
@@ -476,11 +476,11 @@ function MessageBubbleComponent({
           </details>
         )}
 
-        {/* station#1410: the answer's provenance, rendered only for a turn
+        {/* archive#1410: the answer's provenance, rendered only for a turn
             Station actually observed through the canonical event store.
             A row with no envelope claims nothing rather than showing an
             empty card. */}
-        {/* station#2652 redesign: one quiet footer row holds every per-turn
+        {/* archive#2652 redesign: one quiet footer row holds every per-turn
             meta affordance — the provenance disclosure leads (its collapsed
             line IS the takeaway) and the share control sits beside it, both
             text-weight and muted so the answer above stays the loudest thing
@@ -500,7 +500,7 @@ function MessageBubbleComponent({
               />
             )}
             <div className="turn-footer__actions">
-              {/* station#1423: sharing an answer is sharing it WITH its
+              {/* archive#1423: sharing an answer is sharing it WITH its
                   receipts. Keep it in the one action row with Task, copy, and
                   feedback controls so narrow docks wrap deliberately instead
                   of centering a single long control on a second line. */}

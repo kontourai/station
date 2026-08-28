@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1290 — every server-scoped React Query cache must be marked
+ * archive#1290 — every server-scoped React Query cache must be marked
  * stale and refetched exactly once per genuine active-connection switch,
  * WITHOUT evicting cached data or disturbing the persisted (IndexedDB)
- * whitelist snapshot the way `queryClient.clear()` would (review round 1
+ * whitelist snapshot the way `queryClient.clear` would ( 1
  * finding — see the hook's own doc comment for the full mechanism). Two
  * false-positive sources must also be closed: the native two-stage boot
  * transition (no active connection -> one), and any change observed while
@@ -91,7 +91,7 @@ describe('useInvalidateCachesOnConnectionSwitch', () => {
     // once the native connection store resolves the paired profile
     // post-mount, that connection becomes active and apiBase flips to the
     // real URL — all in one settling transition, never a user-initiated
-    // switch. (Prior to station#1800, a supervising desktop's synthetic
+    // switch. (Prior to archive#1800, a supervising desktop's synthetic
     // `managed-loopback` row was one way this transition happened; removing
     // that injection did not change this hook's contract, which only cares
     // about hasActiveConnection flipping alongside apiBase.)
@@ -287,8 +287,8 @@ describe('useInvalidateCachesOnConnectionSwitch', () => {
     });
     await handle.restored;
 
-    // Whitelisted key (station#1223's PERSISTED_QUERY_KEY_PREFIXES) — this is
-    // exactly the durable snapshot a `clear()` here would have overwritten
+    // Whitelisted key (archive#1223's PERSISTED_QUERY_KEY_PREFIXES) — this is
+    // exactly the durable snapshot a `clear` here would have overwritten
     // with an empty one, per the finding.
     queryClient.setQueryData(['agents'], [{ slug: 'writer' }]);
     await waitFor(() => expect(data.size).toBeGreaterThan(0));
@@ -313,9 +313,9 @@ describe('useInvalidateCachesOnConnectionSwitch', () => {
     });
     rerender({ apiBase: 'http://server-b:3141', hasActiveConnection: true });
 
-    // invalidateQueries() emits an 'updated' event (never 'removed'), so the
+    // invalidateQueries emits an 'updated' event (never 'removed'), so the
     // persister's next throttled re-dehydrate still finds — and re-persists
-    // — this query. Poll briefly for that re-dehydrate to actually run.
+    // this query. Poll briefly for that re-dehydrate to actually run.
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(queryClient.getQueryData(['agents'])).toEqual([{ slug: 'writer' }]);

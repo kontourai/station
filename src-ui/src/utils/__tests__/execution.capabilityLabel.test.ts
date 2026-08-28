@@ -9,8 +9,8 @@ import { capabilityLabel } from '../execution';
  * default never fires — and a non-string React child throws "Objects are not
  * valid as a React child", crashing the view.
  *
- * Same class as `describePermission`; found by the delta review of
- * station#4275's fix, which asked what other lookup tables are keyed by
+ * Same class as `describePermission`; found by the of
+ * archive#4275's fix, which asked what other lookup tables are keyed by
  * manifest-supplied strings.
  */
 describe('capabilityLabel fails safe on inherited keys', () => {

@@ -10,16 +10,16 @@ import {
  * The gates on `/agents/new` and the agent editor's own chrome, driven against
  * the REAL API rather than mocked routes.
  *
- * Every defect covered here survived a green mocked suite:
+ * Every defect covered here is invisible to a mocked suite:
  *
- *  - station#3743 — the §3.3 model picker listed a connection as Ready while
+ *  - archive#3743 — the §3.3 model picker listed a connection as Ready while
  *    Create Agent stayed disabled and nothing said why, because the gate tested
  *    an id captured into form state when the starting point was pressed and the
  *    picker read the live list. It is state-dependent, so the reproduction here
  *    delays `GET /api/connections/models` past that click.
- *  - station#3741 — Create refused "System prompt is required" for a field
+ *  - archive#3741 — Create refused "System prompt is required" for a field
  *    carrying no required marker.
- *  - station#3742 — the readiness sentence named a connection id.
+ *  - archive#3742 — the readiness sentence named a connection id.
  *
  * Deliberately narrow. `agents-new-model-turn` owns "Create waits on a ready
  * model connection and offers the repair inline", `agents-editor-roundtrip`
@@ -239,8 +239,8 @@ test.describe('agent editor gates', () => {
       // yet, and for that window the rail answers from a different readiness
       // source — every engine reads "not ready yet" and this agent reads
       // Ready. Reading the rail's text before it settles asserted against the
-      // warmup state (caught by running this file first against a
-      // just-started instance).
+      // warmup state — observable when this file runs first against a
+      // just-started instance.
       await expect(
         page
           .getByText(/the engine this agent runs on is no longer connected/i)

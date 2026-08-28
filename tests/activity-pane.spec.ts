@@ -1,5 +1,5 @@
 /**
- * E2E: Activity as a Workspace Pane (epic station#4142 M3, station#3193).
+ * E2E: Activity as a Workspace Pane (epic archive#4142 M3, archive#3193).
  *
  * `/activity` is the STANDALONE PLACEMENT of the Activity pane — the sessions
  * surface reached through the pane path, which is what puts a real

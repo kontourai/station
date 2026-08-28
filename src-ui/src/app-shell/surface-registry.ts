@@ -43,7 +43,7 @@ export type SurfaceIconId =
   | 'settings';
 
 /**
- * station#3313: gates the Developer surfaces' sidebar/palette advertisement.
+ * archive#3313: gates the Developer surfaces' sidebar/palette advertisement.
  * Unlike the other `previewFlag` values (server feature-preview ids), this
  * flag is derived from the device setting `developerToolsEnabled` — see
  * `useSurfaceVisibilityFlags`, which composes both sources into the one
@@ -369,7 +369,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     view: { type: 'schedule' },
   },
   {
-    // station#3313 (Settings IA, option A): Feature Previews is a Settings
+    // archive#3313 (Settings IA, option A): Feature Previews is a Settings
     // section now, not a standalone surface. The old /feature-previews route
     // redirects in routing.ts (getLegacyPathRedirect); the palette entry
     // deep-links into the Settings section directly.
@@ -398,7 +398,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     managementViewTypes: ['activity'],
   },
   {
-    // station#3313: settings-gated ("Enable developer tools", a device
+    // archive#3313: settings-gated ("Enable developer tools", a device
     // setting). The flag only gates sidebar/palette advertisement — the
     // /developer routes stay resolvable as deep links either way.
     id: 'developer',
@@ -415,7 +415,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
   },
   {
     // Monitoring is the Developer surface's telemetry tab — it advertises
-    // and hides with the same flag (station#3313).
+    // and hides with the same flag (archive#3313).
     id: 'monitoring',
     route: '/developer/telemetry',
     label: () => 'Monitoring',
@@ -425,7 +425,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     palette: { order: 90 },
   },
   {
-    // station#3313 (Settings IA, option A): Settings takes the System
+    // archive#3313 (Settings IA, option A): Settings takes the System
     // sidebar slot Feature Previews and always-on Developer used to occupy.
     id: 'settings',
     route: '/settings',

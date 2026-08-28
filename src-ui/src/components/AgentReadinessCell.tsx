@@ -12,7 +12,7 @@ import './AgentReadinessCell.css';
  * SAME row: the same state word, the same tone, the same single fixing verb.
  * They used to render two — the list a `StatusBadge` with its own label
  * mapping, the picker a warning chip with a `resolveNewChatAgentRemedy` label
- * — over the same `agentRunnability` answer, which is precisely how two
+ * over the same `agentRunnability` answer, which is precisely how two
  * surfaces one click apart end up disagreeing about the same agent. There is
  * one presentation of that answer now, and both surfaces mount it.
  *
@@ -80,9 +80,9 @@ export function agentReadinessState(agent: ReadinessAgent): {
 
 /**
  * The COMPACT form of `agentReadinessState`, for a context that cannot host
- * a full server sentence inline (station#4521: the agent editor's page
+ * a full server sentence inline (archive#4521: the agent editor's page
  * header, beside the title) but still must not read as merely informational
- * — dropping the caution chip entirely there once made an unrunnable agent
+ * dropping the caution chip entirely there once made an unrunnable agent
  * look no different from a ready one. This shortens the label to chip-native
  * vocabulary while KEEPING the tone, so a caution row still reads caution at
  * a glance; the full sentence stays available where there is room for one
@@ -145,7 +145,7 @@ export function AgentReadinessCell({
   /** Names the action for assistive tech when several rows are on screen. */
   agentName?: string;
   /**
-   * Which machine is reading the row (#3843 T2). "Set up" sends you to
+   * Which machine is reading the row (archive#3843). "Set up" sends you to
    * Connections, which a paired device can browse — so this row keeps its ONE
    * verb (`tests/agents-readiness-board.spec.ts`) and the engine's machine is
    * named in the action's accessible name instead. Adding a second control,
@@ -154,7 +154,7 @@ export function AgentReadinessCell({
   devicePresentation?: DevicePresentation | undefined;
   /**
    * A host that knows something the server's reason does not may pick a
-   * different verb from the SAME three (#3027 M1: an engine whose connection
+   * different verb from the SAME three (archive#3027: an engine whose connection
    * is broken cannot be Enabled into working — the connection is what needs
    * setting up). It may not invent a fourth.
    */
@@ -168,7 +168,7 @@ export function AgentReadinessCell({
   /**
    * Shorten the status badge to chip-native vocabulary (`agentReadinessCompactState`)
    * rather than the server's full reason sentence — for a context with no
-   * room for one (station#4521: the editor page header, beside the title).
+   * room for one (archive#4521: the editor page header, beside the title).
    * The full sentence stays available wherever this is NOT set (the list
    * row's action name, and any banner rendering the reason directly).
    */

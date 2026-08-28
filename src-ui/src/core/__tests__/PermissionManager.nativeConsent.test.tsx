@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 /**
- * station#3677 PR 3 — the trusted-approval flow on a native-broker host.
+ * archive#3677 — the trusted-approval flow on a native-broker host.
  * The claim under test: when the host reports the native consent broker,
  * `requestTrustedApproval` opens NO popup and resolves from the broker's
  * server-settled status; refusals and denials both resolve to "not granted".

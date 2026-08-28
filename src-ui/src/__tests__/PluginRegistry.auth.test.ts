@@ -31,7 +31,7 @@ describe('PluginRegistry remote authentication', () => {
     // shape: the bundle URL is not admitted by `script-src 'self'`, so its
     // bytes are still fetched and executed under the shell nonce. The nonce
     // now comes only from the marker element Tauri rewrites — a page global
-    // claiming to hold it is ignored (station#4287).
+    // claiming to hold it is ignored (archive#4287).
     (window as any).__STATION_CSP_NONCE__ = 'a-global-any-plugin-could-read';
     const marker = document.createElement('script');
     marker.nonce = 'fixture-csp-nonce';

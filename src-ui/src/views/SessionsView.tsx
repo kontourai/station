@@ -66,7 +66,7 @@ import './page-layout.css';
 /** Live-refresh cadence for the all-sessions list (the SSE feed is per-session). */
 const SESSION_LIST_REFRESH_MS = 5000;
 
-// Keep the #4072 observation on the same lazy-boundary rail as Home. The
+// Keep the archive#4072 observation on the same lazy-boundary rail as Home. The
 // renderer, its relative-time wording, and the watchdog-owned silence
 // derivation remain in ProgressSilenceObservation.
 const loadProgressSilenceObservation = () =>
@@ -84,7 +84,7 @@ function isReadOnlyAttachedSession(
  * id it is built from), its project heading (either spelling), its working
  * directory and its agent — plus `threadId`, which is not printed as a name
  * any more but stays searchable because pasting an identifier is a real way
- * to find one session (station#3139).
+ * to find one session (archive#3139).
  */
 function searchableSessionFields(
   session: OrchestrationSessionSummary,
@@ -111,10 +111,10 @@ function searchableSessionFields(
  *   state, because "Recently finished" does not say Completed from Failed.
  *   It comes from `sessionStatusWord`, the same fold the lane heading is
  *   built from, so the finer word can never contradict the coarser one
- *   (station#3227 A1: this row said *Running* under "Recently finished");
+ *   (archive#3227 A1: this row said *Running* under "Recently finished");
  * - a relative time, appended only when there is a parseable stamp.
  *
- * NO SIZE SIGNAL HERE, deliberately (station#3027). The ticket asked for an
+ * NO SIZE SIGNAL HERE, deliberately (archive#3027). The ticket asked for an
  * at-a-glance "what does this chat contain" clue and the payload audit found
  * exactly one candidate: `eventCount`. It is honest as a number and wrong as
  * that clue — an event is not a message (one streaming turn emits hundreds of
@@ -215,7 +215,7 @@ function SessionDetail({
     capabilityRecoveryExhausted,
     retryCapabilityRecovery,
   } = useSessionEventStream(apiBase, session.threadId);
-  // station#3386 review (MEDIUM): the same bounded read feeds this surface and
+  // archive#3386: the same bounded read feeds this surface and
   // the chat dock. The dock disclosed what its budget withheld and this one
   // rendered the identical amputated turn in silence, because both readers in
   // `useSessionEventStream` unwrapped `item.event` and dropped the envelope.
@@ -247,7 +247,7 @@ function SessionDetail({
       {elidedHistoryNotice}
       {error && !upgradeRequired && (
         <p role="alert">
-          {/* station#3378: the two outcomes read identically before this —
+          {/* archive#3378: the two outcomes read identically before this —
               a history read that is coming back and one that has stopped
               both printed the raw cause and nothing else. */}
           {historyRetrying
@@ -390,7 +390,7 @@ export function SessionsView({
   const selectWithIntent = useCallback(
     (threadId: string | null) => {
       selectionIntentRef.current += 1;
-      // Review H1: a user-initiated selection never carries an evidence
+      // a user-initiated selection never carries an evidence
       // reveal — and a still-standing reveal would RE-FIRE on the detail's
       // next mount, because the once-only consumption record lives in the
       // consumer (a ref that dies at unmount) while the token lives here.
@@ -432,7 +432,7 @@ export function SessionsView({
       routedFocusRef.current = focusHint;
       if (!sessionId) {
         pendingRouteSelectionRef.current = null;
-        // Review H1: a route without a session is never an evidence arm —
+        // a route without a session is never an evidence arm —
         // clear any standing reveal so it cannot re-fire on a later mount.
         setEvidenceReveal(null);
         setSelection(null);
@@ -513,12 +513,12 @@ export function SessionsView({
   }, []);
 
   // The project filter and the free-text search COMPOSE: a session must pass
-  // both. Search is unchanged from station#3139 — it matched
+  // both. Search is unchanged from archive#3139 — it matched
   // threadId/provider/projectSlug only, so the only reliable way to find a
   // session was to paste its hash back in; every field it reads now is one the
   // list or its detail actually prints, with `threadId` retained because
   // pasting an identifier is a legitimate power path.
-  // M3 (delta review round 3): the CURRENT project filter's collection with
+  // the CURRENT project filter's collection with
   // no search query applied — so a project pill that itself has zero
   // sessions reads as genuinely empty, never as "your search matched
   // nothing" the moment a stale query also happens to be typed.
@@ -538,12 +538,12 @@ export function SessionsView({
   }, [projectFiltered, search]);
 
   /**
-   * station#3027: the list groups by STATE, not by project. The server returns
-   * `createdAt` ASCENDING, so #3139's newest-first requirement is still
+   * archive#3027: the list groups by STATE, not by project. The server returns
+   * `createdAt` ASCENDING, so archive#3139's newest-first requirement is still
    * satisfied view-locally — `partitionSessionLanes` sorts every lane by the
    * same recency fold — and each lane emits exactly one heading because the
    * lanes are contiguous and their headings unique (the run-length-encoded
-   * heading bug #3139 fixed cannot recur). The project moved onto the row as a
+   * heading bug archive#3139 fixed cannot recur). The project moved onto the row as a
    * pill, which is also the filter control.
    */
   const lanes = useMemo(
@@ -623,7 +623,7 @@ export function SessionsView({
         // The affordance appears only when both halves of its promise hold:
         // the session genuinely ENDED — the canonical lifecycle fold
         // (`orchestrationLifecycleLabel`) through the ONE terminal predicate
-        // (`isTerminalLifecycle`, station#3227 A6), never a private
+        // (`isTerminalLifecycle`, archive#3227 A6), never a private
         // re-derivation — and its detail is the mutable one that actually
         // renders the receipts/diagnostics region. A read-only attached
         // transcript has no such region, and `revealHomeRegion`'s rule
@@ -637,7 +637,7 @@ export function SessionsView({
           subtitle: group
             ? sessionMemberStatusLine(s, agents, now)
             : sessionMetaLine(s, now),
-          // Delta-review D2: EVERY row in the lane carries the lane section —
+          // EVERY row in the lane carries the lane section —
           // the layout emits a heading only when section CHANGES between
           // neighbors, so a member with undefined reset the comparison and a
           // following row re-emitted a duplicate lane heading.
@@ -653,7 +653,7 @@ export function SessionsView({
           // silently narrower than its neighbours. Interactive controls live
           // HERE, not in the row button — `trailing` is the slot
           // `SplitPaneLayout` renders as a sibling precisely because a button
-          // may not contain interactive content (station#3027).
+          // may not contain interactive content (archive#3027).
           trailing:
             showEvidence || projectLabel ? (
               <>
@@ -694,11 +694,11 @@ export function SessionsView({
     selectTask: (threadId: string) => void,
     trigger: HTMLButtonElement,
   ) => {
-    // Found by station#1245's sweep, not listed on the issue. The trigger is a
+    // Found by archive#1245's sweep, not listed on the issue. The trigger is a
     // per-row button in the sessions list, and delegating invalidates that list
-    // — so the row that opened the launcher is exactly the kind of node the
-    // launcher's own action removes (#1126). The old restore was
-    // `requestAnimationFrame(() => delegationTriggerRef.current?.focus())`,
+    // so the row that opened the launcher is exactly the kind of node the
+    // launcher's own action removes (archive#1126). The old restore was
+    // `requestAnimationFrame( => delegationTriggerRef.current?.focus)`,
     // with no guard at all. Capture the whole ancestor chain while it is still
     // attached so the fallback has something to walk.
     delegationReturnFocusRef.current = captureReturnFocus(trigger);
@@ -763,7 +763,7 @@ export function SessionsView({
             ) : null}
           </>
         }
-        /* station#3027: the delegation card is "start something new", not a
+        /* archive#3027: the delegation card is "start something new", not a
            session, so it sits BELOW the list rather than on top of it — and
            the "Needs you" lane now shows every waiting delegated session,
            which is what the card's single `tasks[0]` slot could never do. */

@@ -77,7 +77,7 @@ export function resolveCodexExecutionKnobs(
  * Reverse mapping used only to tell the client which Station-level
  * `ApprovalMode` a resolved knob pair corresponds to, so durable events
  * (`session.configured`, `turn.started`) can carry the actually-applied
- * `approvalMode` alongside the raw Codex knobs (#727 review round 3, item
+ * `approvalMode` alongside the raw Codex knobs (archive#727 review round 3, item
  * 1). Every pair `CODEX_APPROVAL_MODE_MAP` and `CODEX_DEFAULT_APPROVAL_KNOBS`
  * produce is unique, so this is a total, lossless inverse of
  * `mapApprovalModeToCodex` for every knob pair Station itself ever sends.

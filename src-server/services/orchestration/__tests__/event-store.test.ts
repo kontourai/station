@@ -88,7 +88,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   knowledgeIndexRebuildDuration: { record: vi.fn() },
 }));
 
-// #2895: a STATION_HOME can be open by more than one runtime (a desktop
+// archive#2895: a STATION_HOME can be open by more than one runtime (a desktop
 // bundle and a managed service share one). In the default `delete` journal
 // mode the constructor's migration died with a bare `database is locked` when
 // another writer held the file, taking the whole boot with it.
@@ -145,7 +145,7 @@ describe('EventStore concurrent-home boot', () => {
     }
   });
 
-  // station#3321: the knowledge-index provider opens the same-class
+  // archive#3321: the knowledge-index provider opens the same-class
   // shared-home SQLite file and immediately writes. The test lives in this
   // file (not the provider's own suite) because it needs the process-heavy
   // manifest classification this file already carries for its lock-holder
@@ -176,7 +176,7 @@ describe('EventStore concurrent-home boot', () => {
     const provider = new SqliteVecIndexProvider({ dbPath: databasePath });
     try {
       // search() opens the connection and executes the meta-table CREATE —
-      // the exact write that died instantly on SQLITE_BUSY before #3321.
+      // the exact write that died instantly on SQLITE_BUSY before archive#3321.
       await expect(provider.search([0.1, 0.2], { topK: 1 })).resolves.toEqual(
         [],
       );
@@ -195,7 +195,7 @@ describe('EventStore concurrent-home boot', () => {
     }
   });
 
-  // station#3304 residual gap 1: the standalone boot migration opened the
+  // archive#3304 residual gap 1: the standalone boot migration opened the
   // database with no timeout at all, so a second instance booting while the
   // first held a write lock died instantly on SQLITE_BUSY.
   test('boot migration waits through a peer writer instead of dying on SQLITE_BUSY', async () => {
@@ -246,7 +246,7 @@ describe('EventStore concurrent-home boot', () => {
     );
   });
 
-  // The other way a concurrent first boot kills a constructor (station#3145
+  // The other way a concurrent first boot kills a constructor (archive#3145
   // class, distinct root cause): the one-time `event-facts-v3` backfill reads
   // its completion marker without holding a lock, so two runtimes can both
   // decide the work is theirs. `BEGIN IMMEDIATE` serializes them, and the
@@ -502,7 +502,7 @@ describe('EventStore', () => {
   });
 
   /**
-   * station#4075 stage 2: append-time ownership immutability guard.
+   * archive#4075 stage 2: append-time ownership immutability guard.
    * `appendEvent`/`appendEventIfAbsent` were bare INSERTs before this stage
    * — the only thing preventing a rewritten owner was command-side gating,
    * which a store-level writer (recovery, replay, a future internal caller)
@@ -634,7 +634,7 @@ describe('EventStore', () => {
     });
 
     /**
-     * station#4075 stage 2 review round 1 (F3, regression-test gap): the
+     * archive#4075 stage 2 review round 1 (F3, regression-test gap): the
      * reviewer traced no LIVE code path that re-derives or rewrites an
      * existing owner on a legitimate re-append, but asked for it pinned
      * explicitly rather than left to the guard's own docblock claim. A
@@ -643,7 +643,7 @@ describe('EventStore', () => {
      * PrincipalRef id — must keep accepting every legitimate re-append
      * shape: a reconnect's `session.configured` carrying no `userId` at
      * all, a recovery replay's exact re-append of the SAME owner value,
-     * and an unrelated `session.state-changed` (the #4080 restart-recovery
+     * and an unrelated `session.state-changed` (the archive#4080 restart-recovery
      * banner's event, a method this guard never inspects at all).
      */
     describe('legitimate re-appends against a PRE-STAGE-2 (old-format) owner never trip the guard', () => {
@@ -730,7 +730,7 @@ describe('EventStore', () => {
   });
 
   /**
-   * station#3433. `orchestrationEventsPersisted`/`orchestrationEventPersistDuration`
+   * archive#3433. `orchestrationEventsPersisted`/`orchestrationEventPersistDuration`
    * used to be recorded inside `appendEvent`'s savepoint try, whose catch runs
    * `ROLLBACK TO SAVEPOINT ...; RELEASE SAVEPOINT ...`. A throwing instrument
    * was caught by that same catch, which then tried to roll back a savepoint
@@ -1595,7 +1595,7 @@ describe('EventStore', () => {
     });
   });
 
-  // station#3442 review HIGH-1. #3442 made an engine-reported turn failure
+  // archive#3442 review HIGH-1. archive#3442 made an engine-reported turn failure
   // publish `runtime.error` beside the terminal `turn.completed` so the fold
   // records `failed`. This fact set retains only ONE lifecycle event, and
   // every adapter publishes `session.state-changed -> idle` right after
@@ -1654,7 +1654,7 @@ describe('EventStore', () => {
       prompt: 'go',
     });
     session = { ...session, status: 'running' };
-    // The #3442 emission shape: the terminal turn event, then the failure.
+    // The archive#3442 emission shape: the terminal turn event, then the failure.
     ingest({
       ...base,
       eventId: 'retry-turn-1-completed',
@@ -1731,7 +1731,7 @@ describe('EventStore', () => {
 
   // The other direction: an error naming the CURRENT turn is the session's
   // present state and must survive, or the scoping above would simply have
-  // deleted #3442's fix.
+  // deleted archive#3442's fix.
   test('retains a runtime.error that names the current turn', () => {
     const threadId = 'failed-current-turn';
     store.appendEvent({
@@ -1851,14 +1851,14 @@ describe('EventStore', () => {
     ).toContain('steer-turn-1-error');
   });
 
-  // station#3524: the bounded fact set must retain a SECOND-OR-LATER turn's
+  // archive#3524: the bounded fact set must retain a SECOND-OR-LATER turn's
   // own `turn.started`, not just the session's first (`firstTurnStartedWithPrompt`
   // is pinned to turn 1) or whichever event happens to win the single
   // LIFECYCLE_METHODS slot. Before this fix, turn-2's deferred-retriable
   // `runtime.error` evicted `turn.started(turn-2)` from that one slot — the
   // real fact set genuinely read `{ turn.started(turn-1), runtime.error(turn-2) }`
-  // — so `interruptibleTurnIdForEvents` (station#3473's Stop-path fold) fell
-  // through the fail-closed identity guard (station#3451 B1/D1) to
+  // — so `interruptibleTurnIdForEvents` (archive#3473's Stop-path fold) fell
+  // through the fail-closed identity guard (archive#3451 B1/D1) to
   // `undefined`: Stop silently did nothing for any turn after the first. This
   // drives the REAL store through the same bounded read Stop uses.
   test('retains the CURRENT (second) turn`s own turn.started so Stop can target it (station#3524)', () => {
@@ -1891,7 +1891,7 @@ describe('EventStore', () => {
       method: 'turn.started',
       prompt: 'second turn, please retry',
     });
-    // The #3524 shape: a codex deferred-retriable (willRetry) error naming
+    // The archive#3524 shape: a codex deferred-retriable (willRetry) error naming
     // turn-2, with NO trailing terminal/idle event — the turn is still live,
     // mid-retry, exactly the window a user reaches for Stop.
     store.appendEvent({
@@ -1925,7 +1925,7 @@ describe('EventStore', () => {
     expect(activeTurnIdForEvents(payloads)).toBeUndefined();
   });
 
-  // station#3524 fix-round finding: `activeTurnIdForEvents` (the DISPLAY fold
+  // archive#3524 fix-round finding: `activeTurnIdForEvents` (the DISPLAY fold
   // behind `hasOpenTurn`/`hasActiveTurn`) is NOT blanket-unaffected by the new
   // slot — only the specific deferred-retriable-error shape above is. This
   // real-store shape changes its answer: an ORPHAN terminal event that names
@@ -1991,7 +1991,7 @@ describe('EventStore', () => {
     expect(activeTurnIdForEvents(payloads)).toBe('turn-2');
   });
 
-  // station#3557: bedrock publishes `session.state-changed -> idle`
+  // archive#3557: bedrock publishes `session.state-changed -> idle`
   // IMMEDIATELY after `turn.completed` (`bedrock-adapter.ts`'s
   // `publishCompletion`, replicated here — station fix-round review NIT: an
   // earlier version of this comment claimed EVERY adapter does this and that
@@ -2006,7 +2006,7 @@ describe('EventStore', () => {
   // `session.state-changed` at the higher sequence). Before this fix, that
   // trailing state change won the single `LIFECYCLE_METHODS` slot and
   // evicted the completion from the bounded fact set entirely — the turn's
-  // OWN start survived (station#3524's dedicated slot), so the fold read
+  // OWN start survived (archive#3524's dedicated slot), so the fold read
   // "turn-1 started, nothing closed it" and reported `hasActiveTurn: true`
   // for a session with nothing running. This drives the real `EventStore`,
   // not a hand-built array — every existing `hasActiveTurn` assertion in
@@ -2090,7 +2090,7 @@ describe('EventStore', () => {
     expect(summary.lifecycleState).toBe('completed');
   });
 
-  // station#3557/#3558 fix-round review BLOCK 1 (independent review's exact
+  // archive#3557/#3558 fix-round review BLOCK 1 (independent review's exact
   // sequence, driven through the real `EventStore` rather than a hand-built
   // array — the reviewer settled this by code reading and could not execute
   // it live). Before turn-scoping, the dedicated terminal slot
@@ -2238,7 +2238,7 @@ describe('EventStore', () => {
     expect(run.retryEligible).toBe(false);
   });
 
-  // station#3557/#3558 fix-round: the non-regression the brief's own
+  // archive#3557/#3558 fix-round: the non-regression the brief's own
   // "Important" note called out — turn-scoping must not break the SAME-turn
   // case that already worked correctly on this branch before the review:
   // `turn.started(t1) -> runtime.error(t1, retriable: true) ->
@@ -2248,10 +2248,10 @@ describe('EventStore', () => {
   // only the two TERMINAL cases, `turn.completed`/`turn.aborted`, gate on
   // `acceptsTurnTerminalEvent`).
   //
-  // station#3581 review LOW 1: this comment used to say acceptance here
+  // archive#3581 review LOW 1: this comment used to say acceptance here
   // relied on "the SAME permissive `activeTurnId === undefined` default"
   // as review BLOCK 2's gap. That was true pre-#3581 and is FALSE now —
-  // #3581 replaced that fold with `nextTurnIdentityAnchor`, which sets the
+  // archive#3581 replaced that fold with `nextTurnIdentityAnchor`, which sets the
   // anchor to `t1` at `turn.started(t1)` and RETAINS it straight through
   // `runtime.error(t1)` (no clearing at all). The later `turn.completed(t1)`
   // is accepted by an EXACT identity match against a DEFINED anchor (`t1`
@@ -2336,22 +2336,22 @@ describe('EventStore', () => {
     expect(run.status).toBe('completed');
   });
 
-  // station#3581: the cross-turn companion to the non-regression test above,
+  // archive#3581: the cross-turn companion to the non-regression test above,
   // driven through the REAL `EventStore` and specifically through the FULL,
   // unbounded `listEvents(threadId)` path `orchestration-service.ts`'s
   // `readSession` (and `sessionQueries.projectConversation`) actually feed
   // `buildOrchestrationSessionSummary`/`buildAgentRunSummary` — NOT the
   // turn-scoped `listSessionProjectionEvents` bounded projection, which
-  // #3557 already protects and which proves nothing about this gap (the
+  // archive#3557 already protects and which proves nothing about this gap (the
   // non-regression test immediately above reads the bounded projection on
   // purpose). `conversation-history-read-service.ts`'s reader is a
   // DIFFERENT, narrower bypass — `listRecentEventsByThread(threadId, 1_000)`,
   // a bounded 1,000-event TAIL, not the full log — safe from this specific
   // two-event-cross-turn scenario either way (1,000 events comfortably
   // covers it) but not exercised by this test; not claimed here as "full
-  // log" (station#3581 review LOW 2). A codex session runs turn-1, then
+  // log" (archive#3581 review LOW 2). A codex session runs turn-1, then
   // turn-2; turn-2 fails for real; turn-1's late `turn/completed` (codex's
-  // own protocol timing, #3572) then arrives naming a turn the session has
+  // own protocol timing, archive#3572) then arrives naming a turn the session has
   // already moved past.
   test('a stale turn.completed for a superseded turn does not overwrite a real failure, read through the FULL unbounded event log (station#3581)', () => {
     const threadId = 'thread-3581-full-log-cross-turn';
@@ -2441,7 +2441,7 @@ describe('EventStore', () => {
     expect(run.retryEligible).toBe(false);
   });
 
-  // station#3524 fix-round finding (consumeAdapterEvents write path): a
+  // archive#3524 fix-round finding (consumeAdapterEvents write path): a
   // WRITE consequence of the same eviction, not just a read/display one.
   // `OrchestrationService.consumeAdapterEvents` resolves `activeTurnId` from
   // this exact bounded read and hands it to
@@ -2542,9 +2542,9 @@ describe('EventStore', () => {
     expect(persisted?.payload.sessionState).toBe('completed');
   });
 
-  // station#3524 fix-round: re-pins station#3451 B1/D1's fail-closed identity
+  // archive#3524 fix-round: re-pins archive#3451 B1/D1's fail-closed identity
   // guard (`event.turnId === activeTurnId` in `nextActiveTurnId`) against
-  // shapes the REAL store still produces today, now that #3524 closed the
+  // shapes the REAL store still produces today, now that archive#3524 closed the
   // ONE shape (a bare second-turn eviction) the guard's original hand-built
   // test used. Both scenarios below still leave the guard doing real work.
   describe('the fail-closed identity guard still discriminates (station#3451 B1/D1, re-pinned post-#3524)', () => {
@@ -2642,7 +2642,7 @@ describe('EventStore', () => {
     });
   });
 
-  // station#3442 review HIGH-1. An adapter can stamp a turn id onto a failure
+  // archive#3442 review HIGH-1. An adapter can stamp a turn id onto a failure
   // before that turn is ever announced: `claude-adapter.ts` assigns
   // `record.activeTurnId` at the top of `sendTurn` and publishes
   // `turn.started` ~165 lines later, while the terminal-result branch in
@@ -2703,12 +2703,12 @@ describe('EventStore', () => {
     ).toContain('ghost-turn-2-error');
   });
 
-  // station#3442 delta review HIGH-1. The retention above is asserted at the
+  // archive#3442 delta review HIGH-1. The retention above is asserted at the
   // MECHANISM level (the error id is in the fact set); this asserts the
   // OUTCOME retention exists to produce. A ghost-turn error must stay the
   // session's account of the failure while nothing has happened since — and
   // must stop being it once a later turn is announced, or the retention
-  // recreates #3442's one-way `failed` from the other side. Both directions
+  // recreates archive#3442's one-way `failed` from the other side. Both directions
   // are driven through the real ingest path.
   test('a ghost-turn failure reads failed, and a later turn clears it', () => {
     const threadId = 'ghost-turn-then-retry';
@@ -2851,7 +2851,7 @@ describe('EventStore', () => {
 
   // A runtime.error that names no turn is session-scoped — a transport or
   // process failure, not a fact about one unit of work. Turn scoping keys off
-  // the error's own turn, so it does not reach these. station#3485: what
+  // the error's own turn, so it does not reach these. archive#3485: what
   // supersedes a session-scoped error is a strictly later GENUINE
   // `turn.completed` (proof an engine ran a whole turn end-to-end through
   // the transport the error indicted) — and nothing weaker. This test pins
@@ -2896,7 +2896,7 @@ describe('EventStore', () => {
     ).toContain('scoped-error');
   });
 
-  // station#3485, the outcome the rule exists to produce, driven through the
+  // archive#3485, the outcome the rule exists to produce, driven through the
   // real ingest path like the ghost-turn test above: a transport-level
   // failure must stop being the session's present state once a fully
   // successful later turn proves recovery. Probe-measured on the pre-fix
@@ -2998,7 +2998,7 @@ describe('EventStore', () => {
     expect(afterRecovery.blockedReason).toBeUndefined();
   });
 
-  // station#3485 boundary: a Stop confirmation is not recovery. codex's
+  // archive#3485 boundary: a Stop confirmation is not recovery. codex's
   // interrupt path publishes `turn.completed(finishReason: 'cancelled')`
   // (`mapTurnFinishReason('interrupted')`), which proves a stop was
   // processed, not that the session can run work — the turn may have been
@@ -3041,7 +3041,7 @@ describe('EventStore', () => {
     ).toContain('cancel-transport-error');
   });
 
-  // station#3485 verification MEDIUM: every PROVEN member must supersede,
+  // archive#3485 verification MEDIUM: every PROVEN member must supersede,
   // proven per-member on THIS consumer (the auth monitor already tests its
   // own stake per-member) — otherwise dropping 'tool-calls'/'max-tokens'
   // from the shared set, or this file drifting to a stale copy of it, reds
@@ -3089,11 +3089,11 @@ describe('EventStore', () => {
     },
   );
 
-  // station#3485 review HIGH 2: supersession is an ALLOWLIST
+  // archive#3485 review HIGH 2: supersession is an ALLOWLIST
   // (PROVIDER_PROVEN_FINISH_REASONS — the same set, and deliberately the
-  // same single decision point, as auth-health clearing; station#3509
+  // same single decision point, as auth-health clearing; archive#3509
   // rejected the exclusion-list shape for this question as fail-open).
-  // `'other'` means "we do not know" (station#3545) and an ABSENT
+  // `'other'` means "we do not know" (archive#3545) and an ABSENT
   // finishReason asserts nothing — neither positively proves the session
   // works, so both fail closed and the error stays. These two tests are
   // what forces the next person who widens the allowlist to see this
@@ -3173,7 +3173,7 @@ describe('EventStore', () => {
     ).toContain('reasonless-transport-error');
   });
 
-  // station#3485 boundary: `turn.aborted` proves only that a stop was
+  // archive#3485 boundary: `turn.aborted` proves only that a stop was
   // processed. The error stays.
   test('a session-scoped runtime.error survives a later turn.aborted', () => {
     const threadId = 'session-scoped-then-aborted';
@@ -3213,7 +3213,7 @@ describe('EventStore', () => {
     ).toContain('abort-transport-error');
   });
 
-  // station#3485 ordering boundary: supersession is strictly sequenced. An
+  // archive#3485 ordering boundary: supersession is strictly sequenced. An
   // error arriving AFTER the session's last completed turn describes the
   // session NOW; the earlier completion proves nothing about it.
   test('a session-scoped runtime.error after the last completed turn is retained', () => {
@@ -3456,12 +3456,12 @@ describe('EventStore', () => {
   });
 
   /**
-   * station#3386. `snapshotEvent` has two budgets and both used to fire
+   * archive#3386. `snapshotEvent` has two budgets and both used to fire
    * silently: an oversized payload came back as identity fields alone, and a
    * tool result came back cut to 84 characters. A client that receives a
    * `turn.started` with no prompt cannot tell it from a turn that never had
    * one, or from a blob retention reclaimed — which is why a pasted image
-   * over ~3 KB lost its prompt AND its chip on restore (station#3374).
+   * over ~3 KB lost its prompt AND its chip on restore (archive#3374).
    */
   describe('bounded-read elision labels (station#3386)', () => {
     const threadId = 'thread-elision';
@@ -3538,7 +3538,7 @@ describe('EventStore', () => {
     });
 
     /**
-     * station#3427. `error` used a truthiness guard while `output` checked
+     * archive#3427. `error` used a truthiness guard while `output` checked
      * `=== undefined`, so a tool that failed with an empty-string error
      * silently lost it from the snapshot while an empty-string output
      * survived. An empty error is a fact about the run (it failed, with no
@@ -3666,10 +3666,10 @@ describe('EventStore', () => {
   });
 
   /**
-   * station#3462. `snapshotEvent`'s `output` handling used a bare
+   * archive#3462. `snapshotEvent`'s `output` handling used a bare
    * `String(value)` coercion, so a persisted `output: null` read back as the
    * four-character string `"null"` and a structured result read back as
-   * `"[object Object]"` — the same fabrication #3427 fixed for `error`, left
+   * `"[object Object]"` — the same fabrication archive#3427 fixed for `error`, left
    * out of that fix's scope because `output` is contract-typed `unknown` and
    * real producers legitimately send non-strings
    * (`claude-transcript-session-source.ts`'s `output: raw.content`). Every
@@ -4820,7 +4820,7 @@ describe('EventStore', () => {
       expect.arrayContaining([
         'flow-old',
         'turn-0',
-        // station#3524: the CURRENT turn's own `turn.started` now holds a
+        // archive#3524: the CURRENT turn's own `turn.started` now holds a
         // dedicated slot, so `turn-499` — the latest of the 500 turns seeded
         // above, and NOT the same row as `turn-0` — survives even though the
         // `request.resolved-499` right after it wins the single
@@ -5357,7 +5357,7 @@ describe('EventStore', () => {
     expect(projected.reportedModel).toBeUndefined();
   });
 
-  // station#4466: `listSessionReadModel` folded every visible thread by
+  // archive#4466: `listSessionReadModel` folded every visible thread by
   // calling `listSessionProjectionEvents(threadId)` in a `.map`, one SQL
   // round trip per fact per thread. `listSessionProjectionEventsForThreads`
   // batches the same fold over many threads in a fixed number of round
@@ -5466,7 +5466,7 @@ describe('EventStore', () => {
         return;
       }
       if (variant === 'session-scoped-recovered') {
-        // station#3485 review BLOCK 1: the shape on which the batched
+        // archive#3485 review BLOCK 1: the shape on which the batched
         // mirror carried the pre-fix unconditional retention while the
         // single-thread fold had been fixed — the ONLY variant here that
         // discriminated the two implementations, and precisely the one this
@@ -5516,7 +5516,7 @@ describe('EventStore', () => {
         return;
       }
       if (variant === 'session-scoped-retained') {
-        // station#3485 boundary, batched: a session-scoped error with a
+        // archive#3485 boundary, batched: a session-scoped error with a
         // later turn ANNOUNCED but never provenly completed, plus a
         // trailing lifecycle event so retention depends on the error slot
         // itself rather than the generic lifecycle slot. Both folds must
@@ -5553,7 +5553,7 @@ describe('EventStore', () => {
         return;
       }
       if (variant === 'orphan-terminal') {
-        // station#3557/#3558: turn 2 starts and completes, but turn 2's own
+        // archive#3557/#3558: turn 2 starts and completes, but turn 2's own
         // `turn.started` is evicted from the `LIFECYCLE_METHODS` slot by a
         // later unrelated lifecycle event, exercising the dedicated
         // turn-scoped terminal slot rather than the thread-wide one.
@@ -5599,7 +5599,7 @@ describe('EventStore', () => {
       });
     }
 
-    // station#4466 review remediation: `listSessionProjectionEvents` is the
+    // archive#4466 review remediation: `listSessionProjectionEvents` is the
     // REAL single-thread production code path (restored verbatim to
     // origin/main — a dozen separate `WHERE thread_id = ?` SQL calls), and
     // `listSessionProjectionEventsForThreads` is a genuinely different
@@ -5668,7 +5668,7 @@ describe('EventStore', () => {
       }
     });
 
-    // station#4466 review remediation: an earlier JS-side mirror of
+    // archive#4466 review remediation: an earlier JS-side mirror of
     // `firstTurnStartedWithPrompt`'s predicate used `.trim()`/`typeof`,
     // which diverges from SQLite's `trim()` (strips ONLY ASCII 0x20, not
     // `\n`/`\t`/NBSP) and `typeof(json_extract(...))` (an object/number/null
@@ -5721,7 +5721,7 @@ describe('EventStore', () => {
       expect(firstPrompted?.id).toBe('hostile-turn1');
     });
 
-    // station#4466 review remediation: proves a method with exactly ONE row
+    // archive#4466 review remediation: proves a method with exactly ONE row
     // resolves BOTH the "first" and "latest" slot to that same row (the
     // window-function ranking's `rn_desc = 1 OR rn_asc = 1` filter matches
     // it once, not twice) — the degenerate case of the "same-sequence tie"
@@ -5796,7 +5796,7 @@ describe('EventStore', () => {
       );
     });
 
-    // station#4466 review remediation: `id`/`thread_id`/pair lists are
+    // archive#4466 review remediation: `id`/`thread_id`/pair lists are
     // chunked at `EVENT_STORE_BATCH_CHUNK_SIZE` (500) so SQLite's bound-
     // parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER, commonly 32766) can
     // never be reached. 1200 threads crosses that boundary three times over
@@ -5823,7 +5823,7 @@ describe('EventStore', () => {
     });
   });
 
-  // station#1867/#3495: `sessionOwnerUserId()` is the /events SSE route's
+  // archive#1867/#3495: `sessionOwnerUserId()` is the /events SSE route's
   // per-event authorization gate and deliberately never caches a negative
   // result, so on a read-only-attached thread (no `metadata.userId`) EVERY
   // event re-ran an unbounded read of every ownership-shaped row and
@@ -5855,7 +5855,7 @@ describe('EventStore', () => {
       return undefined;
     }
 
-    // station#4075 stage 2: writes rows DIRECTLY, bypassing `appendEvent`'s
+    // archive#4075 stage 2: writes rows DIRECTLY, bypassing `appendEvent`'s
     // ownership-immutability guard — deliberately, and only here. This
     // describe block is about `findSessionOwnerUserId`'s READ predicate
     // (matching a hand-rolled JS scan over arbitrary existing rows, per its
@@ -6147,7 +6147,7 @@ describe('EventStore', () => {
     });
   });
 
-  // station#3495: the follow service's cold path needs ONE fact from the log
+  // archive#3495: the follow service's cold path needs ONE fact from the log
   // (the attribution its newest `session.configured` expresses) and used to
   // read every ownership-shaped row on the thread to get it.
   test('lists the newest session.configured events for a thread, bounded (station#3495)', () => {

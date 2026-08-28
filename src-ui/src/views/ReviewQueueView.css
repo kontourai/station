@@ -173,7 +173,7 @@
   }
 }
 
-/* Partial-source failure warning (station#2559 delta): visible with or
+/* Partial-source failure warning (archive#2559): visible with or
    without list items — a failed source must never be inferable only from an
    empty queue. */
 .review-queue__sources-error {

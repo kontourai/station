@@ -317,7 +317,7 @@
   cursor: pointer;
 }
 
-/* ── Period selector + trend (station#3093) ── */
+/* ── Period selector + trend (archive#3093) ── */
 .usage-period-toolbar {
   display: flex;
   flex-wrap: wrap;

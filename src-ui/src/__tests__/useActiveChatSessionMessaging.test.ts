@@ -62,15 +62,15 @@ const cooperativeStop = {
 const interruptOrchestrationTurnMock = vi
   .fn()
   .mockResolvedValue(cooperativeStop);
-// station#1146: stable across renders so a test can assert WHICH query keys
-// were invalidated. A fresh `vi.fn()` per `useInvalidateQuery()` call records
+// archive#1146: stable across renders so a test can assert WHICH query keys
+// were invalidated. A fresh `vi.fn` per `useInvalidateQuery` call records
 // nothing an assertion can reach.
 const invalidateMock = vi.fn();
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
 // failed" (the request provably never left this browser) or the honest
 // indeterminate state, and a stub would let the hook pass while wired to
-// nothing (UX audit T1).
+// nothing.
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@kontourai/station-sdk')>();
@@ -304,7 +304,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   /**
-   * station#3782: a runtime chat is durable from its first successful turn —
+   * archive#3782: a runtime chat is durable from its first successful turn —
    * that promotion IS what survives the reload, because `serializeActiveChats`
    * persists a chat only once it has a conversation identity. Asserting the
    * `assignConversationId` call alone would not notice the chat still being
@@ -338,7 +338,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   it('keeps a globally-created conversation global through completion, persistence, project navigation, and a follow-up', async () => {
-    // station#3147: the first turn ran in Station's global cwd. On the next
+    // archive#3147: the first turn ran in Station's global cwd. On the next
     // render a Project coding panel used to write its own projectSlug into
     // this durable chat, so the follow-up claimed a different workspace.
     activeChatsStore.updateChat(sessionId, {
@@ -433,7 +433,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBeUndefined();
   });
 
-  // station#3690 review (BLOCKING): the queue path stopped attributing a
+  // archive#3690: the queue path stopped attributing a
   // Station-side refusal to the agent, but the direct composer path still
   // wrote `status: 'error'` — which `chatLifecycleLabel` turns into "Failed"
   // in the inbox, outranking the server's truthful "Completed". The agent
@@ -938,12 +938,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
   });
 
-  // station#3686. Two things are asserted together on purpose: the COPY
+  // archive#3686. Two things are asserted together on purpose: the COPY
   // differs by cause, and everything else — the durable enqueue, its
   // arguments, the resulting status — is identical. The fix claims queueing
   // behaviour is untouched and only the claim to the user changed; a test that
   // checked copy alone would let a cause-specific enqueue regression through
-  // (review finding), which would lose the message on reload.
+  //which would lose the message on reload.
   const undeliverableCases = [
     {
       name: 'a send that threw while the browser reports a network',
@@ -1107,7 +1107,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   /**
-   * station#1146: nothing else invalidates `['orchestration-sessions']` on
+   * archive#1146: nothing else invalidates `['orchestration-sessions']` on
    * this path, and `staleTime` alone never triggers a refetch — measured
    * live, a dock whose session list was fetched before the session existed
    * stayed on its stale value for 120s of polling. Without this the chat
@@ -1204,7 +1204,7 @@ describe('useCancelMessage', () => {
     });
   });
 
-  // UX audit T1 review finding: the interrupt used to be awaited with no
+  // the interrupt used to be awaited with no
   // try/finally, so any rejection — a refused connection, a 500, a forced
   // teardown that threw — left the browser stream un-aborted and the composer
   // pinned at `sending` forever, with no failure surfaced at all.
@@ -1299,7 +1299,7 @@ describe('useCancelMessage', () => {
     });
   });
 
-  // UX audit T1 (live verification): the send path clears `abortController`
+  // (live verification): the send path clears `abortController`
   // the moment the orchestration POST returns its receipt — seconds into a
   // turn that then streams for minutes. Stop must still work for the whole of
   // that turn; before this fix it silently did nothing.

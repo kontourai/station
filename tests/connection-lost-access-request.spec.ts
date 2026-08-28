@@ -7,7 +7,7 @@ import {
 
 /**
  * The per-row `Request access to <name>` affordance, on the device it is FOR
- * (station#3850).
+ * (archive#3850).
  *
  * `device-pairing-mobile.spec.ts` covers the other scenario and says so in its
  * own docblock: an UNPAIRED device never reaches the shell, so its request,
@@ -16,7 +16,7 @@ import {
  * the owner revoked it from another machine, mid-session. Nothing covered it.
  *
  * THE PREMISE IS THE HARD PART, and it is asserted rather than trusted
- * (station#3753's lesson, one scenario over). `connectionNeedsAccessRequest`
+ * (archive#3753's lesson, one scenario over). `connectionNeedsAccessRequest`
  * withholds this button for a connection whose credential still works, and
  * `recordAuthenticatedSuccess` clears `credentialState: 'required'` on the
  * very next accepted response — so a fixture that can authenticate by ANY
@@ -73,7 +73,7 @@ async function pairContext(
     proof: string;
     requestId: string;
   };
-  // Approved with the operator credential: since station#1490 an approval
+  // Approved with the operator credential: since archive#1490 an approval
   // presenting nothing is refused when the request also arrived on the
   // loopback compatibility floor, which every context of a local E2E does.
   const confirmed = await authenticatedRequest.post(
@@ -165,7 +165,7 @@ async function openConnectionsFromLostAccessBanner(page: Page) {
   // scenario: a device with no working credential cannot rebuild the shell
   // from scratch, so a reload here would correctly land on the onboarding gate
   // and prove the opposite (measured).
-  // `#station-main` is the shell's own route outlet (App.tsx, #3656). The
+  // `#station-main` is the shell's own route outlet (App.tsx, archive#3656). The
   // onboarding gate renders INSTEAD of its children, so this element exists in
   // exactly one of the two states and is the same marker at every viewport —
   // the sidebar's Home control is not (it is collapsed at 390).
@@ -314,7 +314,7 @@ test.describe('a paired connection that lost access (station#3850)', () => {
         // Submitting closes the dialog by design — the wait and its outcome
         // belong to the shell from here — so the refusal is read from the
         // shell's own banner, and it is the DEVICE-subject decline
-        // (station#3849's second named id), not the request-subject one the
+        // (archive#3849's second named id), not the request-subject one the
         // dialog would have shown.
         await rowRequest.click();
         const denied = await requestAccessFromPanel(page, deviceName);

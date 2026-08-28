@@ -75,7 +75,7 @@ function renderView() {
 }
 
 /**
- * These tests render the whole M4a chain deliberately — the route host
+ * These tests render the whole chain deliberately — the route host
  * (`ConsoleBoardView`, slug→id occurrence + renderer selection), the one
  * mounter (`BoardWorkspacePane`, canonical check + identity + shell
  * bindings), and the packaged surface (`@kontourai/station-board-pane`'s
@@ -100,7 +100,7 @@ describe('ConsoleBoardView', () => {
   });
 
   /**
-   * D8's route guard. The notice is the load-bearing half: it used to be
+   * route guard. The notice is the load-bearing half: it used to be
    * handed to `navigate` as a second argument, which is the destination's
    * QUERY STRING — no surface reads a `notice` key, so a reader was moved
    * off the route they asked for without a word. Asserting the banner is
@@ -387,7 +387,7 @@ describe('ConsoleBoardView — the pane path (epic station#4142 M4a)', () => {
     expect(screen.getByText('The Board is unavailable')).toBeTruthy();
   });
 
-  // station#771 fix round (review HIGH): a settled projects-read failure
+  // archive#771: a settled projects-read failure
   // with no cached data used to render the SAME "This host has no Project
   // with that slug." an actually-missing slug shows — a fabricated negative
   // fact. It must say the read failed and offer a retry instead.

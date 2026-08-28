@@ -39,7 +39,7 @@ async function awaitNativePairingExchange<T>(
 }
 
 /**
- * station#1818 R3 (owner scope-growth) — brings the native pairing bridge to
+ * archive#1818 (owner scope-growth) — brings the native pairing bridge to
  * the same structured-error contract `authenticatedTransport.ts` already
  * uses (`readNativeCommandError`). A rejected
  * `invoke('station_native_pairing_exchange')` is a DIFFERENT failure shape
@@ -65,7 +65,7 @@ async function awaitNativePairingExchange<T>(
  */
 function toPairingTransportError(error: unknown): Error {
   const { code, message } = readNativeCommandError(error);
-  // station#1818 review round 1 (LOW): `code` stays `undefined` for an
+  // archive#1818: `code` stays `undefined` for an
   // uncoded (not-yet-converted, or legacy) rejection rather than falling
   // back to the raw message text — putting prose in `.code` would let a
   // future `.code`-switching consumer accidentally match on a sentence,

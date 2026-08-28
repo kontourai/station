@@ -4,7 +4,7 @@
  * Three tiers: passive (auto-grant), active (prompt), trusted (prompt + warning).
  * Grants persisted in plugin-grants.json keyed by plugin name.
  *
- * Storage is FAIL-CLOSED (station#1835, via {@link GrantsFileStore}): a
+ * Storage is FAIL-CLOSED (archive#1835, via {@link GrantsFileStore}): a
  * missing file reads as "no grants yet", but an unreadable, corrupt, or
  * ill-shaped file throws {@link PluginGrantsUnavailableError} instead of
  * silently reading as `{}` — which previously let `revokeAllGrants` persist a
@@ -13,7 +13,7 @@
  * {@link hasGrant} (deny, loudly); consent/write paths and display surfaces
  * use the throwing forms and surface "grants unavailable".
  *
- * A grant is bound to CONTENT, not to a name (station#4288). See
+ * A grant is bound to CONTENT, not to a name (archive#4288). See
  * {@link PluginGrantRecord} and {@link readPluginGrantState} for what that
  * means, what an un-bound legacy grant does, and why.
  */
@@ -42,7 +42,7 @@ const logger = createLogger({ name: 'plugin-permissions' });
 // ── Permission Tiers ───────────────────────────────────
 
 /**
- * Delegates to the contracts-level map (station#3815) so enforcement and the
+ * Delegates to the contracts-level map (archive#3815) so enforcement and the
  * permission review surface cannot disagree about a permission's tier.
  */
 export function getPermissionTier(permission: string): PermissionTier {
@@ -60,7 +60,7 @@ export function needsConsent(permission: string): boolean {
  * things — nothing is coerced between them:
  *
  * - `string[]` — a grant recorded before grants were bound to content
- *   (station#4288). The permissions are real; the tree they were granted
+ *   (archive#4288). The permissions are real; the tree they were granted
  *   against was never recorded, so it is UNKNOWN, not empty.
  * - `{ permissions, contentDigest }` — a grant bound to exactly the bytes
  *   {@link computePluginContentDigest} saw when consent was given.
@@ -280,7 +280,7 @@ export function readPluginGrantRecord(
 /**
  * **The derivation.** What this plugin may actually do right now, and why.
  *
- * The defect this closes (station#4288): `POST /:name/update` replaces a
+ * The defect this closes (archive#4288): `POST /:name/update` replaces a
  * plugin's code, agents, integrations and providers, and the grants recorded
  * against the reviewed bytes carried over to bytes nobody reviewed. Consent
  * was attached to a permission NAME; the design note
@@ -305,7 +305,7 @@ export function readPluginGrantRecord(
  *   That argument was originally rebutted by naming a specific escalation:
  *   the isolated frame's `api-request` bridge authorized on any granted NAME,
  *   so one surviving passive grant was a credentialed call to any `/api/`
- *   path. station#4300 DELETED that bridge, and this docblock is restated
+ *   path. archive#4300 DELETED that bridge, and this docblock is restated
  *   rather than left standing on a mechanism that no longer exists — a
  *   comment naming a removed bridge is how the next reader concludes the
  *   decision has lost its reason.
@@ -395,7 +395,7 @@ export function getPluginGrants(
  * Records consent, bound to the bytes on disk at this instant.
  *
  * **What carries over is the EFFECTIVE set, never the recorded one**
- * (station#4288, review HIGH 1). The first draft unioned the whole stored
+ * (archive#4288, review HIGH 1). The first draft unioned the whole stored
  * record with the new permissions and stamped the result with the current
  * digest, so granting *anything* re-blessed *everything* already recorded
  * against bytes nobody had reviewed. That laundered consent straight past
@@ -422,7 +422,7 @@ export function getPluginGrants(
  * (`derivePluginTrustTarget` returns null on a null digest); this makes the
  * ordinary path agree with it.
  *
- * **It returns what it derived, not what it was asked for** (station#4288,
+ * **It returns what it derived, not what it was asked for** (archive#4288,
  * delta review MEDIUM 2). Withdrawing the rest of a `changed` record is the
  * correct behaviour; doing it silently is not. Granting one permission from a
  * `changed` binding deletes every other recorded permission — `trusted` ones
@@ -482,7 +482,7 @@ export async function grantPermissions(
 
 /**
  * Re-binds a plugin's grants after Station itself replaced its content
- * (station#4288, acceptance 3). Called inside the content lock by BOTH paths
+ * (archive#4288, acceptance 3). Called inside the content lock by BOTH paths
  * that replace an installed plugin's tree — `POST /:name/update` and
  * `installPluginFromSource` when it installs over an existing plugin (review
  * HIGH 2) — once the new tree is final (post-build, post-integration-copy)
@@ -607,7 +607,7 @@ export function assertGrantablePermissions(
 
 /**
  * Snapshot of ONE plugin's grants entry for install/uninstall rollback flows
- * (#1835 finding 2): `null` = no entry existed. Throws when the store is
+ * (archive#1835 finding 2): `null` = no entry existed. Throws when the store is
  * unavailable — a rollback baseline must never be fabricated from a failed
  * read.
  */
@@ -648,7 +648,7 @@ export async function restorePluginGrantEntry(
 }
 
 /**
- * Withdraws specific permissions from a plugin (station#3815).
+ * Withdraws specific permissions from a plugin (archive#3815).
  *
  * Granting was already trustworthy — a decision surface plugin code cannot
  * script, one-use nonces, target revalidation, an audit trail — but all of
@@ -763,7 +763,7 @@ export interface PermissionRequest {
  * succeeded.
  *
  * `withdrawn` is whatever the auto-grant took away, passed straight through
- * from {@link grantPermissions} rather than assumed empty (station#4288,
+ * from {@link grantPermissions} rather than assumed empty (archive#4288,
  * delta review). A FIRST install can reach a non-empty value: a leftover
  * grants entry for a name that was uninstalled by hand, or whose uninstall
  * failed after the tree went, is `changed` against the freshly installed
@@ -771,7 +771,7 @@ export interface PermissionRequest {
  * everything the old entry held.
  *
  * `consented` is what the operator approved BEFORE the install ran
- * (station#4288) — the decision the installer already refused to proceed
+ * (archive#4288) — the decision the installer already refused to proceed
  * without. Active-tier members of it are recorded here, bound to the tree
  * that just landed, rather than left for a second round trip after the
  * mutation. Trusted-tier members are NOT: a same-origin click cannot

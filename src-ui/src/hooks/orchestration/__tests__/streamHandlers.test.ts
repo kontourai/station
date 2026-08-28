@@ -2,10 +2,10 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// station#3117: `handleToolCompletedEvent` is the LIVE tool-outcome path —
+// archive#3117: `handleToolCompletedEvent` is the LIVE tool-outcome path —
 // reached from `handleOrchestrationEvent` for every foreground chat — unlike
 // the dead `ToolLifecycleHandler`/`handleStreamEvent` these tests replaced
-// (station#3168 finished removing both: `ToolLifecycleHandler.ts` and its
+// (archive#3168 finished removing both: `ToolLifecycleHandler.ts` and its
 // test file are deleted, and `useStreamingMessage.ts` no longer exposes
 // `handleStreamEvent`). A fresh, isolated store instance per test avoids
 // sessionStorage bleed between tests and sessions.
@@ -13,7 +13,7 @@ let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChats
 let handleToolStartedEvent: typeof import('../streamHandlers').handleToolStartedEvent;
 let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompletedEvent;
 let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEvent;
-// station#3351: spies on the messageParts module (see the doMock in the
+// archive#3351: spies on the messageParts module (see the doMock in the
 // text-delta describe below) to prove the dedup actually removed the
 // duplicated per-token work.
 let upsertTextPartCalls = 0;
@@ -227,7 +227,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     expect(part?.approvalStatus).toBeUndefined();
   });
 
-  // station#3167: cancelling is a correct user-initiated outcome, not a
+  // archive#3167: cancelling is a correct user-initiated outcome, not a
   // failure — `isError` must stay false so nothing downstream that counts
   // failures starts counting cancellations (mirrored on the rehydrated
   // side by runtime-event-projection.test.ts).
@@ -296,7 +296,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     expect(toolPart()?.approvalStatus).toBe('policy-denied');
   });
 
-  // Pin station#1834's existing behaviour: a genuine user decline (set by
+  // Pin archive#1834's existing behaviour: a genuine user decline (set by
   // useToolApproval.ts's optimistic click handler, upstream of any
   // tool-result event) is untouched when the result carries no policyDenied
   // marker — #3117 must not weaken it.
@@ -423,7 +423,7 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
     );
   });
 
-  // station#3351: the pre-dedup handler built the accumulated
+  // archive#3351: the pre-dedup handler built the accumulated
   // streaming message twice per token — once for the store update and once
   // verbatim inside the planArtifact argument — so upsertTextPart ran twice
   // per delta. This is the discriminating assertion for the dedup: the value

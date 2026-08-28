@@ -24,7 +24,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 /**
- * station#3217 review H1, re-anchored on the reactive path after station#3219
+ * archive#3217 review H1, re-anchored on the reactive path after archive#3219
  * removed the per-boot integrity check. Closing the LAST read-write connection
  * to a corrupt WAL-mode store deletes the hot WAL outright — measured: wal
  * 206032 -> GONE, main byte-identical, and the checkpoint that might have

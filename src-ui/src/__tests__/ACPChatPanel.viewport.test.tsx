@@ -15,7 +15,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [{ slug: 'codex', name: 'Codex' }],
 }));
-// station#1424: ACPChatPanel now reads the local operator identity for the
+// archive#1424: ACPChatPanel now reads the local operator identity for the
 // "Managed by …" row chip — not under test here (ChatMessageList itself is
 // mocked below), so a fixed resolved user.
 vi.mock('../contexts/AuthContext', () => ({

@@ -27,11 +27,11 @@ type Props = {
   /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
   /**
-   * Row attribution (station#1424 review fix S3): shown from the FIRST
+   * Row attribution (archive#1424 fix): shown from the FIRST
    * frame of streaming, not just after the turn settles into a persisted
    * `MessageBubble` row — resolved from the current live agent binding,
    * which is the honest source while this turn is actually executing. No
-   * `engine` prop here (round 3 NEW-1) — see the doc comment on
+   * `engine` prop here — see the doc comment on
    * `ChatMessageList`'s `streamingAttributionAgent` for why the engine chip
    * is suppressed on this row too, not just the persisted one.
    */
@@ -162,7 +162,7 @@ function StreamingMessageComponent({
             never reads as frozen (station#2651). */}
         {streamingText && (
           <div className="streaming-tip">
-            {/* station#3354: an unclosed trailing fence renders plain and is
+            {/* archive#3354: an unclosed trailing fence renders plain and is
                 never tokenized until it closes. */}
             <StreamingMarkdown content={streamingText} />
             {/* Terminal-style cursor on its own compact line — placement is

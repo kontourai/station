@@ -90,7 +90,7 @@ process.stdin.on('data', (chunk) => {
         if (destroyError) throw destroyError;
       }),
       forceGroupKill,
-      // Cleanup worked: the child is gone (station#3422 keeps survivors).
+      // Cleanup worked: the child is gone (archive#3422 keeps survivors).
       survivesCleanup: () => false,
       releaseIfConfirmedGone: () => {},
     };
@@ -109,7 +109,7 @@ process.stdin.on('data', (chunk) => {
     // destroy is invoked twice: once in the deadline race, then again after
     // the escalation so the process's internal state can converge.
     expect(process.destroy).toHaveBeenCalledTimes(2);
-    // station#1863: a destroy that fails no longer leaks — it escalates to an
+    // archive#1863: a destroy that fails no longer leaks — it escalates to an
     // unconditional group SIGKILL rather than being silently abandoned.
     expect(forceGroupKill).toHaveBeenCalledOnce();
 
@@ -181,7 +181,7 @@ process.stdin.on('data', (chunk) => {
       () => process as unknown as ACPProcess,
       10,
     );
-    // station#3404: `probe()` defaults to the `'request'` initiator, which
+    // archive#3404: `probe()` defaults to the `'request'` initiator, which
     // never takes the 60s cold budget — so this never-settling handshake is
     // bounded at the 10ms budget above and the claim under test (a hung
     // handshake is bounded and the process reaped) needs no special setup.
@@ -208,7 +208,7 @@ process.stdin.on('data', (chunk) => {
         }),
       10,
     );
-    // station#3404: `probe()` defaults to the `'request'` initiator, so this
+    // archive#3404: `probe()` defaults to the `'request'` initiator, so this
     // runs on the 10ms budget rather than the 60s cold one, preserving the
     // test's claim: discovery is bounded before a process is spawned.
     await expect(probe.probe()).resolves.toBe(false);
@@ -281,7 +281,7 @@ process.stdin.on('data', (chunk) => {
   });
 
   /**
-   * station#1088. Measured on origin/main (1e5b45d2) with a stub ACP CLI that
+   * archive#1088. Measured on origin/main (1e5b45d2) with a stub ACP CLI that
    * logs its own `getcwd`: adding a connection with no `cwd` spawned it in
    * `/Users/brian/dev/github/kontourai/station-worktrees/s1088-acp` — the
    * Station checkout — and repeated on the 60s `probeTimer` with no chat
@@ -331,12 +331,12 @@ process.stdin.on('data', (chunk) => {
     });
 
     test('resolves a RELATIVE connection directory instead of spawning against Station itself', async () => {
-      // Review of #1135: the tilde case was fixed, the relative case was not.
+      // Review of archive#1135: the tilde case was fixed, the relative case was not.
       // `config.cwd` is free text and the route schema is
       // `cwd: z.string().optional()` with no shape validation, so `"."` is
       // accepted — and unresolved, `spawn` interprets it against Station's own
       // directory, landing the agent in the install root. That is the exact
-      // outcome #1088 is named after, reached by a second route. `".."` walks
+      // outcome archive#1088 is named after, reached by a second route. `".."` walks
       // further out. `session/new` was also handed the bare relative string,
       // which means something different to the agent than to Station.
       const process = probeProcess();
@@ -529,7 +529,7 @@ process.stdin.on('data', (chunk) => {
       }),
       destroy: vi.fn().mockRejectedValue(new Error('destroy unreachable')),
       forceGroupKill,
-      // Cleanup worked: the child is gone (station#3422 keeps survivors).
+      // Cleanup worked: the child is gone (archive#3422 keeps survivors).
       survivesCleanup: () => false,
       releaseIfConfirmedGone: () => {},
     };
@@ -790,7 +790,7 @@ describe("ACPProbe's client does not fabricate extension answers", () => {
   });
 });
 
-// station#3403: a probe that has NEVER succeeded discarded its error entirely
+// archive#3403: a probe that has NEVER succeeded discarded its error entirely
 // -- the catch block logged only on the branch where a previous probe had
 // succeeded. The connection then reported "unavailable" with no reason in the
 // log, none in the API projection, and no way to reach one.
@@ -806,7 +806,7 @@ describe('a failing probe says why', () => {
       })),
       destroy: vi.fn(async () => {}),
       forceGroupKill: vi.fn(),
-      // Cleanup worked: the child is gone (station#3422 keeps survivors).
+      // Cleanup worked: the child is gone (archive#3422 keeps survivors).
       survivesCleanup: () => false,
       releaseIfConfirmedGone: () => {},
     };
@@ -875,7 +875,7 @@ describe('a failing probe says why', () => {
       })),
       destroy: vi.fn(async () => {}),
       forceGroupKill: vi.fn(),
-      // Cleanup worked: the child is gone (station#3422 keeps survivors).
+      // Cleanup worked: the child is gone (archive#3422 keeps survivors).
       survivesCleanup: () => false,
       releaseIfConfirmedGone: () => {},
     };
@@ -901,7 +901,7 @@ describe('a failing probe says why', () => {
   });
 });
 
-// station#3422: `pendingCleanup` is named for retrying and used to forget. It
+// archive#3422: `pendingCleanup` is named for retrying and used to forget. It
 // dropped every entry unconditionally, and destroyProcessWithEscalation never
 // throws -- it catches and escalates -- so an engine that SURVIVED its own
 // reaping was indistinguishable from one that died and was removed from the
@@ -980,7 +980,7 @@ describe('an engine that survives cleanup is retried, not forgotten', () => {
     await probe.dispose();
   });
 
-  // station#3441: retryPendingCleanup used to retry a survivor forever. A
+  // archive#3441: retryPendingCleanup used to retry a survivor forever. A
   // systematically unkillable engine therefore added one entry per cycle and
   // every cycle re-attempted every entry still pending -- unbounded cost on
   // a set that never shrinks. This proves the bound: after
@@ -1021,7 +1021,7 @@ describe('an engine that survives cleanup is retried, not forgotten', () => {
     await probe.dispose();
   });
 
-  // station#3441 MEDIUM-1: pre-fix, `attemptCleanup` signalled first and
+  // archive#3441 MEDIUM-1: pre-fix, `attemptCleanup` signalled first and
   // asked identity only afterward -- so a retry whose pid had been recycled
   // between cycles still received a real SIGTERM/SIGKILL before anything
   // noticed it was no longer this object's process. `spawned[0]`'s
@@ -1088,7 +1088,7 @@ describe('an engine that survives cleanup is retried, not forgotten', () => {
   });
 });
 
-// station#3448: `retryPendingCleanup` used to be the first AWAITED
+// archive#3448: `retryPendingCleanup` used to be the first AWAITED
 // statement in `runProbe`, so the user-facing Reconnect route paid the full
 // pending-cleanup retry cost -- serially, on every survivor still pending
 // from earlier cycles -- before a fresh engine could even be spawned. These
@@ -1257,7 +1257,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
     await vi.waitFor(() => expect(pendingRetryDestroys).toHaveLength(1));
 
     // Deliberately bounded to exactly 4 total survivors (spawned[0..3]) and
-    // NO further probe cycles below -- station#3448 HIGH fix-round: once the
+    // NO further probe cycles below -- archive#3448 HIGH fix-round: once the
     // set is AT `MAX_PENDING_CLEANUP_SIZE` (4), retaining one MORE survivor
     // is refused (see that constant's own docblock), so driving additional
     // 'background' cycles here (each spawning yet another new survivor of
@@ -1309,7 +1309,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
     expect(spawned).toHaveLength(4);
   });
 
-  // station#3448 HIGH fix-round: the companion proof for {@link
+  // archive#3448 HIGH fix-round: the companion proof for {@link
   // MAX_PENDING_CLEANUP_SIZE} -- once the set is already full, a survivor
   // that would otherwise be retained is abandoned immediately instead,
   // rather than growing the set past its cap. Without this, the earlier
@@ -1362,7 +1362,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
       spawned.push(proc);
       return proc as unknown as ACPProcess;
     });
-    // station#3526: this test asserts an exact array against
+    // archive#3526: this test asserts an exact array against
     // `acpProbeCleanupRetention`, so it takes the same disjoint per-test
     // recorder the telemetry describe below uses -- see the file-scoped
     // comment above that describe for why a shared spy cannot isolate a
@@ -1414,7 +1414,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
     ).toEqual([{ outcome: 'abandoned', reason: 'set-size-bound' }]);
   });
 
-  // station#3448 HIGH fix-round, second pass (independent review): the FIRST
+  // archive#3448 HIGH fix-round, second pass (independent review): the FIRST
   // version of the size-bound check applied unconditionally to every
   // retention decision, including a retry of an ALREADY-retained survivor --
   // which does not grow the set (see `MAX_PENDING_CLEANUP_SIZE`'s own
@@ -1486,7 +1486,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
       spawned.push(proc);
       return proc as unknown as ACPProcess;
     });
-    // station#3526: this test asserts an exact array against
+    // archive#3526: this test asserts an exact array against
     // `acpProbeCleanupRetention`, so it takes the same disjoint per-test
     // recorder the telemetry describe below uses -- see the file-scoped
     // comment above that describe for why a shared spy cannot isolate a
@@ -1599,7 +1599,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
     expect(retainedAttempts).toContain(3);
   });
 
-  // station#3448 BLOCKING fix-round finding (independent review): a
+  // archive#3448 BLOCKING fix-round finding (independent review): a
   // background survivor's cleanup miss must never contaminate a concurrent,
   // genuinely successful handshake's own result. `cleanupProbeProcess`'s
   // `onMiss` callback used to write `this.lastSuccess = false`
@@ -1723,7 +1723,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
     expect(probe.lastError).toBeNull();
   });
 
-  // station#3448: firing retryPendingCleanup fire-and-forget makes an
+  // archive#3448: firing retryPendingCleanup fire-and-forget makes an
   // overlap possible that could not happen before -- `probe()`'s own
   // `probeFlight` dedupe means only one `runProbe` (and so only one
   // fire-and-forget retry) is ever in flight PER CYCLE, but that retry now
@@ -1733,7 +1733,7 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
   // running. Without a join, two passes could both read the same survivor's
   // `priorAttempts` from the map before either writes back its update,
   // computing the SAME next value independently -- silently evading the
-  // #3441 retry-count bound this issue also requires stay preserved.
+  // archive#3441 retry-count bound this issue also requires stay preserved.
   test("a second probe cycle starting while the first cycle's retry is still in flight joins it rather than double-attempting the same survivor", async () => {
     const { probe, spawned, pendingRetryDestroys, armRetryHold } =
       probeSpawningWithControllableRetryHold();
@@ -1763,13 +1763,13 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
   });
 });
 
-// station#3441 LOW-2: `acpProbeCleanupRetention` had no test naming any of
+// archive#3441 LOW-2: `acpProbeCleanupRetention` had no test naming any of
 // its three outcomes. Each of these pins one, with `probeSpawning`'s same
 // distinct-process-per-spawn harness so cross-cycle counts cannot be
 // confused with a different connection's own spawn.
 //
-// station#3526 FIX: these assertions are exact-array checks, and the
-// station#3448 describe ABOVE leaves fire-and-forget retry passes running
+// archive#3526 FIX: these assertions are exact-array checks, and the
+// archive#3448 describe ABOVE leaves fire-and-forget retry passes running
 // past the end of its own tests -- several deliberately hold a destroy open
 // that never settles, so no `dispose()` there could ever join them (see that
 // describe's own comments). A late `retained` emit from one of those passes
@@ -1804,13 +1804,13 @@ describe('station#3448: pending-cleanup retries do not gate the returned probe',
 // (`ACPProbe`'s `cleanupRetentionRecorder` constructor parameter,
 // `acp-probe.ts`) -- defaulted to the real shared counter for every
 // production call site and every test that does not need per-instance
-// isolation. `probeSpawning` below, and two tests inside the station#3448
+// isolation. `probeSpawning` below, and two tests inside the archive#3448
 // describe above with the same exact-array exposure ("the pending-cleanup
 // set does not grow past MAX_PENDING_CLEANUP_SIZE..." and "the size bound
 // refuses a NEW entry..."), pass their own plain `{ add: vi.fn() }` instead:
 // an object no other `ACPProbe` instance holds a reference to, so a
 // background pass from another test -- however long it keeps running -- has
-// no way to reach it. The REST of the station#3448 describe still defaults
+// no way to reach it. The REST of the archive#3448 describe still defaults
 // to the real shared counter, because those tests assert on call counts and
 // timing, never on `acpProbeCleanupRetention` itself, so they carry none of
 // this exposure.
@@ -1822,7 +1822,7 @@ describe('station.acp.probe_cleanup_retention records the outcome it claims (sta
       survivesCleanup: ReturnType<typeof vi.fn>;
     }> = [];
     const logger = { warn: vi.fn() };
-    // station#3526: this describe's own recorder, disjoint from the shared
+    // archive#3526: this describe's own recorder, disjoint from the shared
     // `acpProbeCleanupRetention` every other `ACPProbe` in this file defaults
     // to -- see the file-scoped comment above.
     const cleanupRetentionRecorder = { add: vi.fn() };
@@ -1916,7 +1916,7 @@ describe('station.acp.probe_cleanup_retention records the outcome it claims (sta
   });
 });
 
-// station#3441 LOW-1: both of `attemptCleanup`'s 'reaped' branches independently
+// archive#3441 LOW-1: both of `attemptCleanup`'s 'reaped' branches independently
 // confirm the process is gone (via `survivesCleanup()`) but previously never
 // released the owned-process registry record for it -- a leak for the rest of
 // this Station's lifetime. `releaseIfConfirmedGone` is the release; these pin
@@ -2190,7 +2190,7 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
   test('a first attempt that never reached the engine does not consume the cold budget', async () => {
     vi.useFakeTimers();
     try {
-      // The #3404 user story: Station probes an engine that is not installed
+      // The archive#3404 user story: Station probes an engine that is not installed
       // yet, the spawn fails with ENOENT in milliseconds, and the user then
       // installs it. The old discriminator (`lastProbeAt === 0`) treated that
       // failure as first contact ALREADY SPENT, so every later probe of this

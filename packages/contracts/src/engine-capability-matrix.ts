@@ -6,7 +6,7 @@ import {
 } from './agent-identity.js';
 
 /**
- * Station#975 (unification slice 5) — the honest, single-source capability
+ * The honest, single-source capability
  * matrix per engine (docs/design/agent-engine-unification.md §4.1). This is
  * the editor's truth AND the session-delivery truth: `sessionDeliveryChannels`
  * below derives `session-agent-resolution.ts`'s per-provider delivery map
@@ -18,26 +18,25 @@ import {
  * even though `developerInstructions` is a confirmed wire param, because
  * there is no version/capability signal to gate sending it on safely (see
  * that cell's own comment below). Entries move from `unsupported` to
- * `session`/`native` as slices land; see the
+ * `session`/`native` as support lands; see the
  * `docs/design/agent-engine-unification.md` §9 status table. Claude's
- * `toolServers` cell shipped this way too (#895 wave A → #1157): the SDK's
- * `mcpServers` channel existed but was unwired until #1157 wired it in
- * `claude-adapter.ts buildOptions`. Codex's `toolServers` cell shipped
- * station#1195 (epic #1191 slice C, the Codex analog of #1157) the same
- * way, on the `wire` channel: `codex-mcp-passthrough.ts` wires per-session
+ * `toolServers` cell has the same shape (archive#895 → archive#1157): the
+ * SDK's `mcpServers` channel existed but was unwired until archive#1157
+ * wired it in `claude-adapter.ts buildOptions`. Codex's `toolServers` cell
+ * (archive#1195) is the same, on the `wire` channel:
+ * `codex-mcp-passthrough.ts` wires per-session
  * `-c mcp_servers.<id>....` overrides into the `codex app-server` spawn
- * argv (station#1195's investigation confirmed `codex app-server`'s own
- * `-c`/`--config` session-layer overrides — real, evidence-gathered against
- * codex-cli 0.145.0 — apply per-process-invocation with no
- * version/capability-signal ambiguity, unlike the `systemPrompt`
+ * argv (`codex app-server`'s own `-c`/`--config` session-layer overrides
+ * — verified against codex-cli 0.145.0 — apply per-process-invocation
+ * with no version/capability-signal ambiguity, unlike the `systemPrompt`
  * `developerInstructions` cell below).
  */
 
 export type DeliveryChannel =
   // Crosses to an external, less-trusted process that spawns its own MCP
   // children (ACP: the connected agent app, e.g. Kiro; Codex: `codex
-  // app-server`, an external app-server process station#1195 confirmed
-  // manages its OWN outbound MCP connections — station never gets to
+  // app-server`, an external app-server process that manages
+  // its OWN outbound MCP connections — station never gets to
   // intercept or supply that connection's env). A tool server's `env` must
   // never cross this channel (see acp-mcp-passthrough.ts /
   // codex-mcp-passthrough.ts).
@@ -45,7 +44,7 @@ export type DeliveryChannel =
   // The engine spawns its MCP servers itself, IN Station's own server
   // process (Claude Agent SDK's `mcpServers` option — no external app in
   // between). Distinct from 'wire' specifically so a security-boundary
-  // decision (station#1157: which channel may reconstruct env for the
+  // decision (which channel may reconstruct env for the
   // built-in station-control server) can key on this real property
   // instead of a hardcoded per-engine id check.
   | 'subprocess'
@@ -54,7 +53,7 @@ export type DeliveryChannel =
   | 'flag';
 
 /**
- * station#1195: which SAFE, non-secret-crossing mechanism (if any) this
+ * Which SAFE, non-secret-crossing mechanism (if any) this
  * engine's delivery layer uses to make the canonical BUILT-IN
  * `station-control` server actually work, despite the resolver's blanket
  * secret-boundary-env rule (session-agent-resolution.ts) rejecting its
@@ -64,8 +63,8 @@ export type DeliveryChannel =
  * check can key on the matrix (single source of truth) instead of a
  * hardcoded per-engine id. A cell that leaves this `undefined` keeps
  * rejecting the built-in server exactly like any other env-bearing tool
- * server — no exemption, no substitution channel. As of station#1684 every
- * engine with a `session` toolServers cell names a mechanism, so `undefined`
+ * server — no exemption, no substitution channel. Every engine with a
+ * `session` toolServers cell names a mechanism, so `undefined`
  * is the shape a NEW engine class starts in, not a live engine's answer.
  * Note that naming a mechanism is not the same as being able to use it: a
  * `basis: 'runtime_observation'` mechanism (below) is a policy the
@@ -75,14 +74,14 @@ export type DeliveryChannel =
  *   spawn env, safe because the Claude Agent SDK spawns the MCP child
  *   itself inside Station's own process (see
  *   `claude-mcp-passthrough.ts`'s header comment).
- * - `'url-token'` — Codex (wire channel, station#1195): env can never cross
+ * - `'url-token'` — Codex (wire channel): env can never cross
  *   (Codex independently manages its own MCP connections), so the
  *   substitution is a per-session, short-lived, scoped bearer token minted
  *   fresh per session and delivered in the station-control HTTP/SSE MCP
  *   endpoint's URL query string — never as env, never persisted to disk
  *   (see `station-control-mcp-token.ts` and `codex-mcp-passthrough.ts`).
- * - `'http-header-token'` — ACP (wire channel; policy station#1549,
- *   delivery station#1684). Env can never cross — the connected agent app
+ * - `'http-header-token'` — ACP (wire channel). Env can never cross — the
+ *   connected agent app
  *   reads the whole `session/new` payload — and unlike Codex there is no
  *   spawn-time argv to carry a URL out of band: here the payload IS the
  *   wire, so a query-string token would be a credential sitting in a URL
@@ -101,7 +100,7 @@ export type DeliveryChannel =
  *   `basis` below, and note that the gate, not this cell, is what makes the
  *   claim true for one session.
  *
- * ## Why this is an object with a `basis`, not a bare string (station#1549)
+ * ## Why this is an object with a `basis`, not a bare string
  *
  * The two shipped mechanisms are *statically* true of their engine: Claude's
  * SDK owns the MCP child, Codex's `-c` session overrides are confirmed
@@ -111,8 +110,8 @@ export type DeliveryChannel =
  * ACP's HTTP MCP transport is NOT statically knowable: it is an optional,
  * capability-negotiated property of THE CONNECTED CLI, advertised (or not)
  * at `initialize` via `agentCapabilities.mcpCapabilities.http`. OpenCode
- * advertises it; gemini-cli 0.4.0 did not; Kiro 2.16.0 does (station#1684's
- * gating probe, both of its engines). None of those three facts can be
+ * advertises it; gemini-cli 0.4.0 did not; Kiro 2.16.0 does (both of its
+ * engines). None of those three facts can be
  * written into this cell: the same Station connection points at whatever
  * binary is on disk today, so a CLI upgrade or a swapped command changes
  * the answer with no matrix change at all. So
@@ -223,7 +222,7 @@ function hasExternalToolPolicyAdapter(
 
 /**
  * How an engine carries a chat image attachment to the model it runs
- * (station#3344). Two distinct mechanisms ship today, and the difference is
+ * (archive#3344). Two distinct mechanisms ship today, and the difference is
  * load-bearing enough to name rather than collapse into a boolean:
  *
  * - `'native-content'` — the adapter serializes the decoded bytes into the
@@ -234,14 +233,13 @@ function hasExternalToolPolicyAdapter(
  * - `'relay-multipart'` — Station's own engine has no external protocol: the
  *   `station-agent` adapter relays the attachment back through
  *   `POST /api/agents/:slug/chat` as an AI-SDK `{type:'file', url, mediaType}`
- *   part, and `convertToModelMessages` produces the model's image part
- *   (station#1885).
+ * part, and `convertToModelMessages` produces the model's image part
+ * (archive#1885).
  */
 export type ImageInputChannel = 'native-content' | 'relay-multipart';
 
 /**
- * The declared per-engine answer to "can a pasted image reach this model?"
- * (station#3344).
+ * The declared per-engine answer to "can a pasted image reach this model?".
  *
  * This exists because the composer used to INFER it. `modelSupportsAttachments`
  * was `selectedModelSupportsImages || runtimeConnection.capabilities.includes(
@@ -277,7 +275,7 @@ export type ImageInputDelivery =
     };
 
 /**
- * station#3722 audit — what the engine's own BUILT-IN toolbox is, as far as
+ * What the engine's own BUILT-IN toolbox is, as far as
  * anything derives it. Three states, because three different facts exist:
  *
  * - `station-configured`: the Station engine has no built-in toolbox of its
@@ -305,11 +303,11 @@ export type BuiltInToolsCell =
   | { state: 'unenumerated' };
 
 /**
- * station#3722 audit — whether Station has a WIRED path to disable specific
- * built-in tools on this engine. The audit's rule: a disable control may
+ * Whether Station has a WIRED path to disable specific
+ * built-in tools on this engine. The rule: a disable control may
  * only ever ship where this cell names a real enforcement path; an engine at
  * `none` gets NO control, because a switch wired to nothing is the
- * label-without-derivation defect. As of this audit, NO external engine has
+ * label-without-derivation defect. NO external engine has
  * a wired per-tool disable:
  *
  * - claude: the Claude Agent SDK exposes `disallowedTools`, but
@@ -349,15 +347,15 @@ export interface EngineCapabilityMatrix {
   imageInput: ImageInputDelivery;
   /** Whether a running turn accepts additional user input through a real engine channel. */
   midTurnSteer: boolean;
-  /** station#3722 audit: the engine's own built-in toolbox, as derived. */
+  /** The engine's own built-in toolbox, as derived. */
   builtInTools: BuiltInToolsCell;
-  /** station#3722 audit: whether a per-tool disable path is WIRED today. */
+  /** Whether a per-tool disable path is WIRED today. */
   builtInToolControl: BuiltInToolControlCell;
 }
 
 /**
  * What the MODEL catalog says about the selected model's image input, as a
- * three-state answer rather than a boolean (station#3344).
+ * three-state answer rather than a boolean.
  *
  * `'unknown'` is the common case and must not be read as `'no'`: the catalog
  * behind it is the Bedrock `ListFoundationModels` projection served by
@@ -389,7 +387,7 @@ export interface ComposerImageSupportInputs {
    * "Projection", not "the identical value": these views are assembled per
    * connection kind, and the ACP view is hand-built in
    * `connection-inspector.ts` rather than read off the adapter. That copy had
-   * already lost `image-input` (station#3344), which is why it now spreads
+   * already lost `image-input` (archive#3344), which is why it now spreads
    * `ACP_ADAPTER_CAPABILITIES` — the adapter's own array — instead of a
    * second literal. A view that drifts from its adapter makes this input
    * lie, and it is pinned by a test for exactly that reason.
@@ -555,7 +553,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     modelSelection: { state: 'native' },
     // `createAgentHooks().beforeToolCall` owns the complete Station chain.
     toolPolicy: { state: 'native', evidence: 'beforeToolCall' },
-    // station#1885: `station-agent-adapter.ts`'s `buildRelayInput` forwards
+    // archive#1885: `station-agent-adapter.ts`'s `buildRelayInput` forwards
     // each attachment to /chat as an AI-SDK file part, which VoltAgent's
     // `convertToModelMessages` turns into the model's own image part. The
     // adapter declares `image-input` for exactly this reason.
@@ -575,9 +573,9 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   claude: {
     engineId: toEngineId('claude-code'),
     displayName: 'Claude Code',
-    // #895 wave B, shipped.
+    // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
-    // #1157: SDK mcpServers wired in claude-adapter.ts buildOptions —
+    // SDK mcpServers wired in claude-adapter.ts buildOptions —
     // stdio/sse/streamable-http tool servers, plus a station-control-only
     // token injection. Channel 'subprocess' (NOT 'wire' — see
     // DeliveryChannel's doc comment): the Claude Agent SDK spawns each MCP
@@ -591,7 +589,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'subprocess',
       builtinStationControlDelivery: { mechanism: 'env', basis: 'declared' },
     },
-    // #897.
     skills: { state: 'session', channel: 'workspace-overlay' },
     commands: { state: 'unsupported' },
     modelSelection: { state: 'session', channel: 'flag' },
@@ -617,8 +614,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // Tool identity observed at the shared staged-policy seam this matrix's
     // own toolPolicy cell names: claude-adapter.test.ts pins permission
     // rules keyed on 'Bash' and exercises 'Read'. Categories name ONLY what
-    // those tests observe — 'file-edit' is deliberately absent (#3728
-    // review, BLOCKING): no adapter or policy test observes a Write/Edit
+    // those tests observe — 'file-edit' is deliberately absent: no adapter
+    // or policy test observes a Write/Edit
     // identity, and the generic toolName seam proves identities are
     // CARRIED, not that a specific tool exists. Add the category only with
     // a test that observes an editing-tool identity at this seam.
@@ -630,7 +627,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     },
     // The SDK's `disallowedTools` option exists UNWIRED — see
     // BuiltInToolControlCell's audit note. No control may render for this
-    // engine until an adapter slice wires and proves it.
+    // engine until an adapter wires and proves it.
     builtInToolControl: {
       state: 'none',
       note: 'SDK disallowedTools exists but claude-adapter does not pass it',
@@ -639,7 +636,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   codex: {
     engineId: toEngineId('codex'),
     displayName: 'Codex',
-    // #896 wave 2 evidence gate (docs/design/agent-engine-unification.md
+    // Evidence gate (docs/design/agent-engine-unification.md
     // §4.1/§6.1): `codex app-server generate-json-schema` against the
     // installed codex-cli 0.145.0 CONFIRMS `developerInstructions` as a
     // wire param on `ThreadStartParams`/`ThreadResumeParams`/
@@ -652,9 +649,9 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // DROP, not a silent gap: delivery ships once a genuine
     // version/capability signal exists to gate on.
     systemPrompt: { state: 'unsupported' },
-    // station#1195 (epic #1191 slice C, the Codex analog of #1157): `codex
+    // `codex
     // app-server`'s `-c`/`--config` session-layer overrides (evidence:
-    // `ConfigLayerSource`'s `sessionFlags` variant, confirmed live against
+    // `ConfigLayerSource`'s `sessionFlags` variant, confirmed against
     // codex-cli 0.145.0 — a `-c mcp_servers.<id>....` flag appended to the
     // `codex app-server` spawn argv registers a live, tool-call-capable MCP
     // connection for that one process, with NO disk write and no version-
@@ -669,10 +666,10 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // canonical built-in station-control server is exempted from the
     // resolver's blanket env rejection via `builtinStationControlDelivery:
     // 'url-token'` — NOT by broadening 'wire' env exemptions generally
-    // (station#1684: ACP is also 'wire' and now delivers station-control
+    // (ACP is also 'wire' and delivers station-control
     // too, but it names its OWN mechanism — 'http-header-token', on its own
     // evidence basis — rather than inheriting this one. Two engines, one
-    // channel, two independently reviewed substitutions: exactly what
+    // channel, two independent substitutions: exactly what
     // keying on this FIELD rather than on the channel buys) — because
     // codex-mcp-passthrough.ts
     // never forwards env at all: it mints a short-lived, per-session,
@@ -707,9 +704,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // Codex's core loop is command execution and patch application, and the
     // adapter's EVENT seam observes both identities: codex-adapter-events.ts
     // handles `item/commandExecution/requestApproval` and maps
-    // `item/fileChange/requestApproval` to the `apply_patch` tool identity
-    // (#3728 review corrected the first cite, which pointed at the
-    // approval-MODE mapper — a module with no tool identity in it).
+    // `item/fileChange/requestApproval` to the `apply_patch` tool identity.
     builtInTools: {
       state: 'documented',
       categories: ['shell', 'file-edit'],
@@ -772,7 +767,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `displayName`'s doc comment on the interface above.
     displayName: null,
     systemPrompt: { state: 'unsupported' },
-    // #888/#895 (authored passthrough), station#1684 (the built-in server).
+    // archive#888/archive#895 (authored passthrough), archive#1684 (the built-in server).
     //
     // Mechanism 'http-header-token', NOT codex's 'url-token', even though
     // both are the same 'wire' channel: an ACP `session/new` payload is
@@ -928,9 +923,9 @@ export function sessionDeliveryChannels(
 
 /**
  * Resolves the engine capability matrix for an agent's bound connection —
- * the single source of truth for engine identity (station#1003 Phase B
- * retired the parallel `resolveAgentTypeFromRuntimeConnection` resolver this
- * comment used to mirror against; acp is still checked first so a stale
+ * the single source of truth for engine identity (the parallel
+ * `resolveAgentTypeFromRuntimeConnection` resolver is retired; acp is
+ * still checked first so a stale
  * connection record carrying BOTH an acp type/id and a managed engine
  * identity resolves to `acp`, never letting the managed check shadow it).
  *
@@ -1001,7 +996,7 @@ export function resolveEngineCapabilityMatrix(
 }
 
 /**
- * station#1549: the per-connection evidence half of the capability
+ * The per-connection evidence half of the capability
  * derivation below — one live `initialize` handshake's answer to "does THIS
  * connected CLI advertise MCP over HTTP". Held in memory per connection
  * (the ACP probe cache), never persisted: a durable "yes" would have to be
@@ -1013,7 +1008,7 @@ export function resolveEngineCapabilityMatrix(
  * fingerprint, add a version-change staleness trigger.
  *
  * A stored observation is a claim about the PAST and is therefore never the
- * delivery gate — the wire path (slice 2) reads the live session's own
+ * delivery gate — the wire path reads the live session's own
  * handshake. Staleness here can only make the picker conservative or produce
  * a truthful skip-with-receipt; it can never cause a wrong grant.
  */
@@ -1025,7 +1020,7 @@ export interface ControlPlaneObservation {
 }
 
 /**
- * station#1194 (epic #1191, slice B), extended by station#1549: can this
+ * Can this
  * engine host Station's own built-in `station-control` control-plane server
  * FOR THIS SUBJECT? Derived GENERICALLY from the matrix's `toolServers` cell
  * plus (when the cell's mechanism requires it) a per-connection runtime
@@ -1035,8 +1030,8 @@ export interface ControlPlaneObservation {
  *
  * - "full" ⟺ station-control is actually deliverable to this subject now:
  *   Station's own engine (`native`); a `basis: 'declared'` mechanism (Claude
- *   Code's `'env'` over its subprocess channel, #1157; Codex's `'url-token'`
- *   over its wire channel, #1195), which is statically true of the engine
+ *   Code's `'env'` over its subprocess channel; Codex's `'url-token'`
+ *   over its wire channel), which is statically true of the engine
  *   class and ignores the observation entirely; or a
  *   `basis: 'runtime_observation'` mechanism whose observation says yes.
  * - "chat-only" — the engine can carry a chat turn but cannot be handed the
@@ -1046,7 +1041,7 @@ export interface ControlPlaneObservation {
  *   class, but this specific subject has never been observed. NOT capable:
  *   an unprobed connection is never optimistically bindable.
  *
- * ## Doc-contract change (station#1549) — READ THIS BEFORE FLAGGING DRIFT
+ * ## Doc-contract change — READ THIS BEFORE FLAGGING DRIFT
  *
  * This predicate and `session-agent-resolution.ts`'s secret-boundary
  * exemption used to be documented as the SAME predicate ("the same cell, the
@@ -1062,8 +1057,8 @@ export interface ControlPlaneObservation {
  *
  * They coincided in effect only while every shipped cell was
  * `basis: 'declared'` — a declared mechanism ignores the observation
- * entirely. That is no longer the case: station#1684 gave the `acp` cell
- * (~180 lines below) `basis: 'runtime_observation'`, so the two now genuinely
+ * entirely. That is no longer the case: the `acp` cell (~180 lines below)
+ * carries `basis: 'runtime_observation'`, so the two now genuinely
  * diverge on every ACP connection.
  *
  * Concretely, for an ACP connection with no observation yet, or one whose
@@ -1079,10 +1074,9 @@ export interface ControlPlaneObservation {
  * resolver exemption that reaches an incapable session delivers nothing and
  * says so.
  *
- * An earlier revision keyed this on `channel === 'subprocess'`, which was
- * honest before #1195 shipped and silently understated Codex after it —
- * the field the delivery path reads is the truth; the channel name was
- * only ever a proxy for it (review finding, PR #1283).
+ * Key this on the delivery field, never on `channel === 'subprocess'`:
+ * the field the delivery path reads is the truth, and the channel name is
+ * only ever a proxy for it.
  */
 export type EngineControlPlaneCapability =
   | 'full'
@@ -1113,14 +1107,14 @@ export function engineControlPlaneCapability(
  * a surface explaining "these are the engines that can run the built-in
  * assistant" cannot drift from what the resolver will actually accept. When
  * an engine's cell gains a `builtinStationControlDelivery` mechanism (as
- * Codex's did when #1195 shipped `'url-token'`) its name appears here on the
+ * Codex's does with `'url-token'`) its name appears here on the
  * same commit, with no copy change anywhere.
  *
  * An entry whose `displayName` is `null` is omitted rather than named by its
  * id: only the live connection can name a command-backed engine, and this
  * list is a general statement about engines, not about one connection.
  *
- * station#1549: this is a statement about ENGINES, so it deliberately passes
+ * This is a statement about ENGINES, so it deliberately passes
  * no observation — a `runtime_observation` cell therefore derives
  * `observation-required`, which is not `full`, and stays out of the sentence.
  * That is correct: "engines that can run it today" cannot honestly name an
@@ -1151,7 +1145,7 @@ export interface ReadyEngineConnection {
   connectionId: EngineConnectionId;
   matrix: EngineCapabilityMatrix;
   /**
-   * station#1549: this connection's own runtime evidence, when Station has
+   * This connection's own runtime evidence, when Station has
    * observed it. Threaded PER CONNECTION (never projected from a
    * first-connection collapse) so the binding resolver, the server bootstrap
    * and the picker all call `engineControlPlaneCapability` with the same two
@@ -1162,7 +1156,7 @@ export interface ReadyEngineConnection {
 }
 
 /**
- * station#1194: the built-in agents' (Station's own default agent,
+ * The built-in agents' (Station's own default agent,
  * `station-voice`) engine binding — `null` means Station's own engine (the
  * historical, byte-identical default), matching every other engine-identity
  * resolution in this module (`resolveEngineCapabilityMatrix`'s own "no id, no
@@ -1174,7 +1168,7 @@ export interface BuiltinAgentEngineBinding {
   connectionId: EngineConnectionId;
   matrix: EngineCapabilityMatrix;
   /**
-   * station#1549 (review finding): the evidence this binding was resolved
+   * The evidence this binding was resolved
    * ON, carried forward rather than discarded. Without it a consumer that
    * re-derives the capability from the matrix alone — the bootstrap's own
    * "bound to an external engine" log did exactly this — would report a
@@ -1208,8 +1202,8 @@ export interface BuiltinAgentEngineBinding {
  *   resolution only; the persisted choice itself is untouched; a
  *   reappearing connection resolves again on the next call with no user
  *   action required.
- * - Only control-plane-capable engines can carry the binding (owner
- *   directive on station#1194: offer only capable engines, keyed off
+ * - Only control-plane-capable engines can carry the binding (offer only
+ *   capable engines, keyed off
  *   capability). The built-in default agent's whole identity is "assistant
  *   that manages Station through `station-control`"; on an engine whose
  *   `toolServers` delivery cannot carry that server, it registers, responds,
@@ -1219,10 +1213,10 @@ export interface BuiltinAgentEngineBinding {
  *   server resolves to null rather than silently binding a decorative
  *   assistant), and an explicit choice of one fails safe for THIS resolution
  *   with the persisted choice untouched — so when an engine's matrix cell
- *   gains a `builtinStationControlDelivery` mechanism (as Codex's did when
- *   #1195 shipped `'url-token'`), the same persisted choice starts resolving
+ *   gains a `builtinStationControlDelivery` mechanism (as Codex's does with
+ *   `'url-token'`), the same persisted choice starts resolving
  *   with no user action, which is the payoff of keying off the capability
- *   cell instead of an engine list. station#1549 extends that payoff to
+ *   cell instead of an engine list. The same payoff extends to
  *   EVIDENCE arrival: for a `runtime_observation` cell the same persisted
  *   choice starts resolving the moment the connection's observation says
  *   yes, with no code change and no user action.
@@ -1233,7 +1227,7 @@ export function resolveBuiltinAgentEngineBinding(input: {
   readyExternalEngines: ReadyEngineConnection[];
 }): BuiltinAgentEngineBinding | null {
   const capableEngines = input.readyExternalEngines.filter(
-    // station#1549: `=== 'full'` deliberately, not `!== 'chat-only'` — an
+    // `=== 'full'` deliberately, not `!== 'chat-only'` — an
     // `observation-required` connection is one Station has never met, and
     // binding it optimistically would produce exactly the decorative
     // assistant this filter exists to prevent.

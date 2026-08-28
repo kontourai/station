@@ -91,7 +91,7 @@ describe('dockSnap', () => {
     ).toBe('full');
   });
 
-  // #795: this used to assert that direction wins for a slow drag too, which
+  // archive#795: this used to assert that direction wins for a slow drag too, which
   // is what made every upward nudge resolve to Full regardless of where the
   // pointer actually was. A deliberate, unhurried gesture now lands on the
   // snap nearest the release height; flings still own intent (below).
@@ -214,7 +214,7 @@ describe('dockSnap', () => {
     // Collapsed/Half midpoint (~206px). Position alone would call this
     // Collapsed, which would make an opening gesture close the dock — so the
     // opening guard lifts it to Half. It no longer jumps all the way to Full
-    // (#795): a modest drag gets a modest result.
+    // (archive#795): a modest drag gets a modest result.
     expect(
       resolveMobileDockSnap({
         pixels: 150,
@@ -247,7 +247,7 @@ describe('dockSnap', () => {
     ).toBe('collapsed');
   });
 
-  // #795, as reported: phone 390x844, dock at Half (380px). Both a 60px and a
+  // archive#795, as reported: phone 390x844, dock at Half (380px). Both a 60px and a
   // 200px upward drag used to land on Full (788px) — the chosen height was
   // ignored entirely.
   test('the reported phone geometry: a small drag holds Half, a large one reaches Full', () => {
@@ -286,9 +286,9 @@ describe('dockSnap', () => {
   });
 });
 
-// #869: a maximized dock is opaque and full-height, so a route change moved the
+// archive#869: a maximized dock is opaque and full-height, so a route change moved the
 // view underneath it while nothing visibly happened. Dock state lives in the
-// query string and `navigate()` preserves it, so `maximize=true` survived.
+// query string and `navigate` preserves it, so `maximize=true` survived.
 describe('shouldRestoreDockOnNavigation (#869)', () => {
   test('restores a maximized dock when the pathname actually changes', () => {
     expect(
@@ -323,7 +323,7 @@ describe('shouldRestoreDockOnNavigation (#869)', () => {
   });
 });
 
-// #869 review: restoring only `isDockMaximized` is not enough. The mobile
+// archive#869: restoring only `isDockMaximized` is not enough. The mobile
 // snap-sync effect computes `isDockMaximized ? 'full' : dockSnap`, so clearing
 // the flag while the snap still says Full makes it re-expand and undo the
 // restore — and the persisted snap doubles as "previous size", so it would

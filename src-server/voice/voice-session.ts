@@ -657,7 +657,7 @@ class VoiceSession {
   /**
    * Reuse the runtime-built hook so a voice invocation receives the IDENTICAL
    * policy and approval chain as every other managed agent invocation —
-   * auto-approve list, config-protection policy, guardian, and #1834's
+   * auto-approve list, config-protection policy, guardian, and archive#1834's
    * fail-closed default when no approval channel exists. Voice gets no
    * special-case restriction: it is no less attended than the scheduler or
    * `/invoke`, which run through this same chain.

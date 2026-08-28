@@ -7,7 +7,7 @@ import { contrastRatio } from './helpers/color-contrast';
  * actually land on.
  *
  * `status-token-contrast.spec.ts` owns the *semantic* families (error, danger,
- * success). Nothing owned the *neutral* ramp, and station#3140 is what that
+ * success). Nothing owned the *neutral* ramp, and archive#3140 is what that
  * gap produced: `.engine-chip__pill` shipped `--text-muted` on `--bg-tertiary`
  * at 10px and measured 4.38:1 dark / 4.33:1 light, under 1.4.3's 4.5:1 in both
  * themes. It is the label that names the engine — "Claude Code", "Codex",
@@ -17,7 +17,7 @@ import { contrastRatio } from './helpers/color-contrast';
  *
  * Two properties of this spec are deliberate and worth keeping:
  *
- * **It measures rules, not tokens.** A token matrix would have passed #3140
+ * **It measures rules, not tokens.** A token matrix would have passed archive#3140
  * happily: `--text-muted` clears 4.5:1 on `--bg-primary` (5.16:1 dark). The
  * defect only exists at the pairing — that token on *that* fill — so the probe
  * mounts the real shipped class and lets the cascade choose the colour.
@@ -30,7 +30,7 @@ import { contrastRatio } from './helpers/color-contrast';
  *
  * ## What the `.button--link` case pins, and why it is not a fix
  *
- * station#3140 also reported `.button--link` at 3.25:1 in light. It does not
+ * archive#3140 also reported `.button--link` at 3.25:1 in light. It does not
  * reproduce: that number belongs to Console Kit's `.theme-console` palette
  * (light `--k-brand` `#6c9400`), and Station deliberately applies no `.theme-*`
  * class — it is the host, not one product (`docs/strategy/kontour-integration-
@@ -149,7 +149,7 @@ test.describe('neutral text ramp contrast', () => {
   });
 
   /**
-   * station#3140's actual defect. The chip paints its own opaque
+   * archive#3140's actual defect. The chip paints its own opaque
    * `--bg-tertiary`, so its ratio is fixed by the token pair alone and does not
    * vary with the host — which is why every backdrop below must report the
    * same number, and why a regression here is a regression everywhere the chip
@@ -272,7 +272,7 @@ test.describe('neutral text ramp contrast', () => {
    * The ramp itself, one rung at a time, on the surfaces the ramp is used on.
    *
    * `--text-secondary` was a byte-identical alias of `--text-primary` in both
-   * theme blocks until station#3146 — the middle rung did not exist, and ~340
+   * theme blocks until archive#3146 — the middle rung did not exist, and ~340
    * call sites saying "this text is subordinate" rendered at full strength.
    * `--text-tertiary` is now the rung the engine chip and the picker's
    * description line both sit on. Neither had a contrast floor anywhere.
@@ -281,7 +281,7 @@ test.describe('neutral text ramp contrast', () => {
    * clear 4.5:1 on the tinted surfaces (2.99:1 light on `--bg-highlight`), and
    * asserting it here would either fail honestly on surfaces it should not be
    * used on, or force the assertion down to a threshold that certifies
-   * nothing. Its correct use is non-text and inactive chrome; #3140 is the
+   * nothing. Its correct use is non-text and inactive chrome; archive#3140 is the
    * record of what happens when it carries content instead.
    */
   for (const token of [
@@ -330,7 +330,7 @@ test.describe('neutral text ramp contrast', () => {
   }
 
   /**
-   * station#3050's contrast half. Five stylesheets referenced `--color-warning`,
+   * archive#3050's contrast half. Five stylesheets referenced `--color-warning`,
    * which was defined in no theme root, so each rendered a hardcoded amber —
    * `#f59e0b` is ~2.2:1 on a light surface, and `.settings__field-warning`
    * renders it at 11px. They now reference `--warning-text`, which is themed

@@ -45,7 +45,7 @@ let shortcutWhenEnabled = true;
 
 // Counts index rebuilds. `rankCommands` runs inside the palette's `useMemo`
 // over `commands`, so a call here means the whole command list was rebuilt,
-// reranked and regrouped — the work M3 is about.
+// reranked and regrouped — the work is about.
 const indexRebuilds = vi.hoisted(() => ({ count: 0 }));
 vi.mock('../components/command-palette-utils', async (importOriginal) => {
   const actual =
@@ -70,7 +70,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   // Pane availability consumes deployment facts through the public SDK; this
   // palette test deliberately keeps that independent query inert.
   useServerCapabilitiesQuery: () => ({ data: undefined }),
-  // station#3313: surface visibility flags read the previews query; keep it
+  // archive#3313: surface visibility flags read the previews query; keep it
   // inert (no previews enabled) rather than letting the real hook fetch.
   useFeaturePreviewsQuery: () => ({
     data: [],
@@ -520,7 +520,7 @@ describe('CommandPalette', () => {
   });
 
   test('a streaming chat does not rebuild the command index while the palette is closed', async () => {
-    // M3: `activeChatsStore` notifies per streamed token, and the palette used
+    // `activeChatsStore` notifies per streamed token, and the palette used
     // to subscribe to that whole snapshot — so every token of every streaming
     // chat rebuilt, reranked and regrouped the entire command index, then the
     // component returned `null` because the palette was shut.
@@ -841,16 +841,16 @@ describe('CommandPalette', () => {
     await renderCommandPalette();
     open();
     // Exact-prefix match: the palette now also contains a "Feature Previews"
-    // navigation entry (#2961), which the loose /Preview/ regex matched too.
+    // navigation entry (archive#2961), which the loose /Preview/ regex matched too.
     // Anchored to the pane row's own accessible name ("Preview Temporarily
     // unavailable: … Workspace panes"): the palette also contains a "Feature
-    // Previews" navigation entry (#2961), which the original loose /Preview/
+    // Previews" navigation entry (archive#2961), which the original loose /Preview/
     // regex matched as well.
     const option = screen.getByRole('option', {
       // Anchored to the pane row's accessible name (label + unavailability
       // note; accessible-name computation joins the spans without a space):
       // the palette also contains a "Feature Previews" navigation entry
-      // (#2961), which the original loose /Preview/ regex matched as well.
+      // (archive#2961), which the original loose /Preview/ regex matched as well.
       name: /^Preview ?Temporarily unavailable/,
     });
     expect(option.getAttribute('aria-disabled')).toBeNull();
@@ -1099,11 +1099,11 @@ describe('CommandPalette active-option announcement', () => {
   });
 });
 
-// --- return focus (station#1245) -------------------------------------------
+// --- return focus (archive#1245) -------------------------------------------
 
 /**
- * The palette's restore was `previouslyFocused.current.focus?.()` with no
- * `isConnected` guard at all — worse than the shape station#1126 was filed
+ * The palette's restore was `previouslyFocused.current.focus?.` with no
+ * `isConnected` guard at all — worse than the shape archive#1126 was filed
  * against — and nothing in this file covered it. It now goes through
  * `@kontourai/station-shared/return-focus`.
  *
@@ -1114,7 +1114,7 @@ describe('CommandPalette active-option announcement', () => {
  * `packages/shared/src/__tests__/return-focus.test.ts` (jsdom), and the
  * "did the focus actually land?" verification in
  * `tests/dialog-return-focus.spec.ts` (Chromium), which jsdom structurally
- * cannot see because it reports `.focus()` on a hidden node as successful.
+ * cannot see because it reports `.focus` on a hidden node as successful.
  */
 describe('CommandPalette return focus (station#1245)', () => {
   function stubFrame() {
@@ -1171,7 +1171,7 @@ describe('CommandPalette return focus (station#1245)', () => {
   /**
    * The palette's characteristic case: every command navigates, so the control
    * that opened it is routinely unmounted by the command it just ran. Pre-fix
-   * this left `activeElement` on `<body>` — station#1126, with no guard at all.
+   * this left `activeElement` on `<body>` — archive#1126, with no guard at all.
    */
   test('falls back to a surviving ancestor when the command unmounted the trigger', async () => {
     const frame = stubFrame();

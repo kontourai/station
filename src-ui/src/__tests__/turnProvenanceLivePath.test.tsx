@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1410 MB1 — the live path.
+ * archive#1410 MB1 — the live path.
  *
  * The provider-backed send returns right after `sendOrchestrationTurn` and
  * never refetches the transcript; the assistant bubble is committed straight
@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
-  // station#1423: the row's share affordance. Stubbed rather than provided
+  // archive#1423: the row's share affordance. Stubbed rather than provided
   // for real, because this file is about the LIVE provenance path and a
   // query client would add a dependency none of its assertions are about.
   useMintAnswerShareMutation: () => ({
@@ -187,14 +187,14 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     const card = screen.getByLabelText(
       'Answer provenance for turn turn-live-1',
     );
-    // station#1434: the live-committed row states the engine once, on its
+    // archive#1434: the live-committed row states the engine once, on its
     // own attribution strip, sourced from this same envelope — the card's
     // collapsed headline no longer repeats it.
     expect(container.querySelector('.engine-chip')?.textContent).toBe(
       'Claude Code',
     );
     expect(card.textContent).not.toContain('Claude Code');
-    // station#1802: this used to assert "6 gaps". That count was of Station's
+    // archive#1802: this used to assert "6 gaps". That count was of Station's
     // own not-yet-captured signals, which are identical under every answer and
     // therefore say nothing about this turn — they no longer reach the badge.
     // A live turn that completed cleanly has nothing notable to badge.

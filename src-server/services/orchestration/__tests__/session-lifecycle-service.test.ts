@@ -136,7 +136,7 @@ describe('session-lifecycle-service', () => {
     );
   });
 
-  // #1073: session.configured is published whenever a runtime attaches —
+  // archive#1073: session.configured is published whenever a runtime attaches —
   // including for every persisted session resumed at a service restart — so
   // it must not fabricate a 'running' lifecycle state.
   test('an attach-only session (started + configured, no turn) does not project running (#1073)', () => {
@@ -264,7 +264,7 @@ describe('session-lifecycle-service', () => {
 
     // initialState 'created' is the shape EVERY adapter emits on every
     // startSession (reattach included) — it must stay unstamped too
-    // (#1073 review round 1).
+    // (archive#1073 review round 1).
     const started = normalizeCanonicalRuntimeEventLifecycle(
       {
         eventId: 'evt-n2',
@@ -466,7 +466,7 @@ describe('session-lifecycle-service', () => {
     expect(projection.lifecycleState).toBe('running');
   });
 
-  // Boundary pin (#1073 review LOW): request.resolved maps to 'running'
+  // Boundary pin (archive#1073 review LOW): request.resolved maps to 'running'
   // unconditionally. In every real adapter sequence requests open inside a
   // turn, so this is correct there; a lone resolved request after an
   // attach-only session would fabricate running. Pinned so a future change
@@ -518,7 +518,7 @@ describe('session-lifecycle-service', () => {
     expect(projection.pendingReview).toBe(false);
   });
 
-  // station#1296: pendingReview must not survive the session's own terminal
+  // archive#1296: pendingReview must not survive the session's own terminal
   // transition — a resolution that bypassed respondToRequest/stopSession
   // (server restart, lost in-memory pending entry, ...) previously left the
   // whole-log union `true` forever, which `orchestrationLifecycleLabel`
@@ -639,7 +639,7 @@ describe('session-lifecycle-service', () => {
         ],
       });
 
-      // station#1548 REVERSED THIS ASSERTION, deliberately. The original
+      // archive#1548 REVERSED THIS ASSERTION, deliberately. The original
       // read "the session ended (failed is terminal), so the stale
       // pendingReview flag is reconciled away — the UI still shows attention
       // via lifecycleState === 'failed' itself, not via this flag." Both
@@ -687,7 +687,7 @@ describe('session-lifecycle-service', () => {
         ],
       });
 
-      // The #1296 protection, intact: `canceled -> queued` only, never
+      // The archive#1296 protection, intact: `canceled -> queued` only, never
       // straight back to `running`, so the work cannot resume and nothing is
       // waiting on the approval. This is the assertion that fails if the fix
       // is over-rotated into "no state ever reconciles the flag away".
@@ -906,7 +906,7 @@ describe('an attached-but-idle runtime does not overwrite the outcome (#1121 rev
   });
 });
 
-// station#3442: a turn/session that fails must record `failed`, not
+// archive#3442: a turn/session that fails must record `failed`, not
 // `completed`. `session.exited` is the one other route (besides
 // `runtime.error`) into a terminal lifecycle state, and only
 // `codex-adapter-transport.ts`'s unexpected-exit path ever supplies a real
@@ -949,7 +949,7 @@ describe('session.exited exit-code derivation (#3442)', () => {
       ],
     });
     expect(projection.lifecycleState).toBe('failed');
-    // station#3442 review finding: `mapEventToLifecycleTransition`'s
+    // archive#3442 review finding: `mapEventToLifecycleTransition`'s
     // `session.exited` case sets `reason: 'runtime_error'` on this branch,
     // but nothing asserted it — it reaches
     // `OrchestrationSessionSummary.transitionReason` and the
@@ -982,8 +982,8 @@ describe('session.exited exit-code derivation (#3442)', () => {
     expect(projection.lifecycleState).toBe('completed');
   });
 
-  // station#3451 finding M1: exitCode 0 must FILL, not override, a failure
-  // this same event stream already recorded. station#3473 made this
+  // archive#3451 finding M1: exitCode 0 must FILL, not override, a failure
+  // this same event stream already recorded. archive#3473 made this
   // reachable: finalizeUnexpectedExit now always synthesizes a runtime.error
   // before session.exited, and a process CAN die with an unresolved turn yet
   // still exit 0 (a graceful-shutdown handler, a kill racing a clean-exit
@@ -1053,7 +1053,7 @@ describe('session.exited exit-code derivation (#3442)', () => {
   });
 
   // The moot-set proof: an open approval must survive a `session.exited`
-  // failure exactly as it already survives a `runtime.error` one (#1548) —
+  // failure exactly as it already survives a `runtime.error` one (archive#1548) —
   // `failed` is retryable (`SESSION_LIFECYCLE_TRANSITIONS.failed` includes
   // `running`), so the request is still genuinely outstanding, not moot.
   test('an unresolved approval survives a session.exited failure (moot-set proof)', () => {
@@ -1092,7 +1092,7 @@ describe('session.exited exit-code derivation (#3442)', () => {
   });
 });
 
-// station#3451 finding 2: a session.exited crash (defined, nonzero exitCode)
+// archive#3451 finding 2: a session.exited crash (defined, nonzero exitCode)
 // is the one 'failed' path with no `runtime.error` to read a cause from.
 describe('session.exited crash blockedReason (station#3451 finding 2)', () => {
   const base = {
@@ -1201,7 +1201,7 @@ describe('session.exited crash blockedReason (station#3451 finding 2)', () => {
   });
 });
 
-// station#3473 paths 3/4: `interruptibleTurnIdForEvents` must keep a codex
+// archive#3473 paths 3/4: `interruptibleTurnIdForEvents` must keep a codex
 // deferred-retriable `runtime.error` interruptible, WITHOUT disturbing
 // `activeTurnIdForEvents`'s existing, deliberately-tested under-report
 // (see orchestration-session-state.test.ts's
@@ -1293,7 +1293,7 @@ describe('interruptibleTurnIdForEvents / isDeferredRetriableTurnError (station#3
     expect(interruptibleTurnIdForEvents(events)).toBeUndefined();
   });
 
-  // station#3451 finding B1 (blocking, review-found): `interruptibleTurnIdForEvents`
+  // archive#3451 finding B1 (blocking, review-found): `interruptibleTurnIdForEvents`
   // folds over `eventStore.listSessionProjectionEvents(threadId)`, a BOUNDED
   // fact set — not the full event log. At the time of this fix,
   // `firstTurnStartedWithPrompt` always returned the FIRST turn ever
@@ -1308,7 +1308,7 @@ describe('interruptibleTurnIdForEvents / isDeferredRetriableTurnError (station#3
   // would have been used, and codex's `interruptTurn` (pre-B1's OTHER fix)
   // cleared `activeTurnId` unconditionally — wiping turn-2's real tracking.
   //
-  // station#3524 gave `listSessionProjectionEvents` a dedicated current-turn
+  // archive#3524 gave `listSessionProjectionEvents` a dedicated current-turn
   // slot, so the real store no longer produces this EXACT bounded set (see
   // event-store.test.ts's "retains the CURRENT (second) turn's own
   // turn.started" — turn-2's start now DOES survive this shape). This test
@@ -1353,7 +1353,7 @@ describe('interruptibleTurnIdForEvents / isDeferredRetriableTurnError (station#3
     expect(activeTurnIdForEvents(boundedFactSet)).toBeUndefined();
   });
 
-  // station#3451 fix round D1: the SAME B1 scenario reproduces through the
+  // archive#3451 fix round D1: the SAME B1 scenario reproduces through the
   // OTHER arm — the `!event.turnId` escape the round-1 fix kept. The
   // adapter-stream-restart error (orchestration-service.ts: any provider,
   // retriable: true, deliberately no turnId) IS a LIFECYCLE_METHODS event
@@ -1602,7 +1602,7 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
 
   // The discriminating negative: a turn that was still IN PROGRESS when the
   // process died has no recorded outcome, so the exit IS the outcome
-  // (station#3451 finding 1, unchanged by the guard above).
+  // (archive#3451 finding 1, unchanged by the guard above).
   test('a turn still in progress when the process exits abnormally is failed', () => {
     const projection = projectSessionLifecycle({
       session,

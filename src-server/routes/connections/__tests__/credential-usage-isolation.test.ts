@@ -3,7 +3,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { createAppHomeRoutes } from '../app-home.js';
 
 /**
- * station#3552, review round 2 (independent, Codex).
+ * archive#3552, review round 2 (independent, Codex).
  *
  * The route catches each account's read individually so one failure cannot 500
  * the others. Proving that needs a REJECTED read — and the reader is now fenced

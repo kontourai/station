@@ -232,8 +232,8 @@ describe('the npm stable ledger record', () => {
       'node scripts/lib/parse-published-packages.mjs "$PUBLISHED_PACKAGES"',
     );
     // The old text-splitting shapes are gone.
-    expect(step).not.toContain('${spec%@*}');
-    expect(step).not.toContain('${spec##*@}');
+    expect(step).not.toContain('$' + '{spec%@*}');
+    expect(step).not.toContain('$' + '{spec##*@}');
     expect(step).not.toMatch(/read -r spec/);
     // The parse script itself documents and enforces the JSON contract.
     expect(parseScript).toContain('published-packages');

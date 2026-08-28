@@ -228,7 +228,7 @@ describe('chat-model-override helpers', () => {
       },
       expect.objectContaining({ appConfig: { region: 'us-east-1' } }),
     );
-    // #914: a session model override rebuilds the agent for an *existing*
+    // archive#914: a session model override rebuilds the agent for an *existing*
     // conversation, so it has to carry the slug's conversation store or the
     // override silently costs the user their history.
     expect(createTempAgent).toHaveBeenCalledWith({
@@ -252,7 +252,7 @@ describe('chat-model-override helpers', () => {
     );
   });
 
-  // station#1426 fix round (MB-2): chat-model-override.ts is a one-shot
+  // archive#1426 fix round (MB-2): chat-model-override.ts is a one-shot
   // model-selection path that previously never reached
   // `AgentCreationConfig.dispatchEvidenceSource` — every override-created
   // Dispatch model on this path silently graded every candidate as the

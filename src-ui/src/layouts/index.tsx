@@ -102,7 +102,7 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
   // A plugin-provided view withheld by the remote-isolation policy is not
   // "missing" — naming installation as the cause would send the user to
   // reinstall a plugin the server already has. Name the real refusal and
-  // offer the same path the chrome banner does (#2539).
+  // offer the same path the chrome banner does (archive#2539).
   if (
     typeof component === 'string' &&
     loadStatus.failure === 'remote-isolation'
@@ -271,7 +271,7 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 };
 
 builtinRegistry.default = DefaultLayout;
-// Project-wide Flow run console (S2): include in a layout via
+// Project-wide Flow run console: include in a layout via
 // { kind: 'builtin-component', name: 'flow-run-console' }.
 builtinRegistry['flow-run-console'] = () => <FlowRunConsole />;
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;
@@ -368,7 +368,7 @@ export function LayoutRenderer({
   // Re-resolve the component when the plugin registry's status changes: a
   // live registry reload (e.g. consent granted without a page reload) must
   // swap a mounted fallback for the newly registered layout instead of
-  // stranding the stale selection (sol review of the honest-slot change).
+  // stranding the stale selection.
   useSyncExternalStore(pluginRegistry.subscribe, pluginRegistry.getLoadStatus);
   try {
     return (

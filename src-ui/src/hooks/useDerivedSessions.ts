@@ -22,7 +22,7 @@ const EMPTY_CONVERSATIONS_LIST: ConversationsSnapshot['conversations'][string] =
 const EMPTY_BACKEND_MESSAGES: any[] = [];
 
 /**
- * station#1293: identity key for reconciling a locally-held (optimistic)
+ * archive#1293: identity key for reconciling a locally-held (optimistic)
  * message against the backend transcript. Neither `ChatMessage` (client) nor
  * the backend's `MessageData` carries a stable server-assigned id, so
  * `(role, content)` is the best identity available — see the doc comment on
@@ -37,7 +37,7 @@ function messageIdentityKey(message: { role: string; content: string }) {
  * `backendMessages` — i.e. the genuinely optimistic tail still waiting on a
  * backend round-trip.
  *
- * station#1293: the old implementation was
+ * archive#1293: the old implementation was
  * `chatState.messages.slice(backendMessages.length)` — pure position, no
  * identity. That silently breaks the moment `chatState.messages` and
  * `backendMessages` fall out of 1:1 lockstep: a client-only row with no
@@ -116,7 +116,7 @@ function buildSessionMessages(
       message.timestamp || Date.now() - (messages.length - index) * 1000,
   }));
 
-  // station#1292: every entry in `ephemeralMessages` already carries
+  // archive#1292: every entry in `ephemeralMessages` already carries
   // `ephemeral: true` (set once, by `createEphemeralMessageState` —
   // `addEphemeralMessage` is the only producer) and a real timestamp, so it
   // no longer needs tagging or normalizing here; it just joins the sorted
@@ -134,7 +134,7 @@ function buildSessionMessages(
 // (ActiveChatsContext.useActiveChatSelector). Excluding them from the
 // per-session cache fingerprint below is what stops a keystroke in one tab
 // from rebuilding every open tab's ChatSession + messages array
-// (station#726 — the primary ChatDock surface, not just ACPChatPanel).
+// (archive#726 — the primary ChatDock surface, not just ACPChatPanel).
 // `attachments` is deliberately NOT excluded: ActiveWorkContextFrame reads
 // it off the derived session, and it only changes on explicit add/remove,
 // never per keystroke.
@@ -161,7 +161,7 @@ const FIELDS_EXCLUDED_FROM_FINGERPRINT = new Set<keyof ChatUIState>([
 // through useActiveChatTranscript, which the dock renders from once an
 // orchestration session is started. Its projection memo lists
 // `session.messages` among its dependencies and rebuilds contentParts with a
-// fresh .map() per message, so a new messages array per token yields new part
+// fresh.map per message, so a new messages array per token yields new part
 // references, which miss MessageContent's memo. Downstream of that,
 // ChatMessageList's transcriptRows memo (dep: `messages`) re-runs too.
 const FIELDS_EXCLUDED_FROM_MESSAGES_REUSE = new Set<keyof ChatUIState>([
@@ -173,7 +173,7 @@ const EMPTY_KEY_SET = new Set<keyof ChatUIState>();
 /**
  * True when every field of `a`/`b` relevant to `deriveSession`'s output is
  * equal by reference/value. `mergeChatUpdates` (active-chats-store) always
- * replaces the session's whole ChatUIState object on every updateChat() —
+ * replaces the session's whole ChatUIState object on every updateChat —
  * but fields the update didn't touch keep their prior reference, so this
  * reliably distinguishes "session actually changed" from "the store handed
  * us a new wrapper object again."
@@ -316,8 +316,8 @@ export function useDerivedSessions(
     conversationsStore.getSnapshot,
   );
 
-  // Persists across renders per hook instance/call site. active-chats-store.notify()
-  // replaces the *whole* `allChats` map object on every updateChat() call,
+  // Persists across renders per hook instance/call site. active-chats-store.notify
+  // replaces the *whole* `allChats` map object on every updateChat call,
   // for ANY session (see active-chats-store.ts), which would otherwise
   // force this hook's useMemo to rebuild every session's ChatSession +
   // messages array on every keystroke/streaming tick in any open tab. This

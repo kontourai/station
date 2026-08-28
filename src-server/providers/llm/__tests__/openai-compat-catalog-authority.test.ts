@@ -3,7 +3,7 @@ import { resolveExactModelSelector } from '../model-catalog.js';
 import { OpenAICompatLLMProvider } from '../openai-compat-provider.js';
 
 /*
- * station#3653 delta review HIGH-1, at the seam that matters: a REAL
+ * archive#3653 delta review HIGH-1, at the seam that matters: a REAL
  * `OpenAICompatLLMProvider` built for two different endpoints. The class is
  * the same, so anything that reads the class rather than the instance cannot
  * tell these two cases apart — and one of them is an OpenAI account whose

@@ -82,19 +82,19 @@ export function mapStrandsStreamEvent(
 
   if (event.type === 'toolResultEvent') {
     const result = (event as any).result;
-    // station#3091: `result.error` is the SAME Error object instance
+    // archive#3091: `result.error` is the SAME Error object instance
     // `createStrandsFunctionTools` threw (Strands' own `createErrorResult`
     // holds the reference rather than cloning it), so marker own-properties
     // set at the throw site survive here unchanged.
     //
-    // station#3210: the real reason text is surfaced only when
+    // archive#3210: the real reason text is surfaced only when
     // `stationComposedReason` is present — the marker meaning
     // `denial-message.ts` composed it, so its tool name is sanitized and any
     // guardian/hook prose inside it is bounded, quoted and attributed. An
     // ordinary tool error's message may carry remote/untrusted text and stays
     // inside the existing `projectToolServerResult` redaction below rather
     // than leaking through a new field. `policyDenied` is carried
-    // independently: it drives #3091's badge and says nothing about
+    // independently: it drives archive#3091's badge and says nothing about
     // authorship, so a policy-denied-but-uncomposed reason is badged AND
     // redacted.
     //
@@ -106,7 +106,7 @@ export function mapStrandsStreamEvent(
     // and so keeps the framework's raw `output` on the `/chat` SSE path.
     // `strands-agent-hooks.test.ts` asserts the canary is absent from this
     // chunk stringified whole; the VoltAgent side has no such test because it
-    // would fail today. That divergence is station#3263, not this seam's to
+    // would fail today. That divergence is archive#3263, not this seam's to
     // close.
     const resultError = result?.error as
       | (Error & { policyDenied?: true; stationComposedReason?: true })
@@ -115,7 +115,7 @@ export function mapStrandsStreamEvent(
     const stationComposed =
       resultError?.stationComposedReason === true &&
       typeof resultError.message === 'string';
-    // station#3113: `result.status === 'error'` is Strands' OWN outcome
+    // archive#3113: `result.status === 'error'` is Strands' OWN outcome
     // signal (set by `FunctionTool.stream()`'s error wrapping for any
     // thrown error, policy-denied or not — see createStrandsFunctionTools).
     // Before this fix, only the policy-denied branch above ever set a
@@ -133,13 +133,13 @@ export function mapStrandsStreamEvent(
       type: 'tool-result',
       // NO toolName here: this event carries only the call id, and writing
       // that id under the name key put raw ids into every tool-name rollup
-      // (station#3082). The empty-string fallback used to hide them inside
+      // (archive#3082). The empty-string fallback used to hide them inside
       // the 'unknown' bucket. MetadataHandler resolves the real name from
       // the matching tool-call it already remembers by call id.
       // Pass the id through as-is; the emitter decides. `|| ''` wrote an
       // empty string into the durable record where the id was simply
       // unknown, and a join on that binds every id-less event together
-      // (station#3086).
+      // (archive#3086).
       toolCallId: result?.toolUseId,
       output:
         projectToolServerResult(result) === result

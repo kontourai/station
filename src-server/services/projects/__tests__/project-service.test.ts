@@ -197,7 +197,7 @@ describe('ProjectService', () => {
     expect(adapter.deleteProject).toHaveBeenCalledWith('test');
   });
 
-  // station#1499 slice 2: a new project is never in the legacy shape, so the
+  // archive#1499: a new project is never in the legacy shape, so the
   // `workingDirectory`-only path shrinks monotonically instead of persisting as
   // a permanent second mode (portable-project-identity.md §5).
   test('createProject writes a manifest sidecar when a manifest store is wired', async () => {
@@ -346,7 +346,7 @@ describe('ProjectService', () => {
     ).not.toHaveBeenCalled();
   });
 
-  // station#3315: server-owned sidebar order, proven through the REAL storage
+  // archive#3315: server-owned sidebar order, proven through the REAL storage
   // adapter so the round-trip covers schema acceptance and the list sort, not
   // a mock's echo.
   test('reorderProjects persists a full order that survives a fresh adapter; an unpositioned set lists in name order', async () => {

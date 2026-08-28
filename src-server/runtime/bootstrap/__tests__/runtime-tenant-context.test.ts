@@ -200,7 +200,7 @@ describe('hosted runtime tenant context', () => {
   });
 
   /**
-   * station#4075 stage 2 review round 3 (the header-forgery guard the
+   * archive#4075 stage 2 review round 3 (the header-forgery guard the
    * ruling asked for): `tenantExecutionContextForRequest` — the ONE
    * accessor `resolveOrchestrationRequestPrincipal`
    * (`runtime-routes.ts`) is required to read for the hosted-tenant

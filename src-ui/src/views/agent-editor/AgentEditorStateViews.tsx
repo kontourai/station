@@ -72,7 +72,7 @@ export function AgentEditorLoadFailureState({
 }
 
 /**
- * A detected engine that has no Agent file yet (AC4). The list row says the
+ * A detected engine that has no Agent file yet. The list row says the
  * same two words with the same reason — both read `agentRunnability`.
  *
  * This is deliberately NOT a disabled editor. The previous shape rendered all

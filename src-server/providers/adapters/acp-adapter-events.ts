@@ -58,7 +58,7 @@ export interface AcpMapperState {
    * Extension notifications retained during the in-flight turn window that
    * are bound (via `extensionNotificationBinding` — see
    * `src-shared/extension-notification-bindings.ts`) to the
-   * `acp.turn-error-cause` consumer (station#4084, review fix round F1:
+   * `acp.turn-error-cause` consumer (archive#4084, review fix round F1:
    * an EXACT-TUPLE allowlist through the existing registry, not a
    * structural type-prefix guess — "namespace similarity is never
    * authority" is that registry's own rule). Appended by
@@ -74,7 +74,7 @@ export interface AcpMapperState {
   turnErrorNotifications?: AcpExtensionErrorNotification[];
   /**
    * TurnIds whose `prompt()` was cancelled (`interruptTurn`) but has not yet
-   * settled — station#4084 review fix round F2, LEAK-CLEANUP mechanics only
+   * settled — archive#4084 review fix round F2, LEAK-CLEANUP mechanics only
    * (review fix round M1 moved the actual suppression DECISION to
    * `turnErrorNotificationsSuppressed` below — see that field's doc for why).
    * Extension notifications carry no turn id, so a late notification from a
@@ -89,7 +89,7 @@ export interface AcpMapperState {
   quarantinedTurnIds?: Set<string>;
   /**
    * Whether THIS turn's entire error-cause retention window is suppressed —
-   * station#4084 review fix round M1. `quarantinedTurnIds` is a LIVE set:
+   * archive#4084 review fix round M1. `quarantinedTurnIds` is a LIVE set:
    * consulting it per-notification reopens a window mid-turn, because the
    * cancelled turn's own settlement handler correctly deletes its id from
    * that set (to avoid a permanent leak) partway through the REPLACEMENT
@@ -105,7 +105,7 @@ export interface AcpMapperState {
   turnErrorNotificationsSuppressed?: boolean;
 }
 
-/** One extension notification retained for turn-failure enrichment (station#4084). */
+/** One extension notification retained for turn-failure enrichment (archive#4084). */
 export interface AcpExtensionErrorNotification {
   /** The full extension method, e.g. `_kiro.dev/error/rate_limit`. */
   method: string;
@@ -114,7 +114,7 @@ export interface AcpExtensionErrorNotification {
 }
 
 /**
- * station#4084 review fix round F4b: cap on `turnErrorNotifications` —
+ * archive#4084 review fix round F4b: cap on `turnErrorNotifications` —
  * `sendTurn`'s `.catch` only ever reads the LAST entry (`.at(-1)`), so a
  * pathological turn that receives many error-shaped notifications before
  * ever settling (or never settles at all) must not grow this array without
@@ -126,7 +126,7 @@ const MAX_RETAINED_TURN_ERROR_NOTIFICATIONS = 4;
 /**
  * Extract a human-readable cause from an extension notification payload,
  * never throwing regardless of what actually arrived on the wire
- * (station#4084 review fix round F3: the JSON-RPC decoder does not validate
+ * (archive#4084 review fix round F3: the JSON-RPC decoder does not validate
  * `params` against the `Record<string, unknown>` type this function is
  * declared to receive — a real notification can carry `null`, `undefined`,
  * a primitive, or an array where a well-shaped object was expected).
@@ -161,7 +161,7 @@ export interface AcpMapperContext {
  * the legacy bridge either — an accepted gap (see the plan's Risks).
  */
 /**
- * station#1182: extract the ACP agent's own currently-selected model — a
+ * archive#1182: extract the ACP agent's own currently-selected model — a
  * genuinely engine-reported signal, not Station's request echoed back.
  * `acp-process.ts`'s `setConfigOption` doc comment ("Set a config option
  * (e.g., model) for the current session") confirms the ACP protocol's
@@ -365,7 +365,7 @@ export function mapAcpSessionUpdate(
  * the canonical contract intentionally carries no app-specific semantics
  * (ADR-0008), only an opaque `namespace`/`type`/`payload` envelope.
  *
- * station#4084: as a side effect (not a canonical event), a notification
+ * archive#4084: as a side effect (not a canonical event), a notification
  * bound to the `acp.turn-error-cause` consumer (an exact, evidenced tuple —
  * see `src-shared/extension-notification-bindings.ts`) is also retained on
  * `ctx.state.turnErrorNotifications`, unless

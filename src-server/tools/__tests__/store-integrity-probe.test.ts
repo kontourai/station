@@ -30,7 +30,7 @@ import {
 } from '../../runtime/bootstrap/store-integrity-verification.js';
 
 /**
- * station#3218. The probe's contract is a PROCESS contract — stdout JSON plus
+ * archive#3218. The probe's contract is a PROCESS contract — stdout JSON plus
  * an exit status — and a returned number is not an exit status. So every case
  * here runs the real bundled artifact as a real child and reads what the
  * operating system reports.

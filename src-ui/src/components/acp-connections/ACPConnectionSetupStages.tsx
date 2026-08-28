@@ -431,7 +431,7 @@ export function ACPConnectionSetupStatus({
                 never ran, and after it the command is running and answering.
                 Anything more specific would be a claim about a failure
                 Station cannot classify.
-              */}
+*/}
               {reason.phase === 'spawn' ||
               reason.phase === 'workspace preparation'
                 ? 'Station could not start this provider’s command. Install it and make it runnable on this computer, then check it again.'

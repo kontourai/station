@@ -34,7 +34,7 @@ import './UsageStatsPanel.css';
 type DrillDownType = 'model' | 'agent' | null;
 
 /**
- * The period-scoped half of the panel (station#3093): summary figures from
+ * The period-scoped half of the panel (archive#3093): summary figures from
  * the server's own `rangeSummary` (the one existing range derivation —
  * routes/operations/analytics.ts), daily bars from the window's `byDate`
  * rows, and the coverage sentence that keeps a daily-history sum from

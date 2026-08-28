@@ -5,8 +5,8 @@ import { expect, test } from './helpers/authenticated-request';
  * What happens to the app once a skill is runnable as a slash command, driven
  * against the REAL skills API.
  *
- * station#3736: enabling the first command skill took out every route with
- * React error #185. `tests/skills.spec.ts` performs the same toggle and stayed
+ * archive#3736: enabling the first command skill took out every route with
+ * React error #185. `tests/skills.spec.ts` performs the same toggle and stays
  * green throughout, because it mocks both `**` + `/api/system/skills` and
  * `**` + `/api/skills**` — the registrar never saw a command skill, so the
  * loop it triggers never ran. Nothing here is mocked.
@@ -43,8 +43,8 @@ async function createCommandSkill(request: AuthenticatedE2ERequest) {
  * Not a heading, and not the absence of the boundary's text: the page frame
  * renders the eyebrow and the `page__title` for every route, so under the
  * loop `/agents` still says "Agents" while the view underneath it is the
- * error boundary. Both weaker landmarks were written first and both passed
- * against a genuinely broken build (station#3736 fault injection).
+ * error boundary. Both weaker landmarks pass
+ * against a genuinely broken build (verified against archive#3736's defect).
  */
 const ROUTES: Array<{ path: string; view: string }> = [
   { path: '/agents', view: '.split-pane' },

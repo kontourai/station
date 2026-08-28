@@ -1,6 +1,6 @@
 /**
- * AssignmentProvider claim/release/status seam (roadmap #584, part of epic
- * #580, S4, following the S3 provider-seam precedent).
+ * AssignmentProvider claim/release/status seam (roadmap archive#584, part of epic
+ * archive#580, S4, following the S3 provider-seam precedent).
  *
  * When Station dispatches a provider-backed work item (a `TaskRecord`
  * carrying a namespaced `workItemRef`), the dispatch records an
@@ -9,8 +9,8 @@
  * agree on who owns the work — Decision 3 in
  * `docs/design/work-plane-composition.md`.
  *
- * CRITICAL version constraint (kontourai/station#592 tracks the
- * `@kontourai/flow-agents` bump lineage, same as #583's read-path backend):
+ * CRITICAL version constraint (kontourai/station-archive#592 tracks the
+ * `@kontourai/flow-agents` bump lineage, same as archive#583's read-path backend):
  * the pinned exact `3.4.3` package's public library entry does NOT export
  * typed assignment-claim interfaces (those merged to flow-agents `main`
  * after 3.4.3). The `3.4.3` package DOES ship the `assignment-provider` CLI
@@ -28,7 +28,7 @@
  * inspects `ttl_seconds` or liveness. Stale-lease takeover lives in a
  * different, more involved code path (`ensure-session`'s ownership guard,
  * which joins liveness events) that this service deliberately does not
- * reimplement — per the roadmap #584 instruction, this service calls `claim`
+ * reimplement — per the roadmap archive#584 instruction, this service calls `claim`
  * and surfaces the CLI's own result honestly. If flow-agents later exposes
  * stale-reclaim on the bare `claim` path, this service picks it up for free.
  *

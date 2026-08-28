@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * station-docs — Built-in MCP server exposing Station's own shipped
- * documentation as tools (station#1547). Runs as a stdio MCP server, mirroring
+ * documentation as tools (archive#1547). Runs as a stdio MCP server, mirroring
  * `station-control-server.ts`.
  *
  * Unlike station-control this server needs no credential and no environment

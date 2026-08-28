@@ -6,7 +6,7 @@ import { afterAll, describe, expect, test } from 'vitest';
 import { ACPProcess } from '../acp-process.js';
 
 /**
- * station#1089, guard row 3 ("directory does not exist → throw", #791).
+ * archive#1089, guard row 3 ("directory does not exist → throw", archive#791).
  *
  * Reproduced on origin/main (1e5b45d2) against a live instance: POSTing an
  * engine connection whose Working Directory was `~/` (a literal tilde — the
@@ -98,7 +98,7 @@ describe('ACPProcess spawn failure (#1089)', () => {
   });
 });
 
-// station#3422: survivesCleanup() decides every retention in production, and
+// archive#3422: survivesCleanup() decides every retention in production, and
 // both retention tests drive a fake. This drives the real one against a real
 // child, because the defect it exists to avoid is precisely a check that
 // reports without looking: destroy() nulls `this.proc`, so reading the pid
@@ -141,7 +141,7 @@ describe('ACPProcess.survivesCleanup asks the kernel (#3422)', () => {
   });
 });
 
-// station#3441 HIGH-2: `spawnedBirth` unread-or-null makes survivesCleanup()
+// archive#3441 HIGH-2: `spawnedBirth` unread-or-null makes survivesCleanup()
 // fall back to "surviving" (the pre-#3441 EPERM-forever shape) -- reachable
 // not just via a deliberately deleted assignment but via ANY real `ps`
 // failure/timeout, since `lookupProcessBirthFingerprintAsync` returns null on
@@ -180,7 +180,7 @@ describe('ACPProcess.start records a real spawnedBirth (station#3441 HIGH-2)', (
   });
 });
 
-// station#3441: survivesCleanup() used to treat "some process answers signal
+// archive#3441: survivesCleanup() used to treat "some process answers signal
 // 0 (or EPERM) at this pid" as "the process I spawned is surviving". A
 // recycled pid is now decided by comparing the CURRENT birth fingerprint
 // against the one recorded at spawn -- the same three-state probe
@@ -197,7 +197,7 @@ describe('ACPProcess.survivesCleanup decides identity, not just liveness (#3441)
     birth: string | null,
     probeIdentity: () => ExactProcessIdentityProbe,
   ): ACPProcess {
-    // station#3441 MEDIUM-2: `probeIdentity` is now async-shaped
+    // archive#3441 MEDIUM-2: `probeIdentity` is now async-shaped
     // (`AsyncProcessIdentityProbe`); wrapping the sync fixtures below in
     // `Promise.resolve` keeps every fixture's shape unchanged.
     const asyncProbeIdentity = async () => probeIdentity();
@@ -285,7 +285,7 @@ describe('ACPProcess.survivesCleanup decides identity, not just liveness (#3441)
     await expect(acpProcess.survivesCleanup()).resolves.toBe(false);
   });
 
-  // station#3441 LOW-3: `probeIdentity` is injectable and the default never
+  // archive#3441 LOW-3: `probeIdentity` is injectable and the default never
   // rejects, but nothing previously guarded a REJECTING one -- a rejection
   // propagated straight out of `survivesCleanup()`, through `attemptCleanup`
   // and `retryPendingCleanup` (acp-probe.ts), falsifying

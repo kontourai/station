@@ -14,7 +14,7 @@ import {
 } from '../../../../../tests/helpers/css-cascade-fixture';
 
 /**
- * station#4474 review round (H1) — this is the test the acceptance actually
+ * archive#4474 — this is the test the acceptance actually
  * asked for: measure content displacement across the `isFetching` flip in
  * the `error && !data` state, at a real, cascade-resolved 390px viewport,
  * and assert ZERO.
@@ -23,7 +23,7 @@ import {
  * `SkeletonList` (isFetching) and a ~13px static line (not fetching) on
  * `useActionOperationsQuery`'s 5s `refetchInterval` — indefinitely, since a
  * persistent error never stops retrying. That is a NEW oscillation this
- * branch introduced while fixing audit F5 (the SkeletonList swap itself was
+ * branch introduced while fixing audit (the SkeletonList swap itself was
  * correct for genuine initial load; the mistake was extending it to the
  * background-retry-while-erroring case too). The fix collapses both arms of
  * "error, no data" onto the same static markup regardless of `isFetching`,

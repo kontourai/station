@@ -1521,7 +1521,7 @@ describe('device pairing routes', () => {
 });
 
 /**
- * station#1673 — additive tolerance on the public pairing endpoints.
+ * archive#1673 — additive tolerance on the public pairing endpoints.
  * `readPairingJson`/`readPairingExchangeJson` used to require the request
  * body's key set to match an allow-listed set exactly, so a body carrying
  * any key the server didn't expect — including a genuinely optional one
@@ -1752,7 +1752,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
     );
     const offer = (await offerResponse.json()) as DevicePairingOffer;
 
-    // Live-verified shape (station#1673): { deviceName, offerId, proof } with
+    // Live-verified shape (archive#1673): { deviceName, offerId, proof } with
     // no `clientInstanceId` — a pairing-code request from a client that
     // predates the field must still succeed against a server that added it
     // as optional.
@@ -1854,7 +1854,7 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
 });
 
 /**
- * station#1715 — same-user local self-authorization. A direct loopback
+ * archive#1715 — same-user local self-authorization. A direct loopback
  * caller that presents the per-boot local-grant secret runs the full
  * offer/request/confirm/exchange ceremony server-side in one request and
  * gets back a normal paired-device credential, with no operator approval
@@ -1903,7 +1903,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
     expect(harness.pairing.credentialLocality(result.credential)).toBe(
       'home-possession',
     );
-    // station#3677 PR 3: THIS route is the one mint whose credential may
+    // archive#3677 PR 3: THIS route is the one mint whose credential may
     // drive the native consent broker — the exchange must stamp the
     // local-grant mint kind end-to-end, and the public device must not
     // leak it.
@@ -1943,7 +1943,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   /**
-   * station#1818 part 3 — proves the mechanism the desktop client's fix
+   * archive#1818 part 3 — proves the mechanism the desktop client's fix
    * (`local_self_provision_client_instance_id` in `src-desktop/src/lib.rs`)
    * depends on: this route already supersedes a prior device sharing the
    * same `clientInstanceId`, exactly like the public exchange route does
@@ -2128,7 +2128,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
 });
 
 /**
- * station#1490 — a direct loopback socket is not operator authority: an SSH
+ * archive#1490 — a direct loopback socket is not operator authority: an SSH
  * local forward is indistinguishable from an operator browser at this layer.
  * These pin the fail-loud credential requirement on protected pairing-host
  * routes and the authenticated bearer path that follows it.
@@ -2483,7 +2483,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     // port from loopback, which `trustedTailscaleIdentity` requires. So the
     // attested peer for a Serve request is always 127.0.0.1, and judging it by
     // address alone refused exactly the requests carrying the strongest
-    // provenance Station has (station#1490 delta review H2).
+    // provenance Station has (archive#1490 delta review H2).
     const serveIdentity = (login = 'brian@example.test') =>
       Buffer.from(
         JSON.stringify({ provider: 'tailscale-serve', login }),
@@ -2560,7 +2560,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
   describe('launcher UI bootstrap capability (station#2093)', () => {
     test('exchanges an explicit one-time capability for an HttpOnly browser session without trusting proxy position', async () => {
-      // The proxy hop here attests an OFF-BOX client (station#3876): the
+      // The proxy hop here attests an OFF-BOX client (archive#3876): the
       // browser is a phone on the UI port, so the session it mints is a
       // paired device however trusted the hop itself is.
 
@@ -2618,12 +2618,12 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
 
     /**
-     * station#3876 — the OPERATOR'S OWN JOURNEY. `station start` prints
+     * archive#3876 — the OPERATOR'S OWN JOURNEY. `station start` prints
      * `http://127.0.0.1:<uiPort>/#station-ui-bootstrap=…`, so the ordinary way
      * an operator reaches their own Station is through the UI proxy, not the
      * server socket. Before this, that browser minted a session with no
      * `home-possession` stamp, and every surface reading that one locality
-     * fact — D6's log redaction, #3843's presentation — treated the person
+     * fact — D6's log redaction, archive#3843's presentation — treated the person
      * sitting at the machine as a remote control for it.
      *
      * The four cases below are the whole derivation. Each removes exactly one
@@ -2726,7 +2726,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       const bootstrapToken = 'forged-attestation-bootstrap-token';
       // (1) An untrusted token from a loopback socket. Accepting the address
       // header on its own would let anything that can reach this port claim
-      // the proxy's authority (station#3693's rule).
+      // the proxy's authority (archive#3693's rule).
       const wrongToken = createHarness({ uiBootstrapToken: bootstrapToken });
       expect(
         await uiBootstrapThroughProxy(
@@ -2775,7 +2775,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       expect(harness.pairing.credentialLocality(credential as string)).toBe(
         'home-possession',
       );
-      // station#3677 PR 3: the discriminating stamp — this credential lives
+      // archive#3677 PR 3: the discriminating stamp — this credential lives
       // in host-browser JS, so its mint kind must read `ui-bootstrap`,
       // which the native consent broker refuses.
       expect(harness.pairing.credentialMintKind(credential as string)).toBe(
@@ -2931,7 +2931,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     // A channel app (stable/beta/nightly) embeds its server with no UI proxy
     // in front, so nothing attests the hop and the previous rule left the
     // endpoint as `http://<node>.ts.net` — which createOffer rejects. That is
-    // why those apps could not pair over the tailnet at all (station#3645).
+    // why those apps could not pair over the tailnet at all (archive#3645).
     const TAILNET_URL =
       'http://kontour.python-smelt.ts.net/.well-known/station/v1/pairing/access-request';
 
@@ -3091,7 +3091,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       ).toString('base64url'),
     });
 
-    // station#3379 follow-up. The endpoint recorded on the offer is the
+    // archive#3379 follow-up. The endpoint recorded on the offer is the
     // address the device is later told to present its credential at, and the
     // request URL cannot supply it behind `tailscale serve`: TLS terminates in
     // the daemon, so the API sees plain http, and through this proxy it sees
@@ -3244,7 +3244,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // directly from a non-loopback address is not that process, so its
       // attested claim must be ignored even holding a valid token — otherwise
       // a leaked token turns any network position into an asserted one
-      // (station#1490 delta review L1).
+      // (archive#1490 delta review L1).
       const access = await accessRequest(
         harness,
         own as string,

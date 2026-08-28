@@ -139,8 +139,8 @@ export function handleToolCompletedEvent(
   if (!chat) return;
   const streamingMessage = getStreamingMessage(chat);
 
-  // station#3117: `policyDenied` is derived server-side from the real
-  // ToolCallDenial (pre-tool-policy.ts's deny(), carried through the engine
+  // archive#3117: `policyDenied` is derived server-side from the real
+  // ToolCallDenial (pre-tool-policy.ts's deny, carried through the engine
   // adapter and the station-agent relay) — never inferred here from the
   // mere presence of an error. Its absence means "we don't know why this
   // failed", not "policy denied it", so no fallback is applied.
@@ -162,7 +162,7 @@ export function handleToolCompletedEvent(
       ...(event.outputReceipt?.truncated
         ? { outputTruncated: true as const }
         : {}),
-      // station#3167: `isError` means "failed" specifically — a
+      // archive#3167: `isError` means "failed" specifically — a
       // cancellation is a correct user-initiated outcome, not a failure,
       // so it must not flip this. Anything downstream that counts
       // failures from this flag (e.g. `thread-projection.ts`'s export

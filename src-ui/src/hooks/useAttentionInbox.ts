@@ -31,7 +31,7 @@ export function useAttentionInbox() {
     dismiss: (id: string) => dismissMutation.mutate(id),
     items,
     /**
-     * station#3214: the number the header bell badge renders, read straight
+     * archive#3214: the number the header bell badge renders, read straight
      * off the projection rather than recomputed from `items`. `HeaderActions`
      * passes this same field to the notifications surface badge
      * (`HeaderActions.tsx` → `surface-registry.ts`'s `attentionCount`) from

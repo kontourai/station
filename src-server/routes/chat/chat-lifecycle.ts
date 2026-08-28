@@ -49,7 +49,7 @@ export function emitChatAgentStart({
       typeof input === 'string'
         ? input
         : extractChatUserText(input) || '[complex input]',
-    // #3074 named this gap directly: the Station-engine start span carried
+    // archive#3074 named this gap directly: the Station-engine start span carried
     // neither field, so a tool event could not even be joined back to an
     // engine. External engines already set both via the orchestration bridge.
     provider: STATION_ENGINE_PROVIDER,
@@ -147,13 +147,13 @@ export async function finalizeChatRequest({
     | undefined;
   /**
    * The same conversation-store handle `chat-primary-stream.ts` resolved for
-   * `ensureChatConversation` (station#1566) — needed here so the auto-title
+   * `ensureChatConversation` (archive#1566) — needed here so the auto-title
    * write below can call `updateConversation` with an updater function.
    * `getConversation` is deliberately NOT part of this narrowed shape: the
    * auto-title write reads the conversation from INSIDE the adapter's
    * serialized queue (via the updater callback) rather than through a
    * separate pre-read, closing the TOCTOU a separate read would reopen
-   * (station#1566 review HIGH — see `generateAndPersistAutoTitle`).
+   * (archive#1566 review HIGH — see `generateAndPersistAutoTitle`).
    * Optional/absent is simply "no auto-title write", matching every other
    * memoryAdapter-shaped param on this function.
    */
@@ -175,7 +175,7 @@ export async function finalizeChatRequest({
    * The raw failure message from `streamPrimaryAgentChat`'s outer catch,
    * when the turn errored before producing any output. Undefined on every
    * successful (or partially-successful, `accumulatedText`-bearing) turn.
-   * Used only to persist a reload-safe failure marker (#191 R2) — never
+   * Used only to persist a reload-safe failure marker (archive#191 R2) — never
    * translated server-side (translation stays client-side, see
    * `chatErrorTranslation.ts`).
    */
@@ -188,13 +188,13 @@ export async function finalizeChatRequest({
 
   ctx.agentStatus.set(slug, 'idle');
 
-  // #914: the agent's own memory is now the same conversation store Station
+  // archive#914: the agent's own memory is now the same conversation store Station
   // registers for the slug, so the framework persists the turn itself. Station
   // used to duplicate it here for runtime agents — the compensating write that
   // existed only because `createTempAgent` got a throwaway store — and keeping
   // it would write every turn twice.
 
-  // #797: a turn that ends with no output loses the user's own message,
+  // archive#797: a turn that ends with no output loses the user's own message,
   // because the agent framework persists the user turn only once the model
   // stream is consumed. Keyed on the absence of output rather than on
   // `turnFailureText`, so it also covers `chat-primary-stream.ts`'s
@@ -224,7 +224,7 @@ export async function finalizeChatRequest({
     }
   }
 
-  // #191 R2 persistence-gap fix: a failed turn that produced zero output
+  // archive#191 R2 persistence-gap fix: a failed turn that produced zero output
   // otherwise persists nothing at all, so the translated error a user saw
   // live silently vanishes on reload. Persist a raw, untranslated system
   // marker using the existing `[SYSTEM_EVENT]`-prefixed user-role message
@@ -274,7 +274,7 @@ export async function finalizeChatRequest({
     artifacts.push({ type: 'text', content: finalOutput });
   }
 
-  // station#1566: auto-generate a short title from the first exchange of a
+  // archive#1566: auto-generate a short title from the first exchange of a
   // brand-new conversation. Fire-and-forget — a title is a nice-to-have, so
   // this must never delay or fail the turn the user is waiting on; any
   // failure (disabled structureModel, provider error, timeout) is swallowed
@@ -434,9 +434,9 @@ export async function finalizeChatRequest({
 }
 
 /**
- * station#1566: generates and writes the auto title.
+ * archive#1566: generates and writes the auto title.
  *
- * station#1566 review (HIGH, TOCTOU): the original shape here did a separate
+ * archive#1566 review (HIGH, TOCTOU): the original shape here did a separate
  * `getConversation` read, decided whether to skip, and only then called
  * `updateConversation` with a static object — a user-initiated rename
  * (`PATCH /:slug/conversations/:conversationId`) landing in the gap between

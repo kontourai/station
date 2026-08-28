@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4521: the agent editor's "NEEDS" readiness notice, the "Agent
+ * archive#4521: the agent editor's "NEEDS" readiness notice, the "Agent
  * actions" popover's anchoring, and the mobile save-affordance duplication.
  *
  * 1/2 — the header used to render the full server reason ("Needs: No
@@ -60,7 +60,7 @@ vi.mock('../components/ModelSelector', () => ({
 /**
  * A materialized Station-engine agent with no LLM provider connection at
  * all — the exact wire shape `enriched-agents.ts` sends for this reason.
- * station#4521 LOW-2: `execution` is OMITTED, not an object with empty
+ * archive#4521: `execution` is OMITTED, not an object with empty
  * strings — a Station agent that has never had its execution configured has
  * no `spec.execution` at all (`execution: spec.execution` in
  * enriched-agents.ts, and an unconfigured spec's `execution` is `undefined`,
@@ -148,7 +148,7 @@ describe('AgentsViewEditorPane — readiness notice (station#4521 items 1/2)', (
 
   test('the header title row keeps a caution chip, but shortened to chip-native vocabulary, not the full server reason', () => {
     render(<AgentsViewEditorPane {...(baseProps() as any)} />);
-    // Design ruling (arbiter, station#4521 review round 2): dropping the
+    // Design ruling (arbiter, archive#4521 2): dropping the
     // chip entirely for a caution agent lost at-a-glance severity — the row
     // read as merely informational. The chip stays, shortened to "Not set
     // up" (the SAME short label the neutral/`enable` case already uses) so
@@ -201,7 +201,7 @@ describe('AgentsViewEditorPane — readiness notice (station#4521 items 1/2)', (
       />,
     );
     // Scoped to the notice banner itself: the Model section further down
-    // this same page (station#4521 LOW-1) now shares the identical "Add
+    // this same page (archive#4521) now shares the identical "Add
     // model connection" wording for its own, unrelated inline repair, so an
     // unscoped query is ambiguous between the two — this asserts the
     // NOTICE's own button, not merely that the text exists somewhere.
@@ -240,7 +240,7 @@ describe('AgentsViewEditorPane — readiness notice (station#4521 items 1/2)', (
             reason: 'The engine this agent runs on is no longer connected.',
           },
           // A CLI-bound agent, truthfully — matches `execution` above and
-          // (station#4521 LOW-1) keeps §3.3's Model section off the page,
+          // (archive#4521) keeps §3.3's Model section off the page,
           // which otherwise shares this same wording for its own unrelated
           // repair and would make an unscoped query ambiguous.
           engineKind: 'cli' as const,

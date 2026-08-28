@@ -24,14 +24,14 @@ export function ProjectLayoutsSection({
    * True while the layouts query is still in flight. Without it an unresolved
    * fetch is indistinguishable from a project that genuinely has no layouts,
    * and the section states "No layouts yet" for a project that has some
-   * (#801).
+   * (archive#801).
    */
   loading?: boolean;
   /**
    * True when the layouts query failed. A failure is not emptiness — react
    * query clears `isLoading` on error, so without this the section would state
    * "No layouts yet" for a project whose layouts merely could not be fetched
-   * (#801 review).
+   * (archive#801).
    */
   error?: boolean;
   onRetry?: () => void;

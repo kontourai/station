@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1223 (offline slice 1) — reconnect invalidation.
+ * archive#1223 (offline) — reconnect invalidation.
  *
  * Mirrors ConnectionBannerSource.test.tsx's mock shape for `@kontourai/station-connect`
  * (same shared connection-status signal, no new offline detector).
@@ -82,7 +82,7 @@ describe('useQueryCacheReconnectSync', () => {
   });
 
   /**
-   * station#3069. These two drive REAL query state rather than only spying on
+   * archive#3069. These two drive REAL query state rather than only spying on
    * the client: the defect was that an errored, non-persisted query had no
    * path back to a refetch, so a spy on `invalidateQueries` could not have
    * caught it — `invalidateQueries` was being called correctly the whole time,

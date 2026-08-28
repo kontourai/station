@@ -32,13 +32,13 @@ export function normalizeBaseUrl(value: string): string {
  * Transient-vs-terminal HTTP retry classification, shared by
  * `@kontourai/station-connect`'s `ConnectionSupervisor`/
  * `classifyConnectionFailure` and the SDK's `fetchSSE` retry loop
- * (station#1094 — closing the "keeps retrying against a 401ing endpoint
- * forever" gap PR #1107 left open for the SSE streams). A 401/403 means the
+ * (closing the "keeps retrying against a 401ing endpoint
+ * forever" gap for the SSE streams). A 401/403 means the
  * saved credential is bad or expired: retrying it automatically can only
  * hot-loop, never succeed, so these two auto-retrying mechanisms must treat
  * it the same way.
  *
- * Scope, precisely (station#1094 review): this reconciles the repo's two
+ * Scope, precisely: this reconciles the repo's two
  * *automatic, unattended* retry loops — the ones that can hot-loop silently
  * with nobody watching. It does not (yet) cover every place that inspects a
  * 401/403 — e.g. `src-ui/src/lib/apiClient.ts`'s `apiRequest` is a one-shot

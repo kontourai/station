@@ -12,7 +12,7 @@ import {
 } from '../views/agent-editor/agentsViewUtils';
 
 /**
- * station#3662 review HIGH-2: the engine picker is the surface that decides
+ * archive#3662: the engine picker is the surface that decides
  * how "runs on Station's own engine" is SPELLED in the form, and it used to
  * spell it as a managed-runtime connection id. That made the one shape a
  * Station-engine Agent is supposed to persist — no binding at all — render as
@@ -61,10 +61,10 @@ function markupFor(
   );
 }
 
-// #3721 replaced the <select> with an engine-kind radio pair + a nested CLI
+// archive#3721 replaced the <select> with an engine-kind radio pair + a nested CLI
 // list, and left this suite matching <option> markup that no longer exists —
 // a pre-existing main red this branch fix-forwards (the fix-forward pins the
-// CURRENT contract, not the retired select). #3662's invariant survives the
+// CURRENT contract, not the retired select). archive#3662's invariant survives the
 // refactor in a different shape and is still pinned below: the Station
 // choice never renders a managed-runtime connection AS "Station".
 describe('the engine picker: radio pair, with Station spelled as its own choice (#3662 via #3721)', () => {
@@ -90,7 +90,7 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
       execution: { agentConnectionId: 'codex' },
     } as never);
     const markup = markupFor(form, 'cli');
-    // #3728 review (HIGH): a bare any-input-checked regex would pass with
+    // archive#3728: a bare any-input-checked regex would pass with
     // ANY row checked. Associate checkedness with the Codex row: the checked
     // input and the Codex label text must sit inside one label element.
     const rows = markup.split('<label');
@@ -102,14 +102,14 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
   });
 
   test('choosing the model radio binds the selectable Station-engine connection, and the CLI radio clears it (#3721 contract)', () => {
-    // #3728 review (HIGH): the earlier rewrite never invoked a handler, so
-    // nothing pinned what the choices WRITE. #3721's engine-first contract:
+    // archive#3728: the earlier rewrite never invoked a handler, so
+    // nothing pinned what the choices WRITE. archive#3721's engine-first contract:
     // the model radio binds `stationConnectionId` (the managed-runtime
     // connection Station's engine runs on) and the CLI radio binds '' until
-    // a CLI is explicitly named. #3662's storage shape ("Station = no
+    // a CLI is explicitly named. archive#3662's storage shape ("Station = no
     // connection") is superseded by that contract; its surviving half is
     // presentational — no managed-runtime id is ever PRESENTED as "Station"
-    // — and is pinned above.
+    // and is pinned above.
     const form = formFromAgent({ slug: 'writer', name: 'Writer' } as never);
     const renderWithKind = (engineKind: 'model' | 'cli', writes: string[]) =>
       render(
@@ -153,7 +153,7 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
 });
 
 /**
- * station#3721 moved the engine question out of AgentEditorBasicTab's
+ * archive#3721 moved the engine question out of AgentEditorBasicTab's
  * `<select>` and into this component's radio cards. Three properties of the
  * retired picker were still only asserted by
  * `AgentEditorBasicTab.test.tsx` — against `<option>` markup that has not

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { NativeStationProfileStorage } from '../stationProfileStorage';
 
 /**
- * station#1818 part 1 review round 1 (HIGH) — the reviewer's own framing:
+ * archive#1818 — the reviewer's own framing:
  * "the new eligibility observation is unreachable in the exact incident
  * scenario" because a CALLER-side gate
  * (`NativeStationProfileStorage.pendingLocalSelfProvisionProfileName`) used

@@ -1,6 +1,6 @@
 /**
  * One redaction seam per provider kind for every reason a connection check
- * records (#3654 review, H3).
+ * records (archive#3654 review, H3).
  *
  * The catalogue path redacted AWS identity where it produced the text, which
  * left the OTHER path that quotes a provider's own words — the fallback chat

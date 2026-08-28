@@ -32,7 +32,7 @@ describe('publicAgentIdFromRuntimeKey', () => {
 });
 
 describe('publicIdentityAgentSetView', () => {
-  // station#1992 regression: the runtime keys the built-in default agent as
+  // archive#1992 regression: the runtime keys the built-in default agent as
   // 'default' while callers (orchestration metadata, delegateTask) present
   // the public slug 'station'. The registry-declared default agent also has
   // no persisted file, so the loader fallback cannot rescue an untranslated

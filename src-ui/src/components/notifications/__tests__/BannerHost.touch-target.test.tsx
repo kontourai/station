@@ -17,16 +17,16 @@ import { bannerStore } from '../../../contexts/banner-store';
 import { BannerHost } from '../BannerHost';
 
 /**
- * station#3453. The floor this file enforces (44 CSS px, WCAG 2.5.5) was
+ * archive#3453. The floor this file enforces (44 CSS px, WCAG 2.5.5) was
  * previously observable ONLY by `tests/connect-reconnect-banner.spec.ts`'s
  * "keeps the reconnect action reachable on a phone viewport" test — real
  * end-to-end Playwright, against a live built app. No static gate here can
  * see a *computed*, cascade-resolved height: `gate:ui-contracts`'s ratchets
- * (`responsive-surface-ratchet.mjs`, `accent-foreground-ratchet.mjs`, ...)
+ * (`responsive-surface-ratchet.mjs`, `accent-foreground-ratchet.mjs`,...)
  * all parse CSS source text, never a browser's resolved cascade, so none of
  * them can tell a component's own declared value apart from what actually
  * wins once a more (or less) specific rule elsewhere in the app is in play.
- * station#3453 found exactly that gap live: `.banner-host__action`'s mobile
+ * archive#3453 found exactly that gap live: `.banner-host__action`'s mobile
  * `min-height` read 42px in the stylesheet, but a *global* touch-target net
  * in `index.css` (`:is([class*="__actions"], ...) > :is(button, a, .button,
  * [role="button"])`, itself scoped to the same mobile breakpoint) is MORE
@@ -85,7 +85,7 @@ import { BannerHost } from '../BannerHost';
  * (`resolveCssImports`, `assertNoImportsSurvive`, `chromiumIsInstalled`,
  * `playwrightBrowsersDirectory`) moved to
  * `tests/helpers/css-cascade-fixture.ts` when
- * `NotificationContainer.touch-target.test.tsx` (station#3513) needed a
+ * `NotificationContainer.touch-target.test.tsx` (archive#3513) needed a
  * byte-identical copy — only this file's own fixture-building
  * (`buildFixtureCss`, `presentFixtureBanners`) stays local.
  */
@@ -159,7 +159,7 @@ function buildFixtureHtml(): string {
 /**
  * WCAG 2.5.5's Inline Exception: the SC does not apply to a target that
  * "is in a sentence or block of text." `.banner-host__disclosure` ("Details",
- * station#4470b — a constant label plus a small caret, no longer the "More"/
+ * archive#4470b — a constant label plus a small caret, no longer the "More"/
  * "Less" verb pair) is rendered inline, directly after the banner's message
  * text, as part of the running sentence (see `BannerHost.tsx`'s render: the
  * toggle sits inside the same `.banner-host__message` flow, immediately after
@@ -249,11 +249,11 @@ describe.skipIf(!chromiumAvailable)(
             '';
           const label = `<${await control.evaluate((el) => el.tagName.toLowerCase())} class="${className}"> "${accessibleName}"`;
 
-          // Elements found via `.nth()` off a locator that already matched
+          // Elements found via `.nth` off a locator that already matched
           // them are attached and present by construction — there is no
           // "waiting for a selector that might not exist" race here, so a
           // null box means genuinely not visible (e.g. display:none), not a
-          // rename. `boundingBox()` on an existing-but-invisible element
+          // rename. `boundingBox` on an existing-but-invisible element
           // returns null without an auto-wait/timeout race.
           const box = await control.boundingBox();
           if (box === null) {

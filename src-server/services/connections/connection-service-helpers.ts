@@ -49,8 +49,8 @@ export type RuntimeConnectionProjection = Omit<AgentConnectionView, 'id'> & {
   id: string;
 };
 
-/** #895 wave B: per-connection session-surface evidence from a live ACP
- * `initialize` handshake (see `ProviderSessionSurfaceEvidence`). station#1549:
+/** archive#895 wave B: per-connection session-surface evidence from a live ACP
+ * `initialize` handshake (see `ProviderSessionSurfaceEvidence`). archive#1549:
  * the same handshake now also feeds `controlPlaneObservation` below — the
  * binding/picker layer's evidence half. Still NOT the session-delivery map,
  * which stays static per matrix (agent-engine-unification.md §4.1b). */
@@ -74,10 +74,10 @@ export type ACPConnectionStatus = {
     hint?: string;
   }>;
   capabilities?: ACPConnectionCapabilitiesStatus;
-  /** station#1549: ISO-8601 instant of the last SUCCESSFUL initialize handshake. */
+  /** archive#1549: ISO-8601 instant of the last SUCCESSFUL initialize handshake. */
   handshakeObservedAt?: string;
   /**
-   * station#3054: the connection's live config options from the initialize
+   * archive#3054: the connection's live config options from the initialize
    * handshake. The category 'model' entry IS the engine's model catalog —
    * the manager status has always carried it; this type finally admits it
    * so the connection view can project a runtimeCatalog from it.
@@ -197,7 +197,7 @@ export function runtimeSetupState(
 const CLAUDE_RUNTIME_ID = 'claude-runtime';
 
 /**
- * #896 wave 2: codex-runtime's app-home opt-in (docs/design/
+ * archive#896 wave 2: codex-runtime's app-home opt-in (docs/design/
  * connections-onboarding.md §1.1) — mirrors claude-runtime's `useAppHome`
  * field. Codex does not get `provideSkills`: skills stay claude/
  * workspace-channel only this wave.
@@ -230,13 +230,13 @@ function runtimeDefaultConfig(
     ...(id === CLAUDE_RUNTIME_ID
       ? {
           provideSkills: [],
-          // App-home profile opt-in (#896, agent-engine-unification.md
+          // App-home profile opt-in (archive#896, agent-engine-unification.md
           // §6.1's overlay model, channel 2) — absent/off by default, same
           // "never silent" hygiene rule as `provideSkills`.
           useAppHome: false,
         }
       : {}),
-    // #896 wave 2: codex-runtime gets the same app-home opt-in as claude,
+    // archive#896 wave 2: codex-runtime gets the same app-home opt-in as claude,
     // but never `provideSkills` (skills stay claude/workspace-channel only
     // this wave).
     ...(id === CODEX_RUNTIME_ID ? { useAppHome: false } : {}),
@@ -264,7 +264,7 @@ export function sanitizeRuntimeConfig(
     sanitized.useAppHome = config.useAppHome === true;
   }
   if (id === CODEX_RUNTIME_ID) {
-    // #896 wave 2: same boolean-only contract as claude-runtime; codex
+    // archive#896 wave 2: same boolean-only contract as claude-runtime; codex
     // never gains `provideSkills`.
     sanitized.useAppHome = config.useAppHome === true;
   }
@@ -289,7 +289,7 @@ function runtimeModelOptionsForAdapter(
     case 'claude':
       // Bounded built-in catalog — the live path asks the SDK's supportedModels().
       // Values verified against @anthropic-ai/claude-agent-sdk supportedModels()
-      // on 2026-07-27 (#1012): the current family is Claude 5.
+      // on 2026-07-27 (archive#1012): the current family is Claude 5.
       return [
         {
           id: 'claude-sonnet-5',
@@ -310,7 +310,7 @@ function runtimeModelOptionsForAdapter(
     case 'codex':
       // Bounded built-in catalog — the live path asks the app-server's model/list.
       // Values verified against a live `codex app-server` model/list probe on
-      // 2026-07-27 (#1012): the top entries of the current catalog, in the
+      // 2026-07-27 (archive#1012): the top entries of the current catalog, in the
       // catalog's own order.
       return [
         {
@@ -663,7 +663,7 @@ export function buildRuntimeCapabilityInventory({
   };
 }
 
-/** #895 wave B: project a single connection's live-handshake capabilities
+/** archive#895 wave B: project a single connection's live-handshake capabilities
  * (`ACPConnectionCapabilitiesStatus`) into `ProviderSessionSurfaceEvidence` —
  * stdio is always included in `mcpTransports` (the probe-not-advertisement
  * baseline, agent-engine-unification.md §4.1); http/sse are added only when
@@ -688,7 +688,7 @@ function projectSessionSurfaces(
 }
 
 /**
- * station#1549: takes THE ONE connection's live status, not a list.
+ * archive#1549: takes THE ONE connection's live status, not a list.
  *
  * It previously took `{ connections?: ACPConnectionStatus[] }` and read
  * `connections?.[0]` for `sessionSurfaces` — which reads as a
@@ -754,7 +754,7 @@ export function buildACPCapabilityInventory({
 }
 
 /**
- * station#1549: the per-connection `ControlPlaneObservation` the capability
+ * archive#1549: the per-connection `ControlPlaneObservation` the capability
  * derivation (`engineControlPlaneCapability`) consumes — derived from the
  * SAME live handshake `projectSessionSurfaces` above projects, so the
  * evidence a surface explains and the evidence a capability is derived from
@@ -788,10 +788,10 @@ export function projectControlPlaneObservation(
 }
 
 /**
- * station#3054: project an ACP connection's live model catalog into the
+ * archive#3054: project an ACP connection's live model catalog into the
  * RuntimeCatalogStatus every other engine connection already carries. The
  * catalog is the handshake's category-'model' config option — a real runtime
- * observation (station#1549's handshakeObservedAt dates it), which is exactly
+ * observation (archive#1549's handshakeObservedAt dates it), which is exactly
  * the evidence the acp capability matrix's wire-channel model-selection gate
  * requires. Without this projection the in-chat model button stayed disabled
  * for every ACP engine while the catalog sat in the manager status.

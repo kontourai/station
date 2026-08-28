@@ -125,7 +125,7 @@ describe('HomeSurface composition', () => {
   });
 
   /**
-   * station#3227 A7, carried over: the "Projects" number and the chart's rows
+   * archive#3227 A7, carried over: the "Projects" number and the chart's rows
    * must fold the same list. Pinned as the INVARIANT, not a spot value — the
    * fixture deliberately has ONE configured project against five distinct
    * project labels, the populations the audit caught disagreeing.

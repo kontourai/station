@@ -1,7 +1,7 @@
 /**
- * station#1290 — server-scoped React Query caches are not namespaced by
+ * archive#1290 — server-scoped React Query caches are not namespaced by
  * `apiBase`. Every query-domain fetcher (`packages/sdk/src/query-domains/*`)
- * resolves `_getApiBase()` inside the fetcher itself, so switching the
+ * resolves `_getApiBase` inside the fetcher itself, so switching the
  * active connection left every previously-populated query — agents, model
  * connections, sessions, and more — still serving the *previous* server's
  * data until each query's own stale timer or an unrelated mutation happened
@@ -10,26 +10,26 @@
  * the rest.
  *
  * Fix shape: invalidate the WHOLE query cache once per genuine switch —
- * `queryClient.invalidateQueries()` with no filter marks every query stale
+ * `queryClient.invalidateQueries` with no filter marks every query stale
  * and triggers a refetch of the ones currently observed, against the new
  * `apiBase` — rather than a targeted per-key list. The query-domain surface
- * is ~35 files; roughly a third of them reach `_getApiBase()` only
+ * is ~35 files; roughly a third of them reach `_getApiBase` only
  * indirectly (barrel re-exports, shared request helpers in a sibling file),
  * so an enumerated allowlist would silently rot as new domains are added.
  * Deeper fix, deliberately deferred: namespace every query key by `apiBase`
  * (or a connection epoch) so a switch never needs a blanket invalidate at
  * all — noted on the PR, not attempted here.
  *
- * INVALIDATE, NEVER CLEAR (review round 1 finding). The app is wrapped in
+ * INVALIDATE, NEVER CLEAR ( 1 finding). The app is wrapped in
  * `<PersistQueryClientProvider>` (`main.tsx`), which persists a whitelisted
- * key set to IndexedDB (`../lib/queryPersistence.ts`, station#1223/#1250:
+ * key set to IndexedDB (`../lib/queryPersistence.ts`, archive#1223/archive#1250:
  * agents/conversations/projects/runs/system-status/config).
- * `queryClient.clear()` emits a `removed` event for every query;
+ * `queryClient.clear` emits a `removed` event for every query;
  * `persistQueryClientSubscribe` re-dehydrates the *live* cache on every such
- * event, so a `clear()` here overwrites the durable IndexedDB snapshot with
+ * event, so a `clear` here overwrites the durable IndexedDB snapshot with
  * an EMPTY one within the persister's throttle window — silently destroying
- * the offline cache-first read station#1223 exists for, on every switch.
- * `invalidateQueries()` marks queries stale and refetches the ones
+ * the offline cache-first read archive#1223 exists for, on every switch.
+ * `invalidateQueries` marks queries stale and refetches the ones
  * currently mounted; it never removes cached data or emits `removed`, so
  * the persisted snapshot is untouched and a component still reads the
  * (now-stale-flagged) data instantly while the refetch is in flight — the
@@ -40,7 +40,7 @@
  * streams (SSE/chat) — those keep running against whatever `apiBase` they
  * captured when they started, same as a reconnect invalidation.
  *
- * TWO GUARDS AGAINST A BOOT-TIME FALSE POSITIVE (review round 1). On a
+ * TWO GUARDS AGAINST A BOOT-TIME FALSE POSITIVE ( 1). On a
  * native desktop shell that supervises its own bundled server, `apiBase`
  * resolves in two stages — the `DEFAULT_API_BASE` placeholder on first
  * render, then the real bundled-loopback URL once `useBundledServerStatus`
@@ -52,7 +52,7 @@
  *  1. `hasActiveConnection` (caller passes `activeConnection != null`): the
  *     FIRST transition from no active connection to one is establishment,
  *     never a switch. `apiBase` and `hasActiveConnection` are both read
- *     from the same `useConnections()` snapshot in the same render (see
+ * from the same `useConnections` snapshot in the same render (see
  *     `ConnectionsContext.tsx`'s single `useMemo`), so there is no render
  *     lag between them the way there would be gating on a
  *     separately-sourced platform/bundled-server signal instead: verified
@@ -63,7 +63,7 @@
  *     still seed the wrong baseline one render too early. Gating on
  *     `hasActiveConnection` instead avoids that lag entirely because it
  *     comes from the exact same context value as `apiBase`.
- *  2. `useIsRestoring()`: while the persisted cache is still restoring from
+ * 2. `useIsRestoring`: while the persisted cache is still restoring from
  *     IndexedDB, this hook defers entirely (no baseline update, no
  *     invalidate) — invalidating before restore settles fights the
  *     cache-first-then-refetch contract the persister exists for. Nothing

@@ -220,7 +220,7 @@
   color: var(--k-negative);
 }
 
-/* Run-detail loading (station#2651): canonical Skeleton lines inside the
+/* Run-detail loading (archive#2651): canonical Skeleton lines inside the
    shared `.indeterminate-sweep` so a projection parked at 0% still reads as
    working. */
 .flow-run-console__loading {

@@ -98,7 +98,7 @@ describe('SplitPaneLayout.logic', () => {
 });
 
 /**
- * station#2931 — the shell names the collection ONCE. A one-crumb trail that
+ * archive#2931 — the shell names the collection ONCE. A one-crumb trail that
  * restates the title is that name printed twice, one line apart (the shipped
  * `SESSIONS` above **Sessions**); a real multi-crumb breadcrumb is navigation
  * and is kept intact, current-page crumb included.
@@ -143,7 +143,7 @@ describe('visibleBreadcrumbSegments', () => {
 });
 
 /**
- * station#4463 slice 1 (2026-08-26 shell audit) — the FRAMED page header's
+ * archive#4463 — the FRAMED page header's
  * eyebrow. A top-level route gets no eyebrow at all (the retired
  * `AGENTS`-over-**Agents** pattern); a subpage's eyebrow is its parent only,
  * never a trail that restates the title a second time.

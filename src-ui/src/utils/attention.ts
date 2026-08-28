@@ -24,7 +24,7 @@ export function attentionKindLabel(kind: AttentionItem['kind']): string {
  * live actions — the agent is waiting on the decision, so dismissal must
  * be the visually-quiet secondary affordance. Whether a session deep link
  * (`openHref`) resolves is orthogonal: ACP tool approvals, for instance,
- * never carry one but are absolutely live (station#750 review finding).
+ * never carry one but are absolutely live (archive#750 finding).
  * Only an action-less item is terminal, where a plain, equally-prominent
  * dismiss is appropriate. Shared between AttentionCard and
  * AttentionHistoryItem so the two surfaces can't drift.
@@ -34,7 +34,7 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
 }
 
 /**
- * station#3214: the client-side mirror of the ONE predicate that decides what
+ * archive#3214: the client-side mirror of the ONE predicate that decides what
  * "pending" means — `AttentionProjectionService.list`'s
  * `items.filter((item) => !item.acknowledgedAt)`
  * (`src-server/services/projects/attention-projection.ts:230`), whose result
@@ -48,7 +48,7 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
  * cannot disagree by construction rather than by two predicates coincidentally
  * agreeing.
  *
- * station#3222 promoted the filter itself to `pendingAttentionItems`: the
+ * archive#3222 promoted the filter itself to `pendingAttentionItems`: the
  * notification tray renders the pending SUBSET rather than counting it, and a
  * second `!item.acknowledgedAt` spelled in the component is the drift this
  * module exists to prevent.
@@ -63,7 +63,7 @@ export function countPendingAttention(items: AttentionItem[]): number {
 }
 
 /**
- * station#3214: the parenthesised count beside "Needs attention", and the
+ * archive#3214: the parenthesised count beside "Needs attention", and the
  * whole point of this being a function is that the number has to name its own
  * scope.
  *
@@ -80,7 +80,7 @@ export function countPendingAttention(items: AttentionItem[]): number {
  * "(3)" that silently means either "3 in total" or "3 in this view" depending
  * on state the reader cannot see is exactly the defect being removed.
  *
- * `narrowed` is deliberately not named `filtered`: station#3222 brought the
+ * `narrowed` is deliberately not named `filtered`: archive#3222 brought the
  * notification tray onto this helper, and the tray narrows by TRUNCATION (it
  * has room for five rows under a badge that may read nine), not by a filter
  * bar. Both are the same fact — the rows on screen are not the whole pending
@@ -115,7 +115,7 @@ export function attentionCountLabel({
  * the chat dock alike, so the notification and the session it opens cannot
  * describe the same absence with two different sentences.
  *
- * station#3213 moved the declaration to `sessionFailure.ts` and re-exports it
+ * archive#3213 moved the declaration to `sessionFailure.ts` and re-exports it
  * here unchanged: the dock's eagerly-loaded composer pane needs the failure
  * fold, and importing it through this module would have hoisted these
  * attention helpers (and `sessionDisplay` behind them) into the entry chunk.
@@ -124,7 +124,7 @@ export function attentionCountLabel({
 export { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
 
 /**
- * station#3203: the cause line for a `session-failed` row. The projection
+ * archive#3203: the cause line for a `session-failed` row. The projection
  * omits `body` entirely when the session recorded no `blockedReason`, and the
  * honest render of that is to SAY so — the reported symptom was a row whose
  * every line read "Session failed", which told the owner nothing and did not
@@ -136,7 +136,7 @@ export function sessionFailureCause(item: SessionFailedAttentionItem): string {
 }
 
 /**
- * station#3203: the identity line that makes three failed sessions tellable
+ * archive#3203: the identity line that makes three failed sessions tellable
  * apart — the engine that ran it and the agent it was assigned to, both read
  * straight off the projection. `engine` arrives as the raw provider id and is
  * labelled HERE, through the same `engineLabelForProvider` every other engine

@@ -172,7 +172,7 @@ test.describe('Voice Providers — Settings UI', () => {
     await openSettings(page);
     const sttSelect = page.locator('[data-testid="stt-provider-select"]');
     await sttSelect.selectOption('webspeech');
-    // Slice 2 (station#1271): the raw station-stt-provider key migrated into
+    // Slice 2 (archive#1271): the raw station-stt-provider key migrated into
     // the versioned device-settings envelope.
     const stored = await page.evaluate(() => {
       const raw = localStorage.getItem('station-device-settings-v1');

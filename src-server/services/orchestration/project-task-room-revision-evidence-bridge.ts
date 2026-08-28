@@ -40,7 +40,7 @@ function sameScope(
   );
 }
 
-/** Production composition of #3546 persistence, attribution, and room links. */
+/** Production composition of archive#3546 persistence, attribution, and room links. */
 export class ProjectTaskRoomRevisionEvidenceBridge {
   readonly #active = new Map<string, FreezeGrant>();
   readonly #security: EnvironmentSecurityService;

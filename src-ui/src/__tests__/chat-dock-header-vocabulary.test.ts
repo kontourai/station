@@ -1,5 +1,5 @@
 /**
- * 2026-08-26 audit F6: the bottom dock bar mixed five control vocabularies
+ * the bottom dock bar mixed five control vocabularies
  * (a bare-text ⌘D/⌃⌘M keycap hint, a drag-handle glyph, icon buttons, a
  * green monospace "No project ~ (defaults to home)" status segment, and an
  * underlined "Start a chat" link) where two families — icon buttons and one
@@ -52,7 +52,7 @@ describe('chat dock "Start a chat" action (station audit F6)', () => {
       indexCss,
       '.chat-dock__header-actions button.chat-dock__counter-action',
     );
-    // Positive power (delta review F2): post-fix this selector has NO rules
+    // Positive power: post-fix this selector has NO rules
     // at all, so the loop above is vacuous by design — pin that emptiness
     // explicitly, and pin the shared sibling rule the button now inherits.
     expect(overrides).toHaveLength(0);

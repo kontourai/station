@@ -107,7 +107,7 @@ export function OutboundQueuedMessages({
           const refusedAt = turn.createdAt;
           // 'May have been answered' requires an ANSWER: only a newer
           // assistant message counts as advancement — a system event or the
-          // user's own later message must not produce the claim (review
+          // user's own later message must not produce the claim (
           // finding). Equal timestamps stay conservative (not advanced).
           const threadAdvanced =
             workspaceRefused &&

@@ -8,8 +8,8 @@ import {
 
 // Fixture-based per the plan's Stop-short risks: the real AWS Bedrock
 // "model not enabled" exception text could not be captured live in
-// planning, so these are representative, pattern-matched fixtures — S7
-// (#196) is where the live text gets confirmed against these patterns.
+// planning, so these are representative, pattern-matched fixtures —
+// (archive#196) is where the live text gets confirmed against these patterns.
 describe('translateChatError', () => {
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({
@@ -27,20 +27,20 @@ describe('translateChatError', () => {
     expect(result.title).not.toMatch(/terminal/i);
   });
 
-  // station#4518: a device session's chat request that could not be
+  // archive#4518: a device session's chat request that could not be
   // resolved to a principal (`PrincipalUnresolvedError`,
   // `principal-resolver.ts`) is a deterministic authz failure, never a
   // transient one — the generic fallback's "Retrying may help if this was a
   // temporary failure" hint would be actively false here.
   //
-  // fix round (MED-1): imports `PRINCIPAL_UNRESOLVED_CODE` from the SAME
+  // imports `PRINCIPAL_UNRESOLVED_CODE` from the SAME
   // contract the server stamps `PrincipalUnresolvedError.code` from and the
   // client module matches against — a rename on either side reds this test
   // instead of the two silently drifting apart. The body must be a CANNED
   // human string, never the raw server message forwarded verbatim (the
   // discriminating assertion below).
   //
-  // fix round, delta review (LOW-B): NO `disclosureRaw` pin here — this
+  //NO `disclosureRaw` pin here — this
   // error's only delivery path (the pre-stream `/chat` 400 handled by
   // `useActiveChatSessionMessaging`) never calls `formatChatErrorDisplay`,
   // the only reader of that flag, so setting it here would be inert: a flag
@@ -142,7 +142,7 @@ describe('translateChatError', () => {
     });
 
     expect(result.body).toContain('Synthetic provider failure');
-    // station#3299: the fallback classified NOTHING, so its hint must not
+    // archive#3299: the fallback classified NOTHING, so its hint must not
     // assert that retrying helps — a stale credential does not improve on
     // retry, and telling the user it will is an unfounded claim.
     expect(result.hint).not.toBe('Retry your request.');
@@ -152,7 +152,7 @@ describe('translateChatError', () => {
     );
   });
 
-  // station#3299: the stream ended without a well-formed body — the client
+  // archive#3299: the stream ended without a well-formed body — the client
   // opened an SSE stream and received a short non-SSE error body instead.
   // The raw text is a browser internal naming a JS API; it must never be the
   // headline the user reads.
@@ -170,9 +170,9 @@ describe('translateChatError', () => {
       expect(headline).not.toContain("Failed to execute 'close'");
       expect(headline).not.toContain('Unexpected end of JSON input');
       // The raw text stays available for bug reports, behind the existing
-      // station#1827 disclosure mechanism — never as the headline.
+      // archive#1827 disclosure mechanism — never as the headline.
       expect(result.disclosureRaw).toBe(true);
-      // The client cannot know a retry helps here (#3297: the underlying
+      // The client cannot know a retry helps here (archive#3297: the underlying
       // cause in the observed instance was a stale credential).
       expect(result.hint).not.toBe('Retry your request.');
     });
@@ -271,9 +271,9 @@ describe('translateChatError', () => {
     expect(`${result.title} ${result.body}`).not.toMatch(/credential/i);
   });
 
-  // station#1207 review round 2 (MEDIUM): the orchestration bridge's stall
+  // archive#1207: the orchestration bridge's stall
   // (station-agent-adapter.ts's consumeChatStream watchdog) surfaces as a
-  // `turnRejectionMessage()`-wrapped runtime.error, not the direct path's
+  // `turnRejectionMessage`-wrapped runtime.error, not the direct path's
   // raw `ChatStreamStallError` text. Under `managed-chat-orchestration`
   // (the exact config this whole rework targets) this wrapped shape used
   // to fall through to the generic "Error… check your Model connection
@@ -324,10 +324,10 @@ describe('translateChatError', () => {
     expect(result.hint).not.toMatch(/Model connection settings/i);
   });
 
-  // station#3089/#3120: the observed value must be the one
+  // archive#3089/archive#3120: the observed value must be the one
   // `admitEngineStart`'s decision used, not a client-side re-derivation.
   // This message shape is the exact literal `CriticalResourcePostureError`
-  // builds (`src-server/services/infra/resource-posture.ts`). #3120 changed
+  // builds (`src-server/services/infra/resource-posture.ts`). archive#3120 changed
   // the BODY from the raw engineering string to a human sentence — this
   // test proves the sentence carries the server's own observed value (97),
   // not an invented one, and that the raw string is not lost: it still
@@ -339,7 +339,7 @@ describe('translateChatError', () => {
   // against the CRITICAL one (95). The earlier fixture used 95, the single
   // value at which the old "above its N% threshold" sentence read correctly,
   // so it could not have caught the sentence blaming the wrong comparison
-  // (review of station#3120). The assertion below is now that the sentence
+  // (review of archive#3120). The assertion below is now that the sentence
   // does NOT claim a threshold at all.
   it('classifies a critical-resource-posture refusal by code, as a human sentence carrying the exact observed value', () => {
     const rawMessage =
@@ -354,7 +354,7 @@ describe('translateChatError', () => {
     // A human sentence, not the raw engineering string, as the headline...
     expect(result.body).not.toBe(rawMessage);
     expect(result.body).not.toMatch(/busyPercent=/);
-    // ...but still carrying the server's own numbers, not a re-derivation.
+    //.but still carrying the server's own numbers, not a re-derivation.
     expect(result.body).toContain('97%');
     // The refusal threshold is 95, the carried thresholdPercent is 85, and the
     // sentence must attribute the refusal to neither: naming 85 as the reason
@@ -404,12 +404,12 @@ describe('translateChatError', () => {
     expect(result.hint).toBeTruthy();
   });
 
-  // station#3120: every structured `code` check must run before every
+  // archive#3120: every structured `code` check must run before every
   // prose-pattern check — genuinely, not just by claim in a comment. Prove
   // it by giving a structured code a message that ALSO matches a prose
   // pattern checked later in the function (ABORTED_PATTERN, STALLED_PATTERN)
-  // and confirming the code wins. Today's real text can't collide (review
-  // already confirmed that for #3120), but this guards the ORDERING itself
+  // and confirming the code wins. Today's real text can't collide (
+  // already confirmed that for archive#3120), but this guards the ORDERING itself
   // against a future prose pattern addition, not just today's fixtures.
   it('a structured code wins even when the message ALSO matches a later prose pattern', () => {
     const collidingWithAborted = translateChatError({
@@ -427,7 +427,7 @@ describe('translateChatError', () => {
     expect(collidingWithStalled.title).not.toMatch(/stopped responding/i);
   });
 
-  // station#1827
+  // archive#1827
   describe('a dead engine session binding', () => {
     const rawMessage =
       'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
@@ -491,7 +491,7 @@ describe('formatChatErrorDisplay', () => {
     expect(rendered).not.toContain('undefined');
   });
 
-  // station#1827
+  // archive#1827
   it('appends the raw message as a de-emphasized blockquote when disclosureRaw is set', () => {
     const rendered = formatChatErrorDisplay(
       {

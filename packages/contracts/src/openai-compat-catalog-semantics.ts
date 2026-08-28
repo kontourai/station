@@ -1,7 +1,7 @@
 /**
  * Which OpenAI-compatible endpoints Station KNOWS enumerate their models, and
  * what an empty `GET /models` therefore means for a given connection
- * (station#3653 delta review, HIGH-1).
+ * (archive#3653).
  *
  * "OpenAI-compatible" is one adapter over a whole family of servers, so the
  * semantics cannot live on the adapter CLASS. api.openai.com and api.groq.com

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-// #242 Knowledge port — asserts KnowledgeConnectionView now renders through the
+// archive#242 Knowledge port — asserts KnowledgeConnectionView now renders through the
 // canonical page-layout shell (.page/.page--narrow, not the old bespoke
 // `.knowledge-view` wrapper) and the canonical `Empty` primitive for both
 // empty branches (no bespoke `knowledge-view__empty` className survives).
@@ -100,7 +100,7 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(header?.textContent).toContain('Connections');
     expect(header?.textContent).toContain('Knowledge infrastructure');
     // The title, not the eyebrow, says 'Knowledge infrastructure' —
-    // station#4463 slice 1 retired the breadcrumb-as-eyebrow that restated
+    // archive#4463 retired the breadcrumb-as-eyebrow that restated
     // it a second time.
     expect(document.querySelector('.page__label')?.textContent?.trim()).toBe(
       'Connections',
@@ -136,7 +136,7 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(window.location.search).toBe('?section=embedding-model');
   });
 
-  // station#settings-revamp slice 5 review finding HIGH 2(b): this
+  // archive#settings-revamp: this
   // cross-link already routed through the internal `guard` correctly
   // (`guard(() => navigate(...))`, the pattern the other four cross-link
   // sites were fixed to match) — this file just never asserted the target or

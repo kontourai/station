@@ -144,7 +144,7 @@ export function FirstRunHomeChapter() {
   const configSettled = useConfigSettled();
   const offer = resolveFirstRunOffer(config?.firstRun);
   const { options, settled } = useFirstRunEngineOptions();
-  // The RAW probe answer, not `isBlockingFullScreen` (review H2). Once this
+  // The RAW probe answer, not `isBlockingFullScreen`  Once this
   // chapter is open the launcher is suppressed, so `isBlockingFullScreen` is
   // false BECAUSE of us — gating our own open on it would be circular.
   const { launcherWouldShow } = useOnboardingSetupState();
@@ -204,11 +204,11 @@ export function FirstRunHomeChapter() {
   // still says it must. And it can only ever DELAY an open: the latch means a
   // launcher that re-appears later (the probe flapping back to
   // `cannot_verify`) cannot close a chapter that is already up, so presence
-  // never toggles (AC5).
+  // never toggles.
   //
   // AND ONLY FROM A CONFIRMED READ. `['config']` is persisted to IndexedDB, so
   // a boot renders the PREVIOUS session's snapshot before the network answers
-  // — which still says `pending` for a run that was deferred moments earlier.
+  // which still says `pending` for a run that was deferred moments earlier.
   // Auto-opening from that put the chapter back over a decision the user had
   // already made (observed live, intermittently). Rendering the Home CARD from
   // the restored copy is fine and stays: it offers, it does not interrupt.
@@ -244,7 +244,7 @@ export function FirstRunHomeChapter() {
   // Publish whether this chapter owns the screen, so the launcher can stand
   // down while it does — ONE decision, made in one place, instead of two
   // overlays each deriving their own answer from the same flapping probe
-  // (review H2). The cleanup matters as much as the set: leaving Home, or the
+  //  The cleanup matters as much as the set: leaving Home, or the
   // route unmounting mid-chapter, must hand the screen back.
   useEffect(() => {
     firstRunChapterPresence.set(open);
@@ -259,7 +259,7 @@ export function FirstRunHomeChapter() {
       // load — the honest outcome, and strictly better than a UI that says
       // "saved" over a write that did not land.
       //
-      // A dedicated transition endpoint, not the config write (review M1): the
+      // A dedicated transition endpoint, not the config write: the
       // server decides whether the move is legal and stamps when it happened,
       // so neither this browser nor any other caller of the generic route can
       // re-arm a home or claim a completion.
@@ -297,7 +297,7 @@ export function FirstRunHomeChapter() {
 
   /**
    * The user is leaving the run without engines that FAILED to materialise
-   * (review H1).
+   *
    *
    * Recorded as a DEFERRAL, never a completion. The chapter offered to set up
    * the engines they picked and did not; calling that "completed" would be the
@@ -364,7 +364,7 @@ export function FirstRunHomeChapter() {
               <FirstRunEnginesChapter
                 options={options}
                 // The chapter is already on screen; this only says whether the
-                // LIST can be trusted yet (AC5 — a flapping status probe changes
+                // LIST can be trusted yet (a flapping status probe changes
                 // the list's contents, never the chapter's presence).
                 loading={!settled}
                 onDone={() => setStep('about-you')}

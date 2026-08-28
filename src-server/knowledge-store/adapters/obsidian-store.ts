@@ -142,7 +142,7 @@
  *       strategy or multi-candidate scanning.
  *
  * Contract version: written against `store-contract.md` as of `@kontourai/flow-agents`
- * **3.3.0** — see `kit-default-store`'s header comment and #218 for the tracked sidecar
+ * **3.3.0** — see `kit-default-store`'s header comment and archive#218 for the tracked sidecar
  * pin upgrade; this adapter imports nothing from the package either.
  */
 import { randomUUID } from 'node:crypto';

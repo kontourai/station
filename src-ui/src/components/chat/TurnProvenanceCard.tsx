@@ -18,7 +18,7 @@ import { engineLabelForProvider } from '../../utils/sessionDisplay';
 import './TurnProvenanceCard.css';
 
 /**
- * Collapsed per-answer provenance card (station#1410, redesigned station#1802
+ * Collapsed per-answer provenance card (archive#1410, redesigned archive#1802
  * off the owner's "what am I supposed to take away from that?" complaint) —
  * the render half of the turn provenance envelope.
  *
@@ -34,10 +34,10 @@ import './TurnProvenanceCard.css';
  *   card silently skipped would read as "nothing to report here."
  * - **No partial decoding.** An envelope whose version this build does not
  *   understand renders as one honest unavailable row rather than a
- *   best-effort read of the fields that happen to look familiar (AC5). The
+ * best-effort read of the fields that happen to look familiar. The
  *   surrounding transcript is unaffected either way.
  *
- * station#1802 adds a fourth rule, about presentation rather than data:
+ * archive#1802 adds a fourth rule, about presentation rather than data:
  *
  * - **Four kinds of row read as four different things.** An *earned claim*
  *   (this turn's engine, model, cost) is the product's whole point and leads
@@ -64,7 +64,7 @@ const UNAVAILABLE_TEXT: Record<TurnProvenanceUnavailableReason, string> = {
     'This engine reports it per session, not per answer',
   'usage-scope-undeclared':
     'This engine has not declared whether its figures are per answer',
-  // station#1423. Says who is restricted and that the record exists — a
+  // archive#1423. Says who is restricted and that the record exists — a
   // share viewer must not read this as "Station has nothing", which is what
   // every other reason here means.
   'restricted-for-this-viewer':
@@ -92,7 +92,7 @@ function unavailableText(reason: TurnProvenanceUnavailableReason): string {
 }
 
 /**
- * Station's own backlog, not a per-answer fact (station#1802). Every other
+ * Station's own backlog, not a per-answer fact (archive#1802). Every other
  * reason in {@link UNAVAILABLE_TEXT} says something about THIS turn or THIS
  * engine; this one says the same thing about every turn until the feature
  * ships. Rows carrying it are kept — see the no-omission rule in the module
@@ -108,7 +108,7 @@ interface ProvenanceRow {
   gap: TurnProvenanceUnavailableReason | null;
   trustReportRef?: TurnProvenanceTrustReportRef;
   /**
-   * station#2649: an informational line that is neither an earned claim nor
+   * archive#2649: an informational line that is neither an earned claim nor
    * a gap — today only the Context row's "Managed by <engine>", derived from
    * the observed engine binding rather than from a context observation.
    * Rendered in the absence style: it reports what Station did NOT do.
@@ -157,7 +157,7 @@ function usageText(
   if (usage.inputTokens !== undefined) parts.push(`${usage.inputTokens} in`);
   if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
   if (usage.totalTokens !== undefined) {
-    // station#4196: for a provider DECLARED 'disjoint', its reported total is
+    // archive#4196: for a provider DECLARED 'disjoint', its reported total is
     // input + output and excludes the cache fields named beside it — calling
     // that figure "total" in the same sentence contradicts the collapsed
     // line's cache-inclusive figure. Name it what the declaration says it is.
@@ -177,7 +177,7 @@ function usageText(
 }
 
 /**
- * The COLLAPSED-LINE usage figure (station#1802) — short enough to sit next
+ * The COLLAPSED-LINE usage figure (archive#1802) — short enough to sit next
  * to the engine and model in one line. Prefers the engine's own total; a
  * reported total is the single number closest to "what this cost", and
  * naming every cache/read/write field the way the detail row does would bury
@@ -188,7 +188,7 @@ function headlineUsageText(
   usage: TurnProvenanceUsage,
   provider: string | undefined,
 ): string | null {
-  // station#4196: when the provider's declared cache-inclusivity backs the
+  // archive#4196: when the provider's declared cache-inclusivity backs the
   // sum ('disjoint' — Claude, whose totalTokens is input + output and
   // excludes cache), the one-line figure includes cache read/write, because
   // "N tokens" beside a detail row listing thousands of cache tokens was a
@@ -223,7 +223,7 @@ function engineDisplay(provider: string): { label: string; slug: string } {
 }
 
 /**
- * The Context row's rendered sentence (station#2649). Token figures carry a
+ * The Context row's rendered sentence (archive#2649). Token figures carry a
  * `~` because they ARE approximate — byte-derived estimates of the real
  * injected strings (see the contract's `TurnProvenanceContextInjection`
  * docblock) — and rendering them unqualified would present an estimate as a
@@ -265,7 +265,7 @@ function contextInjectionText(record: TurnProvenanceContextInjection): string {
     parts.push(`Ambient (~${record.ambient.approxTokens} tokens)`);
   }
   // An observed EMPTY record is an earned fact, not a gap: Station's engine
-  // ran this turn and nothing it composed reached the model (station#2649
+  // ran this turn and nothing it composed reached the model (archive#2649
   // honesty rule). Distinct from an unavailable slot, which says Station
   // recorded nothing either way. The wording names the record's actual
   // scope — Station-composed context — because the system prompt, tool
@@ -275,7 +275,7 @@ function contextInjectionText(record: TurnProvenanceContextInjection): string {
 }
 
 /**
- * The Context row (station#2649): what Station itself put into this turn's
+ * The Context row (archive#2649): what Station itself put into this turn's
  * model input. Three honest shapes, never a fourth:
  *
  * - **Observed record** → the itemized blocks (or "No retrieved context"
@@ -363,7 +363,7 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
     refRow('Routing receipt', envelope.routingReceipt, (ref) => ref.receiptId),
     refRow('Sources', envelope.sources, (ref) => ref.snapshotId),
     {
-      // station#1558: `referenced` is unreachable in production today —
+      // archive#1558: `referenced` is unreachable in production today —
       // nothing writes `metadata.trustReport`. The row stays because the
       // contract keeps the slot defined-and-unimplemented rather than
       // deleted, so a producer landing later needs no UI change; every real
@@ -386,7 +386,7 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
 
 /**
  * Identity facts the surrounding row already states for this same turn
- * (station#1434). The row and this card read ONE authority — the envelope —
+ * (archive#1434). The row and this card read ONE authority — the envelope —
  * so a fact the row has already put on screen must not be repeated in the
  * collapsed headline: two renderings of one fact read as two claims, and
  * the reader then has to work out whether they agree.
@@ -403,14 +403,14 @@ export interface TurnProvenanceStatedInRow {
 const NOTHING_STATED_IN_ROW: TurnProvenanceStatedInRow = {};
 
 /**
- * The collapsed-state headline (station#1802): the takeaway itself, not a
+ * The collapsed-state headline (archive#1802): the takeaway itself, not a
  * teaser for it. Names whichever of engine/model the surrounding row has not
  * already stated, plus what this turn cost when the engine reported one —
  * the three earned facts the card exists to surface. A reader who never
  * expands the card still learns them.
  *
  * The model named here is ALWAYS `reportedModel` — never `requestedModel`
- * (review fix, station#1802 H-1). `requestedModel` is what Station asked
+ * (archive#1802). `requestedModel` is what Station asked
  * for, not a confirmation of what ran; the expanded detail already states
  * both, honestly labelled and kept separate, because a disagreement between
  * them is itself the finding (see the "names the model the runtime
@@ -457,7 +457,7 @@ function summaryText(
 }
 
 /**
- * Notable, PER-ANSWER findings for the badge (station#1802). This replaces
+ * Notable, PER-ANSWER findings for the badge (archive#1802). This replaces
  * the old raw gap count, which mostly counted Station's own unimplemented
  * slots — the same three, every turn, forever, regardless of whether the
  * answer was good. The rule this applies: a signal only belongs in a
@@ -481,7 +481,7 @@ function turnFindings(envelope: TurnProvenanceEnvelope): string[] {
     for (const use of envelope.tools.value.uses) {
       failed += use.failed + use.cancelled;
       // A `tool.started` with no matching terminal event yet — review
-      // finding (station#1802): a genuine per-answer anomaly (this turn's
+      // finding (archive#1802): a genuine per-answer anomaly (this turn's
       // own tool call never resolved), distinct from `failed`/`cancelled`,
       // which both name an event Station DID observe.
       const resolved = use.succeeded + use.failed + use.cancelled;
@@ -511,7 +511,7 @@ function RowValue({ row }: { row: ProvenanceRow }) {
     );
   }
   if (row.note) {
-    // station#2649: informational, styled as an absence — it reports what
+    // archive#2649: informational, styled as an absence — it reports what
     // Station did NOT do (inject context into an external engine's turn),
     // so it must not read as an earned per-turn observation.
     return (
@@ -544,7 +544,7 @@ function RowValue({ row }: { row: ProvenanceRow }) {
   );
 }
 
-/** The turn id, behind the disclosure, with a copy control (station#1802). */
+/** The turn id, behind the disclosure, with a copy control (archive#1802). */
 function TurnIdRow({ turnId }: { turnId: string }) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
     'idle',
@@ -601,7 +601,7 @@ export function TurnProvenanceCard({
   if (provenance === undefined || provenance === null) return null;
 
   if (!isSupportedTurnProvenanceEnvelope(provenance)) {
-    // AC5: a version this build does not understand is reported as one
+    // a version this build does not understand is reported as one
     // honest unavailable row. Nothing is parsed out of it, and the
     // transcript around it renders normally.
     return (
@@ -618,7 +618,7 @@ export function TurnProvenanceCard({
   }
 
   const rows = buildRows(provenance);
-  // station#1802: Station's own unimplemented slots are demoted out of the
+  // archive#1802: Station's own unimplemented slots are demoted out of the
   // checkable list and out of the badge — see STATION_BACKLOG_REASON's
   // docblock. Everything else (earned claims and meaningful absences) stays
   // in the checkable list together; RowValue is what tells them apart.
@@ -676,7 +676,7 @@ export function TurnProvenanceCard({
 
           {backlogRows.length > 0 && (
             <>
-              {/* station#1802: kept (not deleted — see the module docblock's
+              {/* archive#1802: kept (not deleted — see the module docblock's
                   no-omission rule) but visually demoted into its own block,
                   out of the checkable facts and out of the badge. This is
                   Station's roadmap, not a finding about this answer. */}

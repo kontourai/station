@@ -10,7 +10,7 @@ export type NativeConsentReviewer = (
 
 /**
  * Resolves the native consent broker when — and only when — BOTH halves of
- * the answer say yes (station#3677 PR 3):
+ * the answer say yes (archive#3677):
  *
  * - the HOST capability (`native-consent-broker`): can this shell draw an OS
  *   dialog at all? Web hosts cannot.
@@ -33,7 +33,7 @@ export type NativeConsentReviewer = (
  * pending. Both take the consent page, the path that works wherever the
  * listener does. What matters is the direction of every uncertainty — an
  * unanswered, failed, or superseded read never leaves a previous
- * connection's authority exposed (review round 2 found exactly that: the
+ * connection's authority exposed ( 2 found exactly that: the
  * reviewer was never cleared, so switching to a Station that refuses left a
  * stale approve-capable function in place).
  */

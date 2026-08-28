@@ -1,5 +1,5 @@
 /*
- * station#3213: the failure banner's one appearance, lifted verbatim from
+ * archive#3213: the failure banner's one appearance, lifted verbatim from
  * `.sessions-detail__failure` (SessionsView.css) when the chat dock became a
  * second consumer. Both surfaces render this component, so neither can drift
  * into its own error styling for the same fact.

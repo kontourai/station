@@ -56,7 +56,7 @@ describe('TerminalService', () => {
   });
 
   test('open refuses an empty working directory instead of letting node-pty pick one', async () => {
-    // station#1497 — node-pty's unixTerminal resolves `opt.cwd || process.cwd()`,
+    // archive#1497 — node-pty's unixTerminal resolves `opt.cwd || process.cwd()`,
     // so a blank cwd spawns the user's shell in whatever directory
     // station-control was launched from and renders as a working prompt rather
     // than as an error. The UI's `config.workingDirectory ?? ''` is a display

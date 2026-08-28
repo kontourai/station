@@ -51,7 +51,7 @@ describe('conversation handoff route', () => {
     );
   });
 
-  // station#4075 stage 2 review round 1 (F1, HIGH): this route dropped the
+  // archive#4075 stage 2 review round 1 (F1, HIGH): this route dropped the
   // resolved principal from the payload to `handoffConversation` even though
   // it resolved one for `userId` — the every-other-test-only-checks-userId
   // gap the review named. This pins the fix by asserting `principal` reaches

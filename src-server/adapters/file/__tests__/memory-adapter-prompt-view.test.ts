@@ -23,7 +23,7 @@ async function createAdapter() {
   return new FileMemoryAdapter({ projectHomeDir: dir });
 }
 
-// #191 code-review HIGH-1: a fixture conversation with a real persisted
+// archive#191 code-review HIGH-1: a fixture conversation with a real persisted
 // [CHAT_ERROR] marker (the exact shape `chat-lifecycle.ts`'s
 // `finalizeChatRequest` writes), plus a normal user turn before and after
 // it, exercising both sides of the fix at the real adapter boundary.
@@ -41,7 +41,7 @@ async function seedFixtureConversation(adapter: FileMemoryAdapter) {
     conversationId,
   );
 
-  // The failed-turn marker persisted by finalizeChatRequest (#191 R2).
+  // The failed-turn marker persisted by finalizeChatRequest (archive#191 R2).
   await adapter.addMessage(
     {
       id: 'msg-2',

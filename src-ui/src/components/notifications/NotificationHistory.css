@@ -65,7 +65,7 @@
 .notification-history__item-content {
   flex: 1;
   /*
-   * station#3203: a flex item's default `min-width: auto` is its CONTENT's
+   * archive#3203: a flex item's default `min-width: auto` is its CONTENT's
    * intrinsic width, so one unbreakable token — and a failure reason is full
    * of them (`/Users/…/file.ts:120`, `ECONNREFUSED api.example.com:443`) —
    * pushed this column wider than the popover and took the page with it at
@@ -73,7 +73,7 @@
    */
   min-width: 0;
   padding-right: 8px;
-  /* The row's title is a bare <div>; a long session name (station#3203 now
+  /* The row's title is a bare <div>; a long session name (archive#3203 now
      puts one there) must break rather than widen the column. */
   overflow-wrap: anywhere;
 }
@@ -97,7 +97,7 @@
 }
 
 /*
- * station#3203 — LENGTH POLICY for a failure reason in the tray.
+ * archive#3203 — LENGTH POLICY for a failure reason in the tray.
  *
  * The projection already bounds the reason to 400 characters
  * (`MAX_DESCRIPTION_LENGTH`), which is still ~10 lines at 390px and would let
@@ -220,7 +220,7 @@
 }
 
 /**
- * station#1780: the observation line on a row whose backing session nothing
+ * archive#1780: the observation line on a row whose backing session nothing
  * in the serving Station can answer. Deliberately readable rather than
  * whispered — it is the reason the buttons above it are disabled.
  */

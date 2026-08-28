@@ -255,10 +255,7 @@ test.describe('Structured UI blocks', () => {
     await responseFulfilled;
   });
 
-  // station#1399 fix round 2 — executed once against a temp-home instance
-  // (`./station start --instance=fix-round2-e2e --temp-home --port=3276
-  // --ui-port=5296`, `PW_BASE_URL=http://localhost:5296 npx playwright
-  // test tests/ui-blocks.spec.ts`), 3/3 passed. A claiming table block with
+  // archive#1399 — a claiming table block with
   // no `derivedFrom` — exactly the `render_summary` shape used in the first
   // test above, from a tool that is NOT `render_component` — must render
   // the visible "Unattested" badge, never silently as if checked.

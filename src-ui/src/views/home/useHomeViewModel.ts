@@ -59,7 +59,7 @@ function useHomeWorkData(): HomeWorkData {
   const tasks = useTasksQuery();
   const { data: remoteSessionsResult } = useRemoteSessionsQuery();
   const agents = useAgents();
-  // station#3391. Home's rows name a model; the New Chat surfaces name the
+  // archive#3391. Home's rows name a model; the New Chat surfaces name the
   // same model through `resolveEffectiveModel`, which reads a connection's
   // catalog. Home read the stored id instead, so one session was "Selected
   // Test Model" on one card and `model-selected` on the card beside it. This
@@ -67,7 +67,7 @@ function useHomeWorkData(): HomeWorkData {
   // a Home row can belong to any of them, not only the default agent's.
   const { data: pickerCatalog } = useModelPickerCatalogQuery();
   // Union, so first-match wins if two connections publish the SAME model id
-  // under different names (station#3391 review B-5). Left as-is deliberately:
+  // under different names (archive#3391). Left as-is deliberately:
   // de-duplicating would have to pick a winner, and the honest winner is the
   // connection the SESSION runs on — which is a per-row lookup this hook does
   // not have and the rows do not carry. Accepted because the case needs two

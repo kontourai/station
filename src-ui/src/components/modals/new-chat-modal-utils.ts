@@ -32,7 +32,7 @@ export const GLOBAL_CONTEXT = '__global__';
 /**
  * Where the chat about to be started will actually run.
  *
- * `'connection'` exists because of station#1089. The picker used to print
+ * `'connection'` exists because of archive#1089. The picker used to print
  * "~ (defaults to home)" for any project without a `workingDirectory`, and for
  * an engine connection carrying its own Working Directory that was simply
  * untrue: measured on origin/main, a chat in a directoryless project on a
@@ -43,7 +43,7 @@ export const GLOBAL_CONTEXT = '__global__';
  * The precedence below is a mirror of the server's, not a second opinion:
  * `orchestration-service.ts`'s `resolveStartSessionCwd` turns a project's
  * `workingDirectory` into the session's `cwd`, and `acp-adapter.ts` then
- * resolves `input.cwd || connectionCwd || safeHomeDirectory()`. So a project
+ * resolves `input.cwd || connectionCwd || safeHomeDirectory`. So a project
  * directory outranks a connection default (verified live: project `bound`
  * + connection `oc-elsewhere` → `/tmp/s1089-project`), and a connection
  * default outranks `$HOME`.
@@ -108,7 +108,7 @@ export function resolveNewChatAgentUnavailability(
  * already bound to this engine connection, if one is loaded. The alias row
  * itself carries the same binding, so engine defaults are excluded.
  *
- * AC7 note: this and the three `engineDefault` reads below are the surviving
+ * note: this and the three `engineDefault` reads below are the surviving
  * consumers of that flag, and every one of them is about PRESENTATION of a
  * virtual row — which Agent an alias stands in for, whether the alias should
  * still be shown, and which engine group a row belongs to. None is a lock.
@@ -129,7 +129,7 @@ export function findAuthoredAgentForEngineConnection(
 }
 
 /**
- * station#1089. Deliberately reports the CONNECTION directory rather than
+ * archive#1089. Deliberately reports the CONNECTION directory rather than
  * relocating the agent to `$HOME` to match the old copy. A project with no
  * `workingDirectory` is, in the server resolver's own words, "an
  * organizational/knowledge scope, not a directory binding" — the absence of a
@@ -274,7 +274,7 @@ export interface NewChatModalViewModel {
    * The scope-filtered, pre-search eligible set (project ownership + agent
    * filter applied). Enable's FIND must run over THIS set, not the raw
    * agents prop, or an out-of-scope authored Agent could be silently
-   * selected into a context the scope policy excludes it from (#3027 M2).
+   * selected into a context the scope policy excludes it from (archive#3027).
    */
   scopedAgents: AgentData[];
   compatibilityMessage?: string;
@@ -467,7 +467,7 @@ export function buildNewChatModalViewModel({
       eligibleAgents.set(agent.slug, agent);
     }
   }
-  // station#3027(c): an engine-default alias row exists to say "this engine
+  // archive#3027(c): an engine-default alias row exists to say "this engine
   // has no authored Agent yet". Once an authored Agent bound to the same
   // engine connection is in scope, the alias would sit as a permanently dead
   // row beside the live one — hide it. Purely derived state: deleting the
@@ -502,7 +502,7 @@ export function buildNewChatModalViewModel({
   };
 
   // Registry-owned defaults join their engine group by explicit marker.
-  // Presentation only — see `findAuthoredAgentForEngineConnection` (AC7).
+  // Presentation only — see `findAuthoredAgentForEngineConnection`.
   const engineGroupSlugs = new Set(
     filtered
       .filter((agent) => isEngineProvenanceAgent(agent))
@@ -626,7 +626,7 @@ export function buildNewChatModalViewModel({
 }
 
 // Re-exported from their new entry-safe homes (hooks/lastChosenModel.ts;
-// ./new-chat-agent-enable.ts, whose own note explains why it moved) so
+///new-chat-agent-enable.ts, whose own note explains why it moved) so
 // existing modal-side importers keep working.
 export {
   buildLastChosenModelBindingKey,

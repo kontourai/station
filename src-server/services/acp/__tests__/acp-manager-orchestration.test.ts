@@ -137,7 +137,7 @@ describe('acp-manager-orchestration helpers', () => {
     const probes = new Map([['opencode', probe]]);
 
     // Simulate the ACPManager's 60s wall-clock timer firing 30 times in a
-    // row (30 minutes of ticks) -- the exact cadence station#1908 measured
+    // row (30 minutes of ticks) -- the exact cadence archive#1908 measured
     // spawning the engine binary on every single tick, forever.
     for (let tick = 0; tick < 30; tick++) {
       clock += 60_000;
@@ -193,7 +193,7 @@ describe('acp-manager-orchestration helpers', () => {
 
     expect(reconnected).toBe(true);
     expect(probe.probe).toHaveBeenCalledTimes(2);
-    // station#3404: both of these are awaited by an HTTP request, so neither
+    // archive#3404: both of these are awaited by an HTTP request, so neither
     // may take the enlarged budget — add defaults to it, reconnect states it.
     expect(probe.probe).toHaveBeenNthCalledWith(1, 'request');
     expect(probe.probe).toHaveBeenNthCalledWith(2, 'request');

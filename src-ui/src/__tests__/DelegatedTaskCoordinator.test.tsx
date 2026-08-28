@@ -15,8 +15,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DelegatedTaskCoordinator } from '../components/session-detail/DelegatedTaskCoordinator';
 
 /**
- * station#1781 AC2. `DelegatedTaskCoordinator` renders `tasks[0]` only, and
- * since station#1791 a dead session's `pendingReview` never clears — so this
+ * archive#1781. `DelegatedTaskCoordinator` renders `tasks[0]` only, and
+ * since archive#1791 a dead session's `pendingReview` never clears — so this
  * card offered "Review request" on a session nothing could answer, forever,
  * and hid the composer behind the same stale flag.
  */
@@ -82,7 +82,7 @@ describe('DelegatedTaskCoordinator answerability', () => {
   test('the card is still rendered at all (anti-filter)', () => {
     renderCard(task({ answerability: observation }));
     expect(screen.getByTestId('delegated-task-coordinator')).toBeTruthy();
-    // station#3227 C1: was `'42'` — the bare `humanizeId(taskId)` output.
+    // archive#3227: was `'42'` — the bare `humanizeId(taskId)` output.
     // The heading now renders `sessionTitle`, the one name this session is
     // listed under, so the coordinator and the row beside it cannot disagree.
     // Kept as an assertion on the exact string rather than relaxed: a raw id
@@ -118,7 +118,7 @@ describe('DelegatedTaskCoordinator answerability', () => {
   });
 
   /**
-   * REVIEW BLOCKING B1c. A detached `completed` task takes the `past_resume`
+   *A detached `completed` task takes the `past_resume`
    * arm, and recovery skips already-closed sessions at boot — so after any
    * restart EVERY cleanly-finished delegated task reads `answerable: false`.
    * The notice was not gated on `isTerminal`, so every one of them was
@@ -171,7 +171,7 @@ describe('DelegatedTaskCoordinator answerability', () => {
       screen.queryByText('This worker is waiting for your response.'),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Review request' })).toBeNull();
-    // AC2: the route to the task survives; only the false claim goes.
+    // the route to the task survives; only the false claim goes.
     expect(screen.getByRole('button', { name: 'View task' })).toBeTruthy();
   });
 
@@ -212,7 +212,7 @@ describe('DelegatedTaskCoordinator answerability', () => {
 });
 
 /**
- * station#3139. This card printed `task.lifecycleState` verbatim, so the meta
+ * archive#3139. This card printed `task.lifecycleState` verbatim, so the meta
  * row read `needs_input` / `review_pending` — the exact regression
  * `sessionLifecycleLabel`'s docblock exists to prevent, three files away and
  * already used by `SessionsView` and `SessionDetailHeader`.

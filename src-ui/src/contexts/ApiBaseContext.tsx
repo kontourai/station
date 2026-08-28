@@ -1,6 +1,6 @@
 /**
  * ApiBaseContext — thin backward-compat wrapper over @kontourai/station-connect.
- * Consumers continue to call useApiBase() / <ApiBaseProvider> with the same API shape.
+ * Consumers continue to call useApiBase / <ApiBaseProvider> with the same API shape.
  */
 
 import {
@@ -176,7 +176,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
       prepareActiveConnection={
         profile.isTauri ? prepareNativeActiveConnection : undefined
       }
-      // station#1286: `packages/connect` is platform-blind, so the already-
+      // archive#1286: `packages/connect` is platform-blind, so the already-
       // resolved platform profile (awaited past any capability-report race)
       // is the source of truth for whether the page is a native shell —
       // not an inline `window` check re-derived downstream.
@@ -204,11 +204,11 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   _setApiBase(apiBase);
 
   // The native host notification watch is **dormant** — deliberately not
-  // started. The live blocker is #917 (the FCM/APNs dependency decision;
-  // #3088, which corrected this record, is closed). It is blocked
+  // started. The live blocker is archive#917 (the FCM/APNs dependency decision;
+  // archive#3088, which corrected this record, is closed). It is blocked
   // three ways on Android (the cached-app
   // freezer kills the poller thread when backgrounded, the foreground service
-  // that would prevent that is blocked by tauri#11609/#15671, and native Rust
+  // that would prevent that is blocked by tauri#11609/archive#15671, and native Rust
   // cannot resolve DNS there at all). Calling it today would fail every poll
   // and log an error on every launch.
   //
@@ -293,7 +293,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         // to the NEW credential and deleted it; for a device session both
         // values are `undefined`, so only the generation can tell them apart.
         // Returns the transition so the SDK can resolve the response after it
-        // (#3601/#3602 review, MEDIUM). On a page with Web Locks the store
+        // (archive#3601/archive#3602). On a page with Web Locks the store
         // applies this inside a lock callback; without the hand-back, code
         // that awaited the request could read the state the 401 replaced.
         onUnauthorized: () =>
@@ -346,15 +346,15 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     recordAuthenticatedSuccess,
   ]);
 
-  // station#1094 (closing the SSE-stream half of the hot-loop-on-401 fix):
+  // archive#1094 (closing the SSE-stream half of the hot-loop-on-401 fix):
   // wake every `fetchSSE` stream currently blocked on a terminal auth
   // failure once the SAME connection's credential regains authority —
   // mirrors `@kontourai/station-connect`'s `useConnectionStatus` equivalent
-  // wake for the health-poll path (R3/R4, already shipped in PR #1107).
+  // wake for the health-poll path (already shipped).
   // Keyed on the connection id too, so switching to a different connection (a
   // legitimately different credential) does not spuriously fire this.
   //
-  // station#3602: this used to compare the saved credential VALUE, which a
+  // archive#3602: this used to compare the saved credential VALUE, which a
   // browser device session never changes — `undefined` before pairing and
   // `undefined` after — so a terminally parked stream stayed parked through
   // the re-pairing that was supposed to release it. The authority generation

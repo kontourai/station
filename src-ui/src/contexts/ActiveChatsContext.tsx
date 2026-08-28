@@ -166,7 +166,7 @@ export function ActiveChatsProvider({ children }: { children: ReactNode }) {
 
   const getAllChats = useCallback(() => activeChatsStore.getSnapshot(), []);
 
-  // station#3796: one memoised value per provider — a fresh object literal
+  // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
   const value = useMemo(
@@ -264,7 +264,7 @@ function isShallowEqual<T>(a: T, b: T): boolean {
  *
  * useActiveChatState (above) returns the *entire* ChatUIState and re-renders
  * on any field change — including every composer keystroke, which writes
- * `{ input }` via updateChat(). active-chats-store.updateChat() replaces the
+ * `{ input }` via updateChat. active-chats-store.updateChat replaces the
  * session's whole object on every call (mergeChatUpdates spreads
  * `{...current, ...updates}`), but fields the update didn't touch keep their
  * prior reference. That means a selector comparing only the fields a

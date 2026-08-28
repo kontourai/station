@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 
 /**
- * Heading-ownership context for the `SplitPaneLayout` skeleton (station#2931).
+ * Heading-ownership context for the `SplitPaneLayout` skeleton (archive#2931).
  *
  * `docs/design/shell-skeletons.md` §2.1 states the rule: in a `SplitPaneLayout`
  * screen the shell owns the COLLECTION title and the detail pane owns the ITEM

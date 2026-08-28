@@ -3,7 +3,7 @@
  * SSE stream.
  *
  * `fetchSSE` stops permanently on a 401 rather than hot-looping against a
- * credential the Station has rejected (station#1094), and waits for
+ * credential the Station has rejected (archive#1094), and waits for
  * `notifyCredentialChanged` for its origin. `ApiBaseContext` is what sends
  * that signal — and it used to send it on a change in the saved credential
  * VALUE, which a browser device session never has: `undefined` before pairing

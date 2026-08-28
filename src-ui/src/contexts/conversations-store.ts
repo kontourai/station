@@ -52,17 +52,17 @@ class ConversationsStore {
   }
 
   /**
-   * station#1312 review: returns whether the fetch actually succeeded —
+   * archive#1312: returns whether the fetch actually succeeded —
    * `false` on error, never a thrown rejection (the error is still logged
    * and swallowed, same as before, for callers that only read the store's
-   * snapshot afterward). `useOpenConversation` (station#1297's rehydrate
+   * snapshot afterward). `useOpenConversation` (archive#1297's rehydrate
    * path) is the one caller that now checks this: a fetch failure there
    * must not silently leave a live, permanently empty chat tab with no
    * error — it needs to know to undo the tab and report failure so the
    * row-open policy falls back to `/activity` instead. Every other caller
    * (`useMessages`, `useActiveChatSessionMessaging`,
    * `rehydrateChatSession`) already ignores the resolved value and reads
-   * `getSnapshot().messages` directly, so this is additive, not breaking.
+   * `getSnapshot.messages` directly, so this is additive, not breaking.
    */
   async fetchMessages(
     _apiBase: string,

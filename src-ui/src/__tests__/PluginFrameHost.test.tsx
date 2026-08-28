@@ -95,7 +95,7 @@ function postPaneHost(
 
 /**
  * An `api-request` from the frame — a method the shell no longer implements
- * (station#4300). Kept so the regression test below can send the exact
+ * (archive#4300). Kept so the regression test below can send the exact
  * message the deleted bridge answered.
  */
 function postApiRequest(params: Record<string, unknown>) {
@@ -112,9 +112,9 @@ function postApiRequest(params: Record<string, unknown>) {
  * Let every queued microtask and timer callback run.
  *
  * A negative assertion about `fetch` MUST be made after this, and the reason
- * is a fault injection that passed: `authenticatedFetch` awaits before it
+ * is a that passed: `authenticatedFetch` awaits before it
  * reaches the global `fetch`, so a synchronous `expect(fetchMock)
- * .not.toHaveBeenCalled()` runs BEFORE the call it is supposed to notice.
+ *not.toHaveBeenCalled` runs BEFORE the call it is supposed to notice.
  * Re-adding the whole api-request bridge left this file green with four
  * unhandled rejections and 23 passing tests.
  */
@@ -180,8 +180,8 @@ describe('PluginFrameHost boundary', () => {
     // Seed the nonce where `resolveCspNonce` actually reads it (the marker
     // element). Seeding the old `window.__STATION_CSP_NONCE__` global left
     // this regression test powerless: that carrier was removed, so the
-    // assertion would pass even if someone wired `resolveCspNonce()` in here
-    // tomorrow (station#4287 review).
+    // assertion would pass even if someone wired `resolveCspNonce` in here
+    // tomorrow (archive#4287).
     const cspMarker = document.createElement('script');
     cspMarker.nonce = 'shell-nonce';
     cspMarker.setAttribute('data-station-csp-nonce', '');
@@ -250,7 +250,7 @@ describe('PluginFrameHost boundary', () => {
       '/projects/apollo/layouts/coding',
       { previewPath: null, previewLineStart: null, previewLineEnd: null },
     );
-    // ...but `setLayout` writes lastProject/lastProjectLayout to localStorage
+    //.but `setLayout` writes lastProject/lastProjectLayout to localStorage
     // unconditionally, which would let a plugin repoint what `/` restores to
     // on every future launch — outliving the plugin's own removal. A frame is
     // not the user, so its choice is not recorded as the user's.
@@ -385,7 +385,7 @@ describe('PluginFrameHost boundary', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain('navigation rate');
     // The user sees the refusal too: a legitimate third click dying
-    // console-only is the silent no-op #3323 exists to fix. Host-issued, so
+    // console-only is the silent no-op archive#3323 exists to fix. Host-issued, so
     // it spends no plugin toast token, and bounded to once per interval.
     const refusalToasts = toastStore
       .getSnapshot()
@@ -518,7 +518,7 @@ describe('PluginFrameHost boundary', () => {
     // `act` is what gives this test its power: without it a dialog the host
     // WRONGLY opened would not have rendered by the time the assertion runs,
     // so the test would pass whether or not the origin pin held. Proven by
-    // fault injection -- serving the contract before the pin passed until
+    // -- serving the contract before the pin passed until
     // this flush was added.
     act(() => {
       postPaneHost(
@@ -571,7 +571,7 @@ describe('PluginFrameHost boundary', () => {
 
     postPaneHost('pane-host/exfiltrate', {});
 
-    // Silence is how #3308 and #3323 both stayed broken: the capability was
+    // Silence is how archive#3308 and archive#3323 both stayed broken: the capability was
     // advertised, the message went nowhere, and nothing said so.
     expect(post).toHaveBeenCalledWith(
       {
@@ -624,7 +624,7 @@ describe('PluginFrameHost boundary', () => {
 });
 
 /**
- * station#4300 deleted the frame's `api-request` bridge. The shell no longer
+ * archive#4300 deleted the frame's `api-request` bridge. The shell no longer
  * performs `/api/**` requests on a plugin frame's behalf under the operator's
  * credential: the method has no handler, and nothing in the pane-host contract
  * replaces it.
@@ -676,7 +676,7 @@ describe('the api-request bridge is gone (station#4300)', () => {
         .map(([payload]) => (payload as PaneHostReply)?.method)
         .filter((method) => method === 'api-response'),
     ).toEqual([]);
-    // ...and not refused on the contract's channel either. An unrecognised
+    //.and not refused on the contract's channel either. An unrecognised
     // uplink method is not the adapter's, so it is neither served nor
     // answered — the same treatment any undefined method gets.
     expect(refusalsFor(post)).toEqual([]);

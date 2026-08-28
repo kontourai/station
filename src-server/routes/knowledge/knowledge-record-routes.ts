@@ -149,7 +149,7 @@ function knowledgeStoreErrorResponse(c: Context, e: unknown) {
   if (e instanceof AmbiguousIdError || e instanceof SlugConflictError) {
     return c.json({ success: false, error: errorMessage(e) }, 409);
   }
-  // station#1879: a read-only projection adapter (e.g. the conversation-history
+  // archive#1879: a read-only projection adapter (e.g. the conversation-history
   // root) rejects every mutation verb — 405, not a generic 500, mirroring the
   // honesty bar this function already sets for the other three codes.
   if (e instanceof ReadOnlyStoreError) {

@@ -24,7 +24,7 @@ async function collect(
   return events;
 }
 
-// #903: `session.configured` is the only event that carries a model into the
+// archive#903: `session.configured` is the only event that carries a model into the
 // read model and the persisted session row, and Bedrock published it just once
 // at session start — so a per-turn model change lived in adapter memory alone
 // and a rehydrated session reported the model it started with.
@@ -112,7 +112,7 @@ describe('BedrockAdapter turn-time model restatement (#903)', () => {
   });
 });
 
-// station#3442: a genuine stream failure (not a user cancellation) must
+// archive#3442: a genuine stream failure (not a user cancellation) must
 // publish `runtime.error`, the one canonical event the session-lifecycle
 // projector folds to 'failed' — a `turn.completed` here (this branch's prior,
 // unconditional behavior) is indistinguishable from an ordinary empty

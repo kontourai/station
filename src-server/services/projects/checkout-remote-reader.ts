@@ -1,5 +1,5 @@
 /**
- * station#1499 slice 2 — reading a local checkout's git remotes
+ * archive#1499 — reading a local checkout's git remotes
  * (`docs/design/portable-project-identity.md` §3.3(a)/(b), §5).
  *
  * Two consumers, one reader: manifest backfill derives a project's `repos`
@@ -10,7 +10,7 @@
  *
  * 1. **Every git invocation goes through `git-exec.ts`.** An inherited
  *    `GIT_DIR`/`GIT_WORK_TREE` silently retargets a spawned `git` at another
- *    repository, which has caused real `core.bare` corruption here (#104).
+ *    repository, which has caused real `core.bare` corruption here (archive#104).
  *    `execGit` strips both and sets `windowsHide: true`; a raw `execFile`
  *    would reintroduce the bug this module cannot afford.
  * 2. **"This directory has no remotes" and "git could not be run" are
@@ -73,7 +73,7 @@ export type CheckoutRemoteReader = (
 ) => Promise<CheckoutRemotesResult>;
 
 /**
- * station#1501 slice 3b review, FIX 3.
+ * archive#1501 review, FIX 3.
  *
  * `git remote -v` reads `.git/config` in `absolutePath`. When that directory
  * lives on a stale network mount (an unreachable NFS/SMB server, a

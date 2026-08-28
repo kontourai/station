@@ -243,9 +243,9 @@ describe('reloadRuntimeAgents', () => {
     expect(emit).toHaveBeenCalledWith('agents:changed', { count: 2 });
   });
 
-  // station#977: mirrors the cold-boot skip proven by
+  // archive#977: mirrors the cold-boot skip proven by
   // runtime-cold-start-custom-agent.test.ts's "external-engine-bound agent
-  // records ... do not build managed runtime instances" (station#954) — the
+  // records ... do not build managed runtime instances" (archive#954) — the
   // reload path previously lacked this skip, so a managed external-engine
   // agent (e.g. a user-created agent bound to the claude-runtime connection)
   // was unconditionally sent through `prepareVoltAgentInstance`, threw
@@ -493,7 +493,7 @@ describe('reloadRuntimeAgents', () => {
     const removeAgent = vi.fn(() => true);
     const commitPreparedResources = vi.fn();
     // The revision moves DURING publication: the pre-publication gate
-    // (station#3622) passes, the register/remove loops run, and the
+    // (archive#3622) passes, the register/remove loops run, and the
     // post-publication gate rejects — which is the rollback this covers.
     let gateChecks = 0;
 
@@ -542,7 +542,7 @@ describe('reloadRuntimeAgents', () => {
   });
 
   test('a stale pass is refused before it writes to the registry at all', async () => {
-    // station#3622: an activation abandoned at its deadline can wake up while
+    // archive#3622: an activation abandoned at its deadline can wake up while
     // a successor pass is publishing. Gating only AFTER the register/remove
     // loops meant the stale pass wrote into the shared registry and then
     // rolled its own writes back over the successor's. The gate now runs

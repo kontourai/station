@@ -272,7 +272,7 @@ describe('ApiBaseContext — same-origin resolution matrix (#198)', () => {
     });
     // Terminal-stopped on the stale credential's 401 — stays flat, not a
     // perpetual reconnect loop against an endpoint that will reject every
-    // attempt identically (station#1094).
+    // attempt identically (archive#1094).
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });

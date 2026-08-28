@@ -43,7 +43,7 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
       orchestrationThreadId: 'thread-1',
       agentSlug: 'claude-code',
       projectSlug: 'station',
-      // station#3227 A3: this fixture read `projectLabel: 'Station'` — a
+      // archive#3227 A3: this fixture read `projectLabel: 'Station'` — a
       // capitalised display name distinct from the slug, which
       // `buildSessionWorkItem` has never emitted for a session item (its
       // label was `session.projectSlug` verbatim). The fixture-vs-reality gap
@@ -88,7 +88,7 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
   });
 
   /**
-   * station#3227 A3, the discriminating case — built through the real
+   * archive#3227 A3, the discriminating case — built through the real
    * producer rather than a hand-written item, because the defect this guards
    * is only reachable via what `buildSessionWorkItem` emits.
    *
@@ -137,7 +137,7 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
     });
   });
 
-  // station#1312 review (cosmetic): `projectLabel` falls back to the
+  // archive#1312 (cosmetic): `projectLabel` falls back to the
   // literal string 'No project' for a project-less session
   // (`buildSessionWorkItem`) — forwarding it unconditionally as
   // `projectName` would render a bogus "No project" badge in
@@ -245,7 +245,7 @@ describe('openWorkItem', () => {
     expect(onOpenSession).toHaveBeenCalledWith('thread-1');
   });
 
-  // station#3687 seam 1: `false` from openConversation means "agent deleted"
+  // archive#3687 seam 1: `false` from openConversation means "agent deleted"
   // ONLY once the catalog has answered. While it is pending or failed, every
   // rehydrate resolves false — and this used to bounce EVERY inbox click to
   // /activity during a loading blip.
@@ -262,8 +262,8 @@ describe('openWorkItem', () => {
     expect(onOpenSession).not.toHaveBeenCalled();
   });
 
-  // Absent means unknown, which keeps the #801 fallback for existing callers
-  // — a loading gate must be opted into with a real derivation, never
+  // Absent means unknown, which keeps the archive#801 fallback for existing callers
+  // a loading gate must be opted into with a real derivation, never
   // defaulted on.
   it('keeps the #801 fallback when agentsLoaded is not supplied', async () => {
     const onOpenSession = vi.fn();

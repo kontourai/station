@@ -68,7 +68,7 @@ export async function reconcileBlockingAlerts(
    * OS notifications for things already waiting is how people learn to switch
    * them off.
    *
-   * Disclosed consequence (review): a request that arrives in the same tick
+   * Disclosed consequence: a request that arrives in the same tick
    * as the first observation of a connection is indistinguishable from one
    * that has been waiting an hour, so it is seeded and never announced. The
    * alternative is comparing a server timestamp against the client clock and

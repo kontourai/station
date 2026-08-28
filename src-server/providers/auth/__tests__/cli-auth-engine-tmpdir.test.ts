@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { augmentedSpawnEnv } from '../cli-auth.js';
 
 /**
- * station#1908: `augmentedSpawnEnv` backs BOTH the Claude Agent SDK spawn
+ * archive#1908: `augmentedSpawnEnv` backs BOTH the Claude Agent SDK spawn
  * (claude-adapter.ts) and the ACP-connected engine spawn (acp-process.ts,
  * covering OpenCode/Kiro/etc) -- proving it here covers the other two of
  * the three engine binaries named in the issue (Codex's real spawn path is

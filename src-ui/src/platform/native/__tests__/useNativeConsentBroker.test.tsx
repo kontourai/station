@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 /**
- * station#3677 PR 3, review round 1. The hook must require BOTH the host
+ * archive#3677, 1. The hook must require BOTH the host
  * capability and the server's eligibility answer. Selecting the native path
  * from the capability alone dead-ended every caller whose credential is not
  * local-grant minted — a paired phone, or a desktop app pointed at a remote
@@ -102,7 +102,7 @@ test('switching connections drops the previous authority before the new answer a
 
   // A Station that refuses. The old reviewer must not survive the switch —
   // it would invoke native review with the NEW connection's credential,
-  // which enforcement refuses with no fallback (review round 2).
+  // which enforcement refuses with no fallback ( 2).
   let releaseSecond: (value: Response) => void = () => {};
   fetchMock.mockReset();
   fetchMock.mockImplementation(
@@ -124,7 +124,7 @@ test('switching connections drops the previous authority before the new answer a
   await waitFor(() => expect(result.current).toBeNull());
 });
 
-// Coverage note, recorded after a fault injection SURVIVED: replacing the
+// Coverage note, recorded after a SURVIVED: replacing the
 // `: null` arm with an early return leaves every test green, because the
 // clear at the top of the effect already dropped the reviewer before the
 // read began. The two spellings are equivalent given that clear, so this is

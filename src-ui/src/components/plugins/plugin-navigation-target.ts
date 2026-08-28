@@ -7,7 +7,7 @@ import {
 
 /**
  * Decode a frame's navigation request into the pane-host contract's typed
- * target vocabulary, or refuse it (station#3323, station#4201 step 3).
+ * target vocabulary, or refuse it (archive#3323, archive#4201 step 3).
  *
  * There is no plugin-specific target type any more. `PluginNavigationTarget`
  * used to be this file's own union, carrying the resolved `path` for the call
@@ -18,7 +18,7 @@ import {
  *
  * Two encodings arrive here, and both decode to one union:
  *
- *  - the **contract shape** (`{ kind, ... }`), which is what a pane written
+ *  - the **contract shape** (`{ kind,... }`), which is what a pane written
  *    against `WorkspacePaneHostContract` sends when it runs in the frame;
  *  - the **documented path string** (`docs/guides/plugins.md`:
  *    `postMessage({ method: 'navigate', params: { target: '/agents' } })`),

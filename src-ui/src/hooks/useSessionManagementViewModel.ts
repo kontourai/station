@@ -101,12 +101,12 @@ export function useSessionManagementViewModel(
         agentContext = resolvedAgent.plugin;
         agentLabel = resolvedAgent.name;
       }
-      // MED-2/round-3: every resolved agent gets an engine chip, not just
+      // Every resolved agent gets an engine chip, not just
       // ACP ones — this surface used to render a literal "ACP" pill for
       // the acp branch and no chip at all for Station/plugin-engine
       // conversations; agentEngineDescriptor already returns null for an
       // unresolvable engine, so an unresolved agent stays chipless the
-      // same way every other chip surface honors LOW-1.
+      // same way every other chip surface honors.
       const agentEngine: EngineDescriptor | null =
         agentEngineDescriptor(resolvedAgent);
 

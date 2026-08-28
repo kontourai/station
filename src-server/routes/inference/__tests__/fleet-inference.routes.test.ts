@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 2 — the `/api/inference/**` HTTP surface.
+ * archive#1398 — the `/api/inference/**` HTTP surface.
  *
  * Route-level concerns only: status mapping, body bounds applied before
  * parsing, and the manifest read. The refusal taxonomy itself is proven in

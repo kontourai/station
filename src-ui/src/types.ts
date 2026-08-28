@@ -61,7 +61,7 @@ export interface AgentSummary {
   /**
    * Derived, not restated. A hand-listed copy of this shape once omitted a
    * field the contract defined, which is how the editor silently destroyed it
-   * on every save (station#2693) — a type that claims to BE the whole tools
+   * on every save (archive#2693) — a type that claims to BE the whole tools
    * object has to come from the contract.
    */
   toolsConfig?: Partial<AgentTools>;
@@ -81,7 +81,7 @@ export interface FileAttachment {
   preview?: string; // For images
   /**
    * Present only when the composer shrank the image to fit the attachment caps
-   * (station#3375). `name`, `type`, `size` and `data` all describe what will
+   * (archive#3375). `name`, `type`, `size` and `data` all describe what will
    * actually be sent; this describes what the user chose, so the composer can
    * say the image was resized instead of implying the original went out.
    */
@@ -94,7 +94,7 @@ export interface FileAttachment {
   };
   /**
    * Byte-free local provenance for an image that changed containers before it
-   * entered the #4134 staging seam.  It contains digests and bounded metadata,
+   * entered the archive#4134 staging seam. It contains digests and bounded metadata,
    * never source bytes, EXIF, a path, or a native capability grant.
    */
   transformation?: TransformationReceipt;
@@ -142,7 +142,7 @@ export interface ChatMessage {
   content: string;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
-  /** station#1292: set only on entries in `ChatUIState.ephemeralMessages` — the
+  /** archive#1292: set only on entries in `ChatUIState.ephemeralMessages` — the
    * dismissible transcript notice flag. Every notice is created through
    * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
    * this; there is no writer that sets it on any other message. */
@@ -190,7 +190,7 @@ export interface ChatMessage {
       | 'policy-denied';
     activityAt?: string;
     progressMessage?: string;
-    /** station#3769: the durable projection's own runtime.error marker — see
+    /** archive#3769: the durable projection's own runtime.error marker — see
      * `MessagePart.runtimeError` in `packages/shared/src/conversation-message.ts`. */
     runtimeError?: boolean;
     uiBlock?: UIBlock;
@@ -209,7 +209,7 @@ export interface ChatMessage {
     state?: string;
     error?: string;
   }>;
-  /** station#1410: the canonical turn this assistant row projects, when known. */
+  /** archive#1410: the canonical turn this assistant row projects, when known. */
   turnId?: string;
   /** Execution Session that produced this historical assistant row. */
   sessionId?: string;
@@ -224,7 +224,7 @@ export interface ChatMessage {
   /** True only for a normally completed assistant turn. */
   answerEligible?: boolean;
   /**
-   * station#1410: the turn's provenance envelope exactly as the server sent
+   * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it
    * through `isSupportedTurnProvenanceEnvelope` so an envelope this build
    * does not understand degrades to an honest unavailable state.
@@ -239,7 +239,7 @@ export type ChatSessionSource = 'manual' | 'prompt' | 'workflow';
 export type ChatSessionStatus = 'idle' | 'sending' | 'error' | 'queued';
 
 /**
- * One permanently refused follow-up (station#3706). `content` is the user's
+ * One permanently refused follow-up (archive#3706). `content` is the user's
  * own text; `reason` is the refusal as it was shown to them; `id` is the
  * dismiss/render identity (`at` is a timestamp for ordering, NOT an identity —
  * two drains can settle in the same millisecond).
@@ -267,7 +267,7 @@ export interface ChatSession {
   queuedMessages: string[];
   /** See ChatUIState.queuedMessageFailure (active-chats-state.ts) — persisted. */
   queuedMessageFailure?: { message: string; code?: string; at: number };
-  /** See ChatUIState.unsentMessages (station#3706) — persisted, not a queue. */
+  /** See ChatUIState.unsentMessages (archive#3706) — persisted, not a queue. */
   unsentMessages?: UnsentMessageRecord[];
   outboundQueuedTurns?: Array<{
     clientTurnId: string;
@@ -401,7 +401,7 @@ export type NavigationView =
   | { type: 'profile' }
   | { type: 'notifications' }
   | { type: 'task'; taskId: string }
-  // station#4079 slice 1: the board face, reached by URL only (no sidebar
+  // archive#4079: the board face, reached by URL only (no sidebar
   // item this slice — see docs/design/... and page-frame-registry.ts).
   | { type: 'board'; reference: BoardReference }
   | { type: 'project'; slug: string }
@@ -433,7 +433,7 @@ export type DockMode = 'left' | 'bottom' | 'right';
 
 /**
  * Parse a persisted dock-mode value (URL param, sessionStorage override).
- * The desktop overlay bottom mode was retired (#1043): `bottom` now means
+ * The desktop overlay bottom mode was retired (archive#1043): `bottom` now means
  * the inline grid placement, and the transitional `bottom-inline` name
  * normalizes to it.
  */

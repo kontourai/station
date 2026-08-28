@@ -118,7 +118,7 @@ async function resolveProfile(adapter: typeof state.adapter) {
   // `findByTestId` settles on the element being queryable — that is the commit,
   // not the passive-effect flush that stamps `<html>`. Treating it as "the
   // render is finished" is what let assertions about the root class read a
-  // half-applied render (station#1079). Flush the effects explicitly so every
+  // half-applied render (archive#1079). Flush the effects explicitly so every
   // caller gets a settled tree; this is an ordering fix, not a longer wait.
   await act(async () => {});
   return JSON.parse(node.textContent ?? '{}');
@@ -242,7 +242,7 @@ describe('PlatformProfile derivation', () => {
   test('unmounting takes the macOS root tag back off', async () => {
     // `<html>` outlives the bootstrap, so a tag it only ever adds is a claim
     // about the host that nothing can retract — the next thing to render
-    // inherits "this is a macOS desktop shell". station#1079.
+    // inherits "this is a macOS desktop shell". archive#1079.
     await resolveProfile(tauriAdapter('macos', 'enabled'));
     expect(document.documentElement.classList.contains('is-desktop-mac')).toBe(
       true,

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#977: dedicated coverage for the login-shell PATH fallback. Each
+ * archive#977: dedicated coverage for the login-shell PATH fallback. Each
  * test resets modules and re-imports cli-auth.ts fresh so the
  * module-level "resolve once per process lifetime" cache never leaks
  * between tests -- every test gets its own resolution.
@@ -137,7 +137,7 @@ describe('login-shell PATH fallback', () => {
     expect(execFileMock).not.toHaveBeenCalled();
   });
 
-  // station#977 review HIGH: -ic (interactive) can print a MOTD/banner,
+  // archive#977 review HIGH: -ic (interactive) can print a MOTD/banner,
   // a prompt fragment, or rc-file echo/debug output to stdout around the
   // captured PATH. The sentinel extraction must pull out exactly the PATH
   // between the two markers and ignore everything else.
@@ -170,7 +170,7 @@ describe('login-shell PATH fallback', () => {
     await expect(resolveLoginShellPath()).resolves.toBe('');
   });
 
-  // station#977 review disclosed gap: the sync findCliBinary can observe a
+  // archive#977 review disclosed gap: the sync findCliBinary can observe a
   // cold cache (resolution still in flight) and report "missing" on that
   // one call; it self-heals once resolution lands.
   test('cold-cache: the first sync call can miss a login-PATH-only command, then self-heals', async () => {

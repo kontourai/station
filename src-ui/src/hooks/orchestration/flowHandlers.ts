@@ -73,7 +73,7 @@ export function handleFlowRunAttachedEvent(
 }
 
 /**
- * Refresh the run's persisted freshness from a gate verdict (station#189).
+ * Refresh the run's persisted freshness from a gate verdict (archive#189).
  *
  * Without this the chip keeps rendering the attach-time snapshot for the life
  * of the session — and across reloads, since the binding is persisted — so a

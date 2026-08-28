@@ -1,5 +1,5 @@
 /**
- * station#1223 (offline slice 1) — cache-first reads.
+ * archive#1223 (offline) — cache-first reads.
  *
  * Persists the react-query cache to IndexedDB so the app shell and the
  * last-loaded read data (agents, conversations, projects, runs, config,
@@ -8,15 +8,15 @@
  * wins the moment the server is reachable — see `useQueryCacheReconnectSync`.
  *
  * Production wiring lives in `main.tsx`: the app renders inside
- * `<PersistQueryClientProvider persistOptions={buildPersistOptions()}>`
+ * `<PersistQueryClientProvider persistOptions={buildPersistOptions}>`
  * rather than a plain `<QueryClientProvider>` — see `buildPersistOptions`'s
- * doc comment for why a bare `persistQueryClient()` call isn't enough.
+ * doc comment for why a bare `persistQueryClient` call isn't enough.
  *
- * SAFETY (non-negotiable, station#1223):
+ * SAFETY (non-negotiable, archive#1223):
  *  - Default-deny whitelist by queryKey prefix (`PERSISTED_QUERY_KEY_PREFIXES`).
  *    Nothing persists unless it is explicitly listed here.
- *  - Never persists mutations (`shouldDehydrateMutation: () => false`) — the
- *    outbound queue is a separate, not-yet-built slice (station#1224).
+ * - Never persists mutations (`shouldDehydrateMutation: => false`) — the
+ *    outbound queue is a separate, not-yet-built slice (archive#1224).
  *  - Never persists errored or pending queries (only `status === 'success'`).
  *  - IndexedDB (async) rather than localStorage (sync): the whitelisted cache
  *    can exceed localStorage's ~5MB quota, and synchronous writes on every
@@ -46,7 +46,7 @@ import { buildInfo } from '../build-info';
  * of these prefixes are ever written to disk. Everything else — including
  * anything not explicitly listed — is excluded by default.
  *
- * Included (safe, useful, and asked for by station#1223):
+ * Included (safe, useful, and asked for by archive#1223):
  *  - 'agents', 'agent', 'agent-tools' — agent list/detail/tools
  *  - 'conversations' — conversation summaries (NOT `messages`, which holds
  *    full message bodies; kept out of scope for this slice, see report)
@@ -158,7 +158,7 @@ export function shouldPersistQuery(
  * calls — grep `PERSISTED_QUERY_GC_TIME_MS` in `packages/sdk`) pass an
  * explicit `gcTime` value on every call (even a caller-omitted one resolves
  * to a concrete fallback), and react-query's option-merge order
- * (`{...clientDefaults, ...queryKeyDefaults, ...explicitOptions}`) lets that
+ * (`{...clientDefaults,...queryKeyDefaults,...explicitOptions}`) lets that
  * explicit value always outrank both the client's global default AND
  * `setQueryDefaults`. The SDK hooks that back this whitelist already read
  * `queryClient.getQueryDefaults(queryKey)` (via `useApiQuery`) or hardcode
@@ -210,9 +210,9 @@ export type QueryPersistOptions = Omit<
  * provider and any lower-level/test use (`setupQueryPersistence` below)
  * can't drift apart.
  *
- * `<PersistQueryClientProvider>` over a bare `persistQueryClient()` call is
+ * `<PersistQueryClientProvider>` over a bare `persistQueryClient` call is
  * the fix for a real race: restoring from IndexedDB is async, so a query
- * mounted on first render (e.g. `useQuery(['agents'], ...)`) would otherwise
+ * mounted on first render (e.g. `useQuery(['agents'],...)`) would otherwise
  * see an empty in-memory cache and fire its network fetch immediately,
  * racing the restore — `refetchOnMount: false` (station's global default)
  * only suppresses refetching data that's *already* in the cache, it does
@@ -239,7 +239,7 @@ export function buildPersistOptions(options?: {
   const dehydrateOptions: DehydrateOptions = {
     shouldDehydrateQuery: shouldPersistQuery,
     // Never persist mutations in this slice — the outbound queue is
-    // station#1224. Explicit rather than relying on the (isPaused-only)
+    // archive#1224. Explicit rather than relying on the (isPaused-only)
     // default, so a future paused-mutation-while-offline path elsewhere in
     // the client can never leak into this persister by accident.
     shouldDehydrateMutation: () => false,
@@ -262,7 +262,7 @@ export interface QueryPersistenceHandle {
 
 /**
  * Lower-level, non-React imperative equivalent of wrapping the app in
- * `<PersistQueryClientProvider persistOptions={buildPersistOptions()}>`.
+ * `<PersistQueryClientProvider persistOptions={buildPersistOptions}>`.
  * Production uses the provider (it also gates fetches during restore — see
  * `buildPersistOptions`'s doc comment); this remains for direct unit tests
  * of the dehydrate/hydrate mechanics (whitelist, buster, maxAge) without
@@ -270,11 +270,11 @@ export interface QueryPersistenceHandle {
  *
  * A storage that throws on restore (e.g. IndexedDB unavailable in Safari
  * private mode) rejects `persistQueryClientRestore` internally; that
- * rejection is deliberately given a no-op `.catch()` here so a caller who
+ * rejection is deliberately given a no-op `.catch` here so a caller who
  * never awaits `restored` doesn't produce an unhandled promise rejection —
  * the app continues without a persisted cache rather than crashing. The
  * *same* underlying promise is still returned, so a caller that does want
- * to observe failure can still `await`/`.catch()` it themselves.
+ * to observe failure can still `await`/`.catch` it themselves.
  */
 export function setupQueryPersistence(
   queryClient: QueryClient,
@@ -287,7 +287,7 @@ export function setupQueryPersistence(
   });
   restored.catch(() => {
     // See doc comment above: prevents an unhandled-rejection warning only;
-    // does not consume the rejection for any other `.catch()`/`await`.
+    // does not consume the rejection for any other `.catch`/`await`.
   });
   return { unsubscribe, restored };
 }

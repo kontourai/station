@@ -46,7 +46,7 @@ export function parsePluginManifest(
   if (typeof candidate.name !== 'string' || !candidate.name.trim()) {
     throw new Error('Plugin manifest name must be a non-empty string');
   }
-  // station#4307: `manifest.name` is a STORE KEY, not a display string — the
+  // archive#4307: `manifest.name` is a STORE KEY, not a display string — the
   // plugin-overrides store, the grants store, the provider resolver and the
   // installed-plugin registry all key off it, and the manifest's own `name`
   // wins over the directory it was installed into. A non-empty-string check
@@ -76,7 +76,7 @@ export function parsePluginManifest(
   if (typeof candidate.version !== 'string' || !candidate.version.trim()) {
     throw new Error('Plugin manifest version must be a non-empty string');
   }
-  // station#4307 review: a declared setting's `key` is a STORE KEY too — it is
+  // archive#4307 review: a declared setting's `key` is a STORE KEY too — it is
   // written into `overrides[plugin].settings` by `PUT /:name/settings` and
   // read back into the map handed to a plugin server module as
   // `config.get`/`config.all` — and it was never inspected here at all. A
@@ -114,13 +114,13 @@ export function parsePluginManifest(
     if (!Array.isArray(candidate.workspacePanes)) {
       throw new Error('Plugin workspacePanes must be an array');
     }
-    // One manifest, one contribution channel (station#3543). A manifest
+    // One manifest, one contribution channel (archive#3543). A manifest
     // combining `workspacePanes` with a legacy `layout`/`layouts` declaration
     // would declare the same surface through two migration channels. The
     // legacy bridge also binds plugin provenance, but its noun is retiring in
-    // #2713; accepting both channels would make ownership and precedence
+    // archive#2713; accepting both channels would make ownership and precedence
     // ambiguous. The check is deliberately one-way: a legacy-only manifest is
-    // the #2713 retirement path and never reaches it.
+    // the archive#2713 retirement path and never reaches it.
     if (candidate.layout !== undefined || candidate.layouts !== undefined) {
       throw new Error(
         'Plugin workspacePanes cannot be combined with legacy layout declarations',

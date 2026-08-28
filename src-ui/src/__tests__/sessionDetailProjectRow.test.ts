@@ -16,7 +16,7 @@ function session(
     eventCount: 0,
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
-    // station#1778: a cast is an EXEMPTION from the required-member
+    // archive#1778: a cast is an EXEMPTION from the required-member
     // enforcement, so this fixture is typed rather than asserted. The
     // decoration is irrelevant to what this file tests — that is exactly why
     // it would have gone unnoticed as undecorated.
@@ -30,7 +30,7 @@ function projectRow(item: OrchestrationSessionSummary): string | undefined {
 }
 
 /**
- * station#1462/#1463 fix round. The detail panel read
+ * archive#1462/#1463 fix round. The detail panel read
  * `delegation?.projectSlug ?? projectSlug` directly, so it could contradict
  * the list it was opened from — a heading qualified as an unverified name
  * match became a bare slug one click later, and an ambiguous attached session
@@ -50,7 +50,7 @@ describe('session detail Project row agrees with the list heading', () => {
     });
 
     expect(projectRow(item)).toBe('station (unverified name match)');
-    // station#3227 A3: the second read here used to be
+    // archive#3227 A3: the second read here used to be
     // `sessionProjectSection`, a wrapper that called the same helper the
     // detail row does — the two could not disagree, so the assertion had no
     // power. Home's row label WAS a genuinely separate derivation

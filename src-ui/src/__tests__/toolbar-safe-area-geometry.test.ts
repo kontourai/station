@@ -27,7 +27,7 @@ function read(relativePath: string): string {
  * Those call sites must measure the toolbar instead of reading the token,
  * which the CSS-shaped assertion below cannot see.
  */
-// station#4460: `dock.toggle`/`dock.maximize` and the dock's own toolbar-
+// archive#4460: `dock.toggle`/`dock.maximize` and the dock's own toolbar-
 // height measurement moved from `ChatDock.tsx`/`useChatDockKeyboardShortcuts`
 // into the shared `useDockShellChrome` (the ambient `DockShell`'s single
 // chrome instance, and a full-screen Chat placement's own local one) — this

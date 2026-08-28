@@ -102,15 +102,15 @@ describe('MonitoringContext historical hydration', () => {
   });
 
   /*
-   * Review MEDIUM-3: Retry used to re-derive the live default (`now - 5m`) at
+   * Retry used to re-derive the live default (`now - 5m`) at
    * click time, so a hydration of 11:55–12:00 that failed and was retried at
    * 12:08 asked for 12:03–12:08 and skipped the failed window forever. The
    * recorded bounds are re-asked instead; the END may widen to now, the START
    * never advances.
    *
-   * Real timers on purpose: RTL's `waitFor` does not detect vitest's fake
+   * Real timers on purpose: `waitFor` does not detect vitest's fake
    * timers and hangs. The discriminating claim is EQUALITY of the two start
-   * bounds — pre-fix the retry's start is `Date.now() - 5m` recomputed after
+   * bounds — pre-fix the retry's start is `Date.now - 5m` recomputed after
    * the delay below, so it is strictly later by that delay.
    */
   const elapse = (ms: number) =>
@@ -140,7 +140,7 @@ describe('MonitoringContext historical hydration', () => {
     const retryEnd = retryCall[1] as Date;
     // The failed interval is re-asked, not skipped.
     expect(retryStart.getTime()).toBe(failedStart.getTime());
-    // ...and the end widened through the elapsed time rather than staying put.
+    //.and the end widened through the elapsed time rather than staying put.
     expect(retryEnd.getTime()).toBeGreaterThan(failedEnd.getTime());
 
     await waitFor(() => expect(mounted.result.current.readError).toBeNull());
@@ -171,7 +171,7 @@ describe('MonitoringContext historical hydration', () => {
   });
 
   /*
-   * Review MEDIUM-4: a successful hydration ASSIGNED its snapshot over the
+   * a successful hydration ASSIGNED its snapshot over the
    * shared list, so an event the live stream had already shown the operator
    * disappeared the moment a lagging disk snapshot came back — and with an
    * empty snapshot the view then drew "No events yet" over it.
@@ -206,7 +206,7 @@ describe('MonitoringContext historical hydration', () => {
   });
 
   /*
-   * Delta review MEDIUM-2, end to end: two tool events emitted in the same
+   * end to end: two tool events emitted in the same
    * millisecond on the same trace. Under the four-field identity they
    * collided, so a snapshot carrying only the first confirmed BOTH and the
    * second vanished.
@@ -249,7 +249,7 @@ describe('MonitoringContext historical hydration', () => {
   });
 
   /*
-   * Delta review MEDIUM-4: hydration returns oldest-first, SSE arrivals were
+   * hydration returns oldest-first, SSE arrivals were
    * prepended newest-first, and the merge concatenated them unchanged — so
    * 10:00/10:01 from history plus 10:03 then 10:02 from the stream rendered
    * as 10:03, 10:02, 10:00, 10:01, and rows jumped again once a later
@@ -297,12 +297,12 @@ describe('MonitoringContext historical hydration', () => {
   });
 
   /*
-   * Delta review MEDIUM-3: the route returns rows oldest-first, so
+   * the route returns rows oldest-first, so
    * `slice(0, 1000)` kept the OLDEST thousand and silently dropped the newest
    * of a 1,500-row day.
    */
   /*
-   * Delta2 review MEDIUM-4: identity is derived by canonicalizing the whole
+   * identity is derived by canonicalizing the whole
    * event, and hydration used to do that for EVERY returned row before the
    * cap ran — including the rows it was about to throw away — on the UI
    * thread. These two tests count the work by giving each row a getter that
@@ -442,7 +442,7 @@ describe('MonitoringContext historical hydration', () => {
    *
    * Each test forces a notification (one SSE arrival) after the late settle
    * before asserting. Without it these tests cannot see the defect at all: a
-   * superseded read never reaches the `notify()` in its own `finally`, so a
+   * superseded read never reaches the `notify` in its own `finally`, so a
    * poisoned `readError` sits in the store invisible to React until the next
    * notification — which in production is the very next live event. The first
    * version of these tests asserted that stale React snapshot and passed

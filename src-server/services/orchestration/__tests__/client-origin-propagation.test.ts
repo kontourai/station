@@ -82,7 +82,7 @@ describe('client origin propagation', () => {
     ).toBeUndefined();
   });
 
-  // station#4075 stage 2: generalized to also propagate the dispatching/
+  // archive#4075 stage 2: generalized to also propagate the dispatching/
   // steering PrincipalRef through the same begin/settle/apply lifecycle.
   describe('principal propagation (station#4075 stage 2)', () => {
     const dispatchingPrincipal = {

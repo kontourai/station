@@ -55,7 +55,7 @@ export function createSshEnvironmentRoutes(
     }
   });
 
-  // station#1097 R1: read-only session aggregation across every connected
+  // archive#1097 R1: read-only session aggregation across every connected
   // SSH environment, for the Home work list. Registered before `/:id` —
   // Hono matches route definitions in order, so a param route defined first
   // would swallow this literal path.

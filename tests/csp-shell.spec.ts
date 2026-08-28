@@ -138,10 +138,10 @@ test('boots the built shell under CSP and opens its connection recovery UI', asy
     "script-src 'self' 'nonce-",
   );
   const connectionControl = page.getByRole('button', {
-    // station#3311 made the connection control self-describing: its
+    // archive#3311 made the connection control self-describing: its
     // accessible name now carries the state and the connection identity
     // ("Manage Stations — Connected · <name>"), so this matches by prefix.
-    // The bare string is still the control’s `title` (station#3297).
+    // The bare string is still the control’s `title` (archive#3297).
     name: /^Manage Stations/,
   });
   await expect(connectionControl).toBeVisible({ timeout: 15_000 });

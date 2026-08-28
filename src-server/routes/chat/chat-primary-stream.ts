@@ -61,7 +61,7 @@ type ChatOperationContext = Record<string, unknown> & {
   abortSignal?: AbortSignal;
   delegation?: AgentDelegationContext;
   /**
-   * station#1207 minted this per-turn idempotency key; station#1224 (offline
+   * archive#1207 minted this per-turn idempotency key; archive#1224 (offline
    * slice 2) is the first server code to read it. Rides in via `restOptions`
    * (the chat schema's `.passthrough()`'d `options` bag) — see
    * `chat-turn-dedup.ts` for the dedup this drives.
@@ -77,7 +77,7 @@ interface StreamPrimaryAgentChatArgs {
   input: string | ChatMessage[];
   /**
    * Ambient, model-facing context (timezone, geolocation, …) sent
-   * out-of-band by the UI (#685). Composed into the model input only; the
+   * out-of-band by the UI (archive#685). Composed into the model input only; the
    * persistence seams below keep receiving the typed `input`.
    */
   ambientContext?: string;
@@ -85,7 +85,7 @@ interface StreamPrimaryAgentChatArgs {
   injectContext: string | null;
   ragContext: string | null;
   /**
-   * station#2649: the dispatch-time record `prepareChatRequest` built of the
+   * archive#2649: the dispatch-time record `prepareChatRequest` built of the
    * blocks behind `injectContext`/`ragContext`. Optional so callers/tests
    * that predate the receipt stay valid — when ABSENT, no `context-injection`
    * frame is emitted at all (an honest non-claim), never an empty record
@@ -95,9 +95,9 @@ interface StreamPrimaryAgentChatArgs {
   modelOverride?: string;
   agent: any;
   configurationLease: RuntimeConfigurationLease;
-  /** S1 of #1302: stamped onto a newly-created file-backed conversation's metadata — see `ensureChatConversation`. */
+  /** S1 of archive#1302: stamped onto a newly-created file-backed conversation's metadata — see `ensureChatConversation`. */
   projectSlug?: string;
-  /** station#1224 (offline slice 2): absent in callers/tests that predate this — dedup is then simply inert (byte-identical to before). */
+  /** archive#1224 (offline): absent in callers/tests that predate this — dedup is then simply inert (byte-identical to before). */
   dedupStore?: ChatTurnDedupStore;
   /** Exact authorized orchestration coordinate from Station's internal relay only. */
   turnCorrelation?: AuthorizedTurnCorrelation;
@@ -166,7 +166,7 @@ export function streamPrimaryAgentChat({
   const writeStream = async (
     streamWriter: Parameters<Parameters<typeof stream>[1]>[0],
   ) => {
-    // station#1207: started immediately — before any of the pre-stream
+    // archive#1207: started immediately — before any of the pre-stream
     // setup below (conversation creation, `agent.streamText` invocation) —
     // so a slow setup step can't itself be mistaken for a stalled
     // connection by the client's own watchdog, which starts counting the
@@ -185,12 +185,12 @@ export function streamPrimaryAgentChat({
     let requestTraceId: string | undefined;
     let isNewConversation = false;
     let releaseApprovalRequester = () => {};
-    // station#1224 (offline slice 2) — see chat-turn-dedup.ts.
+    // archive#1224 (offline) — see chat-turn-dedup.ts.
     let clientTurnId: string | undefined;
     let ownsClientTurnClaim = false;
     let dedupShortCircuited = false;
     // Populated only when the outer catch below fires — used to persist a
-    // reload-safe failure marker when the turn produced zero output (#191
+    // reload-safe failure marker when the turn produced zero output (archive#191
     // R2's persistence-gap fix). Left undefined on every non-error path, so
     // a successful turn never persists a marker.
     let turnFailureText: string | undefined;
@@ -198,7 +198,7 @@ export function streamPrimaryAgentChat({
     let result;
     let memory = null;
     let memoryAdapter = null;
-    // station#1566: hoisted so the `finally` block (where
+    // archive#1566: hoisted so the `finally` block (where
     // `finalizeChatRequest` runs) can pass the same handle through for the
     // auto-title write. Declared here rather than as a `const` inside the
     // `try` block below because `finally` needs it too.
@@ -242,7 +242,7 @@ export function streamPrimaryAgentChat({
         operationContext.userId = getCachedUser().alias;
       }
 
-      // station#1224 (offline slice 2): the crux of server-side turn
+      // archive#1224 (offline): the crux of server-side turn
       // idempotency for the direct /chat path. Must run BEFORE the
       // isNewConversation/createChatConversationId step below — a replayed
       // turn (retry, or a flushed offline-queue turn after a disconnect)
@@ -335,7 +335,7 @@ export function streamPrimaryAgentChat({
 
       memory = agent.getMemory();
       memoryAdapter = ctx.memoryAdapters.get(slug);
-      // #914: one conversation store, not a choice between two. This used to
+      // archive#914: one conversation store, not a choice between two. This used to
       // pick the agent's own memory for file-backed agents and Station's
       // adapter for runtime ones — which were different objects, so the title
       // written here was invisible to the frame below that read the other one.
@@ -372,7 +372,7 @@ export function streamPrimaryAgentChat({
       const traceId = createChatTraceId(operationContext.conversationId!);
       operationContext.traceId = traceId;
       // Bind the finally-block's copy HERE, not after the stream is built
-      // (station#3115). Everything between this line and the stream can
+      // (archive#3115). Everything between this line and the stream can
       // throw — a model auth failure, a client disconnect — and the catch
       // below swallows it, so `finalizeChatRequest` still emits the
       // agent-complete span. Assigned late, that span carried the initial
@@ -386,7 +386,7 @@ export function streamPrimaryAgentChat({
         effectiveRagContext,
       );
       effectiveRagContext = feedbackInjection.ragContext;
-      // station#2649: the blocks this dispatch COMPOSED. Composition is not
+      // archive#2649: the blocks this dispatch COMPOSED. Composition is not
       // yet a claim — the receipt below is built only from what the
       // composers report actually reaching the model input.
       const composedContext: TurnProvenanceContextInjection | undefined =
@@ -399,7 +399,7 @@ export function streamPrimaryAgentChat({
             }
           : undefined;
 
-      // Model-facing choke point (#685): ambient context joins the model
+      // Model-facing choke point (archive#685): ambient context joins the model
       // input here only — every persistence seam above/below keeps `input`.
       const ambientApplication = applyAmbientContextToInput(
         input,
@@ -412,7 +412,7 @@ export function streamPrimaryAgentChat({
       );
       const finalInput = combinedApplication.input;
 
-      // station#2649 (review fix): the composers are the AUTHORITY for this
+      // archive#2649 (review fix): the composers are the AUTHORITY for this
       // receipt, not the composition above. Both drop their whole block when
       // the user message is array-shaped with no text part — an uncaptioned
       // attachment — and recording intent there would state that the model
@@ -437,7 +437,7 @@ export function streamPrimaryAgentChat({
             }
           : undefined;
       if (composedContext && !combinedApplication.applied) {
-        // The drop itself is a product defect (station#2743), not a
+        // The drop itself is a product defect (archive#2743), not a
         // provenance one: the receipt now tells the truth about it, and this
         // line is what makes the silent discard observable.
         ctx.logger.debug('Composed chat context was not applied to the input', {
@@ -462,7 +462,7 @@ export function streamPrimaryAgentChat({
       });
       await ensureChatAgentStatsInitialized({ ctx, slug });
 
-      // station#3179: these three handles exist only so a rejection on them
+      // archive#3179: these three handles exist only so a rejection on them
       // is not left unhandled — nothing awaits what `.catch()` returns. The
       // old body re-rejected (`abortController.signal.aborted ? undefined :
       // Promise.reject(err)`) whenever the abort was not STATION's own,
@@ -521,7 +521,7 @@ export function streamPrimaryAgentChat({
         );
       }
 
-      // station#2649: the per-turn context receipt, emitted AFTER
+      // archive#2649: the per-turn context receipt, emitted AFTER
       // `agent.streamText` accepted the composed input (so it records a
       // dispatch that actually happened — the dedup short-circuit above
       // returns before ever reaching here) and before any model output.
@@ -550,7 +550,7 @@ export function streamPrimaryAgentChat({
 
       const debugStreaming = process.env.DEBUG_STREAMING === 'true';
       // Read the model BEFORE the pipeline is built: the tool events emitted
-      // inside it carry the engine and model (#3074), and this is the only
+      // inside it carry the engine and model (archive#3074), and this is the only
       // construction path, so a value resolved afterwards never reaches them.
       const configuredModelId = (
         agent.model as { modelId?: string } | undefined
@@ -640,7 +640,7 @@ export function streamPrimaryAgentChat({
     } finally {
       stopKeepalive();
       releaseApprovalRequester();
-      // station#1224 (offline slice 2): the dedup short-circuit above
+      // archive#1224 (offline): the dedup short-circuit above
       // already wrote its own terminal SSE frames and `return`ed — none of
       // this turn's own bookkeeping (stats, cost, and critically
       // `persistUserTurnIfMissing`, which would otherwise see the empty

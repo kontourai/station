@@ -208,7 +208,7 @@ function resolveWorktreeBaseDir(repoRoot: string, policyBaseDir?: string) {
   // would otherwise `resolve()` to a LITERAL `~` directory relative to the
   // process cwd — Station's own install root — and every worktree for the
   // session would be provisioned inside it. That is the exact failure
-  // station#3155 shipped for knowledge namespaces, and station#3147 for file
+  // archive#3155 shipped for knowledge namespaces, and archive#3147 for file
   // previews: silent, and wrong in a place nobody looks.
   //
   // Latent rather than live today: no route, CLI command, UI surface or doc

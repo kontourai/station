@@ -22,14 +22,14 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
 
   // TanStack returns a fresh result object per render; `mutateAsync` is the
   // stable handle, so depending on it is what lets `rescan` — and the value
-  // below — hold identity (station#3796).
+  // below — hold identity (archive#3796).
   const rescanAsync = rescanMutation.mutateAsync;
   const rescan = useCallback(async () => {
     await rescanAsync();
     refresh();
   }, [refresh, rescanAsync]);
 
-  // station#3796: one memoised value per provider — a fresh object literal
+  // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
   const value = useMemo(() => ({ refresh, rescan }), [refresh, rescan]);

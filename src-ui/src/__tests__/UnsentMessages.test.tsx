@@ -7,7 +7,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 
 const sessionId = 'unsent-session';
 
-// station#3706: this surface is the only durable place a refused follow-up's
+// archive#3706: this surface is the only durable place a refused follow-up's
 // text still exists — every affordance is about getting the text back OUT.
 describe('UnsentMessages', () => {
   beforeEach(() => {
@@ -30,7 +30,7 @@ describe('UnsentMessages', () => {
           reason: 'Refused twice.',
           // Same millisecond as row-1 on purpose: identity is `id`, and a
           // dismiss must not take its same-timestamp neighbour with it
-          // (#3706 review MEDIUM).
+          // (archive#3706).
           at: 111,
         },
       ],

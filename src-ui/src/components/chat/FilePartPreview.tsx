@@ -36,7 +36,7 @@ function cacheKey(ref: string, mediaType: string | undefined): string {
 
 /**
  * Fetch an attachment's bytes and hold an object URL for as long as this
- * component is displaying them (station#3385). `<img src>` cannot carry a
+ * component is displaying them (archive#3385). `<img src>` cannot carry a
  * bearer token, so the bytes come through `authenticatedFetch` and the URL is
  * minted locally.
  *
@@ -116,7 +116,7 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   const resolvedUrl = part.url ?? fetchedUrl;
 
   // A part with neither bytes nor a resolvable reference is an attachment whose
-  // blob retention has reclaimed (station#3374). It still renders: the name and
+  // blob retention has reclaimed (archive#3374). It still renders: the name and
   // type are what the turn provably carried, and dropping the chip would turn a
   // missing preview into a missing attachment. It deliberately claims nothing
   // about why the bytes are absent, because the causes are indistinguishable

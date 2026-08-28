@@ -44,7 +44,7 @@ export class MetadataHandler implements StreamHandler {
       userId?: string;
       traceId?: string;
       plugin?: string;
-      /** The engine running this stream (#3074). */
+      /** The engine running this stream (archive#3074). */
       provider?: string;
       /** Session-configured model at dispatch; not observed per call. */
       model?: string;
@@ -79,7 +79,7 @@ export class MetadataHandler implements StreamHandler {
         this.stats.toolCalls++;
         // No `|| 'unknown'`: a missing name is an absence, and substituting
         // a string here made it indistinguishable from a tool actually named
-        // `unknown` — in the durable event log, permanently (station#3073).
+        // `unknown` — in the durable event log, permanently (archive#3073).
         otelToolCalls.add(1, {
           ...(chunk.toolName ? { tool: chunk.toolName } : {}),
           plugin: this.context?.plugin || '',
@@ -145,14 +145,14 @@ export class MetadataHandler implements StreamHandler {
           traceId,
           // The result event may carry no name of its own — Strands sends
           // only the call id — so fall back to the name the call recorded
-          // (station#3082). Absent stays absent; nothing is invented.
+          // (archive#3082). Absent stays absent; nothing is invented.
           toolName: chunk.toolName || this.resolvedResult?.tool,
           toolCallId: chunk.toolCallId,
           result: chunk.output,
           provider: this.context.provider,
           model: this.context.model,
           // Duration on the RECORD, not only in an OTel histogram that is a
-          // no-op unless an exporter endpoint is configured (station#3077).
+          // no-op unless an exporter endpoint is configured (archive#3077).
           durationMs: this.resolvedResult?.durationMs,
           outcome:
             chunk.status === 'error' || chunk.error != null

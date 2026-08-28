@@ -887,7 +887,7 @@ describe('UsageTelemetryService', () => {
     ).toMatch(/^[0-9a-f-]{36}$/i);
   });
   test('IDENTITY REPAIR RACE DEFECT: concurrent repair never sends an unpersisted or malformed value', async () => {
-    // station#2238 posture: no hand-rolled filesystem lock for an anonymous
+    // archive#2238 posture: no hand-rolled filesystem lock for an anonymous
     // analytics id. So concurrent repair of a corrupted file may leave the two
     // processes on different pseudonyms for their own run — disclosed and
     // accepted. What must ALWAYS hold is that nobody hashes the malformed

@@ -6,7 +6,7 @@ import { reopenedSessionExecution } from '../hooks/reopenedSessionExecution';
 import { resolveTurnModel } from '../lib/turnModel';
 
 /**
- * station#3165. Reopening a conversation with no known model used to seed
+ * archive#3165. Reopening a conversation with no known model used to seed
  * the chat from the AGENT DEFAULT, so a send in the window before the
  * orchestration snapshot landed dispatched `override: <agent default>` — a
  * model the user never chose for that conversation.
@@ -40,7 +40,7 @@ describe('the reopen decision withholds the model', () => {
   // caller (useChatDockActions) can still be reverted to its pre-fix line
   // with every test here green, because nothing asserts it calls this at
   // all. The caller assertion lives in useChatDockActions.test.tsx, where a
-  // harness already renders the hook (station#3165 review).
+  // harness already renders the hook (archive#3165).
   const agentExecution = {
     executionMode: 'external',
     model: 'opencode/deepseek-v4-flash-free',

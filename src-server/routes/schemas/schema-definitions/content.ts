@@ -53,7 +53,7 @@ const skillCommandSchema = z.object({
     // The rule and its sentence come from the contract, not from a second
     // copy of the regex here: the editor field checks the same rule and says
     // the same thing, so a word this schema will refuse is never offered
-    // (station#3737).
+    // (archive#3737).
     .regex(SKILL_COMMAND_NAME_PATTERN, { message: SKILL_COMMAND_NAME_RULE })
     .optional(),
   global: z.boolean().optional(),
@@ -194,7 +194,7 @@ export const projectCreateSchema = z
 
 export const projectUpdateSchema = projectCreateSchema.partial();
 
-/** station#3315: the full desired sidebar order, as project slugs. */
+/** archive#3315: the full desired sidebar order, as project slugs. */
 export const projectReorderSchema = z
   .object({
     order: z.array(z.string().trim().min(1)).min(1),
@@ -286,7 +286,7 @@ export const projectLayoutApplySchema = z.object({
 });
 
 /**
- * station#1502 slice 4 — `POST /api/projects/:slug/bind`, the explicit repair
+ * archive#1502 — `POST /api/projects/:slug/bind`, the explicit repair
  * action (`docs/design/portable-project-identity.md` §3.6).
  *
  * Only non-emptiness is asserted here. The path's SHAPE is not a validation
@@ -298,7 +298,7 @@ export const projectLayoutApplySchema = z.object({
 export const projectResourceBindSchema = z.object({
   path: z.string().min(1).max(4096),
   /**
-   * WHICH resource the checkout is being bound to (station#1503 slice 5).
+   * WHICH resource the checkout is being bound to (archive#1503).
    * Optional: a single-repo project has nothing to name and every pre-slice-5
    * caller means the primary. Named but unknown is refused, never answered by
    * binding the primary instead.
@@ -380,10 +380,10 @@ export const knowledgeUpdateSchema = z.object({
 });
 
 /**
- * station#1503 delta review, R1 — **`repoRoot` is deliberately ABSENT here, and
+ * archive#1503 delta review, R1 — **`repoRoot` is deliberately ABSENT here, and
  * adding it reopens a closed hole.**
  *
- * `KnowledgeNamespaceConfig` carries an optional `repoRoot` (station#1503), and
+ * `KnowledgeNamespaceConfig` carries an optional `repoRoot` (archive#1503), and
  * a bad one — naming a repo the project does not declare — makes the project's
  * composed manifest UNREADABLE, failing the session cwd, the knowledge scan,
  * the task workspace and the resolution surface at once. The refusal for that

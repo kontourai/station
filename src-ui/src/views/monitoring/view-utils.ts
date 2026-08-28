@@ -43,7 +43,7 @@ export function filterMonitoringEvents(
         // `|| ''` made it match a bucket nobody can select. It now answers to
         // the same '(unnamed)' name /api/insights reports — via the SHARED
         // rule, so a fourth surface cannot re-derive it differently
-        // (station#3086).
+        // (archive#3086).
         if (
           !agentsToFilter.includes(
             monitoringAgentName(event as Record<string, unknown>),

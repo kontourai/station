@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#2645: every Developer tab renders under ONE h1 owned by the tab
+ * archive#2645: every Developer tab renders under ONE h1 owned by the tab
  * wrapper — embedded views must not bring their own page heading (the
  * double-heading / emoji-heading drift the owner reported). Iterates all
  * five read-only tabs with their data layers mocked.
@@ -114,7 +114,7 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
     expect(screen.queryByText('Station configuration')).toBeNull();
   });
 
-  // station#2645's contract is unchanged; its OWNER moved. The Developer
+  // archive#2645's contract is unchanged; its OWNER moved. The Developer
   // route's title is now the page frame's `<h1>` (published per tab by
   // `DeveloperView`), so each tab must contribute exactly zero of its own and
   // the framed total must still be exactly one.
@@ -123,7 +123,7 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
   // own contract (a tab body contributes no heading of its own) — it does not
   // exercise `DeveloperView`, which is not mounted here, so it is not a claim
   // about `DeveloperView`'s real eyebrow (a linked `PageEyebrowTrail`,
-  // station#4463 slice 1 fix round). That behavior is asserted directly in
+  // archive#4463). That behavior is asserted directly in
   // `DeveloperView.test.tsx`, the file that actually mounts the component.
   for (const [name, load] of TABS) {
     test(`${name} tab`, async () => {

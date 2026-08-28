@@ -21,7 +21,7 @@ export interface ProjectReferenceIntegrityDiagnostic {
 
 /**
  * Minimal ownership shape `project-reference-integrity` needs from an agent
- * (station#1004, unification slice 7 / agent-engine-unification.md §3.3):
+ * (archive#1004 / agent-engine-unification.md §3.3):
  * the agent's slug plus its owning project slug, if any. `project`
  * undefined means the agent is global.
  */
@@ -148,8 +148,8 @@ export function validateLayoutAgentReferences(
   const diagnostics: ProjectReferenceIntegrityDiagnostic[] = [];
 
   /**
-   * Shared by every agent-ref site below (`availableAgents`, and — station#1004
-   * review HIGH-2 — layout prompt/action agent refs, which used to bypass
+   * Shared by every agent-ref site below (`availableAgents` AND layout
+   * prompt/action agent refs, which otherwise bypass
    * this check entirely). Same diagnostics family regardless of where the
    * reference lives in the layout.
    */
@@ -182,7 +182,7 @@ export function validateLayoutAgentReferences(
   });
 
   /**
-   * station#1004 review HIGH-2: layout tabs/prompts/actions each carry their
+   * Layout tabs/prompts/actions each carry their
    * own optional `agent` ref (`LayoutAction`/`LayoutSkill` in
    * `packages/contracts/src/layout.ts`) — a two-input-rule seam the
    * `availableAgents`/`defaultAgent` checks above never covered. Scanned

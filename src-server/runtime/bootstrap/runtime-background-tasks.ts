@@ -6,7 +6,7 @@ import {
   reapEngineSpawnTmpDir,
 } from '../../services/infra/engine-spawn-tmpdir.js';
 
-/** station#2204: bound engine-spawn artifacts even when ACP bootstrap fails. */
+/** archive#2204: bound engine-spawn artifacts even when ACP bootstrap fails. */
 const ENGINE_SPAWN_TMP_REAP_INTERVAL_MS = 5 * 60_000;
 const ENGINE_SPAWN_TMP_MAX_AGE_MS = 30 * 60_000;
 
@@ -134,7 +134,7 @@ export function startRuntimeACPConnections(context: {
       );
       const registeredIds =
         await context.loadRegisteredRuntimeConnectionIds?.();
-      // station#3404: `'background'`. This whole chain is fire-and-forget —
+      // archive#3404: `'background'`. This whole chain is fire-and-forget —
       // no HTTP request awaits it and it takes no configuration-mutation
       // lock — and it is where Station first meets an engine that has not
       // been started since boot, whose `initialize` was measured at 40s.

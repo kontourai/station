@@ -8,7 +8,7 @@ import { ErrorState } from '../state';
  * state, or every still-live `AttentionItem` for this session (after the
  * caller's own duplicate-suppression against the live in-turn request; see
  * `isDuplicateOfPendingRequest` in `useMutableSessionDetailState`). Split
- * out of `MutableSessionDetail` per station#1204.
+ * out of `MutableSessionDetail` per archive#1204.
  */
 export function SessionDetailAttention({
   checkFailed,

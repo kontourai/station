@@ -45,7 +45,7 @@ export function OverflowMenu({
           // One below the menu's own layer (`--layer-navigation`, set on
           // `.app-toolbar__overflow-menu`): the backdrop must beat the fixed
           // mobile chrome — the dock, the toolbar, and the notice band above
-          // them (station#3766) — to catch outside taps, but stay under its
+          // them (archive#3766) — to catch outside taps, but stay under its
           // own menu or it swallows the menu's clicks. Derived from the same
           // token as the menu so raising one cannot silently strand the other.
           zIndex: 'calc(var(--layer-navigation) - 1)',
@@ -64,7 +64,7 @@ export function OverflowMenu({
           <ConnectionStatusDot status={connStatus} size={7} />
           Connections
         </button>
-        {/* station#3311: on mobile the profile lives here rather than in the
+        {/* archive#3311: on mobile the profile lives here rather than in the
             toolbar, whose slot the connection status chip now occupies. LAST,
             not first: it is the demoted item, and this menu is painted at
             --layer-popover, below the banner host's --layer-notice — the

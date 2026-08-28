@@ -45,7 +45,7 @@ describe('coding evidence unavailable copy (station#3158)', () => {
 });
 
 /**
- * station#3158 review. The map's three strings were proven to differ, and the
+ * archive#3158. The map's three strings were proven to differ, and the
  * composition was proven to emit the right reason — but nothing connected
  * them. Hardcoding the renderer's lookup to `['capability-unavailable']`
  * restored the exact pre-fix defect with every test green.

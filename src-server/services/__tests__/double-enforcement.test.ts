@@ -1,5 +1,5 @@
 /**
- * Double-enforcement test (roadmap #586, part of epic #580, S6 — design
+ * Double-enforcement test (roadmap archive#586, part of epic archive#580, S6 — design
  * doc risk "Double enforcement: Station-native policies + in-runtime
  * flow-agents hooks firing in the same session should agree (same policy
  * classes) — needs an explicit test, not a hope").

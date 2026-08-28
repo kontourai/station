@@ -53,7 +53,7 @@ const REVIEW_UNAVAILABLE_REASON_COPY: Record<
 };
 
 /** Same rule for the Flow-review feed's own per-project unavailability
- *  (#3322): a new reason is a type error here until it has its own copy,
+ * (archive#3322): a new reason is a type error here until it has its own copy,
  *  rather than silently rendering under the wrong remedy. */
 const SURVEY_UNAVAILABLE_REASON_COPY: Record<
   SurveyFlowReviewUnavailableReason,
@@ -330,11 +330,11 @@ export function ReviewQueueView() {
         onDeselect={() => setSelectedId(null)}
         onSearch={setSearch}
         searchValue={search}
-        // LOW (delta review round 3): Review was the last route on the
+        // Review was the last route on the
         // shared "items" placeholder noun — and the branch's own proving
-        // case (station#4463 slice 2's double-empty test lives here).
+        // case (archive#4463 's double-empty test lives here).
         listFilteredEmptyNoun="review items"
-        // M3: the four sources are each independently empty/non-empty; the
+        // the four sources are each independently empty/non-empty; the
         // collection as a whole is empty only when ALL of them are, which is
         // exactly when a typed search should never be blamed for the empty
         // queue (nothing exists regardless of the query).

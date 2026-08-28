@@ -1,6 +1,6 @@
 /**
  * ConsentChannelService — the runtime's handle on the distinct-origin consent
- * surface (station#3677).
+ * surface (archive#3677).
  *
  * It owns the {@link ConsentTransactionStore} (shared between the main API,
  * which CREATES transactions and answers status polls, and the consent

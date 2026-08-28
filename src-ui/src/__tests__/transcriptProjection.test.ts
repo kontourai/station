@@ -40,7 +40,7 @@ describe('transcript message projection (station#1238)', () => {
   });
 
   test('keeps a settled assistant turn as ONE row with its work parts intact, in reading order', () => {
-    // The interleave contract (station#2652 redesign): `contentParts` order
+    // The interleave contract (archive#2652 redesign): `contentParts` order
     // is derived from event order on every producing path, so the projection
     // must never strip or hoist work parts out of the message — the renderer
     // interleaves them with prose exactly as they happened.

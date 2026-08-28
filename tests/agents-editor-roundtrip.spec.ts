@@ -73,7 +73,7 @@ test.describe('Agent editor', () => {
       page.getByRole('heading', { name: 'Model', exact: true, level: 3 }),
     ).toHaveCount(0);
     await expect(page.locator('#ae-model-connection')).toHaveCount(0);
-    // station#4521 LOW-1: canonical copy is CONNECTION_SECTIONS' own
+    // archive#4521: canonical copy is CONNECTION_SECTIONS' own
     // `addLabel` ("Add model connection").
     await expect(
       page.getByRole('button', { name: 'Add model connection' }),
@@ -154,7 +154,7 @@ test.describe('Agent editor at 390x844', () => {
 
     const footer = page.locator('.detail-header__mobile-footer');
     await expect(footer).toBeVisible();
-    // station#4521 item 4: this footer is now the page's ONLY save
+    // archive#4521 item 4: this footer is now the page's ONLY save
     // affordance on a touch/narrow surface (the header row's own copy no
     // longer mounts there), so it carries the header's own wording —
     // "Save Changes" here, not editing — rather than a generic "Save". The

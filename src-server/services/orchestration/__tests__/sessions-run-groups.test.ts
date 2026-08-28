@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 // The grouping module is UI presentation code but PURE (contracts types only) —
 // this server-side test exists so its fixtures come from the REAL projection
-// builder (#1715 rule) without dragging the server graph into the UI compile.
+// builder (archive#1715 rule) without dragging the server graph into the UI compile.
 import { groupDelegatedSessionRuns } from '../../../../src-ui/src/views/sessions/run-groups';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state';
 

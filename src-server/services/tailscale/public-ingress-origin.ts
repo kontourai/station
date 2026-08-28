@@ -1,6 +1,6 @@
 /**
  * This Station's public tailnet origin, asked of Tailscale rather than
- * reconstructed from a request (station#3379 follow-up).
+ * reconstructed from a request (archive#3379 follow-up).
  *
  * A pairing endpoint must be an address the DEVICE can reach. The public
  * pairing routes derived it from `new URL(c.req.url).origin`, which is only
@@ -21,12 +21,12 @@
  *
  * Both shipping topologies consume this. Behind Station's own UI proxy the
  * hop is attested and the caller prefers this value outright. Pointed
- * STRAIGHT at a server (a channel app, which has no proxy: station#3645) no
+ * STRAIGHT at a server (a channel app, which has no proxy: archive#3645) no
  * attestation can exist, so the caller instead requires the request's Host
  * to equal the origin resolved here — the daemon's own statement of where it
  * serves us — before using it. `station environment offer --tailscale` still
  * demands the direct topology and refuses the proxy one; that residual
- * disagreement lives with #3645's history.
+ * disagreement lives with archive#3645's history.
  *
  * This resolves the origin. WHETHER to prefer it over the request URL is the
  * caller's decision, made against the caller's own evidence of how the

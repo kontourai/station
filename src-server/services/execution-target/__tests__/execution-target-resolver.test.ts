@@ -587,7 +587,7 @@ describe('resolveExecutionTarget', () => {
   });
 });
 
-// station#3406: an Agent that declares `execution.modelId` had that model
+// archive#3406: an Agent that declares `execution.modelId` had that model
 // dropped -- only a per-turn override ever reached the adapter, so the turn ran
 // on the engine's default and nothing said so. Worse for ACP: the adapter's
 // apply-and-verify block is reached ONLY when a model is requested, so the

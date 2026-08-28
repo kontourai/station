@@ -29,7 +29,7 @@ import {
 } from '../routes/runtime-routes.js';
 
 /**
- * station#1490, over REAL sockets.
+ * archive#1490, over REAL sockets.
  *
  * Every other test of this guard hands the middleware a synthetic
  * `{incoming:{socket:{remoteAddress}}}`, which cannot catch anything that only
@@ -241,7 +241,7 @@ describe('pairing approval over a real transport (station#1490)', () => {
     expect(access.status).toBe(202);
     const { requestId } = (await access.json()) as { requestId: string };
 
-    // station#2090: #2051 deliberately moved the credential floor ahead of
+    // archive#2090: archive#2051 deliberately moved the credential floor ahead of
     // the peer classification guard. Loopback is not operator authority, so
     // this caller cannot approve the request regardless of which host address
     // the kernel reported for the access request.

@@ -1,5 +1,5 @@
 /**
- * Freshness derivation for a Flow run (station#189 S1).
+ * Freshness derivation for a Flow run (archive#189 S1).
  *
  * The auto-attached `station-delivery` run shipped a surface that read
  * `step=plan status=active` for an entire delivery in which no gate was ever

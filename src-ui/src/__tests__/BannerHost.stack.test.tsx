@@ -286,7 +286,7 @@ describe('test-only passive-chrome clearing hook (station#3823)', () => {
   test('removes passive chrome and never the notice the reader caused', () => {
     // jsdom, deliberately: `banner-store.ts` installs the hook on `window` at
     // module load, so a node-environment suite cannot see it at all — and a
-    // spec that calls it through `?.()` on a page where it was never installed
+    // spec that calls it through `?.` on a page where it was never installed
     // would silently do nothing and still pass.
     act(() =>
       bannerStore.present({

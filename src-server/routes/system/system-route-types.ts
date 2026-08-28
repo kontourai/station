@@ -56,14 +56,14 @@ export interface SystemStatusDeps {
    */
   getDeploymentCapabilities?: () => DeploymentCapabilities;
   /**
-   * Live engine-connection state, for chat-readiness (station#1194).
+   * Live engine-connection state, for chat-readiness (archive#1194).
    *
    * Deliberately NOT derived from `getAppConfig`. That returns a boot-time
    * snapshot — `runtime-route-support.ts` binds `() => context.appConfig`, a
    * plain field assigned once at startup, while connection saves reassign
    * `this.appConfig` on the runtime, a different reference. Nothing ever
    * writes `context.appConfig`, so a connection disabled through the running
-   * Connections hub is invisible to it (review of #1263, round 2).
+   * Connections hub is invisible to it (review of archive#1263, round 2).
    *
    * This is wired to `ConnectionService.listEngineConnectionStates()`, which
    * derives from the same runtime inventory `enriched-agents.ts` uses while
@@ -92,7 +92,7 @@ export interface SystemStatusDeps {
   appConfig?: { runtime?: string };
   port?: number;
   /**
-   * station#3677 review MED 4: the runtime's OWN consent-listener
+   * archive#3677 review MED 4: the runtime's OWN consent-listener
    * availability, from `ConsentChannelService.state()`. The CLI's start
    * report derives its consent line from this — a TCP probe of the consent
    * port says only that SOMETHING accepted a socket, which reads green while
@@ -103,13 +103,13 @@ export interface SystemStatusDeps {
   getConsentAvailability?: () =>
     | { status: 'listening'; port: number }
     | { status: 'unavailable' };
-  /** Bound listen host, so status readers can identify the endpoint (#2551). */
+  /** Bound listen host, so status readers can identify the endpoint (archive#2551). */
   host?: string;
   /** Configured public origins (ALLOWED_ORIGINS), when the host wires them. */
   publicOrigins?: string[];
   skillService?: SkillService;
   /**
-   * station#3089: the same probe the admission checks use
+   * archive#3089: the same probe the admission checks use
    * (`admitEngineStart`/`admitScheduledJob`), read here rather than
    * recomputed. Optional so older/partial route composition degrades to a
    * 503 on the read route instead of a fabricated healthy reading.
@@ -119,7 +119,7 @@ export interface SystemStatusDeps {
 
 /**
  * Build provenance as far as the process can establish it. Every field is
- * independently optional (station#1085) because the packaged desktop shell and
+ * independently optional (archive#1085) because the packaged desktop shell and
  * a CLI instance started without a build manifest each supply a different
  * subset — reporting nothing at all whenever one input was missing hid the
  * commit sha, which is the field support actually needs. `shortSha` and
@@ -137,7 +137,7 @@ export type SystemBuildProvenance = {
   instanceId?: string;
   bootId?: string;
   /**
-   * `channel` and `dirty` (station#1985) are ALSO independently optional,
+   * `channel` and `dirty` (archive#1985) are ALSO independently optional,
    * same doctrine as every field above. `channel` can come from either the
    * the esbuild-baked stamp or `STATION_CHANNEL` (only when no stamped channel
    * exists). `dirty` has no env

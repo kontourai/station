@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { WorkspacePaneBindingUnavailable } from '../WorkspacePaneBindingUnavailable';
 
-// station#3969: the copy is written for the reader now — the two facts each
+// archive#3969: the copy is written for the reader now — the two facts each
 // state has to carry are unchanged (WHICH of their things is missing, and
 // that Station will not guess between candidates).
 test.each([

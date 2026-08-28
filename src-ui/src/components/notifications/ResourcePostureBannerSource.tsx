@@ -1,5 +1,5 @@
 /**
- * station#3089: projects the server-derived runtime resource posture
+ * archive#3089: projects the server-derived runtime resource posture
  * (`GET /api/system/resource-posture`, backed by
  * `src-server/services/infra/resource-posture.ts`) into the chrome banner
  * queue. Healthy (and unavailable — the probe already fails open, so an
@@ -20,7 +20,7 @@
  * refetch-on-focus/mount globally, so the interval is the only freshness
  * mechanism, not a supplementary one.
  *
- * Not mounted eagerly (station#3089 bundle-budget note): the app entry
+ * Not mounted eagerly (archive#3089 bundle-budget note): the app entry
  * bundle has ~0 bytes of headroom, and this condition is invisible in the
  * common (healthy) case anyway, so `App.tsx` loads this component through
  * the same `LazyBoundary` chunk pattern `CoreUpdateLaunchCheck` uses rather

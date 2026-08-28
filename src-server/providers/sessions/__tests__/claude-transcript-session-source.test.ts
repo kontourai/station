@@ -934,7 +934,7 @@ describe('ClaudeTranscriptSessionSource', () => {
     });
   });
 
-  // station#1997: a fresh cursor over a large window must not parse the whole
+  // archive#1997: a fresh cursor over a large window must not parse the whole
   // slab as one synchronous run — the interior yield is what keeps identity
   // probes answering during boot backfill of big transcripts.
   test('read() yields to the event loop while parsing a large window', async () => {

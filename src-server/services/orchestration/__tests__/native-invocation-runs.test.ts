@@ -87,9 +87,9 @@ async function constructNativeInvocationStore(
   const [code] = await once(child, 'exit');
   if (code !== 0) {
     // This used to tolerate a loser exiting with
-    // STATION_EVENT_STORE_INTEGRITY_UNAVAILABLE (station#3145): the
+    // STATION_EVENT_STORE_INTEGRITY_UNAVAILABLE (archive#3145): the
     // constructor's PRAGMA integrity check could lose a concurrent-DDL race
-    // and decline to assert integrity it could not check. station#3219
+    // and decline to assert integrity it could not check. archive#3219
     // removed the per-boot check entirely, so that error no longer exists
     // and every concurrent constructor is expected to complete; any non-zero
     // exit is a real failure.

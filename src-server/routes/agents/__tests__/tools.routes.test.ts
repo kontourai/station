@@ -13,7 +13,7 @@ import { rebuildOrClearRuntimeProjections } from '../../../runtime/bootstrap/run
 // Spread the real module rather than enumerating instruments by hand: this
 // list grew to 14 and still went stale when the route recorded
 // `toolDefinitionOps`, failing three tests with an assertion message that
-// named the mock nowhere (station#3112).
+// named the mock nowhere (archive#3112).
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
   toolCalls: { add: vi.fn() },
@@ -955,7 +955,7 @@ describe('Tool Routes', () => {
     expect(registerForOutcome).toHaveBeenCalledTimes(1);
     expect(svc.callMCPUITool).not.toHaveBeenCalled();
     // Someone answered and said no: the message must say so, and must not
-    // hedge that it might instead have gone unanswered (station#3158).
+    // hedge that it might instead have gone unanswered (archive#3158).
     expect(body.error).toContain('denied in the approval inbox');
     expect(body.error).not.toMatch(/expired|never answered|timed out/);
   });

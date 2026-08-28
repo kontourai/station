@@ -1,14 +1,14 @@
 /**
- * The ONE replay that answers "is this request still open?" (station#1284).
+ * The ONE replay that answers "is this request still open?" (archive#1284).
  *
  * Surfaces used to hand-maintain their own copy of this fold —
  * `attention-projection.ts`'s `openRequestsById` and the approval inbox's
  * convergence sweep. Two parallel copies of the same fold over the same event
- * log is the divergent-copy disease station#1548 was filed for at the
+ * log is the divergent-copy disease archive#1548 was filed for at the
  * lifecycle layer; this module is the single derivation they consume so they
  * cannot disagree about which requests are outstanding.
  *
- * Since station#1745 it also owns {@link projectRequestAnswerability}: the
+ * Since archive#1745 it also owns {@link projectRequestAnswerability}: the
  * companion question "can anything in this process still answer this open
  * request?". The two belong together because every consumer asks them
  * together, and because the second used to be answered by WRITING a synthetic
@@ -88,7 +88,7 @@ export interface SessionAnswerabilityObservation {
 
 /**
  * THE one function that computes the `answerability` decoration every session
- * summary carries — station#1745's read-time projection of what station#1284
+ * summary carries — archive#1745's read-time projection of what archive#1284
  * used to write at boot, in the wire shape ADR 0012 adopted.
  *
  * Pure, so its inputs are visible rather than read out of a service, and so
@@ -107,16 +107,16 @@ export interface SessionAnswerabilityObservation {
  * with no repair step, which is the whole reason this is a projection and not
  * a persisted event.
  *
- * PREDICATE CHOICE (station#1548 convergence — read before changing this).
+ * PREDICATE CHOICE (archive#1548 convergence — read before changing this).
  * The contract exposes three derived predicates and only ONE means what this
  * needs:
  *   - `isSessionLifecycleStateTerminal` = `{completed}` — no transition out at
  *     all. TOO NARROW: a `canceled` session holding an open request is exactly
- *     the stuck card station#1284 was filed for, and this predicate leaves it
+ *     the stuck card archive#1284 was filed for, and this predicate leaves it
  *     stuck.
  *   - `isSessionLifecycleStateStopped` = `{completed, failed, canceled}` — TOO
  *     WIDE: `failed` is retriable (`failed -> queued | running`) and treating
- *     its open request as unanswerable defeats station#1090's retry design.
+ *     its open request as unanswerable defeats archive#1090's retry design.
  *   - `canSessionLifecycleStateResume` negated = `{completed, canceled}` — the
  *     work cannot pick up where it left off, so nothing is waiting on the
  *     answer any more. That is this predicate's actual question, and it is the

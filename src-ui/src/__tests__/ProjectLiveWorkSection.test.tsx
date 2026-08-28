@@ -3,7 +3,7 @@
  */
 
 /**
- * station#3202. The sidebar badge named a number and the project page showed
+ * archive#3202. The sidebar badge named a number and the project page showed
  * none of what it counted — "what does the '6' next to kontour mean? should be
  * clear when I click into that how to 'resolve' those things", refined to "or
  * it's ongoing work that's active". These cover the destination: the two live
@@ -236,7 +236,7 @@ describe('ProjectLiveWorkSection', () => {
   });
 
   /**
-   * station#3227 A1. This section's row state used to be
+   * archive#3227 A1. This section's row state used to be
    * `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state,
    * with none of the fold's overrides — while its lane heading came from the
    * fold. So a row filed under "Needs you" said *Running*, and a session
@@ -257,7 +257,7 @@ describe('ProjectLiveWorkSection', () => {
     };
 
     mocks.sessions.push(
-      // A1 shape 1 (#1069): attached, never ran a turn.
+      // A1 shape 1 (archive#1069): attached, never ran a turn.
       session({
         threadId: 'idle-running',
         displayTitle: 'Attached but idle',
@@ -272,7 +272,7 @@ describe('ProjectLiveWorkSection', () => {
         hasActiveTurn: true,
         pendingReview: true,
       }),
-      // A1 shape 4 (#1783): nothing can answer it.
+      // A1 shape 4 (archive#1783): nothing can answer it.
       session({
         threadId: 'stranded',
         displayTitle: 'Stranded request',

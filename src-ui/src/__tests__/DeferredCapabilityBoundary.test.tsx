@@ -207,7 +207,7 @@ describe('DeferredCapabilityBoundary', () => {
       `${BANNER_IDS.deferredCapability}:connection-recovery`,
       `${BANNER_IDS.deferredCapability}:extension-registry`,
     ]);
-    // station#3308: the host collapses the stack — front banner plus a cap
+    // archive#3308: the host collapses the stack — front banner plus a cap
     // for the second; expanding renders both as independent banners.
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     fireEvent.click(screen.getByTestId('banner-stack-cap'));

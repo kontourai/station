@@ -1,5 +1,5 @@
 /**
- * station#3354 — an in-progress (unclosed-fence) streaming code block: the
+ * archive#3354 — an in-progress (unclosed-fence) streaming code block: the
  * same chrome as a closed block, always plain — never tokenized, never
  * cached. Loaded lazily from StreamingMarkdown so the shared
  * `CodeBlockFrame` chrome stays out of the entry chunk.

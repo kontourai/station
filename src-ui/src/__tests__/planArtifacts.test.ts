@@ -80,7 +80,7 @@ describe('plan artifact helpers', () => {
     ).toEqual(cached);
 
     // Characterization, not a fix-discriminating test: this fallback
-    // predates station#3351. It pins the by-reference contract the
+    // predates archive#3351. It pins the by-reference contract the
     // derived-session reuse path (useDerivedSessions) depends on — if this
     // ever started minting a fresh object for non-plan text, the fallback
     // would bust that cache per token.

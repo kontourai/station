@@ -151,7 +151,7 @@ describe('ActionOperationsSection', () => {
   });
 
   /**
-   * station#4474 review round (H1): a SECOND skeleton for "error, no cached
+   * archive#4474: a SECOND skeleton for "error, no cached
    * data, isFetching" used to alternate with the static "unavailable" line
    * on the query's 5s `refetchInterval`, oscillating indefinitely and
    * displacing every row below the pane — a real-Chromium geometry test
@@ -159,7 +159,7 @@ describe('ActionOperationsSection', () => {
    * property directly; this pins the simpler, cheaper invariant at the
    * component level: the SAME static line renders regardless of
    * `isFetching`, so there is nothing left to oscillate between. An
-   * automatic background retry is not news (station#3297's stance for
+   * automatic background retry is not news (archive#3297's stance for
    * ConnectionBannerSource, applied here too).
    */
   test.each([true, false])(

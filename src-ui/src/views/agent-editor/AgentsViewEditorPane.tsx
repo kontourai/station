@@ -158,7 +158,7 @@ export function AgentsViewEditorPane({
     'integrations' | 'skills' | null
   >(null);
   const { data: agentConnections = [] } = useAgentConnectionsQuery();
-  // station#4521 item 4: the mobile footer is the ONE save affordance on a
+  // archive#4521: the mobile footer is the ONE save affordance on a
   // touch/narrow surface (DetailHeader's own sticky bar below), so the
   // header's row must not ALSO render one there — that produced two Save
   // rows on screen at once. Same breakpoint DetailHeader.css gates the
@@ -178,7 +178,7 @@ export function AgentsViewEditorPane({
       : undefined;
   const editorUnavailable =
     isLoading || notFound || !!loadError || selectedIsUnmaterializedEngine;
-  // station#4521 items 1/2: `agentFixRoute` reads the SAME server-derived
+  // archive#4521 items 1/2: `agentFixRoute` reads the SAME server-derived
   // `unavailableFix.kind` the Agents list and New Chat picker's repair verb
   // come from. It is consulted for exactly ONE additional case below — a
   // Station-engine agent with no `agentConnectionId` to point "Configure in
@@ -252,7 +252,7 @@ export function AgentsViewEditorPane({
               !isCreating && selectedAgent ? (
                 <>
                   <EngineChip engine={agentEngineDescriptor(selectedAgent)} />
-                  {/* station#4521: `compact` — never a pane-local decision
+                  {/* archive#4521: `compact` — never a pane-local decision
                       about which states get a header chip (that was the
                       "two surfaces deciding one thing" defect this
                       replaced) — asks AgentReadinessCell for whatever short,
@@ -269,7 +269,7 @@ export function AgentsViewEditorPane({
               ) : undefined
             }
             mobileFooter={
-              // station#4521 item 4: gated on the SAME `isMobile` (mirrors
+              // archive#4521: gated on the SAME `isMobile` (mirrors
               // `MOBILE_MEDIA_QUERY`, DetailHeader.css's own
               // `.detail-header__mobile-footer` breakpoint) as the header
               // row's Save button below, rather than always mounting this
@@ -285,7 +285,7 @@ export function AgentsViewEditorPane({
                   >
                     Cancel
                   </button>
-                  {/* station#4521 item 4: this bar is the mobile surface's
+                  {/* archive#4521: this bar is the mobile surface's
                       ONE save affordance now that the header row's own
                       button is desktop-only (below) — so it carries the same
                       dirty indicator and Create/Save wording that row used
@@ -341,7 +341,7 @@ export function AgentsViewEditorPane({
                     historyMode="entry"
                     returnFocusTarget={overflowTriggerRef.current}
                     anchorRef={overflowTriggerRef}
-                    // station#4521 item 3: `anchorRef` alone only measures
+                    // archive#4521: `anchorRef` alone only measures
                     // the trigger — a consuming surface still has to spend
                     // that measurement (see `ResponsiveDialogSurface`'s own
                     // docblock). With no overlay/panel classes this popover
@@ -351,7 +351,7 @@ export function AgentsViewEditorPane({
                     // flow with no `position` at all. The trigger sits in
                     // the sticky HEADER, not a bottom bar, so this opens
                     // DOWNWARD from the anchor's bottom edge — the same
-                    // top-anchored fix #1303 made for the Background tasks
+                    // top-anchored fix archive#1303 made for the Background tasks
                     // panel (`agent-actions-overlay`/`agent-actions-panel`,
                     // editor-layout.css).
                     overlayClassName="agent-actions-overlay"
@@ -391,7 +391,7 @@ export function AgentsViewEditorPane({
                 )}
               </>
             )}
-            {/* station#4521 item 4: the mobile footer above is this
+            {/* archive#4521: the mobile footer above is this
                 surface's save affordance below the mobile breakpoint — this
                 header-row button rendering unconditionally there is what
                 put two Save controls on screen at once. */}
@@ -438,7 +438,7 @@ export function AgentsViewEditorPane({
             WAIT, not a failure — say so, rather than showing an empty tool
             list that reads as "this Agent has no tools". If activation never
             lands, the second banner stops implying it still might.
-          */}
+*/}
           {toolsActivating && (
             <div className="editor__lock-banner editor__lock-banner--info">
               <span>
@@ -451,7 +451,7 @@ export function AgentsViewEditorPane({
             Activation was tried and abandoned. "Hasn't finished activating"
             was true for a while and then became a lie — this says what
             actually failed and offers the one action that can change it.
-          */}
+*/}
           {activationFailure ? (
             <div className="agent-editor__error-banner" role="alert">
               <strong>This agent couldn’t be activated.</strong>{' '}
@@ -535,7 +535,7 @@ export function AgentsViewEditorPane({
             and its reason are stated, in the same words the New Chat picker
             and the list row use, with the one repair that addresses a
             connection-level cause.
-          */}
+*/}
           {notRunnable && !isCreating && (
             <div className="editor__lock-banner editor__lock-banner--info">
               <span>
@@ -559,7 +559,7 @@ export function AgentsViewEditorPane({
                   Configure in Connections
                 </button>
               ) : (
-                // station#4521 items 1/2: Station's own engine has no
+                // archive#4521 items 1/2: Station's own engine has no
                 // `agentConnectionId` to point Connections at — this is the
                 // "no enabled LLM provider connection is configured" case,
                 // and the branch above rendered NOTHING for it (a reason

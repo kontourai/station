@@ -89,7 +89,7 @@ function renderAttached({
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  // The real provider, not a stub: the component calls `useToast()` at its top
+  // The real provider, not a stub: the component calls `useToast` at its top
   // (AttachedSessionDetail.tsx), which throws outside a provider — so a render
   // without one fails before any assertion in this file runs.
   return render(
@@ -157,8 +157,8 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
   });
 
   /**
-   * station#3227 C3. This heading was an INLINE copy of `sessionTitle`'s
-   * first and last branches — `displayTitle?.trim() || `${displayProvider}
+   * archive#3227. This heading was an INLINE copy of `sessionTitle`'s
+   * first and last branches — `displayTitle?.trim || `${displayProvider}
    * session`` — with the middle one missing. The case above could never
    * notice, because a session with no delegation takes the same branch in
    * both versions. An attached session that DOES carry a delegated task id
@@ -202,7 +202,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
       screen.getByText('This transcript is read-only and safe.'),
     ).toBeTruthy();
     // The stream's SSE state says nothing about the REST adoption channel
-    // (sol review of #2630, finding 1) — the recovery action stays enabled.
+    // (archive#2630) — the recovery action stays enabled.
     expect(
       screen
         .getByRole('button', { name: 'Continue in Station' })
@@ -213,7 +213,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
   });
 
   /**
-   * station#3426. The generic "retrying automatically" copy was false for a
+   * archive#3426. The generic "retrying automatically" copy was false for a
    * credential rejection (nothing is retrying) and for an exhausted
    * capability re-probe (nothing is retrying, but it isn't a rejection
    * either). These pin the three honest states the fold now derives.
@@ -307,7 +307,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
         "This Station needs an update before it can show this session's history.",
       ),
     ).toBeTruthy();
-    // Retrying cannot cure an incompatible host (sol finding 2).
+    // Retrying cannot cure an incompatible host (sol).
     expect(
       screen.queryByText(
         "Station isn't responding right now — retrying automatically.",

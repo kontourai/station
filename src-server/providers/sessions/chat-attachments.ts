@@ -6,7 +6,7 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 
 /**
- * Narrow a persisted attachment back to a dispatchable one (station#3374).
+ * Narrow a persisted attachment back to a dispatchable one (archive#3374).
  *
  * Server-side rather than beside `PersistedChatAttachment` in the contracts
  * package: re-dispatching a recorded turn is a server concern, and this module

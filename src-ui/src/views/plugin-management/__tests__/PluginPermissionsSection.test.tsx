@@ -9,7 +9,7 @@ import {
 } from '../PluginPermissionsSection';
 
 /**
- * station#3815. The panel used to show only what a plugin was still
+ * archive#3815. The panel used to show only what a plugin was still
  * MISSING, so a permission became invisible the moment it was granted —
  * a user could approve `plugin.server` and never find that out again.
  * These pin the inversion: held permissions lead, and each one can be
@@ -173,7 +173,7 @@ test('the hint does not promise immediacy the system cannot deliver (station#382
 });
 
 /**
- * station#4288. Binding a grant to the plugin's content means a permission
+ * archive#4288. Binding a grant to the plugin's content means a permission
  * can stop applying without anyone touching it — so the panel has to say so.
  * A capability that silently vanishes is its own defect.
  */

@@ -13,7 +13,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 /**
- * `useAgentsLoaded()` gates consumers that treat "the catalog answered" as a
+ * `useAgentsLoaded` gates consumers that treat "the catalog answered" as a
  * license to make a definitive decision (`useChatDockActiveChatSync`'s #801
  * deleted-agent clear). It must report `true` only on an actual successful
  * resolution — not merely "not currently loading," which react-query also

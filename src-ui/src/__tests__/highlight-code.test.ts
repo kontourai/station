@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3354 — `highlightCode` itself: the client LRU, and the
+ * archive#3354 — `highlightCode` itself: the client LRU, and the
  * main-thread fallback `createClient` selects when `Worker` is unavailable.
  * The behavioural test (chat-highlight-3354.test.tsx) mocks this module
  * wholesale, so without this file nothing executed the cache, the language

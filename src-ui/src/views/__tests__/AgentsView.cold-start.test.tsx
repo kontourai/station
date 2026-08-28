@@ -5,10 +5,10 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#3751 — the cold-start readiness window.
+ * archive#3751 — the cold-start readiness window.
  *
  * `/api/agents` serves the LAST STABLE catalog while the runtime is
- * mid-reconciliation and marks it `catalogState: 'reconciling'` (#1574).
+ * mid-reconciliation and marks it `catalogState: 'reconciling'` (archive#1574).
  * Those rows are real, but their readiness was computed for a configuration
  * that may already be gone: an agent bound to a MISSING engine reads "Ready".
  * `isLoading` cannot see it — the bytes arrived — and the SDK used to drop the

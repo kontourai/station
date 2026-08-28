@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * station#4460: before the fix, only Chat's dock chrome had a resize handle,
+ * archive#4460: before the fix, only Chat's dock chrome had a resize handle,
  * maximize/collapse and a placement control, and only Home/Activity had an
  * occupant switcher — nobody had all four. These tests drive the REAL
  * `NavigationProvider` (unlike `AmbientChatDockPaneHost.test.tsx`'s static
@@ -48,7 +48,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
 
-// station#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects()`
+// archive#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects`
 // for its project-binding deletion cleanup. Mocked here the same way every
 // other unrelated context in this file is — this suite is about control
 // parity across occupants, not project binding (see
@@ -160,7 +160,7 @@ describe('every ambient occupant gets the full dock chrome (station#4460)', () =
   // (the SAME shared component Home/Activity use below) is unit-tested with
   // `chatControls`/`occupantPicker` supplied:
   // `ChatDockHeaderCollapse.test.tsx` (maximize/collapse/placement) and the
-  // occupant-picker rendering test added there for this station#4460 fix.
+  // occupant-picker rendering test added there for this archive#4460 fix.
   test('Chat, docked by default, gets the shell resize handle', async () => {
     await dockedAction();
     expect(

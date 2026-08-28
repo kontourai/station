@@ -251,11 +251,11 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
 });
 
 /**
- * station#3227 A6: "Active now" (and every sibling group label) must mean ONE
+ * archive#3227 A6: "Active now" (and every sibling group label) must mean ONE
  * thing. Desktop Home partitions through `partitionHomeWorkItems`; the mobile
  * switcher/inbox groups through `groupMobileActivity`, which used to carry a
  * private `Running`/`Needs attention` predicate and its own 10-minute window
- * — so one device read "Active now 14" on Home and "Active now 1" on the
+ * so one device read "Active now 14" on Home and "Active now 1" on the
  * switcher, with the difference filed under "Just finished" having finished
  * nothing. These tests pin the INVARIANT (bucket-for-bucket agreement on a
  * mixed fixture, and one shared linger window), not spot values, so any
@@ -509,7 +509,7 @@ describe('withStableIds (AC1 identity-alias fix, review finding)', () => {
     expect(aliasMap.size).toBe(0);
   });
 
-  // station#1097 R2: a remote-session item's `id` is namespaced
+  // archive#1097: a remote-session item's `id` is namespaced
   // (`remote:<environmentId>:<threadId>`) and it never sets
   // `orchestrationThreadId`/`chatSessionId`/`taskSessionId` (see
   // `home-view-model.ts`'s `buildSessionWorkItem`), so even a raw threadId

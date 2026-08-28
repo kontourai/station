@@ -176,7 +176,7 @@ export class KeyedCoalescingWorker<K, V> {
         () => this.flushBatch(),
         this.windowMs,
       );
-      // Review fix (CRITICAL, station#1093 Part B): a batch timer must
+      // Review fix (CRITICAL, archive#1093 Part B): a batch timer must
       // never hold the process open by itself — it's an internal
       // scheduling detail, not something a caller waits on directly
       // (`drain()`/`marker()` force-flush past it). Consumers that DO need

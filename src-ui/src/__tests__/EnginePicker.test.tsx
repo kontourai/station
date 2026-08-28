@@ -18,7 +18,7 @@ vi.mock('../hooks/useSystemStatus', () => ({
 }));
 
 /**
- * station#1549: the picker asks a not-yet-observed connection to probe when
+ * archive#1549: the picker asks a not-yet-observed connection to probe when
  * the modal opens. Captured rather than stubbed away so the tests below can
  * assert BOTH directions — that it fires for an unobserved row, and (the
  * property that actually matters) that it never fires for a row whose answer
@@ -88,7 +88,7 @@ function expectNoRetiredNouns(): void {
  * A command-backed connection that has been OBSERVED and cannot run the
  * built-in assistant.
  *
- * The `controlPlaneObservation` is load-bearing as of station#1684 and is
+ * The `controlPlaneObservation` is load-bearing as of archive#1684 and is
  * deliberately part of the default. Before that change the `acp` matrix cell
  * named no delivery mechanism, so every ACP connection derived `chat-only`
  * from the matrix alone and the fixture needed no evidence. The cell now
@@ -126,9 +126,9 @@ function acpConnection(overrides: Record<string, unknown> = {}): any {
 describe('readyEngineOptions — station#1194 (matrix-driven, no per-engine branch)', () => {
   test('Claude Code AND Codex are badged "full" (each has a station-control delivery mechanism); an observed-incapable command-backed engine is "chat-only"', () => {
     // The predicate keys on the matrix's builtinStationControlDelivery cell
-    // — the same field session-agent-resolution.ts exempts on — so Codex
-    // flipped to "full" when #1195 shipped its 'url-token' delivery.
-    // station#1684: the command-backed row's answer is no longer read off
+    // the same field session-agent-resolution.ts exempts on — so Codex
+    // flipped to "full" when archive#1195 shipped its 'url-token' delivery.
+    // archive#1684: the command-backed row's answer is no longer read off
     // the matrix alone; it is derived from the matrix PLUS this connection's
     // own observation, which here says the CLI does not advertise HTTP MCP.
     const options = readyEngineOptions({
@@ -158,7 +158,7 @@ describe('readyEngineOptions — station#1194 (matrix-driven, no per-engine bran
   test('keeps Codex eligible when its live native projection uses codex-runtime as its adapter type', () => {
     // This is the exact shape published by native adapter discovery: the
     // public matrix identity belongs in config.engineId, not the private
-    // runtime selector. Codex's #1195 declared delivery therefore needs no
+    // runtime selector. Codex's archive#1195 declared delivery therefore needs no
     // runtime observation to be offered.
     expect(
       readyEngineOptions({
@@ -228,7 +228,7 @@ describe('EnginePicker component', () => {
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
-    // Claude Code (#1157) and Codex (#1195) each have a reviewed
+    // Claude Code (archive#1157) and Codex (archive#1195) each have a reviewed
     // station-control delivery mechanism — both offered. Kiro's wire
     // channel has none: the assistant this modal binds could not operate
     // Station there, so it must not be selectable at all — not badged,
@@ -268,7 +268,7 @@ describe('EnginePicker component', () => {
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
-    // station#1547 AC5 restored a second sentence that also names this
+    // archive#1547 restored a second sentence that also names this
     // connection (what it CAN still do), so the panel now names it twice.
     // The rule under test is unchanged — every naming uses the connection's
     // own name, never "External"/"ACP"/"runtime" — so this asserts "named at
@@ -293,7 +293,7 @@ describe('EnginePicker component', () => {
     );
   });
 
-  // station#settings-revamp slice 3 review finding 3.
+  // archive#settings-revamp.
   test('onSelect mode: confirming calls onSelect(id) and onChosen, and never fires the update-config mutation', () => {
     statusData = { providers: { configuredChatReady: false } };
     connectionsData = [codexConnection()];
@@ -355,7 +355,7 @@ describe('EnginePicker component', () => {
       ),
     ).toBeTruthy();
     // Nothing to choose, and nothing is ever written from this state: an
-    // engine becoming capable later (as Codex did at #1195) must find the
+    // engine becoming capable later (as Codex did at archive#1195) must find the
     // saved config exactly as the user left it.
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
     fireEvent.click(screen.getByText('Got it'));
@@ -364,12 +364,12 @@ describe('EnginePicker component', () => {
   });
 
   /**
-   * station#1547 AC5. The sentence shipped once and was reverted at
+   * archive#1547. The sentence shipped once and was reverted at
    * 5a61adbf because it was false — no non-`station` agent received the docs
    * server, so the engine the panel is about was precisely the engine that
    * got nothing. It ships again only because the ACP adapter now grants
    * `station-docs` on every ACP session; these assertions and
-   * `acp-adapter.test.ts`'s "station#1547 AC5" block are two halves of one
+   * `acp-adapter.test.ts`'s "archive#1547 " block are two halves of one
    * claim, and neither is worth anything alone.
    */
   test('station#1547 AC5: the single-incapable-engine panel says what that engine CAN still do', () => {
@@ -452,7 +452,7 @@ describe('EnginePicker component', () => {
   });
 
   test('no engine connected at all also explains — the "Change…" button never opens an empty modal', () => {
-    // #1359 retired the first-run gate that used to be this modal's only
+    // archive#1359 retired the first-run gate that used to be this modal's only
     // caller, so "zero ready engines" is no longer a render race with a
     // gate: it is a deliberate click from Settings, and rendering nothing
     // would be a dead button.

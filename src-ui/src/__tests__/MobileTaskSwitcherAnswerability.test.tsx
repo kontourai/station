@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * REVIEW HIGH (station#1783). `HOME_LIFECYCLE_LABELS` is shared, and this
+ * (archive#1783). `HOME_LIFECYCLE_LABELS` is shared, and this
  * sheet renders `lifecycleLabel` as RAW TEXT — so adding `'Unanswerable'` for
  * the Home row put the wire enum straight into a user-facing line here
  * ("Current · Unanswerable"), with none of the basis, while the Home row two
@@ -54,7 +54,7 @@ function renderSheet(tasks: HomeWorkItem[]) {
 describe('MobileTaskSwitcher answerability basis', () => {
   test('renders the observation, not just the label', () => {
     renderSheet([task()]);
-    // The shared inbox row (kontourai/station#3312) carries the observation
+    // The shared inbox row (archive#3312) carries the observation
     // under the shared testid — one anatomy, one hook, both hosts.
     const notice = screen.getByTestId('inbox-row-answerability').textContent;
     expect(notice).toContain("no adapter for provider 'acme'");

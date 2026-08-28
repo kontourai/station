@@ -12,7 +12,7 @@ import {
 
 /**
  * What a reader can OBSERVE about the registry, and therefore what has to
- * publish (sol review, LOW). The first signature sorted registration order away
+ * publish. The first signature sorted registration order away
  * and omitted handlers, so two registrations under one id with identical
  * metadata and different handlers replaced the entry in silence — an open
  * command palette kept the retired action while the keyboard dispatched the

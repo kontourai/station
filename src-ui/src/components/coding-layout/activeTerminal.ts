@@ -5,7 +5,7 @@
  * The terminal tabs each own their own WebSocket, so there is no React tree
  * path from the file tree to "the active terminal". Instead, the active
  * TerminalPanel registers a writer here (keyed by its id) when it is the
- * visible tab, and clears it when it stops being active or unmounts. write()
+ * visible tab, and clears it when it stops being active or unmounts. write
  * forwards to whoever is currently registered.
  */
 

@@ -71,7 +71,7 @@ const loadShortcutsCheatsheet = () =>
  * mounting it at startup so its global shortcut and event listener remain
  * available as soon as the small lazy chunk resolves.
  *
- * station#2652 review H1: the guided first run rides this SAME boundary
+ * archive#2652: the guided first run rides this SAME boundary
  * rather than adding its own — a second lazy boundary cost the entry chunk 131
  * gzip bytes of chunk-registration metadata, far more than the feature's own
  * eager bytes. See `DeferredAppOverlays`.
@@ -116,7 +116,7 @@ function resolveCurrentLocation(options: {
 const NO_SHORTCUT_MODIFIERS: ('cmd' | 'ctrl' | 'shift' | 'alt')[] = [];
 
 /**
- * The query-param key the `station <dir>` launcher (station#1986) deep-links a
+ * The query-param key the `station <dir>` launcher (archive#1986) deep-links a
  * project selector under: `<uiUrl>/?project=<name>`.
  */
 const PROJECT_SELECT_QUERY_KEY = 'project';
@@ -142,7 +142,7 @@ function App() {
   const { apiBase: API_BASE } = useApiBase();
   // The saved connection's display identity for unavailable-state copy —
   // `connectionFailureCopy`'s contract wants the short name the user saved,
-  // with the URL as the address it actually tried (station#3713 review).
+  // with the URL as the address it actually tried (archive#3713).
   const { activeConnection } = useConnections();
   const activeConnectionName = activeConnection?.name;
   const activeConnectionUrl = activeConnection?.url;
@@ -155,16 +155,16 @@ function App() {
       pollInterval: 10_000,
     });
 
-  // station#1912: point the operator at anything blocking on them, at the OS
+  // archive#1912: point the operator at anything blocking on them, at the OS
   // level, on desktop hosts. In-app surfaces are unchanged.
   useApprovalOsAlerts();
   // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();
-  // station#1223: invalidate the persisted (cache-first) query whitelist the
+  // archive#1223: invalidate the persisted (cache-first) query whitelist the
   // moment the connection is confirmed reachable, so restored/stale data is
   // immediately followed by a fresh refetch.
   useQueryCacheReconnectSync();
-  // station#1224 (offline slice 2): drain the outbound turn queue the
+  // archive#1224 (offline): drain the outbound turn queue the
   // moment the connection is confirmed reachable (and once on mount, for a
   // queue that survived a restart into an already-reachable server).
   const {
@@ -270,7 +270,7 @@ function App() {
 
   // Drag handling - handled by ChatDock
 
-  // A `/?project=<name>` deep-link from the `station` launcher (#1986) pre-
+  // A `/?project=<name>` deep-link from the `station` launcher (archive#1986) pre-
   // selects a project. Read the selector once at mount (the launcher opens a
   // fresh page with it); an empty value is treated as absent.
   const requestedProject = useMemo(
@@ -344,7 +344,7 @@ function App() {
     navigate,
   ]);
 
-  // Single pre-render resolution point for what `/` means (#223 fix). Pure
+  // Single pre-render resolution point for what `/` means (archive#223 fix). Pure
   // + unit-tested in resolve-home-surface.test.ts — this is the only place
   // that decides the home route; `resolveViewFromPath`'s root-path branch
   // (routing.ts) stays a URL-parse convenience only, no longer trusted for
@@ -399,7 +399,7 @@ function App() {
     displayCurrentView.type !== 'layout' ||
     (!selectedLayoutLoading && !isChatWorkspaceLayout);
   /**
-   * A full-screen mobile dock owns the whole viewport (station#4460: any
+   * A full-screen mobile dock owns the whole viewport (archive#4460: any
    * occupant, not just Chat — `ChatDockMobileHeader` already carries the app
    * chrome for the docked case, and the shared `DockShell` behaves
    * identically regardless of occupant). A project layout owns the visible
@@ -531,7 +531,7 @@ function App() {
           Station's release channel at launch. The Settings surface consumes
           this same React Query key and renders the cached result/action
           without a duplicate request. */}
-          {/* #2773: a rejected chunk is cached by React forever, and these mount
+          {/* archive#2773: a rejected chunk is cached by React forever, and these mount
           above the whole shell — an unguarded 404 after a deploy rebuilt
           dist-ui would blank the app rather than lose one piece of chrome. */}
           <LazyBoundary
@@ -684,16 +684,16 @@ function HomeRouteHostUnavailable({
 }: {
   reason: ConnectionFailureReason | null;
   /** The saved connection's short name when one exists, else the URL —
-   * `connectionFailureCopy`'s own display contract (station#3713 review:
+   * `connectionFailureCopy`'s own display contract (archive#3713:
    * "http://localhost:3141 isn't accepting this device" should name the
    * Station the user saved). */
   host: string;
   address: string;
 }) {
-  // station#3711: this used to say "Workspace unavailable while offline" for
+  // archive#3711: this used to say "Workspace unavailable while offline" for
   // EVERY non-connected state — an authentication rejection or a version
   // mismatch became a false device-network claim. The connection layer
-  // already derives a typed reason with actionable per-reason copy (#3297);
+  // already derives a typed reason with actionable per-reason copy (archive#3297);
   // render that. `awaiting-approval` is not a failure to explain
   // (environmentProfiles' own contract) and null means no probe has produced
   // a verdict yet — both fall back to copy that claims nothing beyond

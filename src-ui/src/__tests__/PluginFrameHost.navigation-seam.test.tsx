@@ -7,7 +7,7 @@ import { NavigationProvider } from '../contexts/NavigationContext';
 import { LAST_PROJECT_LAYOUT_KEY } from '../contexts/navigation-store';
 
 /**
- * station#3323's whole claim is that a granted plugin navigation reaches the
+ * archive#3323's whole claim is that a granted plugin navigation reaches the
  * REAL navigation seam. The sibling suite mocks `NavigationContext`, so it
  * proves the host calls whatever it was handed — it would stay green if the
  * provider were absent at the real mount point, which is exactly how the

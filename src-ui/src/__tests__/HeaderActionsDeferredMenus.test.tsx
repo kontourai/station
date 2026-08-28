@@ -4,13 +4,13 @@
 
 /**
  * The header's three dropdowns — notification history, help menu, overflow menu
- * — are mounted behind `showX && <Suspense>` + `React.lazy` so their markup
- * stays out of the first-paint chunk (station#2751). Each one already opened
+ * are mounted behind `showX && <Suspense>` + `React.lazy` so their markup
+ * stays out of the first-paint chunk (archive#2751). Each one already opened
  * with `if (!isOpen) return null`, so deferring the *mount* is meant to be
  * invisible: closed still renders nothing, open still renders the panel.
  *
  * `HeaderActions.test.tsx` cannot police that. It stubs all three modules to
- * `() => null` and only ever renders them with `showX={false}`, so forcing any
+ * ` => null` and only ever renders them with `showX={false}`, so forcing any
  * of the three gates to `false` leaves its 27 assertions green — verified by
  * injection. This file supplies the missing direction: it renders each surface
  * *open* and asserts the lazily-imported component actually reaches the DOM, so

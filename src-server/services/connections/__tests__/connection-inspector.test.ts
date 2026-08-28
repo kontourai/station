@@ -175,7 +175,7 @@ describe('ConnectionInspector Interface', () => {
     ).resolves.toMatchObject({ kind: 'timed-out', connections: [] });
   });
 
-  // station#3344 (review HIGH-1). The ACP view is the ONLY capability source
+  // archive#3344 (review HIGH-1). The ACP view is the ONLY capability source
   // the composer sees for an ACP session, and this branch hand-builds it
   // rather than reading the adapter — so its capability list had quietly lost
   // `image-input` while `acp-adapter.ts` declared it, built real image

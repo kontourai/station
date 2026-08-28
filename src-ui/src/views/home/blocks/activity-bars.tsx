@@ -1,7 +1,7 @@
 /**
  * Activity per project over a fixed window, as bars on a shared baseline.
  *
- * A BLOCK: it survived station#3122's variant experiment and belongs to the
+ * A BLOCK: it survived archive#3122's variant experiment and belongs to the
  * one Home now. Kept in `blocks/` rather than folded into `HomeSurface.tsx`
  * because its grid derivation is the block's claim and is pinned by
  * `__tests__/activity-bars.test.ts` without rendering a page.
@@ -58,7 +58,7 @@ export function buildHeatRows(items: HomeWorkItem[], now: number): HeatRow[] {
     // This clamp is load-bearing, not tidiness: a negative age yields
     // `bucket = BUCKET_COUNT`, `row.cells[BUCKET_COUNT]` is undefined, and the
     // `cell.count` read below throws — taking the whole Home route down to
-    // its error boundary for one skewed timestamp. Verified by injection.
+    // its error boundary for one skewed timestamp.
     //
     // It also keeps this agreeing with `bucketByRecency`, the sibling time
     // function Home renders below it, which files a future item under Today.
@@ -141,7 +141,7 @@ export function ActivityBars({
   resolveProjectOpen?: (row: HeatRow) => (() => void) | null;
 }) {
   /**
-   * station#3768: a twelve-column chart cannot hold twelve 44px targets in a
+   * archive#3768: a twelve-column chart cannot hold twelve 44px targets in a
    * phone-width row — twelve buttons at ~18px wide are not a small control,
    * they are an unhittable one, and a transparent 44px hit area would make
    * them overlap each other four deep. On a coarse pointer the chart is

@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3/4 — the hash chain. The point of chaining rather
+ * archive#1398/4 — the hash chain. The point of chaining rather
  * than per-record digesting is that a DELETED record is detectable, so the
  * deletion case is the load-bearing test here.
  */

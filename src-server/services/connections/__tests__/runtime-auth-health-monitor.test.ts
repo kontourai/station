@@ -27,7 +27,7 @@ function runtimeEvent(
 describe('runtime auth health monitor', () => {
   afterEach(() => {
     vi.useRealTimers();
-    // station#3587 review MEDIUM-1: every `vi.spyOn(console, 'warn')` in
+    // archive#3587 review MEDIUM-1: every `vi.spyOn(console, 'warn')` in
     // this file only calls `mockRestore()` AFTER its own assertions — so a
     // failing assertion on ONE test's spy (asserted before `mockRestore()`
     // runs) leaves that spy in place. `@vitest/spy`'s `vi.spyOn` on an
@@ -73,12 +73,12 @@ describe('runtime auth health monitor', () => {
     expect(isRuntimeAuthenticationFailure({ message, code })).toBe(false);
   });
 
-  // station#3509 fix round FIX 2: executes clearsRuntimeAuthHealth's
-  // rejection path directly. station#3587 update: `'other'` DOES now reach
+  // archive#3509 fix round FIX 2: executes clearsRuntimeAuthHealth's
+  // rejection path directly. archive#3587 update: `'other'` DOES now reach
   // this predicate through the live EventBus path — `WELL_FORMED_FINISH_REASONS`
   // (the monitor's malformed check) accepts it as well-formed, so
   // `onServerEvent` calls `clearsRuntimeAuthHealth('other')` for real; this
-  // file's dedicated station#3587 test below exercises that end-to-end
+  // file's dedicated archive#3587 test below exercises that end-to-end
   // coupling. An arbitrary unrecognized string and `undefined` still cannot
   // reach this predicate through the live path (the malformed check refuses
   // both before `onServerEvent` ever calls it) — this remains the reachable
@@ -168,7 +168,7 @@ describe('runtime auth health monitor', () => {
     monitor.dispose();
   });
 
-  // station#3545: the user-visible harm this issue exists to fix, proven
+  // archive#3545: the user-visible harm this issue exists to fix, proven
   // END TO END rather than with a hand-typed stand-in for the adapter's
   // output. Before the fix, `BedrockAdapter` published `turn.completed` with
   // `finishReason: 'other'` for every successful turn — Bedrock's stream
@@ -184,7 +184,7 @@ describe('runtime auth health monitor', () => {
   // `normalizeFinishReason`/`?? 'stop'` fallback still only applies to a
   // genuinely absent value.
   //
-  // station#3545 delta review round 3: this used to hard-code a single
+  // archive#3545 delta review round 3: this used to hard-code a single
   // `finishReason: 'stop'` fixture. That is the FAITHFUL, ordinary-case shape
   // post-fix, but it means this test no longer drives the absence path at
   // all — round 1's original defect (`normalizeFinishReason` collapsing
@@ -282,8 +282,8 @@ describe('runtime auth health monitor', () => {
     },
   );
 
-  // station#3587 review "Pin the auth-erasure coupling permanently": the
-  // harm HIGH-1 fixed (station#3596, folded into station#3586's own change)
+  // archive#3587 review "Pin the auth-erasure coupling permanently": the
+  // harm HIGH-1 fixed (archive#3596, folded into archive#3586's own change)
   // was that a FAILED Ollama turn could erase its own recorded auth
   // failure — both halves of that composition look correct in isolation
   // (`OllamaAdapter` throws on an error chunk; `RuntimeAuthHealthMonitor`
@@ -394,7 +394,7 @@ describe('runtime auth health monitor', () => {
     // 'interrupted'` to `'cancelled'`) and ACP (`mapAcpStopReasonToFinishReason`
     // maps `StopReason: 'cancelled'` straight through) — NOT "every adapter":
     // bedrock/ollama route their own interrupt handling through `turn.aborted`
-    // instead (station#3466), muse routes an interrupt to `runtime.error`, and
+    // instead (archive#3466), muse routes an interrupt to `runtime.error`, and
     // claude's `turn.completed` only ever carries `'tool-calls'`/`'stop'`.
     // This must not throw `RuntimeAuthHealthEventDiagnostic`. Fix round FIX 3:
     // unlike a genuine content-producing completion, it must NOT clear the
@@ -417,7 +417,7 @@ describe('runtime auth health monitor', () => {
   });
 
   test.each(['stop', 'tool-calls', 'max-tokens'])(
-    // station#3509 fix round MEDIUM 2: PROVIDER_PROVEN_FINISH_REASONS is an
+    // archive#3509 fix round MEDIUM 2: PROVIDER_PROVEN_FINISH_REASONS is an
     // allowlist, not WELL_FORMED_FINISH_REASONS minus 'cancelled'/'other' —
     // this pins its full, exact membership (all three clear) rather than
     // just one representative member.
@@ -484,21 +484,21 @@ describe('runtime auth health monitor', () => {
     monitor.dispose();
   });
 
-  // station#3509 follow-up, station#3587 rewrite: `finishReason: 'other'` is
-  // NOT a failed completion — it means "unclassified" (station#3545 fixed
+  // archive#3509 follow-up, archive#3587 rewrite: `finishReason: 'other'` is
+  // NOT a failed completion — it means "unclassified" (archive#3545 fixed
   // the Bedrock producer that used to publish `'other'` for every ordinary
   // successful turn; this test's ORIGINAL name asserted that inverted
   // model). It pins a permanent property of this monitor: an unclassified
   // finish reason never has clear authority — see
   // `PROVIDER_PROVEN_FINISH_REASONS`.
   //
-  // Before station#3587, this test's only assertion (`getFailure` still
+  // Before archive#3587, this test's only assertion (`getFailure` still
   // non-null) could not distinguish "well-formed, correctly withheld clear
   // authority" from "diagnosed as MALFORMED, never reached the clear
   // decision at all" — both produce an unchanged failure record, and the
   // monitor was doing the latter (`onServerEvent` threw
   // `RuntimeAuthHealthEventDiagnostic` before `clear()` was ever
-  // considered). That is precisely the gap station#3587 fixed: a
+  // considered). That is precisely the gap archive#3587 fixed: a
   // well-formed `'other'` tripped the malformed diagnostic. This version
   // proves BOTH halves — the diagnostic must NOT fire (spying on
   // `console.warn`, since `EventBus` catches a thrown diagnostic and warns
@@ -969,7 +969,7 @@ describe('runtime auth health monitor', () => {
       message: 'Unauthorized '.repeat(512),
     },
     {
-      // station#3509: `cancelled` is now an accepted finish reason (a
+      // archive#3509: `cancelled` is now an accepted finish reason (a
       // deliberate user action, not a malformation) — this case pins that a
       // MISSING finish reason is still diagnosed as malformed. Omission
       // (rather than the literal `'other'`) is deliberate (fix round FIX 4):
@@ -977,7 +977,7 @@ describe('runtime auth health monitor', () => {
       // the same check, so this exercises a genuinely distinct branch from
       // the literal-`'other'` case covered elsewhere in this file — not
       // because a literal `'other'` would have been wrong here.
-      // station#3587 correction: a literal `'other'` fixture in this spot
+      // archive#3587 correction: a literal `'other'` fixture in this spot
       // would NO LONGER be malformed — `WELL_FORMED_FINISH_REASONS` now
       // includes it (see `runtime-auth-health-monitor.ts`). This is the one
       // remaining genuinely-malformed shape for a `turn.completed`: an
@@ -1027,17 +1027,17 @@ describe('runtime auth health monitor', () => {
         finishReason: 'stop',
       },
       {
-        // station#3509: `cancelled` is now accepted, so this case uses a
+        // archive#3509: `cancelled` is now accepted, so this case uses a
         // MISSING finish reason to stay genuinely malformed — in-vocabulary
         // (the field is optional and its absence is diagnosed malformed too)
         // and a genuinely distinct branch from the literal `'other'` case
-        // covered elsewhere in this file (fix round FIX 4). station#3587
+        // covered elsewhere in this file (fix round FIX 4). archive#3587
         // correction: a literal `'other'` here would NO LONGER be malformed
         // (`WELL_FORMED_FINISH_REASONS` now includes it) — the two fixtures
         // used to exercise different code paths to the same "still
         // malformed" outcome; now only the missing-field fixture is
         // malformed at all. `'other'`'s "does not clear" half is covered
-        // separately, without a throw, by this file's dedicated station#3587
+        // separately, without a throw, by this file's dedicated archive#3587
         // test.
         eventId: 'event-3',
         provider: 'codex',

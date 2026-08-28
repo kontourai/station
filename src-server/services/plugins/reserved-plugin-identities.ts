@@ -17,7 +17,7 @@
  *
  * This list used to live in `plugin-api-surface.ts`, where it refused to
  * AUTHORIZE the plugin frame's `api-request` bridge for a colliding identity.
- * That bridge is gone (station#4300), but the collision never depended on it:
+ * That bridge is gone (archive#4300), but the collision never depended on it:
  * the two route sets overlap whether or not anything asks the shell to call
  * them. The name is what creates the overlap, so the name is what is refused,
  * once, at the moment a plugin tree is written.

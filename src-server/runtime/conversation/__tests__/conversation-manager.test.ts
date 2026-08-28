@@ -54,7 +54,7 @@ describe('getConversationStats — orchestration fallback (station#1299 slice 1)
     });
     // The aggregate reported no cost, so the view reports no cost. This
     // assertion used to read `estimatedCost: 0`, which is what reached the
-    // modal as `$0.0000` (station#3201).
+    // modal as `$0.0000` (archive#3201).
     expect(data.estimatedCost).toBeUndefined();
     expect((data as any).measurement).toEqual({ source: 'engine-events' });
     expect((data as any).notFound).toBeUndefined();
@@ -204,7 +204,7 @@ describe('getConversationStats — orchestration fallback (station#1299 slice 1)
   });
 
   test('an engine that reports usage through its own channel yields activity with every measurement absent', async () => {
-    // The ACP/OpenCode shape from station#3201's screenshot: context
+    // The ACP/OpenCode shape from archive#3201's screenshot: context
     // occupancy and nothing else. Every other figure must stay absent
     // rather than render as a measured zero.
     const data = await getConversationStats(
@@ -317,7 +317,7 @@ describe('getConversationStats — orchestration fallback (station#1299 slice 1)
       // large the window is; the inventory resolves that. Before this
       // change the percentage was computed from `totalTokens` — a sum
       // across turns of everything sent AND received, which is not context
-      // occupancy at all (station#1299's double-count).
+      // occupancy at all (archive#1299's double-count).
       contextTokens: 100_000,
       turns: 1,
       toolCalls: 0,
@@ -420,7 +420,7 @@ describe('getConversationStats — cache-honest stats wire (station#4196)', () =
     }) as unknown as CanonicalRuntimeEvent;
 
   /**
-   * The #4048 audit's 212x known-answer fixture, folded by the REAL
+   * The archive#4048 audit's 212x known-answer fixture, folded by the REAL
    * `foldUsageEvents`: cold-cache 3-turn Claude session, input 30/45/60,
    * cache_creation 9000/400/700, cache_read 0/9000/9400. Honest prompt-side
    * tokens are 135 + 10,100 + 18,400 = 28,635; the pre-fix wire carried 135
@@ -577,7 +577,7 @@ describe('getConversationStats — bedrock reported usage renders as reported (s
 
   /**
    * The event shapes the Bedrock adapter now actually publishes
-   * (station#4197's `bedrockReportedUsage`): per-turn wire figures, cache
+   * (archive#4197's `bedrockReportedUsage`): per-turn wire figures, cache
    * fields only when the Converse wire carried them, no totalTokens.
    * Before this fix the adapter published NOTHING here, the fold had no
    * usage signal, and the modal told the user the engine "did not report

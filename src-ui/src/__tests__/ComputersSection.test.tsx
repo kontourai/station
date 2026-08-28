@@ -405,7 +405,7 @@ describe('ComputersSection', () => {
     expect(screen.getByRole('button', { name: 'Remove' })).toBeTruthy();
   });
 
-  // sol review finding 5. This section constructed its OWN
+  //This section constructed its OWN
   // `KnownEnvironmentRegistry`, so it subscribed to listeners nobody else
   // notified: the add dialog wrote to the same localStorage through a
   // different instance and this list did not hear about it. The code comment

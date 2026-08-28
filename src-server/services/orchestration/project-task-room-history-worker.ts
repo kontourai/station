@@ -423,7 +423,7 @@ function validRequest(value: unknown): value is Request {
   );
 }
 const db = new DatabaseSync(init.databasePath, { timeout: 175 });
-// station#3661: bounded retry rather than a silent swallow — see
+// archive#3661: bounded retry rather than a silent swallow — see
 // `enableWalJournalMode` for why `busy_timeout` does not cover this pragma.
 applyWalJournalMode(db, { store: 'project task room history' });
 db.exec(PROJECT_TASK_ROOM_HISTORY_MIGRATION);

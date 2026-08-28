@@ -11,8 +11,8 @@ import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 /**
- * The client authority projection is fail-closed (station#3122 stage 3,
- * re-review finding 2). The status rides the shared TanStack Query cache,
+ * The client authority projection is fail-closed (archive#3122,
+ * re-). The status rides the shared TanStack Query cache,
  * so "no client cache" would be a false claim — the enforceable rule is
  * that a cached `granted` never survives the server being unable to affirm
  * it: an errored read projects to `undefined` (the floor), and revocation

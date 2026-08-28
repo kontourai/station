@@ -66,7 +66,7 @@ describe('ProjectSidebarRow', () => {
   });
 
   /**
-   * station#3202. The number was `aria-hidden` beside a visually-hidden
+   * archive#3202. The number was `aria-hidden` beside a visually-hidden
    * sentence, so it was announced but never SHOWN in words — "what does the
    * '6' next to kontour mean?". The label is supplied by the same derivation
    * that produced the count; the row must render it in both channels and must

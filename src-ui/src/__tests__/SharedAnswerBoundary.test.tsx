@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SharedAnswerBoundary } from '../views/share/SharedAnswerBoundary';
 
 /**
- * station#1423 security review L-1 — the share page sits above the app shell,
+ * archive#1423 — the share page sits above the app shell,
  * so nothing else catches a throw or a failed chunk fetch. Both used to
  * white-screen indistinguishably, which makes an honest message impossible.
  */

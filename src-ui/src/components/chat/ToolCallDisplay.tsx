@@ -66,7 +66,7 @@ const KIND_GLYPH: Record<
 };
 
 /**
- * One work activity as a quiet, single-line row (station#2652 redesign):
+ * One work activity as a quiet, single-line row (archive#2652 redesign):
  * a small kind glyph, a verb-first label ("Read app.tsx", "Ran npm run
  * build:ui"), and — only when something went wrong — a visible outcome flag.
  * The prose leads; the activity recedes.
@@ -75,7 +75,7 @@ const KIND_GLYPH: Record<
  *
  * - **A failure is visible without expanding.** `error`/`state: 'error'`
  *   renders a collapsed "Failed" flag; a denial renders its own badge
- *   ("User denied" / "Blocked by Station" — the station#3091/#3117
+ *   ("User denied" / "Blocked by Station" — the archive#3091/#3117
  *   distinction is preserved verbatim). A reader never has to open a row to
  *   learn the call went wrong.
  * - **No expand affordance over nothing.** A call with no arguments, no
@@ -95,7 +95,7 @@ function ToolCallDisplayComponent({
   const [isExpanded, setIsExpanded] = useState(false);
 
   const id = toolCall.toolCallId || '';
-  // Identity-keyed one-shot entrance (station#2651): keyed to the tool call
+  // Identity-keyed one-shot entrance (archive#2651): keyed to the tool call
   // id, never to mount, so virtualizer recycling, stream→history promotion,
   // and expand/collapse cannot replay it. A call without a stable id gets no
   // entrance rather than a replaying one.
@@ -192,8 +192,8 @@ function ToolCallDisplayComponent({
         </span>
       )}
       {approvalStatus === 'policy-denied' && (
-        // station#3117: worded for the AUTHORITY that refused the call, not
-        // the verdict — `deny()` (pre-tool-policy.ts) stamps this same
+        // archive#3117: worded for the AUTHORITY that refused the call, not
+        // the verdict — `deny` (pre-tool-policy.ts) stamps this same
         // marker on all eight `ToolDenialReason` values, and two of them (a
         // stale-generation race, a fail-closed evaluator crash) are not a
         // deliberate policy verdict. "Blocked by Station" is true for every
@@ -353,7 +353,7 @@ function ToolCallDetails({
     remainingArgs && typeof remainingArgs === 'object'
       ? Object.keys(remainingArgs).length > 0
       : Boolean(remainingArgs);
-  // station#3507 (fix round): `remainingArgs` can already be a string, the
+  // archive#3507: `remainingArgs` can already be a string, the
   // same way `result` below can — `ToolStartedEvent.arguments` is `unknown`,
   // `runtime-event-projection.ts` passes it through unchanged (`args:
   // ev.arguments`), and an ACP-connected engine's `resolveToolArguments` can
@@ -371,14 +371,14 @@ function ToolCallDetails({
         : JSON.stringify(remainingArgs, null, 2),
     [remainingArgs],
   );
-  // station#3507: `result` is already a string on the restored (event-window)
+  // archive#3507: `result` is already a string on the restored (event-window)
   // path — `runtime-event-projection.ts`'s `resultText` returns a string for
   // EVERY tool result unconditionally (a non-string `output` is
   // JSON-serialised there; a string `output` passes through as-is), so the
   // restored `result` this component receives is always a string, never
   // sometimes. Upstream of that, `event-store.ts`'s `snapshotEvent` also
   // JSON-serialises a structured `output` before it reaches the client
-  // (station#3462) rather than collapsing it to `"[object Object]"`, but
+  // (archive#3462) rather than collapsing it to `"[object Object]"`, but
   // `resultText` is the derivation that actually guarantees the string-ness
   // this component sees — a future fix to `snapshotEvent` alone would not
   // change that. The live path (`streamHandlers.ts`) sets `result` to the
@@ -390,7 +390,7 @@ function ToolCallDetails({
   // (`JSON.stringify(result, null, 2)`); restored renders `resultText`'s
   // compact one-line form verbatim, because that string is what arrives.
   // Same event, still two different renderings — just no longer an escaped
-  // one. station#3507's own prescribed fix is this type check; reformatting
+  // one. archive#3507's own prescribed fix is this type check; reformatting
   // the restored string is a separate, undecided change.
   const resultJson = useMemo(
     () =>

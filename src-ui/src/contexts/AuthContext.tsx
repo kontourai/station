@@ -38,7 +38,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 /**
  * The expiry we already hold, unless the server named a different instant.
  *
- * station#3796: `setExpiresAt(new Date(...))` on every poll manufactured a
+ * archive#3796: `setExpiresAt(new Date(...))` on every poll manufactured a
  * new identity once a minute even when nothing about the session had
  * changed. Status, provider and user all bail out of `setState` on their own
  * (primitives, and TanStack's structural sharing for `user`), so this Date
@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // `renewAuthMutation` itself is a fresh object every render (TanStack
   // returns a new result object); `mutateAsync` is the stable handle, so
   // depending on it is what makes `renew` — and the context value below —
-  // hold their identity (station#3796).
+  // hold their identity (archive#3796).
   const renewAsync = renewAuthMutation.mutateAsync;
   const renew = useCallback(async () => {
     setIsRenewing(true);

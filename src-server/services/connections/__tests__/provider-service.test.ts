@@ -613,7 +613,7 @@ describe('ProviderService', () => {
     });
   });
 
-  // #191 code-review M2: the dedup-conflict message must not hardcode a
+  // archive#191 code-review M2: the dedup-conflict message must not hardcode a
   // single provider name, since HOST_IDENTIFIED_PROVIDER_TYPES is designed
   // to grow beyond Ollama.
   describe('providerTypeLabel (#191 code-review M2)', () => {

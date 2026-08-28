@@ -202,7 +202,7 @@ describe('vended tool compatibility', () => {
             },
           ],
           // form fields are input definitions, not asserted facts — always
-          // decorative, no derivedFrom required (station#1399 slice 1).
+          // decorative, no derivedFrom required (archive#1399).
           derivedFrom: undefined,
           provenanceDigest: undefined,
           attestationState: 'decorative',
@@ -236,7 +236,7 @@ describe('vended tool compatibility', () => {
           language: 'bash',
           code: 'npm run verify:static',
           // code is inert text, not structured data — always decorative
-          // (station#1399 slice 1).
+          // (archive#1399).
           derivedFrom: undefined,
           provenanceDigest: undefined,
           attestationState: 'decorative',

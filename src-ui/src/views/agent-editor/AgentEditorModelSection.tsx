@@ -64,13 +64,13 @@ export function AgentEditorModelSection({
     data?: ConnectionConfig[];
   };
   const disabled = locked || !!(isPlugin && isLocked);
-  // station#3747: the inventory route is LLM-capable by contract; enabled is
+  // archive#3747: the inventory route is LLM-capable by contract; enabled is
   // the only question left for this list to ask.
   const modelConnectionOptions = modelConnections.filter(
     (connection) => connection.enabled,
   );
   /**
-   * The SAME answer Create is gated on (station#3743). When this section says
+   * The SAME answer Create is gated on (archive#3743). When this section says
    * a connection will serve the agent, Create is pressable; when it says why
    * one will not, that sentence is the reason Create is disabled. There is no
    * second opinion to drift from.
@@ -166,7 +166,7 @@ export function AgentEditorModelSection({
             }
           >
             {modelConnectionOptions.length === 0
-              ? // station#4521 LOW-1: matches CONNECTION_SECTIONS' own
+              ? // archive#4521 LOW-1: matches CONNECTION_SECTIONS' own
                 // `addLabel` for the models section (connection-sections.ts)
                 // — the canonical copy for this action, not a second wording
                 // this file invented.

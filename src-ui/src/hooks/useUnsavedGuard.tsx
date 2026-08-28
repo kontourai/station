@@ -14,7 +14,7 @@ import { navigationStore } from '../contexts/navigation-store';
  *
  * Usage:
  *   const { guard, DiscardModal } = useUnsavedGuard(dirty);
- *   function handleSelect(id) { guard(() => doSelect(id)); }
+ *   function handleSelect(id) { guard( => doSelect(id)); }
  *   return <>{view}<DiscardModal /></>;
  */
 export function useUnsavedGuard(dirty: boolean) {
@@ -80,7 +80,7 @@ export function useUnsavedGuard(dirty: boolean) {
   // whole dialog subtree rather than updating it.
   //
   // That was survivable before ConfirmModal gained a real focus trap, because
-  // the old effect re-ran `firstBtn?.focus()` and papered over it. It is not
+  // the old effect re-ran `firstBtn?.focus` and papered over it. It is not
   // survivable now: the unmounting instance's cleanup schedules an rAF focus
   // restore, the remounted instance focuses Cancel, and then the stale rAF
   // fires and pulls focus to the trigger BEHIND the open dialog — after which

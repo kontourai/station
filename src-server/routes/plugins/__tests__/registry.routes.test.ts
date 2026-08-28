@@ -444,7 +444,7 @@ describe('Registry Routes', () => {
       {
         registryId: 'p1',
         registryKey: 'test-registry',
-        // station#4288: this route installs on one click with no preview and
+        // archive#4288: this route installs on one click with no preview and
         // no prompt, so it declares that it holds no operator decision rather
         // than passing one nobody made. The installer refuses exactly what
         // this route could not have disclosed.
@@ -457,7 +457,7 @@ describe('Registry Routes', () => {
   });
 
   /**
-   * station#4309 follow-up, defect 1. The second route that can observe a
+   * archive#4309 follow-up, defect 1. The second route that can observe a
    * refused plugin content lock. It answers the same 409, from the same
    * derivation, as the direct install route — two routes describing one
    * refusal differently is how a reader learns to trust neither.

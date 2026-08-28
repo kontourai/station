@@ -1,5 +1,5 @@
 /**
- * station#3203: opening a notification's target is an acknowledgement.
+ * archive#3203: opening a notification's target is an acknowledgement.
  *
  * The tray badge counts attention items that carry no `acknowledgedAt`
  * (`AttentionProjectionService.list`), and until now only the Dismiss button

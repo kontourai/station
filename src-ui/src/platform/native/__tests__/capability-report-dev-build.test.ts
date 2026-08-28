@@ -17,7 +17,7 @@ import type { NativeCapabilityId, NativeCapabilityState } from '../types';
  * `src-ui/src/__tests__/native-platform.test.ts`. `parseCapabilityReport`
  * requires an exact set match, so a fixture that falls one id behind stops
  * testing the dev-build flag at all and starts testing the rejection path
- * under a passing-looking name (station#1667). A `Record` over the closed
+ * under a passing-looking name (archive#1667). A `Record` over the closed
  * union makes the next capability a typecheck failure here.
  */
 const CAPABILITY_STATES: Record<NativeCapabilityId, NativeCapabilityState> = {

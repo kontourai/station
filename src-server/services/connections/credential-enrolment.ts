@@ -1,5 +1,5 @@
 /**
- * station#3549: enrol an account into a credential profile by delegating the
+ * archive#3549: enrol an account into a credential profile by delegating the
  * login to the engine's OWN CLI, pointed at a Station-owned app-home.
  *
  * ## Why Station does not implement OAuth

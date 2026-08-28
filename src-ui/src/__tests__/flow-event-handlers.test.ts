@@ -118,7 +118,7 @@ describe('flow orchestration event handlers', () => {
   });
 
   /**
-   * station#189: the binding's freshness is PERSISTED, so an attach-time
+   * archive#189: the binding's freshness is PERSISTED, so an attach-time
    * snapshot that is never refreshed keeps a run reading "never evaluated"
    * for the life of the session and across reloads. The refresh takes the
    * server's derivation verbatim — the client never computes freshness.

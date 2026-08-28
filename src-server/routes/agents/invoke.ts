@@ -198,7 +198,7 @@ export function createInvokeRoutes(
           );
 
           requireCurrentRuntimeConfiguration(ctx, configurationLease);
-          // station#1834: unattended streaming invoke — no approval channel.
+          // archive#1834: unattended streaming invoke — no approval channel.
           // The authenticated caller NAMING the tools in the request is the
           // consent artifact for this invocation, so that explicit list is
           // the autoApprove grant; policy (config-protection) still applies

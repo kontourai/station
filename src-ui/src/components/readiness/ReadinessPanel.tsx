@@ -17,14 +17,14 @@ import { Empty, SkeletonBlock } from '../state';
 import './ReadinessPanel.css';
 
 // ─── ReadinessPanel ───────────────────────────────────────────────────────────
-// Veritas merge readiness for the project workspace (roadmap S1b). Renders the
+// Veritas merge readiness for the project workspace (roadmap). Renders the
 // requirement list + status chips from `veritas readiness` and a per-item
 // "Why is this allowed to merge?" evidence detail from the Surface trust
 // report. Bespoke Station rendering — the <surface-trust-panel> web component
-// only styles against Console Kit --k-* tokens (S2) and has no hooks into
+// only styles against Console Kit --k-* tokens and has no hooks into
 // Station tokens, so we render from the JSON trust report instead.
 //
-// Styled on the Console Kit contract (S2 item 4): `.panel`/`.panel-head`
+// Styled on the Console Kit contract: `.panel`/`.panel-head`
 // chrome, `StatusBadge` for the overall verdict, `Badge` + tone classes for
 // requirement/claim statuses, `--k-*` tokens throughout. Tone mapping for the
 // seven readiness statuses lives in components/kontour/station-tones.ts.
@@ -255,7 +255,7 @@ export function ReadinessPanel({
   // project's data while the new project's readiness is in flight — it is
   // false for a same-project background refetch. This is the signal that
   // must never go unmarked: the content on screen belongs to a different
-  // project than the one currently selected (station#3092).
+  // project than the one currently selected (archive#3092).
   const showingPreviousProject = isPlaceholderData;
 
   return (

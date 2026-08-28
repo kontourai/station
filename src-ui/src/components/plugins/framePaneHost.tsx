@@ -24,7 +24,7 @@ import {
 import { resolvePluginNavigationTarget } from './plugin-navigation-target';
 
 /**
- * The frame (tier 3) adapter for `WorkspacePaneHostContract` (station#4201,
+ * The frame (tier 3) adapter for `WorkspacePaneHostContract` (archive#4201,
  * `docs/design/pane-host-contract.md` sequencing step 3).
  *
  * The design claims ONE interface serves both runtime tiers. Until this
@@ -32,7 +32,7 @@ import { resolvePluginNavigationTarget } from './plugin-navigation-target';
  * which proves nothing about a boundary; this is the second transport, and
  * what makes the claim falsifiable. The frame was already speaking two of the
  * contract's intents in message form — `toast` and `navigate`, added ad hoc
- * in station#3308 and station#3323 — so convergence here is recognising a
+ * in archive#3308 and archive#3323 — so convergence here is recognising a
  * protocol, not inventing one: those two messages are now this adapter's
  * `notify` and `navigate`, absorbed rather than reimplemented beside it.
  *
@@ -51,7 +51,7 @@ import { resolvePluginNavigationTarget } from './plugin-navigation-target';
  *    payload decoding lives here. A malformed request is refused, never
  *    coerced.
  * 2. **A message this adapter does not recognise is refused, not dropped.**
- *    Silence is how station#3308 and station#3323 both stayed broken for
+ *    Silence is how archive#3308 and archive#3323 both stayed broken for
  *    months: the capability was advertised and the message went nowhere, and
  *    nothing said so. Every refusal posts a `pane-host/refused` reply naming
  *    the method and the reason.
@@ -242,7 +242,7 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
         refuse('notify', 'rate-limited');
         return;
       }
-      // station#3308: the old `station-plugin-toast` CustomEvent had no
+      // archive#3308: the old `station-plugin-toast` CustomEvent had no
       // listener anywhere — the advertised toast capability silently did
       // nothing. Route straight into the ToastStore, attributed to the
       // plugin so a frame cannot impersonate Station chrome messages.
@@ -494,7 +494,7 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
 
   // `refuse` is deliberately NOT returned. It was exposed for the one uplink
   // message the placement decoded itself — `api-request`, deleted in
-  // station#4300 — and every refusal now originates inside this adapter. A
+  // archive#4300 — and every refusal now originates inside this adapter. A
   // second caller posting `pane-host/refused` on its own terms is how
   // "refused" comes to mean two things.
   return { host, confirmChrome, receive };

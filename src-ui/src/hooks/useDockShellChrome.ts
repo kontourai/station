@@ -75,7 +75,7 @@ export interface DockShellChrome {
    * A drag that starts from Collapsed previews the real body at the live
    * pointer height without committing the open/half navigation state — the
    * release snap is the only owner of that transition. Derived once here
-   * (station#4460 review L4) so `DockShell` and a docked occupant's own
+   * (archive#4460) so `DockShell` and a docked occupant's own
    * rendering (file-drop enablement, its `resetKey`) read the SAME value
    * instead of two independent `!isDockOpen && liveDragHeight !== null`
    * computations that could disagree mid-render.
@@ -91,7 +91,7 @@ export interface DockShellChrome {
   commitDesktopBottomHeight: (height: number) => void;
   commitDockPlacement: (mode: DockMode) => void;
   /**
-   * Restores a maximized dock to its docked size — the #869 navigation
+   * Restores a maximized dock to its docked size — the archive#869 navigation
    * escape hatch. Exposed so a caller can invoke it explicitly at a
    * navigation seam this hook's own pathname-watching effect cannot see
    * (e.g. a route change with no pathname delta, only a query change).
@@ -109,7 +109,7 @@ export interface DockShellChrome {
     event: React.MouseEvent<HTMLElement>,
   ) => void;
   /**
-   * station#4525: the dock's own remembered project binding — the single
+   * archive#4525: the dock's own remembered project binding — the single
    * source of truth an occupant (Chat, and anything else project-specific)
    * CONSUMES rather than derives from its own, remounting, local state. See
    * `setActiveProjectSlug`'s doc for the update contract.
@@ -120,8 +120,8 @@ export interface DockShellChrome {
    * (`chatDockProjectSlug`, mirroring `chatDockHeight`/`chatDockWidth`) so it
    * survives a reload, and owned by this hook's one ambient instance
    * (`DockShell`) so it survives an occupant switch — the exact remount that
-   * used to reset a session-derived badge to "No project" (station#4525
-   * Phase 1). Intended callers: an explicit project-switcher pick (#4524),
+   * used to reset a session-derived badge to "No project" (archive#4525
+   * Phase 1). Intended callers: an explicit project-switcher pick (archive#4524),
    * a new chat that carries its own explicit project, and this hook's own
    * project-deletion cleanup below. Never call this merely because the
    * active session is momentarily unknown (a remount, a reconnect race) —
@@ -150,7 +150,7 @@ export interface DockShellChrome {
  * `onGeometryChange`, false for the fullscreen placement (which lives inside
  * its own route layout and has nothing to clear).
  *
- * `registersDockShortcuts` (station#4460 review H1): a DOCKED
+ * `registersDockShortcuts` (archive#4460): a DOCKED
  * `ChatWorkspacePane` STILL calls this hook once locally (rules of hooks
  * forbid calling it conditionally), even though `DockShell` already owns the
  * real registration for that render — that local call must NOT also register
@@ -174,7 +174,7 @@ export function useDockShellChrome({
    * Whether this instance reserves route space by publishing
    * `--dock-slot-size` (via `onGeometryChange`).
    *
-   * Required, and deliberately not optional (station#3972). Exactly ONE
+   * Required, and deliberately not optional (archive#3972). Exactly ONE
    * mount may publish it: the ambient shell (`DockShell`), which sits over
    * the routes. A full-screen Chat placement is INSIDE the layout, so it has
    * nothing to clear — and when it published anyway,
@@ -206,7 +206,7 @@ export function useDockShellChrome({
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockMode);
 
-  // station#4525: the dock's remembered project binding. Read LIVE every
+  // archive#4525: the dock's remembered project binding. Read LIVE every
   // render (the same pattern `chatShowReasoning`/`chatShowToolDetails` use
   // in `useChatDockState` — no one-time seed into local state) so a
   // cross-tab or Settings-import change is reflected immediately, and this
@@ -220,14 +220,14 @@ export function useDockShellChrome({
     },
     [setDeviceSetting],
   );
-  // Project-deletion cleanup (station#4525 acceptance: "only an explicit
+  // Project-deletion cleanup (archive#4525 acceptance: "only an explicit
   // picker change (or project deletion)" may change the binding). Gated on
   // `publishesDockSlotClearance` — the same single-writer flag every other
   // side effect in this hook already uses — so only the one ambient
   // `DockShell` instance reconciles this; a full-screen placement's own
   // local instance never fights it.
   //
-  // Review HIGH-1 (station#4525): the original guard was `!isLoading`,
+  // (archive#4525): the original guard was `!isLoading`,
   // which is ALSO true the instant the query settles into an ERROR — and
   // `ProjectsContext` folds a missing `data` (the error shape) to the same
   // `[]` a confirmed-empty list produces. A cold boot before the server
@@ -360,7 +360,7 @@ export function useDockShellChrome({
     [pathname, setDockMode],
   );
 
-  // #869 / #1298: a maximized dock is opaque and full-height, so navigating
+  // archive#869 / archive#1298: a maximized dock is opaque and full-height, so navigating
   // to another part of the app changed the view *underneath* it and nothing
   // moved — from the user's side the click did nothing.
   //
@@ -369,14 +369,14 @@ export function useDockShellChrome({
   // `prefers-reduced-motion`) does the animating — an instant disappearance
   // would leave the same "what just happened" gap in the other direction.
   //
-  // Uses `collapseMaximizedDock()`, NOT `setDockState(isDockOpen, false)`:
+  // Uses `collapseMaximizedDock`, NOT `setDockState(isDockOpen, false)`:
   // the dock stays open the whole time (no close-then-reopen round trip), so
   // `setDockState`'s "the caller's `maximized` argument overwrites
   // `lastDockMaximized`" behavior — correct for an explicit non-maximized
-  // open or the #945 mobile close — would instead permanently wipe the
-  // maximize preference on every one of #1298's collapse-on-navigate seams.
-  // Review finding (station#1312): this collapse now fires far more often
-  // than the original #869 effect alone did, so that clobber stopped being a
+  // open or the archive#945 mobile close — would instead permanently wipe the
+  // maximize preference on every one of archive#1298's collapse-on-navigate seams.
+  // Review finding (archive#1312): this collapse now fires far more often
+  // than the original archive#869 effect alone did, so that clobber stopped being a
   // rare edge case. `focusSession`'s `setDockState(true, lastDockMaximized)`
   // is what actually restores Full later — this is the one caller that must
   // leave `lastDockMaximized` alone.
@@ -442,9 +442,9 @@ export function useDockShellChrome({
   // write that lands after paint shows one frame of the wrong geometry. The
   // frame is invisible on an idle machine and wide under load, which is
   // exactly the shape of a defect that passes alone and fails in a full E2E
-  // bucket (station#3929).
+  // bucket (archive#3929).
   //
-  // WITH cleanup, unlike the pre-station#4460 `useAmbientDockSlotGeometry`
+  // WITH cleanup, unlike the pre-archive#4460 `useAmbientDockSlotGeometry`
   // this replaced (which deliberately had none — "removing these properties
   // cleared the shell's clearance for a window on every settings, placement
   // or occupant change"). That earlier code was reconciling TWO independent
@@ -456,7 +456,7 @@ export function useDockShellChrome({
   // `useLayoutEffect` pass, before paint, from the same closure — there is no
   // second effect and no intermediate value for anything to observe, so the
   // failure mode the old comment warned about does not apply here (review-
-  // verified, station#4460 fix round M2).
+  // verified, archive#4460).
   useLayoutEffect(() => {
     if (!publishesDockSlotClearance) return;
     onGeometryChange?.(
@@ -508,7 +508,7 @@ export function useDockShellChrome({
   });
 
   // dock.toggle / dock.maximize: the two shortcuts every dock occupant
-  // shares. Gated on `registersDockShortcuts` (station#4460 review H1) — a
+  // shares. Gated on `registersDockShortcuts` (archive#4460) — a
   // docked Chat's local instance of this hook passes false so it never
   // fights `DockShell`'s real registration for the same ids.
   useKeyboardShortcut(

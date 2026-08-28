@@ -25,9 +25,9 @@ const { mockDeleteSession, mockForkSession, mockListSessions, mockQuery } =
 const { mockBuildCliRuntimePrerequisites, mockAugmentedSpawnEnv } = vi.hoisted(
   () => ({
     mockBuildCliRuntimePrerequisites: vi.fn(),
-    // station#1156: unset by default (resolves `undefined`) so every
+    // archive#1156: unset by default (resolves `undefined`) so every
     // existing test keeps today's byte-identical `buildOptions` shape
-    // untouched -- only the dedicated '#1156' describe block below opts a
+    // untouched -- only the dedicated 'archive#1156' describe block below opts a
     // test into a concrete augmented-env value via `mockResolvedValue`/
     // `mockRejectedValueOnce`.
     mockAugmentedSpawnEnv: vi.fn(),
@@ -88,7 +88,7 @@ function createMockQuery(
 }
 
 /**
- * station#1182: a push-driven mock query, for tests that need to interleave
+ * archive#1182: a push-driven mock query, for tests that need to interleave
  * specific SDK messages with specific `sendTurn` calls in a deterministic
  * order — `createMockQuery`'s static array replays immediately and
  * independently of turn boundaries, which can't exercise per-turn reset
@@ -1568,7 +1568,7 @@ describe('ClaudeAdapter', () => {
   });
 
   /**
-   * station#1827. Reproduces the ticket's exact live shape: the SDK
+   * archive#1827. Reproduces the ticket's exact live shape: the SDK
    * delivers a `result` message with `is_error: true` (the STRUCTURED
    * sighting, "No conversation found with session ID: ...") through the
    * normal message stream, and only THEN the underlying `claude` CLI

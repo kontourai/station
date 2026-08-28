@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { createResourcePostureRoutes } from '../resource-posture-routes.js';
 
-// station#3089: proves the route half of "route -> query -> rendered state"
+// archive#3089: proves the route half of "route -> query -> rendered state"
 // — the SDK-side half (`packages/sdk/src/__tests__/resourcePosture.test.ts`)
 // and the UI-side half
 // (`src-ui/src/__tests__/ResourcePostureBannerSource.test.tsx`) both consume

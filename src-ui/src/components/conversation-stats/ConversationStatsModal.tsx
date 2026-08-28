@@ -30,7 +30,7 @@ interface ConversationStatsModalProps {
   isVisible: boolean;
   isLoading: boolean;
   /**
-   * The stats READ failed (review H1). `stats === null` is true for a failed
+   * The stats READ failed  `stats === null` is true for a failed
    * read and for a settled empty one alike, so without this the modal drew
    * "No stats available" — a measurement claim — over a request that never
    * answered.
@@ -100,7 +100,7 @@ export function ConversationStatsModal({
     : null;
 
   /**
-   * Cache honesty (station#4196). The provider is only meaningful on an
+   * Cache honesty (archive#4196). The provider is only meaningful on an
    * engine-events view — Station's own memory accounting has no cache
    * concept and keeps its plain labels. The two derivations below return a
    * number ONLY when the provider's declared inclusivity ('disjoint') backs

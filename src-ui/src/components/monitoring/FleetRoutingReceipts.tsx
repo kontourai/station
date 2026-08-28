@@ -13,7 +13,7 @@ import {
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
 
 /**
- * station#3444 fix-round (HIGH-1): three arms, one per FACT about what
+ * archive#3444: three arms, one per FACT about what
  * happened — not one per retry-state, which is what the first pass of this
  * fix got wrong.
  *
@@ -47,8 +47,8 @@ function describeFleetReceiptsFailure(error: unknown, subject: string): string {
 }
 
 /**
- * station#1398 slice 4 — the web half of the routing-receipt surface
- * (`docs/design/inference-fleet.md` §3.4, §4.5, §11 slice 4).
+ * archive#1398 — the web half of the routing-receipt surface
+ * (`docs/design/inference-fleet.md` §3.4, §4.5, §11).
  *
  * The design's whole differentiator is the receipt, so this panel exists to
  * make four things impossible to miss, each of which is a way this feature
@@ -75,7 +75,7 @@ function describeFleetReceiptsFailure(error: unknown, subject: string): string {
  * what the digests do and do not prove.
  */
 /**
- * Both halves, rendered together (security review, M-2). The serving side's
+ * Both halves, rendered together. The serving side's
  * own record is not a footnote to the consuming side's: §3.4's "both sides
  * record" exists because a consumer-authored account of a producer's
  * behaviour is a claim, and the point of the second log is that the two can
@@ -99,7 +99,7 @@ export function FleetReceipts() {
 export function FleetServeReceipts() {
   const { data, isLoading, error } = useFleetServeReceiptsQuery();
 
-  // station#3444 fix-round (HIGH-2): `!error && !data` is also true before
+  // archive#3444: `!error && !data` is also true before
   // the query has even started — e.g. while `PersistQueryClientProvider` is
   // still restoring from IndexedDB, `isLoading` (`isPending && isFetching`)
   // reads `false` because nothing has begun fetching yet. That is not an
@@ -177,7 +177,7 @@ export function FleetServeReceipts() {
 export function FleetRoutingReceipts() {
   const { data, isLoading, error } = useFleetRoutingReceiptsQuery();
 
-  // station#3444 fix-round (HIGH-2): see the serving-side sibling above —
+  // archive#3444: see the serving-side sibling above —
   // `!error && !data` before the query has even started (e.g. mid
   // `PersistQueryClientProvider` IndexedDB restore) is not an error state.
   if (isLoading || (!error && !data)) {
@@ -246,7 +246,7 @@ function EvidenceLine({
       {evidence.peerAttested?.observedAt
         ? ` (peer observed ${evidence.peerAttested.observedAt})`
         : ''}
-      {/* station#1398 slice 5. Rendered from the contract's own wording, and
+      {/* archive#1398. Rendered from the contract's own wording, and
           rendered for a STALE observation too: dropping it would make an
           expired verification indistinguishable from a never-probed
           candidate. */}

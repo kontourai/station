@@ -35,7 +35,7 @@ export function AttentionHistoryItem({
   onDismiss: (notificationId: string) => void;
 }) {
   /*
-   * station#3203: this row used to be the kind eyebrow and the title, and
+   * archive#3203: this row used to be the kind eyebrow and the title, and
    * nothing else — so the projection's `body` (the failure's own cause) and
    * `updatedAt` were both carried to this surface and dropped, and the tray
    * the owner reported showed three rows reading "Session failed / Session
@@ -90,7 +90,7 @@ export function AttentionHistoryItem({
            * keeps dismiss available but visually de-emphasized (`--quiet`)
            * so approve/deny stay primary — mirrors AttentionCard.
            */}
-          {/* station#3779: label from the shared model, not written here. */}
+          {/* archive#3779: label from the shared model, not written here. */}
           {item.kind === 'approval' && (
             <button
               type="button"
@@ -116,7 +116,7 @@ export function AttentionHistoryItem({
 }
 
 /**
- * station#3203: the cause, then who ran it. The cause renders even when the
+ * archive#3203: the cause, then who ran it. The cause renders even when the
  * projection carried no `body` — "no failure detail was recorded" is a fact
  * about the session, and it is the answer to "what happened"; silence is not.
  */
@@ -143,7 +143,7 @@ function SessionFailedDetail({ item }: { item: SessionFailedItem }) {
 }
 
 /**
- * station#3203: opening a `session-failed` row records the same
+ * archive#3203: opening a `session-failed` row records the same
  * acknowledgement its Dismiss does, so the badge decrements for the row the
  * user actually acted on — and only that row.
  *
@@ -183,7 +183,7 @@ function FailedSessionOpenLink({
 }
 
 /**
- * station#1914: `session-failed` has no notification behind it to dismiss —
+ * archive#1914: `session-failed` has no notification behind it to dismiss —
  * see `AttentionCard.tsx`'s `SessionFailedAction` for the full rationale.
  * Self-contained rather than routed through the popover's `onDismiss` prop:
  * that prop drives `NotificationHistory`'s undo-window + notification-delete

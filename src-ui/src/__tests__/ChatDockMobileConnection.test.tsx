@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 /**
- * station#3297 — the state that needs a decision, on the surface where the
+ * archive#3297 — the state that needs a decision, on the surface where the
  * decision is needed, distinguishable without hover and without colour.
  */
 describe('ChatDockMobileConnection', () => {
@@ -80,13 +80,13 @@ describe('ChatDockMobileConnection', () => {
     expect(button.getAttribute('aria-label')).toBe('Pair this device again');
     // Channel 3: a different mark, not a recoloured dot.
     expect(button.querySelector('svg path')).not.toBeNull();
-    // Channel 4: the amber attention background (station#4512 review H1 —
+    // Channel 4: the amber attention background (archive#4512 —
     // all three attention states carry it, not needs-credential alone).
     expect(button.className).toContain('chat-dock__mobile-conn--attention');
   });
 
   /**
-   * station#4512 review (H1) — `needs-repair` (identity-mismatch) gets the
+   * archive#4512 — `needs-repair` (identity-mismatch) gets the
    * same treatment as `needs-credential`: short word, enlarged triangle,
    * attention background, and a tap that goes straight to the remedy rather
    * than spending a recheck that can only fail again (aligned with the
@@ -121,8 +121,8 @@ describe('ChatDockMobileConnection', () => {
   });
 
   /**
-   * station#4512 review (H1) — `awaiting-approval` reaches this bar through
-   * the `reason` door station#4512 (M8) wired directly into
+   * archive#4512 — `awaiting-approval` reaches this bar through
+   * the `reason` door archive#4512 wired directly into
    * `connectionIndicatorState` (a native `mid_authorization` refusal), not
    * only through a locally-tracked pending record. It is NOT repair-like:
    * the dot stays the ordinary 8px circle, and the tap still spends a
@@ -199,7 +199,7 @@ describe('ChatDockMobileConnection', () => {
 
   it('retries immediately for a reachability failure, then opens the list', () => {
     // This is where the banner's "Try now" went when transient reachability
-    // stopped bannering (station#3297 part 3). Tapping a failing indicator
+    // stopped bannering (archive#3297). Tapping a failing indicator
     // means "check again now"; the retry ladder's backoff can be 10s away.
     connectionStatus.status = 'error';
     connectionStatus.reason = 'unreachable';
@@ -215,12 +215,12 @@ describe('ChatDockMobileConnection', () => {
   });
 
   /**
-   * station#4512 review (L-new-4) — WCAG 2.5.3 (Label in Name): the
+   * archive#4512 — WCAG 2.5.3 (Label in Name): the
    * accessible name must contain the visible label text. HeaderActions
    * (the toolbar chip) already pins this, and it holds there by
    * CONSTRUCTION — the chip's visible label and its accessible name both
    * come from the same shared wording. This bar's short vocabulary
-   * (`SHORT_ACTION_LABEL`, station#4512 review H1) diverges from
+   * (`SHORT_ACTION_LABEL`, archive#4512) diverges from
    * `connectionIndicatorLabel` — the shared function this button's
    * `aria-label` still uses — so today's three pairs hold only by
    * COINCIDENCE: each short word happens to be a case-insensitive

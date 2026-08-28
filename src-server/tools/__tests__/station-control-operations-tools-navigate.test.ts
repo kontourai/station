@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#3567 fix round FIX 1: before this fix, `send_message`'s and
+ * archive#3567 fix round FIX 1: before this fix, `send_message`'s and
  * `delegate_task`'s `navigate: true` path called `navigateTo(...)` and
  * discarded its result, so a navigation that `/events` denies (hosted
  * multi-tenant mode — the `ui:navigate` payload carries no destination
@@ -64,7 +64,7 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
     version: '0.0.0',
   });
   registerOperationsTools(new StationControlToolRegistry(server));
-  // station#3567 second fix round FIX 5: `_registeredTools` is an MCP SDK
+  // archive#3567 second fix round FIX 5: `_registeredTools` is an MCP SDK
   // internal, not a public accessor — this file (and the pre-existing
   // `station-control-operations-tools.test.ts`, which established the
   // pattern) reaches into it because `@modelcontextprotocol/server` exposes
@@ -204,7 +204,7 @@ describe('navigate result forwarding (station#3567 fix round FIX 1)', () => {
       });
     });
 
-    // station#3567 second fix round FIX 5: mirrors `send_message`'s
+    // archive#3567 second fix round FIX 5: mirrors `send_message`'s
     // "surfaces a delivered navigation" test — the success direction had
     // coverage only on one of the two call sites.
     test('surfaces a delivered navigation', async () => {

@@ -81,11 +81,11 @@ export function resolveControlApiBase(env: NodeJS.ProcessEnv = process.env) {
 }
 
 /**
- * station#1195: resolved fresh on every call, never frozen at module-import
+ * archive#1195: resolved fresh on every call, never frozen at module-import
  * time. The spawned-stdio child this module was originally written for
  * always had the correct env set BEFORE the process (and therefore this
  * module) even started, so a one-time-at-import read was byte-identical to
- * a fresh-per-call read there. That stopped holding once station#1195
+ * a fresh-per-call read there. That stopped holding once archive#1195
  * needed these same tool registrations reachable IN STATION'S OWN
  * long-lived process (the station-control HTTP/SSE MCP endpoint,
  * station-control-mcp-route.ts) — a module-load-time freeze there would
@@ -114,7 +114,7 @@ export function jsonToolResult(data: unknown) {
 }
 
 /**
- * #167 iteration-2 (M1): the standard `Authorization`-equivalent request
+ * archive#167 iteration-2 (M1): the standard `Authorization`-equivalent request
  * options every `station-control-*-tools.ts` file attaches to its
  * `@kontourai/station-sdk/client` fetcher calls — hoisted here from four
  * byte-identical local copies (`station-control-agent-tools.ts`,
@@ -132,7 +132,7 @@ export function controlRequestOptions() {
 }
 
 /**
- * #167 iteration-2 (M1): the standard success/failure envelope adapter every
+ * archive#167 iteration-2 (M1): the standard success/failure envelope adapter every
  * `station-control-*-tools.ts` file uses to reconstruct the server's raw
  * `{success, data?}` / `{success, error}` envelope from a
  * `@kontourai/station-sdk/client` fetcher's throw-on-failure /

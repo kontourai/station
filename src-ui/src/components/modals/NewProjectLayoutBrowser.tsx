@@ -15,8 +15,8 @@ interface NewProjectLayoutBrowserBodyProps {
   onSelect: (id: string) => void;
   /**
    * Returns to the project draft form without closing the New Project modal
-   * — this is ALSO what the header's own close button does here
-   * (station#1825 item 4 review round 2): the old nested dialog's close
+   * this is ALSO what the header's own close button does here
+   * (archive#1825 2): the old nested dialog's close
    * button was already scoped this way ("Close layout browser", never
    * "Close new project") — fully exiting the flow is only reachable one
    * step back, from the draft form's own close button.
@@ -25,7 +25,7 @@ interface NewProjectLayoutBrowserBodyProps {
 }
 
 /**
- * The New Project modal's "Browse all" step (station#1825 item 4).
+ * The New Project modal's "Browse all" step (archive#1825).
  *
  * Swaps in as this SAME modal's body — replacing `NewProjectForm` inside the
  * one `ResponsiveDialogSurface` `NewProjectModalContent` renders — instead of

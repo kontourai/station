@@ -58,7 +58,7 @@ describe('engine-spawn-tmpdir (station#1908)', () => {
     const now = Date.now();
     const tenMinutesMs = 10 * 60_000;
     // Backdate only the "old" file's mtime -- reproduces the exact leak
-    // pattern from station#1908 (orphaned, unmapped, never reclaimed
+    // pattern from archive#1908 (orphaned, unmapped, never reclaimed
     // extracted `.so` files sitting for hours).
     const oldStat = statSync(oldFile);
     utimesSync(oldFile, oldStat.atime, new Date(now - tenMinutesMs - 1));

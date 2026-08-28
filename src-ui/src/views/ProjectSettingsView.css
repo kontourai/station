@@ -291,7 +291,7 @@
   .project-settings__body {
     padding: 0.75rem;
   }
-  /* station#4463 slice 2 review MED-4: the scrollbar affordance that used to
+  /* archive#4463: the scrollbar affordance that used to
      live here moved to the shared `.section-nav` rule in page-layout.css, so
      a higher-specificity hide can never silently outrank it again. Only this
      host's own inset/scroll-padding stays local. */
@@ -329,7 +329,7 @@
   font: inherit;
 }
 
-/* station#1502 slice 4 — resolution states (§3.6) in project settings. */
+/* archive#1502 — resolution states (§3.6) in project settings. */
 .resources-section__row {
   display: flex;
   flex-direction: column;
@@ -337,7 +337,7 @@
 }
 
 /*
- * station#1503 slice 5 — several resources render as several rows, so they need
+ * archive#1503 — several resources render as several rows, so they need
  * a separator; a single-repo project renders one row and no tally, and its
  * spacing is unchanged.
  */

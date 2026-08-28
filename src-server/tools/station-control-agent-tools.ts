@@ -23,16 +23,16 @@ import {
 } from './station-control-shared.js';
 
 /**
- * #167 Wave 2B: agent CRUD + conversation fetches now run through
+ * archive#167 Wave 2B: agent CRUD + conversation fetches now run through
  * `@kontourai/station-sdk/client`'s canonical fetchers instead of this
  * file's own inline `api()` calls (`station-control-shared.ts`). `apiBase`
  * is resolved once at module load — mirroring `station-control-shared.ts`'s
  * own `const API = resolveControlApiBase();` — because station-control runs
  * as a long-lived MCP server process where `STATION_API_BASE`/`STATION_PORT`
  * are expected to be stable for the process lifetime, not re-read per call
- * (#167 plan Risk 3).
+ * (archive#167 plan Risk 3).
  */
-// station#1195: resolved fresh on every call (see station-control-shared.ts's
+// archive#1195: resolved fresh on every call (see station-control-shared.ts's
 // `api()` doc comment) -- a module-load-time freeze here would be wrong once
 // these same tool registrations are reachable from Station's own long-lived
 // process (station-control-mcp-route.ts), not only a freshly-spawned stdio
@@ -75,7 +75,7 @@ export function registerAgentTools(server: StationControlToolRegistry) {
     // No canonical `@kontourai/station-sdk/client` fetcher exists for this
     // route: it targets bare `GET /agents/:slug`, distinct from
     // `client/agents.ts`'s `getAgent` (enriched `GET /api/agents/:slug`,
-    // used only by the CLI's `agents get` verb). The #167 plan flagged this
+    // used only by the CLI's `agents get` verb). The archive#167 plan flagged this
     // as a Wave 2B gap ("the plan's Task text for the 'agents +
     // conversations' group does not name a canonical fetcher for
     // station-control's `get_agent` tool"); re-verified against

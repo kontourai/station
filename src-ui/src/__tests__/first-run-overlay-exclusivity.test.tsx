@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * AT MOST ONE FIRST-RUN OVERLAY (review H2).
+ * AT MOST ONE FIRST-RUN OVERLAY
  *
  * `OnboardingGate`'s `SetupLauncher` and Home's first-run chapter both decide
  * from the same flapping `/api/system/status`, and they used to decide
@@ -144,7 +144,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
   useDevicePresentation: () => undefined,
-  // The engines step's one enable path (station#3627). Nothing here confirms
+  // The engines step's one enable path (archive#3627). Nothing here confirms
   // a batch; it exists so the step can mount.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   useForceRefetchSystemStatus: () => forceRefetch,

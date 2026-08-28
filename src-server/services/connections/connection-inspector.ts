@@ -239,7 +239,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         enabled,
         description:
           'External engine connection, driven as a command-backed CLI.',
-        // station#3344: the adapter's own declaration, never a second literal
+        // archive#3344: the adapter's own declaration, never a second literal
         // — this view is the only capability source the composer sees for an
         // ACP session, and the copy that used to live here had lost
         // `image-input`.
@@ -272,7 +272,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           enabled,
         }),
         controlPlaneObservation: projectControlPlaneObservation(liveStatus),
-        // station#3054: the handshake's model config option IS this engine's
+        // archive#3054: the handshake's model config option IS this engine's
         // catalog — project it so the composer's wire-channel gate sees the
         // observed evidence it requires instead of an absent field.
         runtimeCatalog: acpRuntimeCatalogStatus(liveStatus),

@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 2 — `/api/inference/**`, Station's first
+ * archive#1398 — `/api/inference/**`, Station's first
  * inference-serving surface (`docs/design/inference-fleet.md` §3.2 Option A,
  * §3.3, §10 OQ-1/OQ-8, §11 slice 2).
  *
@@ -9,7 +9,7 @@
  * grants that scope, `DEFAULT_GRANT_PAIRING_SCOPE` deliberately withholds it,
  * and the operator bootstrap credential therefore does not carry it either —
  * reaching this family always means someone minted a grant for it. On top of
- * station#2051 requires a valid credential at every protected HTTP route,
+ * archive#2051 requires a valid credential at every protected HTTP route,
  * including loopback and SSH-forwarded requests. Both requirements are pinned
  * by tests; neither is enforced in this file, because a route handler
  * re-deriving its own authorization is how the two drift apart.
@@ -77,7 +77,7 @@ function refusalStatus(refusal: FleetInferenceRefusal): ContentfulStatusCode {
 }
 
 /**
- * The serve-side receipt sink (station#1398 slice 3, §3.4 "Both sides
+ * The serve-side receipt sink (archive#1398, §3.4 "Both sides
  * record"). Optional so the route stays constructible in a test with no
  * filesystem — but when it is absent nothing is recorded, so a caller wiring
  * this route in production must supply it.

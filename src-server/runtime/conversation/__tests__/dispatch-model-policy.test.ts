@@ -62,7 +62,7 @@ const EVIDENCE_SOURCE_ID = 'station:connection-readiness/v1';
 const DUMMY_REQUEST = { messages: [{ role: 'user' as const, content: 'hi' }] };
 
 /**
- * station#1431: `createConfiguredDispatchModel` now passes `plan` as the
+ * archive#1431: `createConfiguredDispatchModel` now passes `plan` as the
  * lazy function form (`@kontourai/dispatch/ai-sdk` awaits `options.plan(request)`
  * per invocation) rather than a static object, so every test that used to
  * read `capturedPlan.candidates` directly must resolve it first. Handles
@@ -97,7 +97,7 @@ function readinessEvidence(
 
 /**
  * `toolSurfaceEntries` is keyed by `${connectionId} ${modelId}` —
- * station#1430's `getModelToolSurface` is deliberately array-shaped in
+ * archive#1430's `getModelToolSurface` is deliberately array-shaped in
  * production (a connection can expose many models, so `connectionId` alone
  * isn't unique), but tests only ever bind one model per connection, so a
  * flat composite-keyed record is a simpler fixture than an array-of-arrays.
@@ -275,7 +275,7 @@ describe('SF-1: the freshness downgrade is a defensive floor, empirically checke
 describe('deriveDispatchCapabilities', () => {
   it('asserts no capabilities when the candidate has no live evidence', () => {
     expect(deriveDispatchCapabilities('unavailable')).toEqual([]);
-    // station#1430: even a genuinely tool-capable model asserts nothing
+    // archive#1430: even a genuinely tool-capable model asserts nothing
     // once evidence itself is unavailable — an unearned capability claim on
     // top of an unearned evidence level would be the same defect twice over.
     expect(deriveDispatchCapabilities('unavailable', ['tool-calls'])).toEqual(
@@ -291,7 +291,7 @@ describe('deriveDispatchCapabilities', () => {
   it("without a wired tool-surface source, never derives 'structured-tools' (unchanged pre-#1430 behavior)", () => {
     // The `toolSurface` argument is optional precisely so a call site that
     // hasn't been updated to pass one keeps behaving exactly as it did
-    // before #1430 closed the producer gap.
+    // before archive#1430 closed the producer gap.
     for (const level of ['unavailable', 'declared', 'confirmed'] as const) {
       expect(deriveDispatchCapabilities(level)).not.toContain(
         'structured-tools',
@@ -299,7 +299,7 @@ describe('deriveDispatchCapabilities', () => {
     }
   });
 
-  // station#1430 (evolved from the #1426 pin this replaces): the producer
+  // archive#1430 (evolved from the archive#1426 pin this replaces): the producer
   // gap is closed, so this now proves the FULL round trip — a provider that
   // genuinely reports tool support derives the capability; one that
   // doesn't (or reports an explicit negative, or is simply unknown) never
@@ -463,7 +463,7 @@ describe('candidateEvidenceFromReadiness', () => {
     expect(candidateEvidenceFromReadiness(undefined)).toEqual({
       level: 'unavailable',
       capabilities: [],
-      // station#1398 slice 5.5: dispatch 0.5.0's `eligible()` refuses
+      // archive#1398: dispatch 0.5.0's `eligible()` refuses
       // evidence whose fidelity disagrees with its capability list, and an
       // ABSENT fidelity reads as 'unavailable'. Stating it is what keeps
       // "no capabilities" and "no structured-tool support" one consistent
@@ -502,7 +502,7 @@ describe('candidateEvidenceFromReadiness', () => {
     expect(withTools).toEqual({
       level: 'confirmed',
       capabilities: ['abort', 'usage', 'structured-tools'],
-      // station#1398 slice 5.5: the capability string alone is ineligible at
+      // archive#1398: the capability string alone is ineligible at
       // dispatch 0.5.0 — the paired fidelity is what makes the claim
       // routable, and 'native' is the only honest value for a claim whose
       // sole source is a provider catalog reporting native tool calling.
@@ -779,7 +779,7 @@ describe('createConfiguredDispatchModel wiring', () => {
   it('SF-2/MB-1: an evidence source that rejects degrades every candidate to unavailable instead of failing model construction, and the failure is NOT cached — a healthy retry in the same window re-grades', async () => {
     const logger = makeLogger();
     let callCount = 0;
-    // Throws on the first lookup, then heals — this is the exact station#1431
+    // Throws on the first lookup, then heals — this is the exact archive#1431
     // review-round probe (MB-1): before the fix, `fetchReadinessEvidenceMap`
     // swallowed the rejection into `new Map()`, the resolver's try-block
     // completed normally, graded everything 'unavailable', and CACHED that
@@ -853,7 +853,7 @@ describe('createConfiguredDispatchModel wiring', () => {
       { ...baseConfig, dispatchEvidenceSource: source, logger },
       primaryBinding,
     );
-    // station#1431: exclusion logging now happens inside the lazy
+    // archive#1431: exclusion logging now happens inside the lazy
     // per-invocation candidate resolver, not at construction — resolve the
     // plan once to trigger it.
     await resolveCapturedPlan();
@@ -898,7 +898,7 @@ describe('createConfiguredDispatchModel wiring', () => {
     expect(message).toContain('structured-tools');
   });
 
-  // station#1430 end-to-end wiring pin: the SAME `requiredCapabilities:
+  // archive#1430 end-to-end wiring pin: the SAME `requiredCapabilities:
   // ['structured-tools']` policy as the test above, but with a
   // `getModelToolSurface` source that genuinely reports tool support for
   // this candidate's connection+model — proves the full path
@@ -941,7 +941,7 @@ describe('createConfiguredDispatchModel wiring', () => {
     ]);
   });
 
-  // station#1430 review, L-1: the exclusion message must attribute exclusion
+  // archive#1430 review, L-1: the exclusion message must attribute exclusion
   // to the REAL reason. This candidate genuinely HAS 'structured-tools' (its
   // toolSurface reports tool-calls) but its evidence LEVEL ('declared') is
   // below the policy's 'confirmed' minimum — the message must say so, not
@@ -990,7 +990,7 @@ describe('createConfiguredDispatchModel wiring', () => {
     expect(message).not.toContain('missing required capabilities');
   });
 
-  // station#1430 review, second pass LOW: a bare `requiredCapabilities`
+  // archive#1430 review, second pass LOW: a bare `requiredCapabilities`
   // policy (no explicit `minimumEvidence`, so it defaults to 'unavailable')
   // against a merely-discovered candidate. The candidate's level
   // ('unavailable') technically clears the default minimum by RANK
@@ -1262,7 +1262,7 @@ describe('createConfiguredDispatchModel wiring', () => {
         expect(source.calls).toHaveLength(1);
 
         // Past the TTL window: the next invocation re-resolves live
-        // evidence and picks up the smoke — this is the exact #1431
+        // evidence and picks up the smoke — this is the exact archive#1431
         // under-claim scenario the TTL exists to fix.
         vi.advanceTimersByTime(2);
         const afterTtl = await resolveCapturedPlan();
@@ -1654,7 +1654,7 @@ describe('S-1: conformance tripwire — our exclusion logging never disagrees wi
   // exactly what this test exists to catch, loudly, before it ships as a
   // silent lie in an operator-facing log line.
   //
-  // **Also carry L-3 into that bump** (station#1398 security review, RECORD).
+  // **Also carry L-3 into that bump** (archive#1398 security review, RECORD).
   // The fleet envelope resolves `selection` by matching the receipt's
   // succeeded attempt back to an ADMITTED candidate id
   // (`fleet-routing-envelope.ts`). If a future dispatch version ever admits
@@ -1744,7 +1744,7 @@ describe('S-1: conformance tripwire — our exclusion logging never disagrees wi
       primaryBinding,
     );
 
-    // station#1431: createConfiguredDispatchModel now returns a lazy
+    // archive#1431: createConfiguredDispatchModel now returns a lazy
     // (function-form) plan — resolve it to the real plan object the same
     // way `@kontourai/dispatch/ai-sdk` does, so this tripwire still
     // exercises the real engine end to end rather than a stale static plan.
@@ -1814,7 +1814,7 @@ describe('S-1: conformance tripwire — our exclusion logging never disagrees wi
     // deriveDispatchCapabilities), so the ONLY variable under test is the
     // requiredCapabilities policy itself.
     //
-    // R3-a (station#1398, dispatch 0.5.0 bump): `toolSurface` is the second
+    // R3-a (archive#1398, dispatch 0.5.0 bump): `toolSurface` is the second
     // variable this helper now accepts. Without it every candidate this
     // tripwire builds carries exactly `['abort', 'usage']`, which is why the
     // original three cases could not discriminate the engine's matching
@@ -1912,7 +1912,7 @@ describe('S-1: conformance tripwire — our exclusion logging never disagrees wi
   });
 
   it('R3-a: MIXED requiredCapabilities, candidate holds both — agreement holds', async () => {
-    // station#1430's derivation: a confirmed candidate whose model tool
+    // archive#1430's derivation: a confirmed candidate whose model tool
     // surface reports 'tool-calls' derives ['abort', 'usage',
     // 'structured-tools'], so BOTH names in the mixed list are held. This is
     // the other half of the discrimination — without it, a hypothetical

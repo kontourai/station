@@ -1,7 +1,7 @@
 /**
  * Fail-closed grants storage shared by the plugin permission grants store
  * (`plugin-grants.json`) and the MCP-UI render grants store
- * (`mcp-ui-render-grants.json`) — station#1835.
+ * (`mcp-ui-render-grants.json`) — archive#1835.
  *
  * Policy (mirrors `services/projects/project-binding-store.ts`, whose docblock
  * carries the full rationale): **the read validates and refuses; it never
@@ -38,7 +38,7 @@
  * 3. **Every read-modify-write runs inside a cross-process file mutation
  *    lock** (`acquireFileMutationLockAsync` on `<store>.mutation`, the
  *    `lockedReadModifyWrite` pattern from `packages/shared/src/instance-registry.ts`),
- *    with the read INSIDE the lock. The lock acquisition is awaited (#2646)
+ *    with the read INSIDE the lock. The lock acquisition is awaited (archive#2646)
  *    so a contended cross-process wait yields the event loop instead of
  *    freezing the server. A read failure propagates out before any write
  *    happens, and infrastructure failures (directory creation, lock
@@ -61,7 +61,7 @@
  *    (typed unavailable) and as mutation targets
  *    ({@link GrantsStoreReservedKeyError}). The key set and the null-prototype
  *    helper live in `utils/reserved-object-keys.ts` so the plugin-overrides
- *    store derives the same policy from the same place (station#4307).
+ *    store derives the same policy from the same place (archive#4307).
  * 6. **Client-visible error messages carry no filesystem paths.** The store
  *    path names the operator's home layout; it is available on the error as
  *    {@link GrantsStoreUnavailableError.storePath} and in server-side log
@@ -255,7 +255,7 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
       const current = this.read();
       // Defensive null-prototype copy: the updater must not be able to
       // diverge what the superset check saw from what gets written
-      // (station#1606 lesson), and key writes must not hit prototype setters
+      // (archive#1606 lesson), and key writes must not hit prototype setters
       // (decision 5).
       const next = update(nullPrototypeCopy(structuredClone(current)));
       const dropped = Object.keys(current).filter(

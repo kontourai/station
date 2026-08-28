@@ -913,7 +913,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
   });
 
   /**
-   * Review HIGH. `['projects']` stays fresh for five minutes with refetch on
+   * `['projects']` stays fresh for five minutes with refetch on
    * mount and on focus disabled, so a project deleted by another device, the
    * CLI, or another tab lingers in this cache. Vetoing on it would refuse a
    * legitimate name for minutes and never attempt the POST — the only

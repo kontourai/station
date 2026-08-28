@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4302 — a plugin bundle whose load the registry disowned still runs.
+ * archive#4302 — a plugin bundle whose load the registry disowned still runs.
  *
  * Removing a `<script src>` does not cancel its fetch or its evaluation, so a
  * bundle that timed out, errored or was aborted executes afterwards anyway,
@@ -81,7 +81,7 @@ describe('a disowned plugin bundle that executes late', () => {
     // The browser reports the load. The bundle has registered nothing yet --
     // it is still running, or it never ran and this is a cached empty body.
     script.dispatchEvent(new Event('load'));
-    // ...and only now does it finish and register, after the registry was
+    //...and only now does it finish and register, after the registry was
     // told the load was over.
     runBundleFooter({ 'late-pane': () => null });
 
@@ -97,7 +97,7 @@ describe('a disowned plugin bundle that executes late', () => {
       // Pass 1 timed out and was reported failed; `performReload` has just
       // deleted `window.__station_ai_plugins`; and NOW pass 1's bundle
       // finally executes and re-creates it. This is the exact sequence the
-      // Chromium repro on station#4302 recorded
+      // Chromium repro on archive#4302 recorded
       // (`pluginsGlobalRepopulated: true`).
       if (cssRequests === 2) runBundleFooter({ 'late-pane': () => null });
     });

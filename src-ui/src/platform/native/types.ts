@@ -175,7 +175,7 @@ export type NativeBrowserPreviewHostResult =
   | NativeBrowserPreviewGrantResult
   | NativeBrowserPreviewWindowResult;
 
-/** Discrete haptic kinds the native host accepts (station#1954). */
+/** Discrete haptic kinds the native host accepts (archive#1954). */
 export type HapticFeedbackKind =
   | 'selection'
   | 'light'
@@ -223,21 +223,21 @@ export interface BundledServerStatus {
    * The selected local owner's stdout (or combined) log file, when this
    * platform writes one to a known path. `null` — never an
    * empty string standing in for "unknown" — when no such file exists (e.g.
-   * systemd/journald on Linux, which logs to the journal only) (#1899).
+   * systemd/journald on Linux, which logs to the journal only) (archive#1899).
    */
   logPath: string | null;
   /**
    * The stderr log, where a crashing server's actual error lands, when this
    * platform's service manager writes stdout/stderr to separate files
    * (launchd only). `undefined` on an older host that predates this field
-   * (#1571); `null` when the host resolved status but no separate stderr
-   * file exists on this platform (#1899).
+   * (archive#1571); `null` when the host resolved status but no separate stderr
+   * file exists on this platform (archive#1899).
    */
   errorLogPath?: string | null;
   /**
    * The desktop shell's OWN log file (this process, not the supervised
    * per-user service) — present so a support flow can find it even when the
-   * per-user service never got far enough to log anything (#1899).
+   * per-user service never got far enough to log anything (archive#1899).
    * `undefined` on an older host that predates this field.
    */
   desktopLogPath?: string | null;
@@ -246,7 +246,7 @@ export interface BundledServerStatus {
   /**
    * True when the host classified the last exit as fail-closed (retrying
    * cannot succeed). Computed once in the supervisor; the UI must read it
-   * rather than re-deriving from stderr text (#1571).
+   * rather than re-deriving from stderr text (archive#1571).
    */
   failClosed: boolean;
   message: string;
@@ -347,12 +347,12 @@ export interface NativePlatformAdapter {
   /**
    * Fire a one-shot haptic pulse. Web and desktop hosts return
    * `unsupported`; mobile hosts that report the `haptics` capability as
-   * enabled return `ok` after requesting the OS feedback (station#1954).
+   * enabled return `ok` after requesting the OS feedback (archive#1954).
    */
   hapticFeedback(kind: HapticFeedbackKind): Promise<NativeCommandResult<void>>;
   /**
    * Review and decide one consent transaction in native OS chrome
-   * (station#3677 PR 3). The native host fetches the server-authored
+   * (archive#3677). The native host fetches the server-authored
    * description with its own local-grant credential, shows an OS dialog the
    * webview cannot script, commits the decision server-side, and returns
    * only the settled status. Web hosts return `unsupported` — they use the

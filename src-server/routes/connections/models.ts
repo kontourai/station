@@ -19,7 +19,7 @@ const logger = createLogger({ name: 'models' });
 
 /**
  * What `GET /capabilities` describes, stated on the response rather than left
- * to the route's name (station#3373).
+ * to the route's name (archive#3373).
  *
  * `source` is the only catalogue this route has ever projected: Bedrock's
  * `ListFoundationModels`. It has no row for a Claude Code, Codex, ACP, or
@@ -42,7 +42,7 @@ export interface ModelCapabilitiesEnvelope {
 
 export interface ModelsRouteDeps {
   /**
-   * A Bedrock connection's configured auth (station#3399). Without it this
+   * A Bedrock connection's configured auth (archive#3399). Without it this
    * route always consulted the default AWS credential chain, so a user who
    * configured a named profile or an API key had capability discovery answered
    * by credentials inference never uses.
@@ -57,7 +57,7 @@ export interface ModelsRouteDeps {
 
   /**
    * The stored application config. Required rather than optional
-   * (station#1557): this route used to read `process.env.AWS_REGION` alone,
+   * (archive#1557): this route used to read `process.env.AWS_REGION` alone,
    * so the catalogue a user picked models from could come from a different
    * region than the one Settings displayed and the inference path used.
    * Making the config a mandatory dependency is what stops a future caller
@@ -82,7 +82,7 @@ export function createModelsRoutes(deps: ModelsRouteDeps) {
    * The catalogue is region-specific, so the region is part of the cache
    * identity. Without it a region change would keep serving the previous
    * region's models for up to an hour while every other surface reported the
-   * new one — the same disagreement #1557 exists to remove, just time-delayed.
+   * new one — the same disagreement archive#1557 exists to remove, just time-delayed.
    */
   const currentAuth = async (): Promise<BedrockAuthConfig> => {
     try {
@@ -241,7 +241,7 @@ export function createModelsRoutes(deps: ModelsRouteDeps) {
       } satisfies ModelCapabilitiesEnvelope);
     } catch (error: unknown) {
       // Classify BEFORE logging, the way the sibling catalog route does
-      // (station#3399). Absent credentials is the expected state on most
+      // (archive#3399). Absent credentials is the expected state on most
       // hosts, and the composer's attachment gate hits this route on mount —
       // an ERROR with a stack every time buries the failures worth reading.
       // `complete: false` is what carries the difference between "Bedrock

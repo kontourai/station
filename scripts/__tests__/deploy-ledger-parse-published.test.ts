@@ -13,7 +13,8 @@ const scriptRoot = resolve(import.meta.dirname, '..');
  * this replaces (text-splitting) looked fine against every shape its author
  * imagined.
  */
-const REAL_TWO_PACKAGE_OUTPUT = String.raw`[{"name":"@kontourai/station-contracts","version":"0.2.1"},{"name":"@kontourai/station-cli","version":"0.4.1"}]`;
+const REAL_TWO_PACKAGE_OUTPUT =
+  '[{"name":"@kontourai/station-contracts","version":"0.2.1"},{"name":"@kontourai/station-cli","version":"0.4.1"}]';
 
 describe('parsePublishedPackages', () => {
   it('parses the real changesets output into name/version pairs', () => {

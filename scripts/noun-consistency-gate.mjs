@@ -115,7 +115,7 @@ export const PINNED_SCOPE_INVENTORY = [
  * old noun must still find the surface that replaced it) and in code comments,
  * which are stripped before scanning.
  *
- * `prompts?` moved OUT of this case-insensitive family (delta review): the
+ * `prompts?` sits OUT of this case-insensitive family: the
  * LLM sense — "a text-only prompt", "the system prompt" — is canonical
  * lowercase prose, and banning it made identical copy fail the moment it
  * moved under a copy key. The PRODUCT noun is the retired surface's own

@@ -60,7 +60,7 @@ function withPhase(
 }
 
 /**
- * Captures workspace checkpoints at turn boundaries (station#2802 slice 2).
+ * Captures workspace checkpoints at turn boundaries (archive#2802).
  *
  * The coordinator's single non-negotiable contract: `captureForTurn` NEVER
  * rejects and NEVER delays anything the user's turn waits on. Every failure
@@ -337,8 +337,8 @@ export function wireTurnCheckpointCapture(
       } else if (
         event.method === 'turn.completed' ||
         event.method === 'turn.aborted' ||
-        // station#3451 finding 5: a turn that ends only in `runtime.error`
-        // (a codex/adapter failure — #3442/#3473) never reached this arm, so
+        // archive#3451 finding 5: a turn that ends only in `runtime.error`
+        // (a codex/adapter failure — archive#3442/#3473) never reached this arm, so
         // its baseline checkpoint was captured on `turn.started` but no
         // settle snapshot ever followed. Deferred codex retriable errors are
         // excluded — the turn has not actually ended yet.
@@ -356,7 +356,7 @@ export function wireTurnCheckpointCapture(
 }
 
 /**
- * The single wiring gate for workspace checkpoint capture (station#2802
+ * The single wiring gate for workspace checkpoint capture (archive#2802
  * fix round, H3): capture writes into the USER'S repository's object
  * database — pinned against `git gc` by reflogs — at two boundaries per
  * turn, so it must never silently turn itself on. `AppConfig.

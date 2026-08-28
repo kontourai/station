@@ -79,7 +79,7 @@ export function WorkspacePaneFrame({
    * Render the error boundary around the occupant and NOTHING else — no
    * element of this frame's own.
    *
-   * It exists for the shell's ambient dock (station#3973). `display: contents`
+   * It exists for the shell's ambient dock (archive#3973). `display: contents`
    * is not enough there: it removes a wrapper's BOX but not its place in the
    * DOM, and the shell positions the dock with child combinators
    * (`.app__main--dock-left > .chat-dock`, `:has(> .chat-dock)`), which stop

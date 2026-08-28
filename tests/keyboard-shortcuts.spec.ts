@@ -136,7 +136,7 @@ test.describe('Keyboard shortcuts cheatsheet', () => {
   test('Escape closes a modal before navigating its parent route', async ({
     page,
   }) => {
-    // station#3759: `ShortcutsCheatsheet` goes through `ResponsiveDialogSurface`
+    // archive#3759: `ShortcutsCheatsheet` goes through `ResponsiveDialogSurface`
     // like every other dialog, so the surface owns Escape and the registry
     // suppresses its route-level `app.escapeUp` fallback while a modal is up.
     await page.goto('/settings');

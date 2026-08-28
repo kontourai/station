@@ -6,7 +6,7 @@ import {
 import { ConnectionsHubSection } from './ConnectionsHubSection';
 
 /**
- * station#3552: how much of each account's quota the PROVIDER says is spent.
+ * archive#3552: how much of each account's quota the PROVIDER says is spent.
  *
  * Only engines with a credential-profile concept have accounts to report on —
  * the server's `APP_HOME_ENGINES` table is `claude` and `codex`. Those two ids
@@ -63,7 +63,7 @@ function UsageBody({ usage }: { usage: CredentialUsage }) {
     );
   }
   if (usage.windows.length === 0) {
-    // Review round 3 (Codex): an account the provider says is EXHAUSTED but
+    // an account the provider says is EXHAUSTED but
     // reports no percentages for rendered "Limit reached" above this line and
     // "reported no limits" below it — two statements that contradict each
     // other. The absence of percentages is not the absence of limits.

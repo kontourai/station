@@ -33,8 +33,8 @@ describe('useActiveChatSelector', () => {
 
   afterEach(() => {
     // Unmount any still-subscribed hook (via RTL's own act-wrapped cleanup)
-    // before mutating the store — otherwise removeChat()'s notify() reaches
-    // a mounted useSyncExternalStore subscriber outside of act().
+    // before mutating the store — otherwise removeChat's notify reaches
+    // a mounted useSyncExternalStore subscriber outside of act.
     cleanup();
     clearChats();
   });
@@ -77,10 +77,10 @@ describe('useActiveChatSelector', () => {
     const valueAfterMount = result.current;
 
     act(() => {
-      // active-chats-store.updateChat() replaces the whole session object on
+      // active-chats-store.updateChat replaces the whole session object on
       // every call — this asserts a selector still sees "no change" for a
       // field it didn't select, which is the mechanism that stops composer
-      // keystrokes from re-rendering transcript consumers (station#726).
+      // keystrokes from re-rendering transcript consumers (archive#726).
       activeChatsStore.updateChat(SESSION_ID, { input: 'unrelated keystroke' });
     });
 

@@ -69,7 +69,7 @@ function MessageContentComponent({
           if (block.type === 'tool-call-run') {
             // Short runs render as individual quiet rows — cheaper to read
             // than a summary-plus-sheet hop. Only a long run collapses to
-            // the batch summary (station#2652 redesign).
+            // the batch summary (archive#2652 redesign).
             if (block.calls.length <= INLINE_RUN_LIMIT) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
@@ -96,7 +96,7 @@ function MessageContentComponent({
             );
           }
           if (part.type === 'text' && part.content) {
-            // station#3354: persisted text parts keep their highlighting —
+            // archive#3354: persisted text parts keep their highlighting —
             // they previously rendered plain once the turn settled.
             return <LazyMarkdown key={index}>{part.content}</LazyMarkdown>;
           }

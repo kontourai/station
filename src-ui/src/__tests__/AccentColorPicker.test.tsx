@@ -28,7 +28,7 @@ describe('AccentColorPicker', () => {
     ).toBe('');
   });
 
-  // station#settings-revamp slice2 review finding 4: previously this DOM
+  // archive#settings-revamp: previously this DOM
   // side effect only ran inside the click handler, so an accent imported
   // (or changed on another tab) while this component was mounted updated
   // the store's state but left the DOM untouched. It is now a `useEffect`
@@ -75,7 +75,7 @@ describe('AccentColorPicker', () => {
     ).toBe('#ec4899');
   });
 
-  // station#3305 review finding 3: --text-on-accent is a static alias of the
+  // archive#3305: --text-on-accent is a static alias of the
   // BUILT-IN brand's contrast partner (#ffffff under [data-theme="light"]),
   // so applying an accent without it moved the background under every
   // --text-on-accent foreground and left the foreground behind — the shipped

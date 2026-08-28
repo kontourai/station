@@ -2,7 +2,7 @@ import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
 
 /**
- * #1170: every case here must return something OTHER than the bare method
+ * archive#1170: every case here must return something OTHER than the bare method
  * name — the raw log's "every event renders its name twice" bug was this
  * function's default case echoing `event.method` back as the body, right
  * next to the label that already shows it. Genuinely bodiless events (e.g.
@@ -66,7 +66,7 @@ export interface DiagnosticsEntry {
    * with `itemId: "0"` in streaming protocols that reset ids per turn. Never
    * use this as a React list key (see `renderKey`). */
   key: string;
-  /** Review HIGH (station#1170): React list keys must be unique across the
+  /** (archive#1170): React list keys must be unique across the
    * WHOLE list, not just adjacent entries — `key` above collides whenever a
    * non-adjacent group reuses the same `(method, itemId)` pair (a common
    * streaming-protocol shape), which produced a real
@@ -87,7 +87,7 @@ export interface DiagnosticsEntry {
  * `session.configured` — into one with a "×N" count, instead of two
  * identical-looking rows back to back.
  *
- * Review HIGH (station#1170): the collapse must never fire on an EMPTY
+ * (archive#1170): the collapse must never fire on an EMPTY
  * body. `describeEvent`'s default case returns '' for every method it
  * doesn't special-case — including `platform.mutation` (station's
  * structured self-mutation audit record), `policy.stop-verdict`,

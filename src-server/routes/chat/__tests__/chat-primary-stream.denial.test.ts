@@ -1,7 +1,7 @@
 /**
- * station#3179: end-to-end proof that a GENUINE tool denial is observable.
+ * archive#3179: end-to-end proof that a GENUINE tool denial is observable.
  *
- * Every earlier test of this seam (#3091/#3113/#3117) constructs the
+ * Every earlier test of this seam (archive#3091/#3113/#3117) constructs the
  * `tool-result` chunk it wants to see. That is legitimate for testing a
  * translation, but it cannot prove the chunk is ever PRODUCED — and it was
  * not: `@voltagent/core`'s `handleToolError` calls
@@ -66,7 +66,7 @@ function readSSEEvents(body: string): Array<Record<string, unknown>> {
 
 /**
  * A real openai-compatible SSE endpoint that answers the first request with a
- * single tool call. Byte-shaped exactly like the #3113 tripwire's server, so
+ * single tool call. Byte-shaped exactly like the archive#3113 tripwire's server, so
  * the only variable here is denial-vs-thrown-error.
  */
 async function startToolCallingServer(): Promise<TestServer> {
@@ -205,10 +205,10 @@ async function createToolCallingAgent(options: {
 /** A real Agent whose one tool is denied by the real hook contract. */
 async function createDeniedToolAgent(options: {
   serverUrl: string;
-  /** Mirrors `pre-tool-policy.ts`'s `deny()` vs. a human declining (#3091). */
+  /** Mirrors `pre-tool-policy.ts`'s `deny()` vs. a human declining (archive#3091). */
   policyDenied: boolean;
   /**
-   * station#3210: the authorship marker `denial-message.ts`'s
+   * archive#3210: the authorship marker `denial-message.ts`'s
    * `stationDenial()` stamps. Both real writers set it — `deny()` alongside
    * `policyDenied`, and `agent-hooks.ts`'s human decline without — so the
    * default here matches the bytes production produces. It is set to `false`
@@ -390,7 +390,7 @@ describe('station#3179: a live tool denial through a REAL Agent', () => {
     });
   }, 30_000);
 
-  // station#3210 (the inversion): before this change, the ONLY two denials
+  // archive#3210 (the inversion): before this change, the ONLY two denials
   // Station redacted to `Tool call failed.` were the two whose text Station
   // itself wrote — the human decline and the no-approval-channel template —
   // because they carry no `policyDenied` marker. A user who clicked Deny was
@@ -421,7 +421,7 @@ describe('station#3179: a live tool denial through a REAL Agent', () => {
       toolName: 'guarded_tool',
       error: DENIAL_REASON,
     });
-    // …and station#3091's badge contract is untouched: absent means "we
+    // …and archive#3091's badge contract is untouched: absent means "we
     // don't know why", and a human declining is NOT a policy denial.
     expect(toolResult?.policyDenied).toBeUndefined();
     expect(monitoring.completions[0]?.reason).toBe(TOOL_DENIED_FINISH_REASON);
@@ -456,7 +456,7 @@ describe('station#3179: a live tool denial through a REAL Agent', () => {
     expect(toolResult).toMatchObject({
       toolCallId: 'call_1',
       error: GENERIC_TOOL_FAILURE_MESSAGE,
-      // The badge still derives from `policyDenied`, unchanged (#3091).
+      // The badge still derives from `policyDenied`, unchanged (archive#3091).
       policyDenied: true,
     });
     expect(String(toolResult?.error)).not.toContain(DENIAL_REASON);
@@ -483,13 +483,13 @@ describe('station#3179: a live tool denial through a REAL Agent', () => {
     const response = await app.request('/chat', { method: 'POST' });
     const events = readSSEEvents(await response.text());
 
-    // The engine resolves this one itself (#3113's tripwire proves the
+    // The engine resolves this one itself (archive#3113's tripwire proves the
     // shape), so exactly ONE result must reach the user — the derived
     // emission must not add a second — and the turn must not borrow the
     // denial vocabulary.
     //
     // Scope of THIS test, stated precisely because an independent review
-    // (station#3179) measured it: it has power over double-emission and over
+    // (archive#3179) measured it: it has power over double-emission and over
     // the denial vocabulary, NOT over the `instanceof ToolDeniedError`
     // narrowing. Widening that narrowing to `instanceof Error` leaves this
     // test green, because `appendObservedToolDenials`' `resolvedToolCallIds`
@@ -556,10 +556,10 @@ describe('station#3179: a live tool denial through a REAL Agent', () => {
 });
 
 /**
- * station#3211's headline gap: no test ran two turns at once.
+ * archive#3211's headline gap: no test ran two turns at once.
  *
  * It matters because `createVoltAgentLifecycleHooks` builds hooks PER-AGENT,
- * shared by every concurrent turn, while station#3179's denial sink is
+ * shared by every concurrent turn, while archive#3179's denial sink is
  * per-CALL — reachable from the hook only through that call's own operation
  * context. Cross-attribution would be severe: a denial raised in one user's
  * conversation surfacing in another's transcript, or an allowed turn
@@ -764,14 +764,14 @@ async function waitFor(condition: () => boolean, label: string): Promise<void> {
 }
 
 /**
- * station#3211 guard 5: `recordAuxiliaryRejection`'s abort short-circuit
+ * archive#3211 guard 5: `recordAuxiliaryRejection`'s abort short-circuit
  * (`if (abortController.signal.aborted) return;` in chat-primary-stream.ts).
  *
  * The issue's fault-injection matrix showed deleting that line left the
  * whole suite GREEN — the guard's rejection branch had never executed. These
  * two tests give it both directions: a denial with no client abort must be
  * recorded exactly once WITH the turn's identity (the accept branch, which
- * is the entire point of #3179's rewrite — the old body put the rejection
+ * is the entire point of archive#3179's rewrite — the old body put the rejection
  * back into the void), and a rejection arriving after STATION's own abort
  * must not be recorded at all (the rejection branch — a client that hung up
  * is not an anomaly worth a warn per turn).
@@ -912,10 +912,10 @@ describe("station#3211 guard 5: recordAuxiliaryRejection's abort short-circuit",
 });
 
 /**
- * station#3211 gap 3, through the REAL enforcement path this time.
+ * archive#3211 gap 3, through the REAL enforcement path this time.
  *
  * The unit tests beside `contextWithToolDenialObservations` prove the copy
- * loop in isolation; the #1201-class lesson is that a function proven in
+ * loop in isolation; the archive#1201-class lesson is that a function proven in
  * isolation says nothing about whether the live path actually routes through
  * it. This drives the issue's own wire claim end to end: `restOptions` IS
  * the chat schema's `.passthrough()`'d client `options` bag, the route

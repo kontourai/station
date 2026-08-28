@@ -101,8 +101,8 @@ export function AgentEditorEngineSelection({
    * The built-in Station Agent's engine is NOT an Agent field.
    * `AppConfig.builtinAgentEngineConnectionId` owns it, resolved per boot
    * against live readiness, and the record deliberately never carries the
-   * result (`docs/design/agent-engine-unification.md` §7.1.1, station#3662
-   * delta H3). A picker here would have written a value no reader consults
+   * result (`docs/design/agent-engine-unification.md` §7.1.1, archive#3662
+   * delta). A picker here would have written a value no reader consults
    * and the write boundary drops — an engine choice that silently does
    * nothing. So this states where the setting lives instead of offering one.
    */
@@ -137,7 +137,7 @@ export function AgentEditorEngineSelection({
             Change it in Settings
           </button>
         </span>
-        {/* #3728 review (MEDIUM): omitting the PICKER here is the
+        {/* archive#3728: omitting the PICKER here is the
             documented decision; omitting the capability summary was not —
             this was the one editor case that named an engine without
             explaining it. Read-only, from the runtime-resolved binding. */}
@@ -240,7 +240,7 @@ export function AgentEditorEngineSelection({
                 />
                 <span>
                   <strong>{connection.name}</strong>
-                  {/* The SERVER's readiness sentence (#3649 evidence), not
+                  {/* The SERVER's readiness sentence (archive#3649 evidence), not
                       the evidence KIND — "Catalog: Live" is internal
                       vocabulary (Y5). */}
                   <small>
@@ -267,7 +267,7 @@ export function AgentEditorEngineSelection({
         </div>
       )}
 
-      {/* station#3722 slice 2: the two-row capability summary for the engine
+      {/* archive#3722: the two-row capability summary for the engine
           this agent is actually bound to. The MODEL branch resolves to the
           Station matrix EXPLICITLY (#3728 review, LOW): "Use a model
           connection" means Station's own engine, and during the transient

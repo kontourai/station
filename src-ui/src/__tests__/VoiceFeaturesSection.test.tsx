@@ -94,11 +94,11 @@ function getRow(name: RegExp) {
 /**
  * `spy` is the exact mock the row's activation calls in the real component —
  * both the feature-list row and the push-notifications row share
- * `useFeatureSettings().toggle` (`FEATURE_META`'s voiceS2SEnabled entry and
+ * `useFeatureSettings.toggle` (`FEATURE_META`'s voiceS2SEnabled entry and
  * `NotificationsSection`'s pushNotificationsEnabled toggle are two distinct
  * calls into the same mocked function), so their call counts are
  * indistinguishable by count alone across DIFFERENT rows in one test — each
- * row is exercised in isolation per `test()`, so that is not a problem here.
+ * row is exercised in isolation per `test`, so that is not a problem here.
  */
 const ROWS: Array<{
   label: string;

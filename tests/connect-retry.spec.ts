@@ -108,16 +108,16 @@ async function seedUnreachableLoopback(page: Page) {
 }
 
 /**
- * station#3297 — a remote host that is not answering is transient
+ * archive#3297 — a remote host that is not answering is transient
  * reachability. It no longer earns a banner (the owner's "kinda getting tired
  * of the big banners for offline"); the connection indicator carries it, and
  * the indicator is where the real retry moved to.
  */
 /**
- * station#3311 made the connection control self-describing: its accessible
+ * archive#3311 made the connection control self-describing: its accessible
  * name now carries the state and the connection identity ("Manage Stations —
  * Connected · <name>"), so the locators below match by prefix. The bare
- * "Manage Stations" string is still the control's `title` (station#3297).
+ * "Manage Stations" string is still the control's `title` (archive#3297).
  */
 test('an unreachable connection is carried by the indicator, not a banner', async ({
   page,

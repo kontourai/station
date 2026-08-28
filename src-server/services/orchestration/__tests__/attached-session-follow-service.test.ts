@@ -25,7 +25,7 @@ import { buildOrchestrationSessionSummary } from '../orchestration-session-state
 
 /**
  * The process-local half of the answerability decoration
- * (station#1778). These tests are about the builder's MERGE behaviour, so
+ * (archive#1778). These tests are about the builder's MERGE behaviour, so
  * every call states the observation explicitly rather than hiding it behind
  * a shim — the required option is the enforcement mechanism, and a test
  * helper that supplied it implicitly would be the first place it stopped
@@ -156,7 +156,7 @@ describe('AttachedSessionFollowService', () => {
     ).toEqual({ state: 'unattributed' });
   });
 
-  // station#1462. The old tie-break was `root.length > match.length`, so two
+  // archive#1462. The old tie-break was `root.length > match.length`, so two
   // projects on one directory resolved to whichever `listProjects()` happened
   // to yield first — a `readdir`-ordered winner, stamped into a
   // content-addressed event id that never re-derives.
@@ -270,7 +270,7 @@ describe('AttachedSessionFollowService', () => {
     });
   });
 
-  // station#1399 fix round 2, B1 (independent review) — this service is a
+  // archive#1399 fix round 2, B1 (independent review) — this service is a
   // SECOND writer, independent of `OrchestrationService#publishCanonicalEvent`:
   // it imports source events straight off an attached transcript (in
   // production, `claude-transcript-session-source.ts`'s `mapToolResult`,
@@ -356,7 +356,7 @@ describe('AttachedSessionFollowService', () => {
     ).toBeUndefined();
   });
 
-  // station#1462. Two things are asserted together on purpose: the session is
+  // archive#1462. Two things are asserted together on purpose: the session is
   // still followed (an ambiguous workspace must not make a live external
   // session vanish), and neither published envelope claims a project slug.
   test('follows an ambiguous workspace without stamping a project slug', async () => {
@@ -411,7 +411,7 @@ describe('AttachedSessionFollowService', () => {
     );
   });
 
-  // station#1462 FIX ROUND. The suite above only ever built a FRESH store or
+  // archive#1462 FIX ROUND. The suite above only ever built a FRESH store or
   // hand-assembled events, which is exactly why the defect survived it: the
   // whole harm lives in the transition from one persisted attribution to
   // another. `envelopeEventId` hashed only `sessionId + kind`, and
@@ -517,7 +517,7 @@ describe('AttachedSessionFollowService', () => {
     // means every session followed BEFORE this branch has a stored id that
     // predates the fingerprint, so a naive implementation re-stamps all of
     // them on the first poll after upgrade. The extra pair is harmless in the
-    // lifecycle fold (#1073 attach facts are transition-neutral) but it is
+    // lifecycle fold (archive#1073 attach facts are transition-neutral) but it is
     // NOT harmless in the read model: it becomes `events.at(-1)`, and the
     // envelope is dated at SESSION CREATION, so `lastEventAt` — which the
     // home list reads as last activity — jumps backwards for every attached
@@ -650,7 +650,7 @@ describe('AttachedSessionFollowService', () => {
         candidates: ['alpha', 'beta'],
       });
 
-      // The remediation #1462's own error message prescribes, applied to the
+      // The remediation archive#1462's own error message prescribes, applied to the
       // realistic starting state: a session already attributed BEFORE the
       // duplicate appeared.
       projects = [{ slug: 'beta', workingDirectory: app() }];
@@ -682,7 +682,7 @@ describe('AttachedSessionFollowService', () => {
       expect(summarize().projectAttribution).toBeUndefined();
     });
 
-    // station#3495 CHANGED THIS TEST'S GUARANTEE, deliberately — it used to
+    // archive#3495 CHANGED THIS TEST'S GUARANTEE, deliberately — it used to
     // assert that a REPEATED transition re-stamps.
     //
     // The envelope id used to carry a `generation` counter: how many
@@ -841,7 +841,7 @@ describe('AttachedSessionFollowService', () => {
       expect(store.listEvents(session.threadId)).toHaveLength(first);
 
       // ...and it must stay stable across many polls and many restarts, not
-      // just the second one (station#3495: the live regression only became
+      // just the second one (archive#3495: the live regression only became
       // visible over hours).
       for (let index = 0; index < 10; index += 1) {
         await followService(projects).pollNow();
@@ -873,7 +873,7 @@ describe('AttachedSessionFollowService', () => {
     });
   });
 
-  // station#1462 FIX ROUND. Canonicalisation dropping a configured project is
+  // archive#1462 FIX ROUND. Canonicalisation dropping a configured project is
   // not a cosmetic miss: a dropped candidate removes one side of a tie, so
   // genuine ambiguity renders as a confident, wrong `attributed`.
   describe('canonicalisation never silently drops a project (station#1462)', () => {
@@ -1128,7 +1128,7 @@ describe('AttachedSessionFollowService', () => {
 
   // Cold path must NOT materialize full thread payloads via listEvents
   // (dogfood hang: 10k–20k-event Claude-import threads starved identity), and
-  // since station#3495 must not materialize an unbounded slice of them
+  // since archive#3495 must not materialize an unbounded slice of them
   // either: the newest configured events plus MAX(created_at) are enough.
   test('does not call listEvents on cold start or steady-state polls', async () => {
     const source: AttachedSessionSource = {
@@ -1521,9 +1521,9 @@ describe('AttachedSessionFollowService', () => {
   });
 
   /**
-   * station#1501 slice 3b, seam S5
+   * archive#1501, seam S5
    * (`docs/design/portable-project-identity.md` §2.2.1). What migrates is
-   * where the roots COME FROM; the #1462 tie-break is untouched.
+   * where the roots COME FROM; the archive#1462 tie-break is untouched.
    */
   describe('project roots resolve through resolveProjectResource (station#1501)', () => {
     function pollingSource(): AttachedSessionSource {
@@ -1662,7 +1662,7 @@ describe('AttachedSessionFollowService', () => {
     });
 
     /**
-     * station#1501 slice 3b review, FIX 3. Each resolution can spawn a `git`
+     * archive#1501 review, FIX 3. Each resolution can spawn a `git`
      * subprocess and this runs on a two-second poll, so the fan-out is
      * bounded. Without the pool the `Promise.all` starts every project at
      * once and `maxInFlight` below is the project count.

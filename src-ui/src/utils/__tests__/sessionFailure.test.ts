@@ -1,5 +1,5 @@
 /**
- * station#3213: the failure fold the session detail and the chat dock now
+ * archive#3213: the failure fold the session detail and the chat dock now
  * SHARE. It was inline in `useMutableSessionDetailState`, which is why the
  * dock — one layer away from the same facts — could not say a session had
  * failed at all.
@@ -134,7 +134,7 @@ describe('transcriptCarriesFailureText (station#3299)', () => {
   });
 
   /**
-   * station#3769. This case used to carry `ephemeral: true`, so it matched
+   * archive#3769. This case used to carry `ephemeral: true`, so it matched
    * through the ephemeral branch and proved nothing about the projected row —
    * the durable shape (an ordinary assistant message, no ephemeral flag) was
    * untested, and the banner really did double up on it in the product.

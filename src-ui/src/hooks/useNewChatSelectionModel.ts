@@ -49,7 +49,7 @@ import { getLastChosenModelMap } from './lastChosenModel';
  * The engine binding a provider-managed row should carry: the Agent's own, or
  * the loaded managed-runtime connection's — and NOTHING when neither exists.
  *
- * It used to fall back to `engineConnectionId('station')` (station#3662). That
+ * It used to fall back to `engineConnectionId('station')` (archive#3662). That
  * id can never name an engine connection — the registry throws
  * `ReservedStationIdentityError` for one — so the fallback minted, on the
  * client, exactly the impossible binding the seed used to persist: the
@@ -70,7 +70,7 @@ import { getRecentAgentSlugs } from './useRecentAgents';
 export interface ACPSelectionConnection {
   id: string;
   /**
-   * station#1089: the connection's configured Working Directory. Read by
+   * archive#1089: the connection's configured Working Directory. Read by
    * `resolveNewChatWorkspaceHint` so the new-chat picker names the directory
    * the engine will actually be launched in instead of asserting `$HOME`.
    */
@@ -411,7 +411,7 @@ export function useNewChatSelectionModel({
     selectedProjectConfig,
     runtimeLoading,
     modelsLoading,
-    // station#771: both flow into a single `flatList.length === 0` gate in
+    // archive#771: both flow into a single `flatList.length === 0` gate in
     // `NewChatModal` that previously only checked `runtimeLoading ||
     // modelsLoading` — a settled error rendered as "Nothing to chat with
     // yet" (a fabricated negative fact), never as a read failure.

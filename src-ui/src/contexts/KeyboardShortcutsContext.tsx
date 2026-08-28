@@ -62,7 +62,7 @@ export function setShortcutContext(key: ShortcutContextKey, value: boolean) {
 /**
  * "A modal dialog is open" — DERIVED from the document, never claimed.
  *
- * station#3767: this used to be a claim (`acquireShortcutContext('dialogOpen')`)
+ * archive#3767: this used to be a claim (`acquireShortcutContext('dialogOpen')`)
  * that exactly one component in the app ever made, `ResponsiveDialogSurface`.
  * Every other modal surface — the command launcher, the shortcuts cheatsheet,
  * the command palette, the delegation launcher, the mobile task switcher — is
@@ -70,7 +70,7 @@ export function setShortcutContext(key: ShortcutContextKey, value: boolean) {
  * none of them knew to claim it. So the app's global chords stayed live
  * underneath them: the dock-toggle chord typed into the launcher's own input
  * collapsed the dock behind it, and Escape on the cheatsheet ALSO ran the
- * route-level "go up one level" fallback (station#3759).
+ * route-level "go up one level" fallback (archive#3759).
  *
  * A label a surface must remember to set is a label that some surface will
  * forget. `aria-modal="true"` is the same fact, already in the DOM, already
@@ -148,8 +148,8 @@ function areDirectComplements(left?: ShortcutWhen, right?: ShortcutWhen) {
  * rebuilt the context value and re-rendered EVERY consumer of this context.
  * Any consumer whose registering effect depended on a callback identity then
  * registered again on that render, and the two fed each other: React error
- * #185 (maximum update depth), which took out every route the moment the
- * first command-enabled skill existed (station#3736). Writes now go to a ref
+ * archive#185 (maximum update depth), which took out every route the moment the
+ * first command-enabled skill existed (archive#3736). Writes now go to a ref
  * and are published through `subscribe`, so registering re-renders only the
  * surfaces that actually READ the registry — and only when what they read
  * changed.
@@ -170,12 +170,12 @@ interface ShortcutRegistryStore {
 /**
  * The registry's complete OBSERVABLE identity — everything a reader can see.
  *
- * Three things belong in it that a first cut left out (sol review, LOW):
+ * Three things belong in it that a first cut left out:
  *
  *  - registration ORDER, because equal-priority dispatch resolves by it and
- *    `getAllShortcuts()` returns it. Sorting it away meant two registrations
+ * `getAllShortcuts` returns it. Sorting it away meant two registrations
  *    could swap which one fires and no reader was told;
- *  - a per-registration TOKEN, because `getAllShortcuts()` hands readers the
+ * - a per-registration TOKEN, because `getAllShortcuts` hands readers the
  *    HANDLERS. Two registrations under one id with identical metadata and
  *    different handlers replace the map entry silently, so an open command
  *    palette kept invoking the action the keyboard had already stopped
@@ -185,7 +185,7 @@ interface ShortcutRegistryStore {
  *    a control character inside a description could forge a boundary.
  *
  * Re-registration therefore publishes. That is the point, and it does not
- * re-open station#3736: the loop needed registration to re-render a component
+ * re-open archive#3736: the loop needed registration to re-render a component
  * that then registers again, and only READERS re-render now — while
  * `useKeyboardShortcut`'s deps are stable, so a reader's re-render does not
  * re-register.
@@ -226,7 +226,7 @@ export function orderShortcuts(
 /**
  * Two live shortcuts claiming one chord. Today `priority` arbitrates
  * silently, so the loser simply never fires and nothing says why — the
- * settings surface and cheatsheet can now say it (station#2576). A disabled
+ * settings surface and cheatsheet can now say it (archive#2576). A disabled
  * shortcut does not conflict; a priority TIE on a shared chord is the
  * ambiguous case worth shouting about, and a decided priority is still worth
  * listing so the loser's silence is explicable.
@@ -271,8 +271,8 @@ export function findShortcutConflicts(
 /**
  * The one predicate the live dispatch loop consults before firing a shortcut.
  *
- * station#3767: this was exported, documented as the guard, and called by
- * nothing but its own unit test since #2579 replaced it in the dispatcher
+ * archive#3767: this was exported, documented as the guard, and called by
+ * nothing but its own unit test since archive#2579 replaced it in the dispatcher
  * with a `dialogOpen` claim plus an Escape-only variant. A test measuring a
  * predicate the product does not run is not coverage, and the modal hole it
  * was still asserting had been open ever since. It is the live path again.
@@ -537,7 +537,7 @@ function useShortcutStore(): ShortcutRegistryStore {
  * For REGISTERING and for binding changes. Deliberately does not expose the
  * registry's contents: a component that reads them without subscribing goes
  * stale the moment another surface registers, and a component that re-renders
- * on every registration is what station#3736 was.
+ * on every registration is what archive#3736 was.
  */
 export function useKeyboardShortcuts(): Omit<
   ShortcutRegistryStore,

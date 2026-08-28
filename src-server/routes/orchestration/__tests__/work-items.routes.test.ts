@@ -120,7 +120,7 @@ describe('work item provider routes', () => {
     });
   });
 
-  // Roadmap #584, part of epic #580, S4.
+  // Roadmap archive#584, part of epic archive#580, S4.
   describe('GET /claim', () => {
     function createClaimApp(assignmentClaimService?: any) {
       const getWorkspacePath = vi.fn().mockReturnValue('/workspace/demo');

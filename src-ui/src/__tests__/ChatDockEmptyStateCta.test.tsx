@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { Empty } from '../components/state';
 
-// #800 review: the dock's empty state carries its own action now instead of
+// archive#800: the dock's empty state carries its own action now instead of
 // instructing "Click “New” above" — copy that named a control rendering as a
 // bare + on phone. `ChatDockContentArea` itself pulls in the whole dock body,
 // so this covers the action contract the content area renders.

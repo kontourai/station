@@ -107,7 +107,7 @@ export function NewChatModal({
     resolveNewChatInitialContext(activeProjectSlug, projects),
   );
   const [contextSearch, setContextSearch] = useState('');
-  // #3013: a click that neither dispatches nor explains itself is
+  // archive#3013: a click that neither dispatches nor explains itself is
   // indistinguishable from a broken app. Every handleSelect path either
   // calls onSelect or sets this.
   const [selectFeedback, setSelectFeedbackState] = useState<{
@@ -116,9 +116,9 @@ export function NewChatModal({
   } | null>(null);
   // Nonce: re-setting the SAME message must still remount the alert node so
   // role=alert announces again — React bails on identical state otherwise
-  // (#3013 review finding 3).
+  // (archive#3013).
   // useCallback so the setter is referentially stable and can be an honest
-  // effect dependency (#3021) — the previous render-scoped arrow forced a
+  // effect dependency (archive#3021) — the previous render-scoped arrow forced a
   // reasoned lint suppression on the effect below.
   const setSelectFeedback = useCallback(
     (text: string | null) =>
@@ -128,13 +128,13 @@ export function NewChatModal({
     [],
   );
   // The remedy for stale-context feedback is picking a workspace; doing so
-  // must retire the instruction (#3013 review finding 2). The trigger read is
-  // explicit so the dependency list is honest rather than suppressed (#3021).
+  // must retire the instruction (archive#3013). The trigger read is
+  // explicit so the dependency list is honest rather than suppressed (archive#3021).
   useEffect(() => {
     void selectedContext;
     setSelectFeedback(null);
   }, [selectedContext, setSelectFeedback]);
-  // station#3027 L2: one Enable create at a time. The ref is the guard (two
+  // archive#3027: one Enable create at a time. The ref is the guard (two
   // activations in one frame both read pre-render state); the state disables
   // the button for the visible affordance.
   const enableInFlightRef = useRef(false);
@@ -201,7 +201,7 @@ export function NewChatModal({
     );
     if (preferredIndex >= 0) setSelectedAgentIndex(preferredIndex);
   }, [agentSearch, flatList, mode]);
-  // station#1089: the directory the highlighted agent will actually be
+  // archive#1089: the directory the highlighted agent will actually be
   // launched in. Derived from the agent, not just the project, because an
   // engine connection's own Working Directory outranks `$HOME` for a project
   // that names no directory — see resolveNewChatWorkspaceHint.
@@ -290,7 +290,7 @@ export function NewChatModal({
     // availability filter, so this must speak rather than return silently —
     // the pointer path never arrives (the row button is disabled).
     if (agent.available === false) {
-      // station#3027: Enter on an enableable alias row triggers Enable, the
+      // archive#3027: Enter on an enableable alias row triggers Enable, the
       // same action its visible button offers; non-enableable rows keep
       // speaking their reason. A connection remedy outranks Enable on the
       // keyboard path too (mirrors the row's rendering): fix the connection
@@ -331,7 +331,7 @@ export function NewChatModal({
     const modelSource = choice?.modelId
       ? ('session override' as const)
       : defaultEffectiveModel.source;
-    // #3013: dispatch is guarded because `onSelect` is the parent's handler —
+    // archive#3013: dispatch is guarded because `onSelect` is the parent's handler —
     // a throw there (a failed lazy chunk, a broken route) previously vanished,
     // which from the user's seat is identical to the silent fall-through.
     const dispatch = (projectSlug?: string, projectName?: string) => {
@@ -469,9 +469,9 @@ export function NewChatModal({
     ).values(),
   );
 
-  // station#3027: one-click Enable for an engine-default alias row — then
+  // archive#3027: one-click Enable for an engine-default alias row — then
   // behave as if the user picked the resulting Agent. Every path either
-  // dispatches or speaks through the selectFeedback alert channel (#3013
+  // dispatches or speaks through the selectFeedback alert channel (archive#3013
   // invariant); nothing here may fail silently or reject unhandled.
   //
   // The find-or-create itself is the SERVER's, not this component's. Enable
@@ -491,7 +491,7 @@ export function NewChatModal({
     // FIND runs over the SAME scope-filtered set the view model derives
     // from, never the raw agents prop: an out-of-scope authored Agent
     // (owned by another project, or excluded by the project's agents
-    // filter) must not be silently selected into this context (#3027 M2).
+    // filter) must not be silently selected into this context (archive#3027).
     const existing = findAuthoredAgentForEngineConnection(
       scopedAgents,
       enable.engineConnectionId,
@@ -516,7 +516,7 @@ export function NewChatModal({
       // The server's find-or-create is scope-blind by design (identity is
       // global). If what it returned is owned by a DIFFERENT project than
       // this context, selecting it would smuggle an out-of-scope Agent into
-      // the chat the same way a raw catalog FIND would (#3027 M2) — say so
+      // the chat the same way a raw catalog FIND would (archive#3027) — say so
       // instead.
       if (
         materialized.project !== undefined &&
@@ -760,7 +760,7 @@ export function NewChatModal({
               <SkeletonList count={4} label="Loading agents" />
             </div>
           ) : runtimeError || modelsError ? (
-            // station#771: a settled error here used to fall straight
+            // archive#771: a settled error here used to fall straight
             // through to "Nothing to chat with yet" — indistinguishable from
             // a host with no connections at all.
             <ErrorState
@@ -1083,7 +1083,7 @@ function AgentRow({
   onFix: (route: AgentFixRoute) => void;
 }) {
   const unavailability = resolveNewChatAgentUnavailability(agent);
-  // #3843 T2: the picker and the Agents list mount the SAME cell, so they
+  // archive#3843: the picker and the Agents list mount the SAME cell, so they
   // must also read the same device projection — a row that named the host in
   // one surface and not the other would be the exact divergence §5 forbids.
   const devicePresentation = useDevicePresentation();
@@ -1116,7 +1116,7 @@ function AgentRow({
           <AgentIcon agent={agent} size="small" />
           <span
             className={`new-chat-modal__agent-name ${
-              // station#3027(d) item 5. A row that cannot start drops its NAME
+              // archive#3027(d). A row that cannot start drops its NAME
               // a rung so absence reads as absence before the chip is read.
               // TO REVERT: delete this conditional class — the dimming lives
               // entirely in `.new-chat-modal__agent-name--dimmed`'s one
@@ -1187,7 +1187,7 @@ function AgentRow({
           remedy labels, over the same `agentRunnability` answer the list was
           badging differently one click away. One component, one wording, one
           verb — the row itself stays the Chat action, so no `onChat`.
-        */}
+*/}
         <AgentReadinessCell
           agent={agent}
           agentName={agent.name}

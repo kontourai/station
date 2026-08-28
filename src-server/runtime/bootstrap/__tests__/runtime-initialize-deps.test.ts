@@ -44,7 +44,7 @@ describe('createRuntimeInitializationDeps', () => {
         // Agent records read for boot-time engine adoption.
         listAgents: vi.fn(async () => []),
         mutateAgent: vi.fn(async () => null),
-        // station#3063: boot-time built-in integration materialization.
+        // archive#3063: boot-time built-in integration materialization.
         saveIntegration: vi.fn(async () => {}),
         hasIntegration: vi.fn(async () => true),
       },
@@ -93,7 +93,7 @@ describe('createRuntimeInitializationDeps', () => {
     });
 
     expect(deps.port).toBe(4123);
-    // station#1078 review HIGH: this manual copy layer silently dropped the
+    // archive#1078 review HIGH: this manual copy layer silently dropped the
     // settle callback (shipping the whole fix inert) — pin identity
     // forwarding so the next added hook can't vanish the same way.
     expect(deps.activeAgents).toBeInstanceOf(Map);

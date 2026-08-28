@@ -23,7 +23,7 @@ export function BundledServiceBanner({
       return;
     }
     // A durable service owning this home is NOT "your local Station stopped"
-    // (station#3079). That state became reachable when the supervisor began
+    // (archive#3079). That state became reachable when the supervisor began
     // publishing liveness (#3064), and the host already narrates it
     // accurately — this component was discarding that narration for
     // `stopped` and substituting a generic line, then offering a Restart
@@ -31,7 +31,7 @@ export function BundledServiceBanner({
     // correctly refuses for a non-sidecar owner.
     const serviceOwnsHome = status.ownership === 'service';
     // A durable service owning this home is the steady state the user
-    // INSTALLED, not a notice (station#3476). The desktop's own sidecar is
+    // INSTALLED, not a notice (archive#3476). The desktop's own sidecar is
     // never `running` in that configuration — that is the point of it — so
     // the `running` dismiss above could never fire and this banner sat
     // permanently across the top of the window, in the *transient* band,
@@ -91,7 +91,7 @@ export function BundledServiceBanner({
       // Required, not decorative, because this banner is now dismissible for
       // its non-blocking states. The store keys user-dismissal suppression by
       // `id` + `occurrence`, and a dismissible banner with NO occurrence stays
-      // suppressed until `clear()` — so dismissing "local Station stopped"
+      // suppressed until `clear` — so dismissing "local Station stopped"
       // would have swallowed the `failed` banner that follows it, which is a
       // real fault reported to nobody. Keyed on the two fields that decide
       // what this banner says, so any change of state is a new occurrence.
@@ -117,7 +117,7 @@ export function BundledServiceBanner({
       // Everything this banner still presents that is NOT connection-blocking
       // is a notice the reader may reasonably be done with — it costs a band
       // of vertical space at the top of the window for as long as it is up.
-      // The `failed` band stays non-dismissible for station#3432's reason:
+      // The `failed` band stays non-dismissible for archive#3432's reason:
       // dismissing it hides the action needed to get a Station back. Same
       // shape, and the same reason, as ConnectionBannerSource's
       // `dismissible: !blocked`.

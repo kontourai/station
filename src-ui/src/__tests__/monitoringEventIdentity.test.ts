@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3658 delta review MEDIUM-2 — the identity the SSE stream and the
+ * archive#3658 — the identity the SSE stream and the
  * historical read reconcile on.
  */
 import { describe, expect, test } from 'vitest';
@@ -27,7 +27,7 @@ describe('monitoringEventIdentity', () => {
   });
 
   /*
-   * `MonitoringEmitter.base()` stamps `Date.now()` and attaches no event id,
+   * `MonitoringEmitter.base` stamps `Date.now` and attaches no event id,
    * so two tool calls on one trace inside the same millisecond used to share
    * an identity — and a snapshot containing only the first then confirmed
    * (and erased) both.
@@ -48,7 +48,7 @@ describe('monitoringEventIdentity', () => {
   });
 
   /*
-   * Delta2 review, MEDIUM-2 reopened. The identity was a 32-bit FNV-1a digest
+   *reopened. The identity was a 32-bit FNV-1a digest
    * of the canonical form, and a 32-bit digest used as an EQUALITY key claims
    * two payloads are the same event when all that matched is four bytes. The
    * review's probe found this exact pair; under the digest they shared an

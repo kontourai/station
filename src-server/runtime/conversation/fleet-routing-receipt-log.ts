@@ -1,11 +1,11 @@
 /**
- * station#1398 slice 3/4 — the consuming Station's LOCAL-ONLY routing-receipt
+ * archive#1398/4 — the consuming Station's LOCAL-ONLY routing-receipt
  * log (`docs/design/inference-fleet.md` §3.4, §10 OQ-3/OQ-4, §11 slices 3–4).
  *
  * The integrity machinery — content-addressed ids, the backward chain, the
  * head anchor that makes tail truncation visible, and the three-state read
  * verdict — lives in `receipt-chain.ts` and is shared byte-for-byte with the
- * serving side's log (station#1398 security review, M-2/M-6). This module is
+ * serving side's log (archive#1398 security review, M-2/M-6). This module is
  * the routing-specific shell around it.
  *
  * **Local-only (§10 OQ-4).** Written by the deciding Station, mode 0600 in a

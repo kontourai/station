@@ -11,7 +11,7 @@ export function builtinStationControlServerPath(): string {
 }
 
 /**
- * station#1547: the sibling built-in `station-docs` stdio server, resolved the
+ * archive#1547: the sibling built-in `station-docs` stdio server, resolved the
  * same way. It is the deliberate opposite of station-control below — it needs
  * NO credential and NO environment, because everything it serves is static
  * documentation compiled into its own bundle. That absence is the entire
@@ -26,7 +26,7 @@ export function builtinStationDocsServerPath(): string {
 }
 
 /**
- * The canonical id of the built-in docs server, declared once (station#1547
+ * The canonical id of the built-in docs server, declared once (archive#1547
  * AC5) because three unrelated modules now name it: the factory that persists
  * the integration (`runtime-default-agent.ts`), the resolver's synthetic
  * Station-identity spec (`session-agent-resolution.ts`), and the ACP
@@ -67,11 +67,11 @@ export function isBuiltinStationDocs(
 /**
  * Identity check for the canonical built-in station-control MCP server: an
  * exact match on the tool id AND the absolute `command`/`args[0]` path.
- * Exported (station#1157) so every caller that needs to recognize "is this
+ * Exported (archive#1157) so every caller that needs to recognize "is this
  * really the built-in station-control child" reuses this ONE gate rather
  * than re-deriving it: `withStationControlRuntimeEnv` below,
  * `mcp-manager.ts`'s spawn config, and `session-agent-resolution.ts`'s
- * resolver-stage secret-boundary-env exemption (station#1157) all call this
+ * resolver-stage secret-boundary-env exemption (archive#1157) all call this
  * directly.
  *
  * THE ACTUAL CONTRACT, post-#3063 (review INFO-2 — the older "file-content
@@ -144,7 +144,7 @@ export function withStationControlRuntimeEnv(
  * Station#1157: extracted from `runtime-default-agent.ts`'s
  * `createRuntimeSelfIntegration` (which now calls this instead of inlining
  * the literal) so every caller that reconstructs station-control's spawn
- * env for a given port — Station's own engine and, as of #1157, the Claude
+ * env for a given port — Station's own engine and, as of archive#1157, the Claude
  * adapter's in-process MCP passthrough — shares one definition. `port` must
  * be the ACTUALLY bound port for this instance (not `process.env.PORT`,
  * which is stale/unset under `PORT=0`/auto-allocate — see
@@ -158,7 +158,7 @@ export function stationControlSpawnEnv(port: number): Record<string, string> {
 }
 
 /**
- * station#3063: the RUNNING instance's spawn identity for the built-in
+ * archive#3063: the RUNNING instance's spawn identity for the built-in
  * station-control server — the fields that used to be baked into the
  * persisted `integrations/station-control/integration.json` and are now
  * resolved fresh at LOAD time (`ConfigLoader.loadIntegration`'s
@@ -166,10 +166,10 @@ export function stationControlSpawnEnv(port: number): Record<string, string> {
  * constructor).
  *
  * Why they must never be persisted again: two supported servers sharing one
- * `~/.station` home (the desktop app + the launchd service, station#2895)
+ * `~/.station` home (the desktop app + the launchd service, archive#2895)
  * each embedded their OWN dist path and port, so every `reloadAgents()`
  * rewrite flipped the bytes and retriggered the OTHER process's config
- * watcher — an unbounded cross-process reload loop (~1/s) that the #1588
+ * watcher — an unbounded cross-process reload loop (~1/s) that the archive#1588
  * byte-identical save skip structurally cannot converge, because the two
  * writers' bytes legitimately disagree. Keeping instance identity out of the
  * persisted file (and out of every save — see
@@ -191,7 +191,7 @@ export function stationControlRuntimeIdentity(
 }
 
 /**
- * station#3063: the one spawn executable both built-in tool servers use.
+ * archive#3063: the one spawn executable both built-in tool servers use.
  * Shared so surfaces that read the PERSISTED files directly (which carry no
  * `command` anymore — e.g. the registry/marketplace disk scan in
  * `integration-registry-provider.ts`) can derive binary presence from the
@@ -203,12 +203,12 @@ const BUILTIN_INTEGRATION_SPAWN_COMMAND = 'node';
 /**
  * The canonical id of the built-in station-control server — the exact string
  * `isBuiltinStationControl` matches on and `StationRuntime`'s constructor
- * registers the runtime-identity overlay under (station#3063).
+ * registers the runtime-identity overlay under (archive#3063).
  */
 export const BUILTIN_STATION_CONTROL_TOOL_SERVER_ID = 'station-control';
 
 /**
- * station#3063: the spawn command a registered built-in integration id runs
+ * archive#3063: the spawn command a registered built-in integration id runs
  * under, or `undefined` for every other id. This is what the persisted
  * file's absent `command` field RESOLVES to at spawn time (see
  * `stationControlRuntimeIdentity`/`stationDocsRuntimeIdentity`), so
@@ -244,8 +244,8 @@ export function builtinIntegrationRuntimeSpawnCommand(
 }
 
 /**
- * station#3063: the running instance's spawn identity for the built-in
- * station-docs server. Deliberately declares NO `env` key — the station#1547
+ * archive#3063: the running instance's spawn identity for the built-in
+ * station-docs server. Deliberately declares NO `env` key — the archive#1547
  * credential-free contract (see `createRuntimeDocsIntegration`'s doc comment
  * and its AC3 test guard) applies to the loaded/delivered shape, which this
  * overlay now produces.

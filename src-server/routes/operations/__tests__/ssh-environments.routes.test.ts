@@ -191,7 +191,7 @@ describe('SSH environment routes', () => {
     expect(mock.add).not.toHaveBeenCalled();
   });
 
-  // station#1097 R1: '/sessions' is registered ahead of '/:id' so it is
+  // archive#1097 R1: '/sessions' is registered ahead of '/:id' so it is
   // matched literally rather than swallowed as `id === 'sessions'`.
   test('routes GET /sessions through the injected remote-session aggregator, not the /:id handler', async () => {
     const mock = service();

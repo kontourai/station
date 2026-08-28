@@ -145,7 +145,7 @@ function useResolvedPaneIdentity(
 
 function FlowRunConsolePane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
-  // The console's own missing-descriptor check is intentionally left to #3261's follow-up.
+  // The console's own missing-descriptor check is intentionally left to archive#3261's follow-up.
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   return <FlowRunConsole projectSlug={identity.project.slug} />;
@@ -242,7 +242,7 @@ function codingWorkingDirectory(
 }
 
 /**
- * Review H1, and the sharpest instance of it in the app: a FAILED layout read
+ * Review, and the sharpest instance of it in the app: a FAILED layout read
  * leaves `layout` undefined, `codingWorkingDirectory` returns `''`, and all
  * three coding panes rendered "Workspace directory needed — set this Project's
  * working directory". That is not merely an empty state, it is WRONG GUIDANCE:
@@ -640,7 +640,7 @@ function SpatialBoardWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
 }
 
 // Home binds no Project, so it never consults `useWorkspacePaneBoundIdentity`
-// — there is no captured identity to resolve. Its own renderer still refuses
+// there is no captured identity to resolve. Its own renderer still refuses
 // a non-canonical occurrence. It is lazy for the same reason the file preview
 // is: Home is the root route's own chunk, and a Project host that never
 // mounts Home should not download it to have it in the table.
@@ -665,7 +665,7 @@ function ActivityWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
   );
 }
 
-// The Console Board (epic station#4142 M4a): the component lives in
+// The Console Board (archive#4142): the component lives in
 // `@kontourai/station-board-pane`, and this lazy entry — via the wrapper
 // that supplies its shell affordances — is core's ONE import of that
 // package's component (`board-surface-single-mounter.test.ts`). Lazy for

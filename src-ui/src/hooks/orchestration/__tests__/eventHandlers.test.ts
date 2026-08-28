@@ -236,11 +236,11 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
     ).toEqual([]);
   });
 
-  // station#3451 finding H1 (fix round): the discriminating case — a codex
+  // archive#3451: the discriminating case — a codex
   // deferred-retriable runtime.error (willRetry: true) must NOT drain, since
   // codex may still resolve this same turn without a new turn.started. The
   // earlier "drains on a runtime.error" test above uses provider: 'claude'
-  // (the event() helper's default), so it never actually exercised this
+  // (the event helper's default), so it never actually exercised this
   // gate — it would have passed identically with no gate at all.
   test('a codex deferred-retriable runtime.error does NOT drain a queued message', () => {
     activeChatsStore.updateChat(threadId, {

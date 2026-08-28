@@ -47,7 +47,7 @@ interface ComposerModeSheetProps {
  * bottom sheet from one implementation, so there is no per-platform fork here.
  *
  * Escalating to `never` (full access) still takes a second, explicit
- * confirmation (#727 review item 3) — but as an inline confirm step inside the
+ * confirmation (archive#727) — but as an inline confirm step inside the
  * sheet rather than a chip that silently rewrites itself into a confirm button.
  * Backing out of the confirm leaves the session's mode untouched.
  */

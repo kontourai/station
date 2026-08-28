@@ -33,7 +33,7 @@ export const SERVER_EVENTS = {
   CORE_UPDATED: 'core:updated',
   DATA_CHANGED: 'data:changed',
   /**
-   * station#3525 fix round FIX 1: Station's own signal — never a
+   * Station's own signal — never a
    * `CanonicalRuntimeEvent` — that an internal-machinery stop's suppressed
    * turn ultimately did NOT get re-dispatched (the credential-profile
    * restart itself failed). The generic turn-completion push pipeline
@@ -51,10 +51,10 @@ export const SERVER_EVENTS = {
    * carries only `{provider, status}` — no session identifier — which is
    * exactly why broadcasting IT on the identity-free `/events` route is
    * safe. This one is tagged `'scoped'` in `SERVER_EVENT_BROADCAST_SAFETY`
-   * below (station#3567) for the opposite reason (station#3525 fix round,
-   * BLOCKING: an earlier version of this comment's "mirrors
+   * below (archive#3567) for the opposite reason
+   * (archive#3525: an earlier version of this comment's "mirrors
    * RUNTIME_HEALTH_CHANGED" claim was exactly what let it broadcast verbatim
-   * on that route before independent review caught it — decide a new
+   * on that route before the mistake was caught — decide a new
    * channel's route eligibility by payload sensitivity, never by topological
    * resemblance to an already-safe one). Before station#3567 that route ran
    * a hand-maintained denylist of channel names; it now derives the same
@@ -207,7 +207,7 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // no destination identity in this payload to route it to one tenant's
   // connections, so broadcasting it would drive every connected client's UI
   // regardless of who issued the command. Gated by `isUiNavigateEvent` /
-  // its dedicated identity gate (station#3567 fix round FIX 1): delivered in
+  // its dedicated identity gate (archive#3567): delivered in
   // personal mode (this route reaches only the one user's own tabs/devices
   // there — the feature as designed), denied in hosted mode.
   [SERVER_EVENTS.UI_NAVIGATE]: 'scoped',
@@ -295,7 +295,7 @@ export interface SessionStateChangedEvent extends CanonicalRuntimeEventBase {
   transitionReason?: SessionTransitionReason;
   transitionSource?: SessionTransitionSource;
   /**
-   * station#4080 slice 1 (review round 1, M3): written ONLY by
+   * Written ONLY by
    * `InterruptedTurnRecovery.consume()`, the boot-time
    * consumer of `SessionTurnBoundaryAuthority`'s crash-reconcile verdict.
    * `runtime-event-projection.ts`'s `[TURN_INTERRUPTED]` banner render gates
@@ -539,7 +539,7 @@ export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
 }
 
 /**
- * station#3451 fix round D5: the ONE `runtime.error` publish this repo's own
+ * archive#3451: the ONE `runtime.error` publish this repo's own
  * audit documents as not proof the turn is over — codex's `'error'`
  * notification (`willRetry`) may resolve the SAME turn without a new
  * `turn.started`. Scoped to `provider === PROVIDER_CODEX` because other

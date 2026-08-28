@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3315 — sidebar project reorder: the drag handle's pointer path, the
+ * archive#3315 — sidebar project reorder: the drag handle's pointer path, the
  * keyboard move path, and the invariant that reordering never reassigns the
  * slug-derived accent colors.
  */
@@ -226,7 +226,7 @@ describe('project sidebar reorder (station#3315)', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  // station#3331 — a keyboard move used to be entirely silent, and the
+  // archive#3331 — a keyboard move used to be entirely silent, and the
   // optimistic reorder relocates the focused handle's DOM node, so the next
   // Arrow press went nowhere.
   test('keyboard: each move announces the new position in the live region', () => {
@@ -255,7 +255,7 @@ describe('project sidebar reorder (station#3315)', () => {
     expect(screen.getByTestId('reorder-status').textContent).toBe('');
   });
 
-  // station#3331 predicted that the optimistic reorder relocates the focused
+  // archive#3331 predicted that the optimistic reorder relocates the focused
   // handle and drops focus, so the second Arrow press would go nowhere. This
   // pins the OBSERVED behaviour instead — consecutive presses keep moving the
   // same row — which a real-browser A/B confirmed in Chromium and WebKit with
@@ -298,7 +298,7 @@ describe('project sidebar reorder (station#3315)', () => {
     expect(screen.getByTestId('reorder-status').textContent).toBe('');
   });
 
-  // station#3331 item 4. jsdom evaluates no media query and computes no
+  // archive#3331. jsdom evaluates no media query and computes no
   // layout, so this pins only the stylesheet's own text — every assertion is
   // scoped to the rule it is about, because an unscoped `css.toContain(...)`
   // is satisfied by any rule in the file and discriminates nothing.
@@ -326,7 +326,7 @@ describe('project sidebar reorder (station#3315)', () => {
     };
 
     // Base rule: hidden by default, and it owns the gesture. Both facts have
-    // to live on the SAME rule for the trap to be what #3331 described.
+    // to live on the SAME rule for the trap to be what archive#3331 described.
     const base = ruleBody('.sidebar__reorder-handle');
     expect(base).toContain('opacity: 0');
     expect(base).toContain('touch-action: none');
@@ -343,7 +343,7 @@ describe('project sidebar reorder (station#3315)', () => {
     // The base rule's 0 must not survive into the coarse block.
     expect(coarseBlock).not.toContain('opacity: 0');
 
-    // station#3346: the row's other control. Whole-block `toContain` cannot
+    // archive#3346: the row's other control. Whole-block `toContain` cannot
     // tell whose 44px it found — the handle already contributes one — so read
     // the chevron's own nested rule.
     const coarseRuleBody = (selector: string): string => {

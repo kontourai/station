@@ -51,7 +51,7 @@ vi.mock('../../../hooks/useGitStatus', () => ({
 import { BranchToolbar } from '../BranchToolbar';
 
 /**
- * station#771 regression. Both `reposQuery.isLoading` and
+ * archive#771 regression. Both `reposQuery.isLoading` and
  * `branchesQuery.isLoading` gates in this file were consulted without their
  * matching `isError` — a settled discovery/list failure rendered the
  * indistinguishable "No git repository in this folder" / "No branches"

@@ -1,6 +1,6 @@
 /**
  * Shared real-service test harness for orchestration ownership-gate
- * regression suites (station#1164, #1197, #1203, #1205). Extracted from
+ * regression suites (archive#1164, archive#1197, archive#1203, archive#1205). Extracted from
  * `routes/orchestration/__tests__/orchestration.routes.test.ts` so that
  * every SSE route sharing the same `EventBus` — the gated
  * `/api/orchestration/events` route AND the sibling broadcast `/events`
@@ -24,7 +24,7 @@ import type { IProviderAdapterRegistry } from '../providers/provider-interfaces.
 import { AsyncEventQueue } from '../providers/sessions/async-event-queue.js';
 
 /**
- * station#1164: a minimal real `ProviderAdapterShape`. Events are injected
+ * archive#1164: a minimal real `ProviderAdapterShape`. Events are injected
  * directly onto `events` (an `AsyncEventQueue`, exactly like the adapter's
  * own transport) and flow through the REAL `OrchestrationService` pipeline
  * (`consumeAdapterEvents` -> `projectAndPublishEvent`, which persists to a

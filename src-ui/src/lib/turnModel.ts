@@ -7,7 +7,7 @@
  * it. So a session running on `zai-coding-plan/glm-5.3` displayed
  * "OpenCode Zen/DeepSeek V4 Flash" underneath a turn whose own header read
  * `Requested zai-coding-plan/glm-5.3` — the client held the right value and
- * rendered the other one (station#3149).
+ * rendered the other one (archive#3149).
  *
  * Both surfaces read this now, so they cannot drift apart again.
  *

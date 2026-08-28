@@ -39,8 +39,8 @@ export type SessionEvidenceReveal = {
 /**
  * The mutable (station-owned, still-live-or-terminal) session detail page.
  * State/query/mutation wiring lives in `useMutableSessionDetailState`
- * (station#1204 AC1); this component owns only the render tree, composed
- * from the header/errors/attention/diagnostics sections (AC2) plus the
+ * (archive#1204); this component owns only the render tree, composed
+ * from the header/errors/attention/diagnostics sections plus the
  * task-context, live-request, and compose blocks that don't warrant their
  * own file yet.
  */
@@ -159,7 +159,7 @@ export function MutableSessionDetail({
         onCopySessionId={copySessionId}
       />
 
-      {/* station#3305: one scroll region for everything between the pinned
+      {/* archive#3305: one scroll region for everything between the pinned
           header and the pinned request/compose controls. The previous fixed
           grid template assigned one flexible row by position, so any other
           section that grew (error stacks, multiple attention cards, the
@@ -212,7 +212,7 @@ export function MutableSessionDetail({
               </dd>
             </div>
           )}
-          {/* station#189 S4. Its own row, always — never merged into "Linked
+          {/* archive#189. Its own row, always — never merged into "Linked
             Flow" above and never suppressed by it. They are two different
             runs with independent lifecycles, and a session routinely has one
             and not the other; one combined figure is how a permanently
@@ -281,7 +281,7 @@ export function MutableSessionDetail({
         />
       </div>
 
-      {/* Review MEDIUM (station#1170): guarded on !isStopped like Stop task
+      {/* (archive#1170): guarded on !isStopped like Stop task
           and the live indicator above — a session that crashes mid-request
           must not leave Approve/Decline clickable against a dead session.
           Stopped (`completed`/`failed`/`canceled`), not terminal
@@ -303,7 +303,7 @@ export function MutableSessionDetail({
             </span>
             <strong>{pendingRequest.title}</strong>
           </div>
-          {/* station#1781 AC4: the card RENDERS for an unanswerable session —
+          {/* archive#1781: the card RENDERS for an unanswerable session —
               deleting it would be the silent filtering ADR 0012 forbids, and
               the request really is still open. What it must not do is offer
               Approve/Deny that dispatch into nothing, so the buttons are

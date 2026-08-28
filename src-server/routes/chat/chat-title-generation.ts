@@ -1,6 +1,6 @@
 /**
  * Auto-generates a short conversation title from the first exchange
- * (station#1566). Follows `ApprovalGuardianService`'s cheap-side-model
+ * (archive#1566). Follows `ApprovalGuardianService`'s cheap-side-model
  * pattern: a one-shot temp agent bound to `appConfig.structureModel`,
  * `generateObject` against a tiny schema, and a fully non-fatal failure
  * mode — the caller (`finalizeChatRequest`) fires this off in the
@@ -46,7 +46,7 @@ export async function generateConversationTitle({
     return null;
   }
 
-  // station#1566 review (MEDIUM, accepted with disclosure): this timeout
+  // archive#1566 review (MEDIUM, accepted with disclosure): this timeout
   // only stops US from WAITING on `run()` — the underlying `generateObject`
   // call is abandoned, not cancelled. `createTempAgent`/`generateObject`
   // have no `AbortSignal` plumbing to cancel an in-flight provider call

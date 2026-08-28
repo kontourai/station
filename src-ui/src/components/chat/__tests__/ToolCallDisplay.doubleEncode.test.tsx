@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3507 — a restored transcript double-encodes a structured tool
+ * archive#3507 — a restored transcript double-encodes a structured tool
  * result. `ToolCallDisplay.tsx`'s Response section used
  * `JSON.stringify(result, null, 2)` unconditionally, but whether that is
  * right depends on whether `result` is already a string:
@@ -15,7 +15,7 @@
  *   `output` is JSON-serialised there, a string `output` passes through
  *   as-is — so restored `result` is always a string, never sometimes.
  *   `event-store.ts`'s `snapshotEvent` upstream also JSON-serialises a
- *   structured `output` before it reaches the client (station#3462), but
+ *   structured `output` before it reaches the client (archive#3462), but
  *   `resultText` is what actually guarantees the string-ness this component
  *   sees. Stringifying that string a second time wraps it in an extra layer
  *   of quotes and escapes.
@@ -34,7 +34,7 @@ import { ToolCallDisplay } from '../ToolCallDisplay';
 afterEach(cleanup);
 
 function expand(_toolName: string) {
-  // The collapsed row itself is the disclosure button (station#2652
+  // The collapsed row itself is the disclosure button (archive#2652
   // redesign); its accessible name is its visible verb-first label.
   fireEvent.click(document.querySelector('button.tool-call__line')!);
 }
@@ -97,7 +97,7 @@ describe('ToolCallDisplay result rendering (station#3507)', () => {
 
   // Named to say what the fix does, not "either way" — that phrasing would
   // read as "regardless of the fix," which is false: the pre-fix code wraps
-  // this exact fixture in quotes too (proven by the fix round's fault
+  // this exact fixture in quotes too (proven by the 's fault
   // injection, which reddened this test along with the restored-path one
   // above), so it only holds once the type check exists.
   test('a plain string result (e.g. a shell tool) is not wrapped in quotes by the fix', () => {
@@ -155,11 +155,11 @@ describe('ToolCallDisplay args rendering (station#3507 fix round)', () => {
 });
 
 /**
- * Independent review of this branch (station#3559 fix round finding 1): the
+ * Independent review of this branch (archive#3559): the
  * old collapsed header's `argsPreview` had the SAME string-args hazard as
  * `argsJson` above — `Object.keys('git commit -m "fix"')` returns index keys
  * ('0', '1', '2', …), so a string tool-call argument rendered as `0: "g",
- * 1: "i", 2: "t", …` for the whole command. The station#2652 redesign
+ * 1: "i", 2: "t", …` for the whole command. The archive#2652 redesign
  * replaced the preview with the verb-first label; these tests keep the
  * defect class pinned against the label derivation, which must show a
  * string command intact, never index-keyed.
@@ -184,7 +184,7 @@ describe('ToolCallDisplay collapsed row label (station#3559 defect class)', () =
     // Bare infinitive, not "Ran": this fixture carries no terminal state, so
     // nothing observed the command finish. These tests pin the ARGS preview;
     // they previously demanded past tense here and so held the overclaim in
-    // place (station#3690 review) — the tense contract itself is asserted in
+    // place (archive#3690) — the tense contract itself is asserted in
     // `ToolCallDisplay.test.tsx`.
     expect(labelText()).toBe('Run git commit -m "fix"');
     // The pre-fix defect: index-keyed characters, not the command text.

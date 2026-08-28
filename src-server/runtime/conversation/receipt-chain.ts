@@ -1,5 +1,5 @@
 /**
- * station#1398 — the hash-chained receipt substrate shared by BOTH sides
+ * archive#1398 — the hash-chained receipt substrate shared by BOTH sides
  * (`docs/design/inference-fleet.md` §3.4, §10 OQ-3/OQ-4).
  *
  * Extracted in the security-review round for two reasons that are the same

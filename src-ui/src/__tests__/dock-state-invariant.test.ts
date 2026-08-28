@@ -8,7 +8,7 @@ function dockParams() {
   return { dock: params.get('dock'), maximize: params.get('maximize') };
 }
 
-// #795 review: `is-collapsed` and `is-maximized` are independent CSS classes
+// archive#795: `is-collapsed` and `is-maximized` are independent CSS classes
 // and the maximized rule wins on height with `!important`, so the pair renders
 // as a full-height dock with an emptied body — a blank shell over the app.
 // Callers had to remember this individually and one of them didn't, so the

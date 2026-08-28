@@ -14,7 +14,7 @@ import {
 } from '../config-loader-agents.js';
 
 /**
- * station#3549 review round 3 follow-up.
+ * archive#3549 review round 3 follow-up.
  *
  * `isAgentConfigNotFound` now carries the entire distinction between "this
  * agent has no spec" (ordinary — every registry default is like this) and

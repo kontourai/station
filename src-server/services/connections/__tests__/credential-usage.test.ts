@@ -6,7 +6,7 @@ import {
 } from '../credential-usage.js';
 
 /**
- * station#3552. The payload fixtures below are ABRIDGED FROM LIVE RESPONSES
+ * archive#3552. The payload fixtures below are ABRIDGED FROM LIVE RESPONSES
  * captured from real accounts, not invented from the docs — including the
  * shapes that only appear in reality, like Codex's `additional_rate_limits`
  * per-model entries and a `used_percent: 100` that arrives together with an

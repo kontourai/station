@@ -26,7 +26,7 @@ interface OllamaConfig {
 interface OpenAICompatConfig {
   baseUrl: string;
   apiKey?: string;
-  /** station#1994: provider-wire completion-body defaults. */
+  /** archive#1994: provider-wire completion-body defaults. */
   modelRequestOptions?: Record<string, unknown>;
 }
 
@@ -40,7 +40,7 @@ interface BedrockProviderConfig {
 interface ApiKeyProviderConfig {
   apiKey?: string;
   baseUrl?: string;
-  /** station#1994: provider-wire completion-body defaults. */
+  /** archive#1994: provider-wire completion-body defaults. */
   modelRequestOptions?: Record<string, unknown>;
 }
 

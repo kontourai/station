@@ -1,7 +1,7 @@
 /**
  * Single source of truth for the boolean feature flags Station's public
  * handshake (`GET /.well-known/station/v1`, `PublicStationHandshake.
- * capabilities`) advertises — station#1095, the rolling-upgrade
+ * capabilities`) advertises — archive#1095, the rolling-upgrade
  * feature-detection story for phone/CLI vs server skew. See
  * `packages/contracts/src/environment-security.ts`'s
  * `StationCapabilityFlags` doc comment for the full contract (every key
@@ -23,19 +23,19 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   sshEnvironments: true,
   // Web Push subscribe/unsubscribe: src-server/routes/operations/push-routes.ts.
   webPushNotifications: true,
-  // Sequence-cursor resume for the orchestration event stream (station#1092):
+  // Sequence-cursor resume for the orchestration event stream (archive#1092):
   // src-server/routes/orchestration/orchestration.ts `/events`. Server-side
   // resume handling is unconditional (harmless to old clients), so this is
   // always true rather than gated on any runtime config.
   eventStreamResume: true,
   // Versioned, bounded history windows for a single orchestration session.
   sessionEventWindow: true,
-  // Scoped pairing (station#1098): pairing grants/device sessions carry an
+  // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
   // src-server/services/ssh/device-pairing-service.ts.
   scopedPairing: true,
-  // Fleet inference (station#1398 slice 2): "this build understands the
+  // Fleet inference (archive#1398): "this build understands the
   // `inference:invoke` pairing-scope token" (docs/design/inference-fleet.md
   // §3.3 point 2). A STATIC PROTOCOL FACT, never a participation signal —
   // the handshake is public and unauthenticated, so a flag derived from

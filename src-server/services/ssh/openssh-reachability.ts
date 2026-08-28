@@ -57,7 +57,7 @@ export type SshReachabilityFailureCode =
   | 'unknown';
 
 /**
- * The readiness-evidence shape (#3649) as it applies to a computer rather
+ * The readiness-evidence shape (archive#3649) as it applies to a computer rather
  * than a model connection: a version, the level of proof, when it was
  * observed, a sentence describing what was proven, and — when it is not
  * ready — the single next step that would change the answer.

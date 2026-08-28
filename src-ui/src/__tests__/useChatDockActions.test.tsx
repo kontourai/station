@@ -43,7 +43,7 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 vi.mock('../utils/execution', () => ({
   // Carries a model, so a test can tell "seeded the agent default" from
   // "seeded nothing" — the mock previously returned no model at all, which
-  // made the station#3165 defect undetectable here.
+  // made the archive#3165 defect undetectable here.
   resolveAgentExecution: () => ({
     providerOptions: {},
     model: 'opencode/deepseek-v4-flash-free',
@@ -115,7 +115,7 @@ describe('useChatDockActions placement-aware actions', () => {
   });
 
   /**
-   * station#3782: focusing a chat that has not taken its first successful turn
+   * archive#3782: focusing a chat that has not taken its first successful turn
    * yet must still leave `?chat=` pointing at something the dock can resolve.
    * This used to write `conversationId ?? null`, which cleared the URL pointer
    * for a chat that is live in the tab strip in front of the user.
@@ -220,7 +220,7 @@ describe('useChatDockActions placement-aware actions', () => {
   test('reopening a conversation seeds no model, rather than the agent default', async () => {
     // THE caller assertion. The extracted decision has its own tests, but
     // nothing proved this hook uses it — reverting the call site to
-    // `: agentExecution` kept every one of those green (station#3165 review).
+    // `: agentExecution` kept every one of those green (archive#3165).
     const setActiveSessionId = vi.fn();
     const { result } = renderHook(() =>
       useChatDockActions({

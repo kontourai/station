@@ -24,7 +24,7 @@ import { BannerHost } from '../components/notifications/BannerHost';
 import { bannerStore } from '../contexts/banner-store';
 
 /**
- * station#4475 (review round) — the acceptance for this issue says to drive
+ * archive#4475 — the acceptance for this issue says to drive
  * every connections-flow control, WITH and WITHOUT an active banner. That
  * splits into two genuinely different properties, proven by two genuinely
  * different mechanisms, and this file is honest about covering only one:
@@ -49,12 +49,12 @@ import { bannerStore } from '../contexts/banner-store';
  *
  * The "with banner" case deliberately does NOT rely on `BannerHost.tsx`'s
  * own space-reservation effect (`--banner-stack-height`) actually firing —
- * that effect reads real `getBoundingClientRect()`s, which jsdom always
+ * that effect reads real `getBoundingClientRect`s, which jsdom always
  * reports as zero, so it never writes a real value during the
  * `@testing-library/react` render this file extracts markup from. Instead
  * the banner is positioned WITHOUT any content-area inset (worst case: the
  * banner visually overlaps the page content beneath it, which is exactly
- * the pre-#3308 defect shape), so a pass here is the STRONGER claim that the
+ * the pre-archive#3308 defect shape), so a pass here is the STRONGER claim that the
  * banner host's `pointer-events: none` transparency (BannerHost.css) keeps
  * page controls reachable even independent of the reservation timing, not
  * merely "reachable once reservation has pushed things out of the way."
@@ -206,8 +206,8 @@ describe.skipIf(!chromiumAvailable)(
           }
 
           for (const [name, locatorSelector, cssSelector] of [
-            // The Playwright-only `:has-text()` finds the control; a plain
-            // CSS selector is what `Element.closest()` inside the page can
+            // The Playwright-only `:has-text` finds the control; a plain
+            // CSS selector is what `Element.closest` inside the page can
             // actually parse for the hit-test.
             [
               'Add computer',

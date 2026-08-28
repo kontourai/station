@@ -1,13 +1,13 @@
 /**
- * station#settings-revamp slice 3 (#1441): the row for
+ * archive#settings-revamp (archive#1441): the row for
  * `builtinAgentEngineConnectionId` with a "Change…" action. Reuses the
- * onboarding-era `EnginePicker` component (station#1194) rather than forking
+ * onboarding-era `EnginePicker` component (archive#1194) rather than forking
  * a second picker — `EnginePicker` already renders its own full
  * backdrop+panel overlay, so no extra modal shell is needed; only its
  * eyebrow/title/description copy is overridden so it reads as a deliberate
  * re-configuration action instead of first-run framing.
  *
- * station#1194: the row shows the engine the runtime is ACTUALLY bound to,
+ * archive#1194: the row shows the engine the runtime is ACTUALLY bound to,
  * resolved through `builtinEngineDisplay` (which calls the same
  * `resolveBuiltinAgentEngineBinding` the server bootstrap uses), not the raw
  * config value. Those two diverge whenever a saved choice names an engine
@@ -16,7 +16,7 @@
  * value made Settings claim an engine that was not in effect. The reason for
  * any divergence is stated on a second line rather than swallowed.
  *
- * Review finding 3: this row lives inside SettingsView's batched
+ * this row lives inside SettingsView's batched
  * draft/Save/Discard page, so the picker's choice is routed through
  * `onSelect` into `onChange` (the row's own batched-draft callback) instead
  * of letting `EnginePicker` PATCH the config directly — an immediate save
@@ -28,7 +28,7 @@
  * inside a nested modal would bypass SettingsView's `useUnsavedGuard` and
  * silently discard the draft.
  *
- * The modal copy deliberately does NOT mention Voice. #1441's wording said
+ * The modal copy deliberately does NOT mention Voice. archive#1441's wording said
  * this reassigns "Station's default agent and voice", but the server refuses
  * exactly that: `rebindBuiltinAgents` (station-runtime.ts) leaves
  * `station-voice` alone on purpose — Voice is speech-to-speech

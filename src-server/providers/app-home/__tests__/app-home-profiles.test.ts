@@ -1240,7 +1240,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 });
 
-// #896 wave 2: codex counterpart of `importClaudeGlobalSnapshot` — the
+// archive#896 wave 2: codex counterpart of `importClaudeGlobalSnapshot` — the
 // shared transactional/security machinery is proven by the claude suite
 // above (unchanged by the refactor, run untouched as the regression proof);
 // these tests only pin the codex-specific allowlist.
@@ -1443,7 +1443,7 @@ describe('symlink dodge on the profile dir itself', () => {
   });
 });
 
-// #896 wave 2: bounded, on-request profile GC — usage report + explicit
+// archive#896 wave 2: bounded, on-request profile GC — usage report + explicit
 // clear (no daemons/watchers/timers).
 describe('readAppHomeProfileUsage', () => {
   test('reports null when the profile does not exist', async () => {

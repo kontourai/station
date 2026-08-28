@@ -73,7 +73,7 @@ describe('chat-request-preparation', () => {
     });
     expect(result.injectContext).toBe('inject-context');
     expect(result.ragContext).toBe('rag-context\n\nfeedback-guidelines');
-    // station#2649: the dispatch-time receipt records exactly the blocks
+    // archive#2649: the dispatch-time receipt records exactly the blocks
     // this preparation composed — refs from the SAME retrieval that built
     // the injected string, counts from the SAME summary that built the
     // guidelines text.
@@ -310,7 +310,7 @@ describe('chat-request-preparation', () => {
     ).rejects.toThrow(/No models available/);
   });
 
-  // station#1288: the tests above all stub `resolveProvider` directly, which
+  // archive#1288: the tests above all stub `resolveProvider` directly, which
   // hid a real defect — `ProviderService.resolveProvider`'s pairing guard
   // ("Conversation provider and model overrides must be supplied together")
   // throws on exactly the shape the station-agent relay sends (a

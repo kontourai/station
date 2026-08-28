@@ -15,7 +15,7 @@ interface RuntimeAgentRegistryLogger {
 interface RuntimeAgentMetadata {
   slug: string;
   /**
-   * Carried through from `AgentMetadata` (station#954 cold-boot fix) so
+   * Carried through from `AgentMetadata` (archive#954 cold-boot fix) so
    * `isExternalEngineBoundAgent` below can classify a record without
    * loading its full spec.
    */
@@ -42,7 +42,7 @@ export async function initializeRuntimeAgents(
   const agents = await context.bootstrapDefaultAgent();
 
   for (const metadata of agentMetadataList) {
-    // Cleanly SKIP external-engine-bound records (station#954 cold-boot
+    // Cleanly SKIP external-engine-bound records (archive#954 cold-boot
     // fix) — a promoted default (`claude-code`, `codex`, `acp-<id>`) or any
     // user-created External agent has no Station-engine model to build;
     // attempting it anyway unconditionally threw
@@ -53,7 +53,7 @@ export async function initializeRuntimeAgents(
     // still fully functional — they're served by the enriched-agents
     // synthetic/promoted-record projection and orchestration-backed chat,
     // never through this managed-runtime VoltAgent registry.
-    // station#3662: also skips the reserved `station` record, whose instance
+    // archive#3662: also skips the reserved `station` record, whose instance
     // `bootstrapDefaultAgent` above already built under the internal
     // `default` key — see `hasNoStationEngineInstanceToBuild`.
     if (hasNoStationEngineInstanceToBuild(metadata)) {

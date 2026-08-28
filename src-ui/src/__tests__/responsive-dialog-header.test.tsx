@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1825 item 1: the project switcher's (and five sibling sheets')
+ * archive#1825: the project switcher's (and five sibling sheets')
  * title/close-button header used to be hand-rolled markup styled by
  * `.session-model-picker__header`, a class defined only in
  * `SessionModelPicker.css` — a stylesheet Vite lazy-chunks alongside
@@ -27,7 +27,7 @@
  *
  * Known limits of the CSS-source checks below (both are textual, not a real
  * cascade/specificity engine): the `index.css` check reads the LAST bare
- * `.responsive-dialog-header { ... }` block in the file (matching CSS's own
+ * `.responsive-dialog-header {... }` block in the file (matching CSS's own
  * equal-specificity "last one wins" behavior for a repeated bare selector),
  * but cannot detect a HIGHER-specificity selector elsewhere in the same file
  * overriding it regardless of source order. The lazy-sheet check matches any
@@ -52,7 +52,7 @@ function readSource(relativePath: string): string {
 }
 
 // Every render site that shares this header, per the repo's own family
-// (kontourai/station#1825's brief: "check the other sheets/modals in this
+// (archive#1825's brief: "check the other sheets/modals in this
 // family for the same pattern before inventing a one-off fix").
 const HEADER_CONSUMERS = [
   'components/chat-dock/ChatDockProjectSwitcherSheet.tsx',
@@ -61,7 +61,7 @@ const HEADER_CONSUMERS = [
   'components/chat-dock/ComposerActionsMenu.tsx',
   'components/project-sidebar/ProjectSidebarStatus.tsx',
   'components/badges/ComposerModeSheet.tsx',
-  // station#4254 extracted the model picker's dialog chrome into
+  // archive#4254 extracted the model picker's dialog chrome into
   // ModelPickerDialogFrame so the new-chat flow could reuse it. The header
   // moved with it, so this entry follows the code to where the guarantee now
   // lives rather than being dropped — dropping it would have retired the
@@ -132,7 +132,7 @@ describe('shared dialog header (station#1825 item 1)', () => {
     // Matches any selector that mentions the class before an opening brace —
     // not only a bare `.responsive-dialog-header {` redeclaration, but also
     // a scoped/compound selector like `.session-model-picker
-    // .responsive-dialog-header { display: block }`, which would reintroduce
+    //responsive-dialog-header { display: block }`, which would reintroduce
     // the bug just as effectively while slipping past an exact-selector
     // check. Still a textual scan, not a real selector parser, so this is a
     // "the class name is not used as a selector at all in this file" check,

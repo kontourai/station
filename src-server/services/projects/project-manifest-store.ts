@@ -1,5 +1,5 @@
 /**
- * station#1499 slice 2 — the project manifest sidecar
+ * archive#1499 — the project manifest sidecar
  * (`docs/design/portable-project-identity.md` §3.2, §5).
  *
  * `<home>/projects/<slug>/manifest.json` is additive: `project.json` keeps its
@@ -13,7 +13,7 @@
  *    illustrative manifest carries `slug`, `name`, `icon`, `description`,
  *    `agents`, and `knowledge`, every one of which already lives in
  *    `project.json`. Writing them here would create a second, drifting copy of
- *    a value that has an owner — the exact defect station#1497 closed at the
+ *    a value that has an owner — the exact defect archive#1497 closed at the
  *    layout layer, which §5 warns "would be much worse" at this layer. So
  *    {@link ProjectManifestRecord} holds `{ schemaVersion, id, repos,
  *    createdAt, updatedAt }` and nothing else, and
@@ -37,7 +37,7 @@
  *    WINNER AND ADOPTS IT. Do not "simplify" this into a plain write: a plain
  *    write turns a losing racer into a silent clobber of the winner's portable
  *    `id` — the one field in this system that must never change once anything
- *    has joined on it (#1392 channels, #1123 delegation, #1409 provenance).
+ *    has joined on it (archive#1392 channels, archive#1123 delegation, archive#1409 provenance).
  *
  *    It is ALSO atomic. `writeFileSync(path, data, { flag: 'wx' })` is
  *    open(O_CREAT|O_EXCL) → write → close: the file exists at zero bytes in
@@ -84,7 +84,7 @@
  *    read back.
  *
  * 7. **UNREADABLE and UNSELECTABLE are different failures** (slice 1's
- *    decision 11, station#1499). {@link ProjectManifestStore.composeManifest}
+ *    decision 11, archive#1499). {@link ProjectManifestStore.composeManifest}
  *    runs slice 1's validator on every read, and slice 1 enforces §3.5's
  *    primary cardinality there — so a manifest with two primaries, or with
  *    several resources and none, would fail a read. That manifest is not
@@ -264,7 +264,7 @@ function validateManifestRecord(
 
 /**
  * `fsync` on a WRITE descriptor — Windows implements it as FlushFileBuffers
- * and returns EPERM on a read-only handle (#1162, the same gotcha
+ * and returns EPERM on a read-only handle (archive#1162, the same gotcha
  * `json-store.ts` records).
  */
 function fsyncManifestFile(filePath: string): void {
@@ -419,7 +419,7 @@ export class ProjectManifestStore {
       // `?? []` here is a composition default, not a decision default: an
       // absent list on the project record means the project declares none.
       //
-      // station#1503 slice 5 — a namespace anchored to a named repo composes as
+      // archive#1503 — a namespace anchored to a named repo composes as
       // §3.2's `{kind: 'repo', repoId, path}`. Before this, EVERY namespace
       // composed as `station-managed` unconditionally, so that arm of
       // `ProjectKnowledgeRef` was a documented shape with no writer.

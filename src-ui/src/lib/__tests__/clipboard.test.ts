@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3341 — the seam's whole contract is that `true` cannot be reached
+ * archive#3341 — the seam's whole contract is that `true` cannot be reached
  * without a `writeText` that itself resolved. All three arms are pinned here
  * because each one was a live defect at a real call site: the missing-clipboard
  * arm is the insecure-origin case the old `?.` shape reported as success, and

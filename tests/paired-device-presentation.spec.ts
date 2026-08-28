@@ -19,7 +19,7 @@ import {
 } from './helpers/device-class-context';
 
 /**
- * station#3843 §4 — a paired device is a REMOTE CONTROL for the host, not a
+ * archive#3843 §4 — a paired device is a REMOTE CONTROL for the host, not a
  * second host.
  *
  * Every affordance below executes on the host's machine. The same three

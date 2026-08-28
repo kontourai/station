@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 /**
- * The Home role's production grant surface (station#3122 stage 3). These
+ * The Home role's production grant surface (archive#3122). These
  * prove the wiring that the independent review found absent — a real,
  * reachable channel — and its shape: the button only OPENS a request and
  * hands the decision to the isolated review page; nothing here (or anywhere

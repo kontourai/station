@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1410: proves the provenance card is actually reachable from a real
+ * archive#1410: proves the provenance card is actually reachable from a real
  * assistant chat row — the fold and the card can both be correct while the
  * row never renders one. Uses the REAL MessageBubble; only the dependencies
  * that would drag in react-query/markdown are mocked.
@@ -28,7 +28,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 const { MessageBubble } = await import('../components/chat/MessageBubble');
 
 /**
- * station#1423 added a share affordance to the assistant row, and it mints
+ * archive#1423 added a share affordance to the assistant row, and it mints
  * through a react-query mutation — so the real row now needs a client. Given
  * for real rather than mocked away: this file exists to prove what the REAL
  * row renders, and a row that cannot mount inside the app's own provider tree
@@ -139,7 +139,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(screen.getByText(message)).toBeTruthy();
   });
 
-  // station#1423: the share affordance must be reachable from the same real
+  // archive#1423: the share affordance must be reachable from the same real
   // row as the card — a mint button that only renders in its own unit test
   // is a feature nobody can use.
   it('offers the share affordance beside the card, bound to the same turn', async () => {
@@ -158,7 +158,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       // The attach affordance mounts beside a lazy message chunk; under full-
       // corpus worker load its dynamic import can exceed findByRole's 1s
       // default, redding this file corpus-only while isolation stays green
-      // (the station#1045 load-composition class). The longer bound changes
+      // (the archive#1045 load-composition class). The longer bound changes
       // nothing about test power: an absent affordance still fails here.
       await screen.findByRole(
         'button',
@@ -223,13 +223,13 @@ describe('MessageBubble turn provenance (station#1410)', () => {
 
     const card = screen.getByLabelText('Answer provenance for turn turn-7');
     expect(card).toBeTruthy();
-    // SF7: the engine's product name, not its internal slug. station#1434
+    // SF7: the engine's product name, not its internal slug. archive#1434
     // moved that statement to the row's own attribution strip so the row
     // makes it exactly ONCE; the card's expanded Engine row still carries
     // the checkable raw slug.
     expect(container.querySelector('.engine-chip')?.textContent).toBe('Codex');
     expect(card.textContent).not.toContain('Codex');
-    // station#1802: the badge used to read "7 gaps" here, counting Station's
+    // archive#1802: the badge used to read "7 gaps" here, counting Station's
     // own not-yet-captured signals as if they were findings about this answer.
     // They read identically under every answer, so they are not per-answer
     // information and no longer reach the badge. This envelope describes a

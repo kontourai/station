@@ -13,7 +13,7 @@ vi.mock('../../telemetry/metrics.js', () => ({
 }));
 
 /**
- * station#3457: `itemId` names the CONTENT ITEM a delta belongs to, not the
+ * archive#3457: `itemId` names the CONTENT ITEM a delta belongs to, not the
  * chunk — see the contract on `ContentTextDeltaEvent.itemId`. Bedrock and
  * Ollama minted a fresh `crypto.randomUUID()` INSIDE their streaming loops,
  * and Claude derived it from `message.uuid`, which is per `stream_event`.
@@ -71,7 +71,7 @@ describe('Bedrock content-delta itemId (station#3457)', () => {
         yield { type: 'text-delta', content: 'Hel' };
         yield { type: 'text-delta', content: 'lo ' };
         yield { type: 'text-delta', content: 'world' };
-        // station#3545 review round 2: `AiSdkLLMProvider.createStream`
+        // archive#3545 review round 2: `AiSdkLLMProvider.createStream`
         // (which `BedrockLLMProvider` inherits) now propagates ai-sdk's own
         // `finishReason`, so `finishReason: 'stop'` IS the ordinary
         // successful-turn shape again — a bare `{ type: 'finish' }` is now

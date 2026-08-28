@@ -155,7 +155,7 @@ describe('station#1157 e2e: resolver → Claude adapter delivers the REAL statio
   });
 
   /**
-   * station#1684 replaces this case's original assertion (ACP rejects the
+   * archive#1684 replaces this case's original assertion (ACP rejects the
    * record at resolution). ACP's cell now names its own reviewed mechanism,
    * so resolution exempts it here as well; the ACP-side delivery decision —
    * a live `mcpCapabilities.http` gate that fails closed — lives in

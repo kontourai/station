@@ -2,7 +2,7 @@ import { Empty, ErrorState, SkeletonList } from '../components/state';
 import type { WorkspacePaneBoundIdentity } from './useWorkspacePaneBoundIdentity';
 
 /**
- * station#3969. Every line here used to be written in the resolver's own
+ * archive#3969. Every line here used to be written in the resolver's own
  * vocabulary — "binding", "captured identity", "occurrence", "renderer". None
  * of those are words a person has met: a "pane occurrence" is our name for one
  * open copy of a pane, and a "binding" is our name for the Project or layout it

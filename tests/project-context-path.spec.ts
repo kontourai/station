@@ -3,7 +3,7 @@ import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { dismissSetupLauncher } from './helpers/orchestration';
 
 /**
- * #304 regression: the chat dock's project-context row truncates long working
+ * archive#304 regression: the chat dock's project-context row truncates long working
  * directories from the start via a `direction: rtl` parent span. Without bidi
  * isolation, leading neutral characters (`~`, `/`) are visually reordered to
  * the end of the span — `~/dev/github/kontourai` rendered as
@@ -11,7 +11,8 @@ import { dismissSetupLauncher } from './helpers/orchestration';
  *
  * jsdom cannot see bidi reordering (the DOM text is unchanged), so the
  * assertion lives at the browser seam: per-character Range rects must be
- * monotonically left-to-right. Verified to FAIL against a pre-fix build.
+ * monotonically left-to-right. Verified to FAIL against a build carrying the
+ * defect.
  */
 
 const json = (body: unknown) => ({
@@ -236,7 +237,7 @@ for (const scenario of [
     // DOM order (jsdom-equivalent): the full path is intact as text.
     await expect(dir).toHaveText(scenario.expected);
 
-    // Visual order (the actual #304 failure mode): every parent-path glyph
+    // Visual order (the actual archive#304 failure mode): every parent-path glyph
     // renders strictly left-to-right despite the rtl truncation container.
     const probe = await probeParentGlyphs(page);
     expect(probe.text).toBe(scenario.parent);
@@ -268,7 +269,7 @@ test('project-context clicks do not toggle the dock (#1064)', async ({
   const before = (await dock.boundingBox())?.height ?? 0;
   expect(before).toBeGreaterThan(100);
 
-  // #1064 folded this row into the dock header, whose own onClick toggles the
+  // archive#1064 folded this row into the dock header, whose own onClick toggles the
   // dock. Without stopPropagation on the context's handlers, every attempt to
   // open the coding layout or switch project also collapsed/expanded the dock.
   await dir.click();

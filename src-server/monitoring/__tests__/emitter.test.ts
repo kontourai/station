@@ -167,7 +167,7 @@ describe('tool events carry absence and engine truthfully', () => {
   // version of this test covered emitToolResult alone, so reverting the
   // guard on any of the other four — including emitAgentStart, the span the
   // insights rollup and the conversation picker read most — stayed green
-  // (station#3086 review).
+  // (archive#3086 review).
   test.each([
     [
       'emitAgentStart',
@@ -254,7 +254,7 @@ describe('tool events carry absence and engine truthfully', () => {
   // The third join key. It was written unconditionally while the other two
   // were guarded, and the insights rollup excludes `''` from both of its
   // chat-count branches — so an agent whose spans carried one was rendered as
-  // a named agent with zero conversations (station#3115).
+  // a named agent with zero conversations (archive#3115).
   test.each([
     [
       'emitAgentStart',

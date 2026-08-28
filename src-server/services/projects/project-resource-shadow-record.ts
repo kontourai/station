@@ -1,5 +1,5 @@
 /**
- * station#1686 — the shadow counter's LOCAL, DURABLE READ PATH.
+ * archive#1686 — the shadow counter's LOCAL, DURABLE READ PATH.
  *
  * `station.project_resource.shadow_comparisons` was written to be slice 3c's
  * population-coverage evidence, and it has never been readable from a real
@@ -511,7 +511,7 @@ export function recordShadowComparison(
 }
 
 /**
- * The populations station#1501 slice 3c's gate asks to have been exercised,
+ * The populations archive#1501 slice 3c's gate asks to have been exercised,
  * declared as DATA so the reader and the issue cannot drift apart in prose.
  *
  * Each is a dimension predicate over the record, not a count threshold: the

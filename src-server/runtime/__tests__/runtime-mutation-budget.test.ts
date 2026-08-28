@@ -156,7 +156,7 @@ function createBudgetHarness(
  * different module copies of the adapter, the middleware's `new Request(...)`
  * cannot recognize this object through the adapter's own unwrap symbol, and
  * undici's cross-construction reads the missing `#state` slot and throws
- * (station#1881 — every body-reading POST 500'd in the brian-media deploy).
+ * (archive#1881 — every body-reading POST 500'd in the brian-media deploy).
  */
 function createLightweightAdapterRequest(backing: Request): Request {
   const proto: Record<string, unknown> = {
@@ -482,7 +482,7 @@ describe('station#514: authenticated mutation budget', () => {
     });
 
     it('the SAME secret through bearer and cookie shares one budget (transport cannot double it)', async () => {
-      // station#514 security review (HIGH): the budget key must follow the
+      // archive#514 security review (HIGH): the budget key must follow the
       // credential value, not which extraction branch fired. One valid
       // credential presented as a bearer token and then as a device-session
       // cookie must resolve to ONE budget — otherwise the caller doubles its
@@ -642,7 +642,7 @@ describe('station#514: authenticated mutation budget', () => {
       expect(getResponse.status).toBe(200);
     });
 
-    // station#1885 review HIGH: the station-agent relay composes a JSON body
+    // archive#1885 review HIGH: the station-agent relay composes a JSON body
     // whose payload is the base64-expanded attachment data URL. A ~1.5 MB raw
     // phone screenshot expands to ~2 MB of base64 — which exceeded the former
     // hardcoded 2 MiB streaming default and 413'd mid-flight, in the exact
@@ -737,7 +737,7 @@ describe('station#514: authenticated mutation budget', () => {
    * decaying back into a decorative label nothing computes.
    *
    * A sibling counter shipped wired to the wrong instrument because no test in
-   * that suite imported `metrics.ts` at all (#1872). Same shape, same guard.
+   * that suite imported `metrics.ts` at all (archive#1872). Same shape, same guard.
    */
   describe('budget telemetry', () => {
     it('reports the authentication mode the decision applied to', async () => {
@@ -781,7 +781,7 @@ describe('station#514: authenticated mutation budget', () => {
     });
   });
 
-  // ── station#1881: cross-module lightweight adapter request re-wrap ──
+  // ── archive#1881: cross-module lightweight adapter request re-wrap ──
   describe('cross-module adapter lightweight request re-wrap', () => {
     it('rewraps a body-bearing lightweight request without reading a missing #state slot', async () => {
       const { request, sideEffects } = createBudgetHarness({

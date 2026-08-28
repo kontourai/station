@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#3169. `packages/sdk/src/query-core.ts`'s docblock declares the
+ * archive#3169. `packages/sdk/src/query-core.ts`'s docblock declares the
  * real invariant: a hook that surfaces `keepPreviousData` (defaults it on,
  * or merely accepts a caller's `true`) is a defect UNLESS the component
  * calling it either branches on `isPlaceholderData` to mark the held render,
@@ -148,7 +148,7 @@ function findCallSites(file: string, hookNames: Set<string>): CallSite[] {
       // 3. Fallback: the whole result is bound to a name (not destructured
       // at the call site) and `<name>.isPlaceholderData` is read anywhere
       // else in the file — e.g. `const readiness = useReadinessQuery(...);
-      // ...readiness.isPlaceholderData`.
+      //.readiness.isPlaceholderData`.
       if (!covered && bindingIdentifier) {
         const memberAccess = new RegExp(
           `\\b${bindingIdentifier}\\.isPlaceholderData\\b`,

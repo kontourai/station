@@ -2,9 +2,9 @@ import { describe, expect, test } from 'vitest';
 import { describeCostCoverage } from '../components/usage-stats/UsageSummaryCards';
 
 /**
- * station#3245: a lifetime cost is summed over the engine sessions that
+ * archive#3245: a lifetime cost is summed over the engine sessions that
  * reported a cost, and the surface has to say so — otherwise a partial sum
- * reads as a complete one, which is station#3201's fabrication reintroduced
+ * reads as a complete one, which is archive#3201's fabrication reintroduced
  * one layer up.
  */
 describe('describeCostCoverage', () => {

@@ -1,5 +1,5 @@
 /**
- * station#1195 (epic #1191 slice C): the wire-safe credential for delivering
+ * archive#1195 (epic archive#1191 slice C): the wire-safe credential for delivering
  * the built-in `station-control` MCP server to an EXTERNAL, less-trusted
  * engine that manages its own outbound MCP connections (Codex's
  * `codex app-server` — see `DeliveryChannel`'s `'wire'` doc comment in
@@ -14,18 +14,18 @@
  * "Per-session" bounds the token's LIFETIME, not its AUTHORITY: a live token
  * opens the whole station-control tool surface (`station-control-mcp-route.ts`
  * reads the verified entry's tenant context and does not scope by the
- * minting session id). Inherited from station#1195 and unchanged here.
+ * minting session id). Inherited from archive#1195 and unchanged here.
  *
  * ONE token, TWO delivery channels — the same credential, differing only in
  * where the engine is willing to carry it (`station-control-mcp-route.ts`
  * accepts either):
  *
- *  - Query string (`buildStationControlMcpUrl`) — Codex (station#1195). Its
+ *  - Query string (`buildStationControlMcpUrl`) — Codex (archive#1195). Its
  *    `-c mcp_servers.<id>.url=` override is a spawn-time argv, not a payload
  *    the app-server stores or forwards, and codex config has no header
  *    channel; the URL is the only field available.
  *  - `Authorization: Bearer` header (`buildStationControlMcpHeaderUrl` +
- *    `acp-mcp-passthrough.ts`) — ACP (station#1684). An ACP `session/new`
+ *    `acp-mcp-passthrough.ts`) — ACP (archive#1684). An ACP `session/new`
  *    payload IS handed to the external agent app, so the credential goes in
  *    the field ACP designates for MCP credentials (`McpServerHttp.headers`)
  *    and the URL is built with no token in it at all.
@@ -57,14 +57,14 @@ export const STATION_CONTROL_MCP_PATH = '/mcp/station-control';
  * start; this TTL is the fallback for a session that never cleanly stops
  * (crash, forced kill).
  *
- * Exported (station#1684 review fix) so the bound is assertable: an injected
+ * Exported (archive#1684 review fix) so the bound is assertable: an injected
  * 100-year default was invisible to every test, because the only production
  * caller passes `undefined` here and nothing observed the resulting
  * `expiresAt`. */
 export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
 
 /**
- * Which delivery channel a mint is for (station#1684). Required, not
+ * Which delivery channel a mint is for (archive#1684). Required, not
  * defaulted: the two channels have different exposure — a URL query string
  * the engine holds (Codex) versus an `Authorization` header on an ACP
  * `session/new` payload — and a default would silently attribute one
@@ -116,10 +116,10 @@ export function mintStationControlMcpToken(
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
   });
   digestBySession.set(sessionId, tokenDigest);
-  // Review fix (station#1195 round 1, LOW): previously declared but never
+  // Review fix (archive#1195 round 1, LOW): previously declared but never
   // incremented — wired at the single mint choke point (every caller goes
   // through this function) rather than at each call site. `channel`
-  // (station#1684) is what makes a grant observable per delivery path: the
+  // (archive#1684) is what makes a grant observable per delivery path: the
   // refusal already was (`agentCapabilityUndelivered`), but with one
   // undifferentiated mint counter an ACP grant and a Codex grant were the
   // same datum.
@@ -194,7 +194,7 @@ export function buildStationControlMcpUrl(port: number, token: string): string {
 }
 
 /**
- * station#1684: the header-channel URL — the SAME endpoint as
+ * archive#1684: the header-channel URL — the SAME endpoint as
  * `buildStationControlMcpUrl` above with NO token in the query string,
  * because the credential rides an `Authorization: Bearer` header instead
  * (ACP's designated channel for MCP credentials; see this module's header
@@ -209,11 +209,11 @@ export function buildStationControlMcpHeaderUrl(port: number): string {
 }
 
 /**
- * station#1684 (review fix): the ACP channel's mint, as ONE named export
+ * archive#1684 (review fix): the ACP channel's mint, as ONE named export
  * rather than an inline closure in `runtime-initialize.ts`.
  *
  * The three properties Station's whole station-control-over-ACP security
- * argument inherits from station#1195 — per-session tokens, eager revocation,
+ * argument inherits from archive#1195 — per-session tokens, eager revocation,
  * a bounded default TTL — were unobservable while this lived inline: every
  * adapter test injects `mintStationControlMcpAuth` as a `vi.fn()`, so a
  * closure caching one token for all sessions, or passing a 100-year TTL, was

@@ -1,5 +1,5 @@
 /**
- * Persistent, exact-tool grants for unattended principals (station#2037).
+ * Persistent, exact-tool grants for unattended principals (archive#2037).
  *
  * A grant is keyed by `(principalKey, toolName)`. `principalKey` is derived
  * from the principal's stable identity: a voice grant includes `agentSlug`,

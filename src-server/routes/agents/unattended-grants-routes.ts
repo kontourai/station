@@ -15,7 +15,7 @@ import {
 type OperatorIdentityForRequest = (context: Context) => string | undefined;
 
 /**
- * Operator management routes for exact unattended-tool grants (station#2037).
+ * Operator management routes for exact unattended-tool grants (archive#2037).
  *
  * The runtime authentication boundary gates this complete family to
  * `access:manage`, including remote paired-device operators. The supplied

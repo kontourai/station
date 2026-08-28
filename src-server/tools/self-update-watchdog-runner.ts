@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * self-update-watchdog — detached process spawned by the git-pull self-update
- * apply path (src-server/routes/system/system-update-routes.ts, station#1903)
+ * apply path (src-server/routes/system/system-update-routes.ts, archive#1903)
  * right before the parent server exits to free the shared port. It does not
  * bind any port itself: it only polls the new server's own health endpoint
  * and records what happened, since the parent that started the restart is
@@ -60,10 +60,10 @@ function isRunnerInput(value: unknown): value is SelfUpdateWatchdogRunnerInput {
 
 /**
  * The whole runner body, injectable for tests. This process exists
- * specifically so a self-update restart never fails silently (station#1903)
+ * specifically so a self-update restart never fails silently (archive#1903)
  * — if IT crashes (a missing/corrupt entry file failing on launch, a
  * malformed argv, `writeRecord` hitting a disk error), that must not become
- * the one failure mode with zero trace anywhere (station#1903 review finding
+ * the one failure mode with zero trace anywhere (archive#1903 review finding
  * 2). Every exit path other than a genuine verified health check writes a
  * `failed` record, best-effort, before returning a non-zero exit code.
  */
@@ -147,7 +147,7 @@ export async function runWatchdogEntrypoint(
 // self-update-watchdog.js ...`), never on import — that is what makes
 // `runWatchdogEntrypoint` above unit-testable without a real spawn.
 //
-// Compared through `realpath` (station#3278). Node resolves an entry module's
+// Compared through `realpath` (archive#3278). Node resolves an entry module's
 // `import.meta.url` through symlinks while `process.argv[1]` stays the string
 // it was invoked with, so a bundle spawned via any symlinked path — `/tmp`
 // and `/var/folders` are both symlinks on macOS, and so is a home directory

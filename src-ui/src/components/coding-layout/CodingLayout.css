@@ -549,7 +549,7 @@
   color: var(--warning-text);
 }
 
-/* station#3050 fixed `--color-warning` in the rule above; `--color-success` is
+/* archive#3050 fixed `--color-warning` in the rule above; `--color-success` is
    the same orphan in the same runtime-state family one rule below, so it is
    swept with it. Leaving it would repeat station#1246 exactly — that defect
    shipped because station#1168's search was scoped to the `--error-` prefix
@@ -615,7 +615,7 @@
   opacity: 0.5;
 }
 
-/* station#3341: the refused-clipboard colour, paired with this button's own
+/* archive#3341: the refused-clipboard colour, paired with this button's own
    class. This stylesheet is injected as its own chunk AFTER the entry sheet, so
    a bare `.copy-affordance--failed` there loses the same-specificity tie. */
 .workflow-plan-panel__action.copy-affordance--failed {
@@ -767,7 +767,7 @@
   color: var(--text-primary);
 }
 
-/* `--color-bg-tertiary` is the token station#1246 named and retired; it was
+/* `--color-bg-tertiary` is the token archive#1246 named and retired; it was
    re-seeded here behind a translucent-white fallback, which is why the badge
    looked plausible in the dark theme and washed out in the light one. The real
    token is `--bg-tertiary`, and it is what every sibling badge in this panel

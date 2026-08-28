@@ -31,7 +31,7 @@ let applyMutationError: Error | null = null;
 const refetchEnrolment = vi.fn();
 
 /**
- * station#3981: the two engine reads are separate fixtures now so a test can
+ * archive#3981: the two engine reads are separate fixtures now so a test can
  * drive a state the hardcoded pair could not — a connection the `/agents`
  * inventory reports with `setup.state: 'available'`. Both default to exactly
  * what they were, so every existing case is unchanged.
@@ -228,7 +228,7 @@ describe('AgentConnectionView', () => {
   // produced one indistinguishable title. The engines route owns the noun the
   // redirect table already treats as canonical.
   /**
-   * station#3981, reported from an upgraded Nightly: engines detected and
+   * archive#3981, reported from an upgraded Nightly: engines detected and
    * ready, `Connections -> Engines` rendering zero rows, and `Add engine`
    * claiming every provider was already listed. No UI path existed to persist
    * a detected engine.
@@ -283,7 +283,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-    // ...which makes Add the only place it can be reached. Being absent from
+    //.which makes Add the only place it can be reached. Being absent from
     // both is the reported dead end.
     expect(screen.getByText('Muse')).toBeTruthy();
     expect(
@@ -329,7 +329,7 @@ describe('AgentConnectionView', () => {
     expect(screen.getAllByText('Engines').length).toBeGreaterThan(1);
   });
 
-  // station#771 regression: `useAgentConnectionsQuery`'s isLoading was
+  // archive#771 regression: `useAgentConnectionsQuery`'s isLoading was
   // consulted by `SplitPaneLayout`'s `loading` prop but its error was never
   // passed through, so a settled read failure rendered the same "no engines"
   // empty state as a host with none configured — no error, no retry.
@@ -348,7 +348,7 @@ describe('AgentConnectionView', () => {
 
   // The section frame owns this section's single add action and reaches the
   // catalogue by route (`/connections/engines/new`), not by an in-view button
-  // — so the route is what these two drive now.
+  // so the route is what these two drive now.
   test('keeps available apps in Add and hides the managed Station engine', () => {
     const { rerender } = render(<AgentConnectionView onNavigate={vi.fn()} />);
 
@@ -565,7 +565,7 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  // #896 wave 2: codex-runtime joins the app-home opt-in.
+  // archive#896: codex-runtime joins the app-home opt-in.
   test('codex-runtime shows the app-home opt-in, off by default, that saves the toggle', () => {
     connectionQueryData = {
       id: 'codex',
@@ -618,7 +618,7 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  // #896 wave 2: bounded profile GC — usage report + explicit clear.
+  // archive#896: bounded profile GC — usage report + explicit clear.
   test('the app home clear action confirms before calling the clear mutation', () => {
     connectionQueryData = {
       id: 'claude',
@@ -801,7 +801,7 @@ describe('AgentConnectionView', () => {
     ).toBe(true);
   });
 
-  // station#771 regression: a settled credential-recovery error used to fall
+  // archive#771 regression: a settled credential-recovery error used to fall
   // through to the same management UI a genuinely-empty response renders
   // ("No credential entries added yet."), with no indication the read failed.
   test('renders an error state with retry when the credential-recovery query fails', () => {

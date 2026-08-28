@@ -1,12 +1,12 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4080 slice 1, review round 1: the `[TURN_INTERRUPTED]` tag-strip
+ * archive#4080: the `[TURN_INTERRUPTED]` tag-strip
  * branch in `ChatDockBody.tsx` was only covered incidentally (indirectly, by
  * the surrounding `ChatDockBody.*` suites staying green). This mounts the
  * REAL `SystemEventMessage` — same convention as
  * `ChatDockBody.terminalSessionMarker.test.tsx` — against a transcript
- * carrying the exact `[SYSTEM_EVENT] [TURN_INTERRUPTED] ...` marker the
+ * carrying the exact `[SYSTEM_EVENT] [TURN_INTERRUPTED]...` marker the
  * boot-time interrupted-turn consumer writes, and asserts the raw bracket
  * tag never reaches the user while the human-readable text does. Slice 1 is
  * needs-input-only: no resume/retry affordance is offered for this marker.

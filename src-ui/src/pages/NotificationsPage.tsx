@@ -160,7 +160,7 @@ export function NotificationsPage() {
       </div>
     );
   }
-  // Review M2: the failure branch dropped the header the wait branch above
+  // the failure branch dropped the header the wait branch above
   // deliberately preserves, so a read that failed took the route's own title,
   // Clear and Settings controls down with it. The frame a page owns does not
   // depend on the read (6-OPS-23) — in a wait OR in a failure.
@@ -207,7 +207,7 @@ export function NotificationsPage() {
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
         !approvalTarget ? (
-          /* D9: when BOTH regions are empty they collapse into one PROMINENT
+          /* when BOTH regions are empty they collapse into one PROMINENT
              empty, not a paragraph floating at the top of an empty page. */
           <Empty
             variant="prominent"
@@ -253,7 +253,7 @@ export function NotificationsPage() {
         )}
       </div>
       {/*
-       * station#3779: the bulk action ACKNOWLEDGES, so it keeps the word
+       * archive#3779: the bulk action ACKNOWLEDGES, so it keeps the word
        * "Dismiss" — read from the shared action model, which is now the only
        * place either verb is chosen. This confirm exists because the action
        * is bulk (N rows at once), not because the word was ambiguous; the

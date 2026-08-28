@@ -77,7 +77,7 @@ export interface IPluginRegistryProvider {
    * the two disagree it must refuse BEFORE writing rather than rewrite a
    * different plugin's tree. Optional so a provider that cannot resolve a
    * name ahead of its write is still assignable; callers therefore treat it
-   * as defence in depth, not as proof (station#4309 follow-up review,
+   * as defence in depth, not as proof (archive#4309 follow-up review,
    * MEDIUM 3).
    */
   install(
@@ -154,7 +154,7 @@ export interface WorkItemProjectContext {
 }
 
 /**
- * Work-item provider seam (roadmap #583, part of epic #580, S3). Follows the
+ * Work-item provider seam (roadmap archive#583, part of epic archive#580, S3). Follows the
  * `INotificationProvider` precedent: an additive provider interface
  * implemented by backends registered with `WorkItemProviderService`.
  * `listWorkItems` never throws for absence (no settings, no CLI, malformed

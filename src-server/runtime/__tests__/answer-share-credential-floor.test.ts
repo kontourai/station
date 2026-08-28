@@ -12,7 +12,7 @@ import type { Logger } from '../../utils/logger.js';
 import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 
 /**
- * station#1423 security review H-1 — answer-share authorization.
+ * archive#1423 security review H-1 — answer-share authorization.
  *
  * Every protected route now requires a credential. A bare loopback socket is
  * transport position only — it can be an SSH local forward — so POST, DELETE,

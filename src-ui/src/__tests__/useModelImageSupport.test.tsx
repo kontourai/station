@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * station#3344 (review MEDIUM-2). `useModelImageSupport` is the whole reason
+ * archive#3344  `useModelImageSupport` is the whole reason
  * "the Bedrock catalog has no row for this model" stopped meaning "this model
  * cannot see images" — and nothing exercised it directly. Collapsing its
  * three states back to a boolean passed the entire suite, so the tri-state it

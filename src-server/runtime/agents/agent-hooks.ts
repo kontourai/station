@@ -69,7 +69,7 @@ export interface AgentHooksDeps {
    */
   isCurrentRuntimeGeneration?: (hooks: IAgentHooks) => boolean;
   /**
-   * station#1859 seam: resolve a standing grant for an UNATTENDED invocation —
+   * archive#1859 seam: resolve a standing grant for an UNATTENDED invocation —
    * one with no interactive approval channel (scheduler, `/invoke`, CLI).
    * Absent ⇒ deny: the seam itself is fail-closed, and nothing supplies it
    * yet. Returning `true` allows the call; anything else denies it.
@@ -149,14 +149,14 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       if (decision.behavior === 'ask' && requester) {
         if (await requester(tool)) return true;
         toolDenials.add(1, { reason: 'user_denied' });
-        // station#3210: these two reasons are pure Station templates — they
+        // archive#3210: these two reasons are pure Station templates — they
         // embed no guardian, hook, or tool-supplied prose at all — yet they
         // were the ONLY two denials the engine adapters redacted to
         // `Tool call failed.`, because they carry no `policyDenied` marker
         // (correctly: the policy evaluator did not produce them). Composing
         // them here stamps `stationComposedReason`, so a user who clicks Deny
         // is told that is what happened. `policyDenied` stays absent, so the
-        // policy-denied badge still means what #3091 says it means.
+        // policy-denied badge still means what archive#3091 says it means.
         return stationDenial({
           toolName: tool.toolName,
           predicate: 'was denied: the user declined the approval request.',

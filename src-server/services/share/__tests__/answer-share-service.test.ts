@@ -16,7 +16,7 @@ import {
 import { AnswerShareStore } from '../answer-share-store.js';
 
 /**
- * The state ladder and the re-applied authorization (station#1423), proven
+ * The state ladder and the re-applied authorization (archive#1423), proven
  * without an HTTP layer. Every assertion here is about what a share HOLDER is
  * told — the population the whole feature exists to be honest to.
  */

@@ -33,16 +33,16 @@ import { useStreamingMessage } from './useStreamingMessage';
 
 interface SendTransaction {
   submittedDraft: string;
-  // station#1311 merge: these hold the client's own `ChatUIState.messages`
+  // archive#1311 merge: these hold the client's own `ChatUIState.messages`
   // (from `options.state?.messages` and `buildOutgoingUserMessage(...).messages`
   // respectively) — genuinely `ChatMessage[]`, not the backend-shaped
   // `ActiveChatConversationMessage` (whose `timestamp` is `string | number`
-  // since #1311, no longer structurally assignable to `ChatMessage`'s
+  // since archive#1311, no longer structurally assignable to `ChatMessage`'s
   // `number`).
   originalMessages: ChatMessage[];
   optimisticMessages: ChatMessage[];
   /**
-   * station#1293: the stable client id `buildOutgoingUserMessage` assigned
+   * archive#1293: the stable client id `buildOutgoingUserMessage` assigned
    * to the optimistic user message this transaction appended — the rollback
    * below removes exactly this entry by id rather than requiring
    * `latestState.messages` to still be the exact array reference set at
@@ -131,7 +131,7 @@ export function useSendMessage(
   } = useActiveChatActions();
   const { clearStreamingMessage } = useStreamingMessage();
   // Only consulted at the mid-turn send gate below to decide steering vs.
-  // enqueue (#613). No built-in adapter declares 'steering' today, so this
+  // enqueue (archive#613). No built-in adapter declares 'steering' today, so this
   // list never actually flips the branch in production.
   const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
     data: ConnectionConfig[];
@@ -145,15 +145,15 @@ export function useSendMessage(
       content: string,
       attachments?: FileAttachment[],
       // Ambient, model-facing context (timezone, geolocation, …) delivered
-      // out-of-band (#685): never part of `content`, so the rendered and
+      // out-of-band (archive#685): never part of `content`, so the rendered and
       // persisted user turn stays exactly what the user typed.
       ambientContext?: string,
-      // station#1207: a client-generated per-turn idempotency key. Omitted
+      // archive#1207: a client-generated per-turn idempotency key. Omitted
       // for every genuinely new turn (a fresh id is generated below) —
       // passed explicitly ONLY by this turn's own Retry handler (see the
       // catch block), so a retried turn reuses the SAME id rather than
       // minting a new one. Lets a future outbound-queue/dedup consumer
-      // (epic #1221 slice 2) recognize a turn that actually landed just
+      // recognize a turn that actually landed just
       // before a disconnect instead of double-sending it.
       turnId?: string,
       // The durable outbound queue owns deferred replay. A busy replay must
@@ -195,7 +195,7 @@ export function useSendMessage(
         }
         // Steering-capable adapter: skip the enqueue and fall through to
         // dispatch immediately below — the same send path a drained queued
-        // message takes (#613), rather than waiting for the turn boundary.
+        // message takes (archive#613), rather than waiting for the turn boundary.
       }
 
       if (content.startsWith('/') && handleSlashCommand) {
@@ -223,7 +223,7 @@ export function useSendMessage(
         attachments,
       });
 
-      // station#1207: reuse the id passed in by a Retry handler; mint a
+      // archive#1207: reuse the id passed in by a Retry handler; mint a
       // fresh one for every other call (first send, queued-message drain,
       // "Continue" after tool-calls/length) since those are genuinely new
       // turns, not a resend of this one.
@@ -236,7 +236,7 @@ export function useSendMessage(
         status: 'sending',
         messages: transaction.optimisticMessages,
         abortController,
-        // The window a Stop has to be held through, named (UX audit T1
+        // The window a Stop has to be held through, named (
         // review): from here until this dispatch's own `turn.started`.
         pendingClientTurnId: resolvedTurnId,
         attachments: [],
@@ -286,7 +286,7 @@ export function useSendMessage(
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
         });
-        // station#1146: the send above is what brings this chat's orchestration
+        // archive#1146: the send above is what brings this chat's orchestration
         // session into existence, and a session that has just come into
         // existence is not in the cached list every reader of
         // `useOrchestrationSessionsQuery` is holding. Nothing else invalidates
@@ -312,7 +312,7 @@ export function useSendMessage(
         const err = error as Error & Partial<ChatHttpError>;
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
-        // station#1224 (offline slice 2): a genuinely offline send (the
+        // archive#1224 (offline): a genuinely offline send (the
         // browser already knows it has no network) or a network-level fetch
         // failure (the request never reached the server at all — a real
         // HTTP error response, which DOES reach the server, is deliberately
@@ -366,12 +366,12 @@ export function useSendMessage(
             status: 'queued',
             abortController: undefined,
           });
-          // station#1292: appended via addEphemeralMessage (not spread onto
+          // archive#1292: appended via addEphemeralMessage (not spread onto
           // `updates` above) so this notice gets a real id/timestamp — see
           // the completion-notice comment above for why that matters.
           addEphemeralMessage(sessionId, {
             role: 'system',
-            // station#3686. Neither line asserts a network condition or a
+            // archive#3686. Neither line asserts a network condition or a
             // moment of recovery, because this device observes neither.
             //
             // "Couldn't reach Station" was the first attempt and was still
@@ -417,7 +417,7 @@ export function useSendMessage(
         // Pre-stream fetch-level failure (agent-not-found, model-override
         // validation, provider-resolution throws, or the SDK's
         // `ChatHttpError` carrying the server's real HTTP-error body — see
-        // #191 R1/R2). Translated via the same shared table the mid-stream
+        // archive#191). Translated via the same shared table the mid-stream
         // SSE path uses, so the copy is consistent regardless of which of
         // the two raw-error surfaces produced it.
         const translated =
@@ -470,7 +470,7 @@ export function useSendMessage(
         } catch {
           // Intentional isolation: do not let an observer cause replay.
         }
-        // station#1292: this error notice replaces whatever ephemeral
+        // archive#1292: this error notice replaces whatever ephemeral
         // notices preceded it (matching the previous behavior of assigning
         // a brand-new `ephemeralMessages` array here) rather than
         // accumulating — clear first, then add through addEphemeralMessage
@@ -542,7 +542,7 @@ export function useSendMessage(
  * What a Stop press produced, for the composer to render. Every variant except
  * `not-running` names something the SERVER derived or something this client
  * can prove about its own request — none of them is the caller asserting an
- * engine state (UX audit T1).
+ * engine state.
  */
 export type StopTurnOutcome =
   /** The server reported what its cancel settled as. */
@@ -570,7 +570,7 @@ export function describeStopTurnOutcome(outcome: StopTurnOutcome): string {
           // label describing something the server did not do.
           return 'Stopped. The turn was interrupted and the engine is kept warm for this conversation.';
         case 'forced':
-          // UX audit T1 review (LOW): "ended its process" is not uniformly
+          // "ended its process" is not uniformly
           // evidenced — `stopSession` closes the engine's handles and some
           // adapters (Claude's SDK path among them) return without observing
           // an OS process exit. What IS evidenced end to end is that the
@@ -603,7 +603,7 @@ export function useCancelMessage(apiBase?: string) {
   return useCallback(
     async (sessionId: string): Promise<StopTurnOutcome> => {
       const state = activeChatsStore.getSnapshot()[sessionId];
-      // UX audit T1 (live): the old guard required a browser abort controller,
+      // the old guard required a browser abort controller,
       // which the send path clears the moment the orchestration POST returns —
       // so for most of a turn's life Stop silently did nothing at all. The
       // turn, not this client's stream handle, is what decides whether there
@@ -611,7 +611,7 @@ export function useCancelMessage(apiBase?: string) {
       if (!isTurnInFlight(state)) {
         return { kind: 'not-running' };
       }
-      // UX audit T1: a second press must not dispatch a second cancel or
+      // a second press must not dispatch a second cancel or
       // produce a second receipt. The server already coalesces concurrent
       // stops onto one task, but the browser used to submit the duplicate
       // anyway — and the button stayed live because nothing recorded that a
@@ -635,7 +635,7 @@ export function useCancelMessage(apiBase?: string) {
         const result = await interruptOrchestrationTurn({
           threadId: state.conversationId ?? sessionId,
           // Only meaningful while the engine has not started this turn: it
-          // binds a held cancel to THIS dispatch (UX audit T1 review).
+          // binds a held cancel to THIS dispatch
           ...(state.pendingClientTurnId
             ? { clientTurnId: state.pendingClientTurnId }
             : {}),

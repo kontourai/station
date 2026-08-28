@@ -67,7 +67,7 @@ import {
 /**
  * Every built-in Workspace Pane renderer name this host build registers.
  *
- * station#3798 moved the inventory itself into the contracts package, because
+ * archive#3798 moved the inventory itself into the contracts package, because
  * the SERVER decides whether a builtin layout contributes a Pane at all and
  * cannot import this module. Deriving the union from that one list keeps the
  * two halves in lockstep by construction rather than by a duplicate literal:
@@ -262,7 +262,7 @@ export function isCanonicalBuiltinActivityDescriptor(
 }
 
 /**
- * The Console Board's declaration (epic station#4142 M4a) — the first
+ * The Console Board's declaration (archive#4142) — the first
  * built-in whose descriptor is authored outside the contracts package, in
  * `@kontourai/station-board-pane`. Same field-by-field
  * comparison as every sibling: a plugin cannot reach the built-in Board
@@ -496,7 +496,7 @@ export function builtinWorkspacePaneRendererPresence(
  *
  * It exists because a pane's NAME was already sitting on its descriptor while
  * the tab strip printed raw `pane:builtin:…` identifiers at people
- * (station#3971) — a name the product had and did not use. The list is the
+ * (archive#3971) — a name the product had and did not use. The list is the
  * same one the canonical checks above are written against; adding a built-in
  * without adding it here is caught by the completeness test that walks the
  * renderer-name table.

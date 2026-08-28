@@ -129,7 +129,7 @@ describe('AttentionCard — dismiss affordance', () => {
 
   test('a live approval with no resolvable session (the ACP tool-approval shape) still gets the quiet dismiss guard', () => {
     // ACP tool approvals never resolve an openHref but are genuinely
-    // pending — live actions alone must trigger the guard (#750 review).
+    // pending — live actions alone must trigger the guard (archive#750).
     renderCard(baseApproval());
 
     const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
@@ -151,14 +151,14 @@ describe('AttentionCard — dismiss affordance', () => {
     expect(dismissButton.className).toContain('attention-item__action--ghost');
   });
 
-  // station#1548: the kind that exists because #1296's test comment claimed
+  // archive#1548: the kind that exists because archive#1296's test comment claimed
   // this surfacing already existed and nothing implemented it.
   test('a failed session renders its own kind label, its cause, and one way in', () => {
     const { container } = renderCard(
       baseFailure({ body: 'Engine exited with code 1' }),
     );
 
-    // station#3203: the eyebrow names the KIND and the title names the
+    // archive#3203: the eyebrow names the KIND and the title names the
     // SESSION. They used to be the same three words, which is what made the
     // reported tray unreadable. Assert each slot rather than a bare text
     // match, so a regression that drops one — or that collapses them back
@@ -174,7 +174,7 @@ describe('AttentionCard — dismiss affordance', () => {
     expect(link.getAttribute('href')).toBe('/activity?session=thread-boom');
   });
 
-  // station#1914: a failed session's failure is not an approval to decide,
+  // archive#1914: a failed session's failure is not an approval to decide,
   // but it IS derived-and-unclearable — so it gets its own Dismiss, which
   // acknowledges rather than approves/denies anything.
   test("a failed session's Dismiss acknowledges the item by id, not a notification", () => {
@@ -189,7 +189,7 @@ describe('AttentionCard — dismiss affordance', () => {
 });
 
 /*
- * station#3203. The owner's tray showed three rows reading "Session failed"
+ * archive#3203. The owner's tray showed three rows reading "Session failed"
  * in every slot, with no cause and nothing naming which session each was.
  */
 describe('AttentionCard — a failed session says what happened (#3203)', () => {
@@ -267,7 +267,7 @@ describe('AttentionCard — a failed session says what happened (#3203)', () => 
 });
 
 /*
- * station#3203 defect 2: "clicking on a notification that needs attention
+ * archive#3203 defect 2: "clicking on a notification that needs attention
  * should probably make the notification number decrement as seen". Dismiss
  * already acknowledged; Open did not, and that asymmetry was the bug.
  */

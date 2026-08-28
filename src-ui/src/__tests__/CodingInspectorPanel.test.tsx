@@ -309,7 +309,7 @@ describe('useInspectorTabs', () => {
   });
 });
 
-// station#3341 Class B: `await navigator.clipboard?.writeText(command)` inside
+// archive#3341 Class B: `await navigator.clipboard?.writeText(command)` inside
 // a try/catch RESOLVES when there is no clipboard at all, so the insecure-origin
 // case — the one this button most needs to report — rendered "Copied".
 describe('CodingInspectorPanel — copyable setup command', () => {

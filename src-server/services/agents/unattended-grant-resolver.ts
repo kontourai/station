@@ -1,5 +1,5 @@
 /**
- * Resolves recorded exact-tool grants for unattended invocations (station#2037).
+ * Resolves recorded exact-tool grants for unattended invocations (archive#2037).
  *
  * This is deliberately only the lookup/receipt seam. Agent hooks decide when it
  * may run, after higher-priority guards have already had their say.

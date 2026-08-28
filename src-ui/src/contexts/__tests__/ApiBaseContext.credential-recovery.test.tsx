@@ -1,5 +1,5 @@
 /**
- * AC2, asserted on the thing a user can see.
+ *asserted on the thing a user can see.
  *
  * A rejected credential leaves TWO pieces of stale evidence behind —
  * `lastError` (recorded by the health probe) and `credentialState: 'required'`
@@ -13,7 +13,7 @@
  * over the REAL `ConnectionStore` and the REAL SDK transport, and asserts on
  * the banner. A previous revision duplicated the gate's
  * `credentialState === 'required'` expression instead, which pinned the
- * implementation it was meant to check (delta review, MEDIUM). Only the
+ * implementation it was meant to check. Only the
  * peripheral modules `OnboardingGate` needs are mocked; nothing on the path
  * from an HTTP response to the banner is.
  *
@@ -122,7 +122,7 @@ async function renderShell() {
   );
   await screen.findByText('App');
   // `ConnectionsProvider` keeps ONE module-level store, and neither
-  // `vi.resetModules()` nor unmounting clears it — a mocked module's factory
+  // `vi.resetModules` nor unmounting clears it — a mocked module's factory
   // result is cached across a registry reset, so a second test in this file
   // would silently inherit the first one's recovered connection and its 401
   // would be unobservable. Rather than fight that, every test states its own

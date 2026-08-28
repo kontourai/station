@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * M5 (station#4090): while a route's pane occupies the ambient dock, the
+ * (archive#4090): while a route's pane occupies the ambient dock, the
  * route renders an AWAY STATE instead of a second live copy of the pane —
  * and derives "away" from the host's published occupant state through
  * `isAmbientDockOccupant`, never a route-local flag.
@@ -111,7 +111,7 @@ test('Home renders its away state while the published dock occupant is Home', ()
 });
 
 test('Home renders its pane again the moment the occupant is someone else', () => {
-  // The transition most likely to be wrong (M5 acceptance 1): the dock moved
+  // The transition most likely to be wrong ( acceptance 1): the dock moved
   // on to Activity, so Home is NOT docked anymore and `/` must render it.
   renderHome(publishedAction(WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId));
   expect(screen.queryByText('Home is in the dock')).toBeNull();

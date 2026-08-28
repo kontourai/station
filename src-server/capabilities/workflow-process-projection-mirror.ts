@@ -1,11 +1,11 @@
 /**
  * CRITIQUE-DETECTION MIRROR (only) of `@kontourai/flow-agents`' review-
- * critique reading helpers — issue #778 originally, extended for roadmap
- * #753 (S6 follow-up) to close the `hasUnresolvedCritique` gap this file's
+ * critique reading helpers — issue archive#778 originally, extended for roadmap
+ * archive#753 (S6 follow-up) to close the `hasUnresolvedCritique` gap this file's
  * header used to document as a scope reduction; part of the work-plane-
- * composition epic (`kontourai/station#580`, slice S6, roadmap #586).
+ * composition epic (`kontourai/station-archive#580`, slice S6, roadmap archive#586).
  *
- * RETIREMENT (roadmap #753 / flow-agents#933, station#933-follow-up): this
+ * RETIREMENT (roadmap archive#753 / flow-agents#933, archive#933-follow-up): this
  * file used to ALSO hand-mirror flow-agents' workflow-status -> Console
  * process-status mapping table (`WORKFLOW_STATUS_TO_CONSOLE_PROCESS_STATUS`,
  * `mapWorkflowStatusToConsoleProcessStatus`, `deriveConsoleProcessBlockedReason`)
@@ -51,7 +51,7 @@
  * export" these two functions can trip-wire against directly, so a semantic
  * change upstream needs a MANUAL re-sync, tracked the same way as before.
  *
- * Critique detection (roadmap #753, closing the prior scope reduction): the
+ * Critique detection (roadmap archive#753, closing the prior scope reduction): the
  * upstream `mapWorkflowStatusToConsoleProcessStatus` also derives a
  * `review_pending` refinement from `trust.bundle`'s live critique claims, via
  * flow-agents' own `critiquesFromBundle` (`src/cli/workflow-sidecar.ts`) plus

@@ -13,7 +13,7 @@ import { captureShareToken } from './share-token';
 import './SharedAnswerView.css';
 
 /**
- * The shared-answer permalink page (station#1423).
+ * The shared-answer permalink page (archive#1423).
  *
  * A standalone surface, mounted above the app shell in `main.tsx`, and that
  * is a decision rather than a shortcut:
@@ -45,7 +45,7 @@ type ViewState =
  * One sentence per refusal, each naming the actual state. Nothing here says
  * "not found" for a share that was revoked or has expired: a holder who has
  * proven possession of the token is told what happened to their link, which
- * is the whole point of #1423's honest-state requirement. Only
+ * is the whole point of archive#1423's honest-state requirement. Only
  * `share-not-found` is reachable without the token, and it stays deliberately
  * uninformative.
  */
@@ -68,7 +68,7 @@ const REFUSAL_DETAIL: Record<AnswerShareRefusalReason, string> = {
 };
 
 /**
- * M-2. `reason` arrives off the wire, so it is NOT necessarily a member of
+ *`reason` arrives off the wire, so it is NOT necessarily a member of
  * the union its type claims — a newer Station sends a reason this build has
  * never heard of, and a hostile or corrupt response can send `constructor`.
  * Indexing a closed `Record` with either is the defect: the first renders an
@@ -110,7 +110,7 @@ function describeWhen(reason: AnswerShareRefusalReason, when?: string): string {
 }
 
 /**
- * Channel-panel copy (station#1598), and every word of it is L0 in
+ * Channel-panel copy (archive#1598), and every word of it is L0 in
  * `assurance.md`'s vocabulary: this Station attesting its own log, checkable
  * only from inside it. Nothing here is signed and nothing here has been
  * checked by anyone else.
@@ -141,7 +141,7 @@ const CHANNEL_UNAVAILABLE_DETAIL: Record<
 };
 
 /**
- * Same `Object.hasOwn` guard as {@link describeRefusal}, and for the same M-2
+ * Same `Object.hasOwn` guard as {@link describeRefusal}, and for the same
  * reason: `reason` arrives off the wire, so a newer Station's reason or a
  * hostile `constructor` must not index a closed `Record` and return a
  * prototype member as a React child.
@@ -164,7 +164,7 @@ function describeChannelUnavailable(
  * It renders the status the SERVER computed. It never renders a stored
  * binding, because it never receives one — the payload carries a checked
  * result and nothing else, which is what stops this surface from repeating
- * slice 1's `authorized`-from-an-id-alone defect in channel vocabulary.
+ * 's `authorized`-from-an-id-alone defect in channel vocabulary.
  */
 function SharedAnswerChannelPanel({
   channel,
@@ -232,7 +232,7 @@ async function loadShare(token: string): Promise<ViewState> {
     // for the same reason: a half-understood claim is worse than an admitted
     // gap.
     //
-    // MEMBERSHIP, not equality (station#1598). This was
+    // MEMBERSHIP, not equality (archive#1598). This was
     // `=== ANSWER_SHARE_SCHEMA_VERSION`, which is correct exactly while one
     // version exists: the moment a payload carrying a channel status declares
     // v2, an equality check against either constant refuses half of what this
@@ -253,9 +253,9 @@ export function SharedAnswerView() {
 
   useEffect(() => {
     // Reads the token, remembers it for the page's lifetime, and clears the
-    // fragment (L-3 — off the screen, out of session history and session
+    // fragment (off the screen, out of session history and session
     // restore). `reloadSharePage` puts it back before any deliberate reload,
-    // so the clearing never costs the recipient their recovery path (N-2).
+    // so the clearing never costs the recipient their recovery path.
     const token = captureShareToken();
     if (!token) {
       setState({ phase: 'no-token' });
@@ -299,7 +299,7 @@ function SharedAnswerBody({ state }: { state: ViewState }) {
       );
     case 'no-token':
       return (
-        // N-2: this state is reached BOTH by a genuinely truncated link and
+        // this state is reached BOTH by a genuinely truncated link and
         // by a manual refresh after this page deliberately cleared the token
         // from the address bar. Blaming the recipient for "copying only part
         // of the link" is wrong in the second case and unhelpful in the

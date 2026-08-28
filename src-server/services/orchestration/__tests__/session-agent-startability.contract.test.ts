@@ -4,7 +4,7 @@
  * creating an authored Agent for it; that authored Agent (and the
  * runtime-owned `station` identity) is what starts.
  *
- * station#3027 history: the original gate was claude-only, which bricked the
+ * archive#3027 history: the original gate was claude-only, which bricked the
  * default Claude agent while every other engine default started spec-less —
  * an asymmetry this suite pinned with a shrink-only KNOWN_UNSTARTABLE
  * allowlist. The symmetric fix removed the allowlist and flipped the

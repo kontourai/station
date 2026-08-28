@@ -11,7 +11,7 @@ export function isFlowRunUngated(binding: FlowRunBinding): boolean {
 
 /**
  * One phrase describing what a bound Flow run has actually evaluated
- * (station#189 S1).
+ * (archive#189).
  *
  * The Flow-gated chip and the transcript's attach marker used to say only
  * that a run existed. An operator reads that as "the delivery is being

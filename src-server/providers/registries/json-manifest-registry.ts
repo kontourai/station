@@ -129,7 +129,7 @@ export class JsonManifestRegistryProvider
    * consent decision, an update, an uninstall — queues behind that span. An
    * unbounded `fetch` in here therefore has no ceiling at all: a registry host
    * that accepts the connection and never answers holds the lock until the
-   * process dies (station#4309 follow-up review, MEDIUM 2). The timeout covers
+   * process dies (archive#4309 follow-up review, MEDIUM 2). The timeout covers
    * the response BODY too, not just the headers, because the signal stays live
    * until `json()` resolves.
    */

@@ -23,7 +23,7 @@ import { runtimeAgentKey } from './runtime-agent-identity.js';
 type ToolWithDescription = { description?: string; [key: string]: any };
 
 /**
- * station#3158 — "Agent not found or not active" made the caller guess between
+ * archive#3158 — "Agent not found or not active" made the caller guess between
  * two answers with opposite remedies: nothing by this name exists (pick or
  * create a different agent) versus it exists but its runtime is down (wait for
  * startup, or repair whatever failed to initialize it).
@@ -50,7 +50,7 @@ async function inactiveAgentFailure(
   // (a concurrent engine-connection adopt/decline is enough). The outer
   // catch turns that into a 500, so the diagnosis path could fail with a
   // server error on exactly the request it exists to explain. This variant
-  // is read-only and fails closed to `false` (station#3158 review).
+  // is read-only and fails closed to `false` (archive#3158 review).
   const [persisted, ownedByRegistry] = await Promise.all([
     ctx.configLoader.listAgents(),
     registryOwnsAgentAtHome(ctx.configLoader.getProjectHomeDir(), slug),

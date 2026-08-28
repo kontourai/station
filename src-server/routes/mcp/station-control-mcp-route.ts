@@ -1,5 +1,5 @@
 /**
- * station#1195 (epic #1191 slice C): the built-in `station-control` MCP
+ * archive#1195 (epic archive#1191 slice C): the built-in `station-control` MCP
  * server, ALSO reachable over streamable-HTTP — the wire-safe delivery
  * surface for an external engine that manages its own outbound MCP
  * connections (Codex's `codex app-server`; see `DeliveryChannel`'s doc
@@ -31,7 +31,7 @@
  * a loopback-denied count are recorded via OTel counters, never the
  * candidate value itself.
  *
- * Review fix (station#1195 round 1, MEDIUM): the station-control tool
+ * Review fix (archive#1195 round 1, MEDIUM): the station-control tool
  * implementations resolve their own API base via
  * `resolveControlApiBase()` (station-control-shared.ts), which falls back
  * to `process.env.STATION_PORT || process.env.PORT || DEFAULT_SERVER_PORT`
@@ -191,7 +191,7 @@ export function createStationControlMcpRoutes(
       }),
     );
 
-    // station#1195 review fix (MEDIUM): deterministic, explicit override —
+    // archive#1195 review fix (MEDIUM): deterministic, explicit override —
     // NOT a request-scoped toggle. Every request through this route sets
     // the SAME correct value (this instance's own port), so this can never
     // race a concurrent request the way a set-then-restore pattern would.

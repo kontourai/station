@@ -6,7 +6,7 @@ import { ConversationStatsModal } from './ConversationStatsModal';
 import type { ConversationStatsSnapshot } from './types';
 
 /**
- * station#3201: the panel used to render every absent measurement as `0`
+ * archive#3201: the panel used to render every absent measurement as `0`
  * and `$0.0000`, beside a header that WAS derived — one heading, one real
  * number, six invented ones, with no way to tell them apart. These tests
  * pin the three states apart end to end.
@@ -80,7 +80,7 @@ describe('ConversationStatsModal — measured figures', () => {
 
 describe('ConversationStatsModal — unmeasured figures', () => {
   /**
-   * The exact shape behind station#3201's screenshot: an ACP/OpenCode
+   * The exact shape behind archive#3201's screenshot: an ACP/OpenCode
    * session reports context occupancy and nothing else.
    */
   const UNMEASURED: ConversationStatsSnapshot = {
@@ -171,7 +171,7 @@ describe('ConversationStatsModal — partially measured figures', () => {
 
     // Claude's declared cache-inclusivity is 'disjoint' (input excludes
     // cache), so the In label carries the qualifier the declaration backs
-    // (station#4196).
+    // (archive#4196).
     expect(rowValue('In (uncached)')).toBe('900');
     expect(rowValue('Out')).toBe('120');
     expect(rowValue('Total')).toBe('1,020');
@@ -207,7 +207,7 @@ describe('ConversationStatsModal — partially measured figures', () => {
 });
 
 /**
- * Review H1. `stats === null` is what a settled-empty read AND a failed read
+ * `stats === null` is what a settled-empty read AND a failed read
  * both look like, and `useStats` dropped the query error entirely — so a
  * failed stats read was drawn as "No stats available", a measurement claim
  * over a request that never answered. Same defect shape as SHELL-09.

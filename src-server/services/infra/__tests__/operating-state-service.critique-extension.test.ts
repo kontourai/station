@@ -1,5 +1,5 @@
 /**
- * Focused test for roadmap #753 review polish item 3: the
+ * Focused test for roadmap archive#753 review polish item 3: the
  * `WorkflowProcessProjectionEntry` this service builds must carry
  * `has_unresolved_critique` in `extensions['flow-agents']` when the signal is
  * defined — `@kontourai/console-server`'s own `WorkflowProcessProjectionEntry`

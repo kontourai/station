@@ -13,7 +13,7 @@ const reservation: TaskDispatchReservation = {
   modelId: undefined,
 };
 
-// Every graph seam member returns a Promise since #2646 (the durable
+// Every graph seam member returns a Promise since archive#2646 (the durable
 // transitions await their cross-process lock), so the fakes are async too.
 function graph(
   reserve: TaskDispatchGraphState['reserve'] = async () => ({

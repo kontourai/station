@@ -167,7 +167,7 @@ export function reduceWorkspacePaneHost(
   if (action.type === 'restore') {
     const restored = restoreWorkspacePaneHostDocument(action.document);
     if (!restored.document) return state;
-    // station#3795: restoring a document that is value-identical to the one
+    // archive#3795: restoring a document that is value-identical to the one
     // already held is a no-op, and must be observable as one. `restore` used
     // to hand back a freshly parsed object every time, which is a new
     // `state.document` identity — so every `[state.document]` effect ran

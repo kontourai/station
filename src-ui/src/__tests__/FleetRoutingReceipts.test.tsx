@@ -3,7 +3,7 @@
  */
 
 /**
- * station#1398 slice 4 — what the web monitoring surface actually SHOWS
+ * archive#1398 — what the web monitoring surface actually SHOWS
  * about fleet routing (`docs/design/inference-fleet.md` §4.5, §8).
  *
  * The mirror of `packages/cli/src/__tests__/operate-fleet-routing.test.ts`:
@@ -38,7 +38,7 @@ const serveState: {
 } = { isLoading: false };
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
-  // station#3444: the component derives its failure copy from
+  // archive#3444: the component derives its failure copy from
   // `error instanceof StationHttpError`, so the mocked module must export a
   // real `StationHttpError` — a stub `undefined` binding throws on
   // `instanceof` at render time. Everything else about the module stays
@@ -165,7 +165,7 @@ describe('the web fleet routing surface', () => {
     expect(text).toContain('refused to trust it yet');
   });
 
-  // station#1398 slice 5 — the same three-state distinction the CLI holds.
+  // archive#1398 — the same three-state distinction the CLI holds.
   // Both surfaces render from the CONTRACT's wording, so this suite and its
   // CLI twin fail together if that wording ever softens.
   function withProbe(
@@ -278,7 +278,7 @@ describe('the web fleet routing surface', () => {
     expect(screen.queryByText(/No turn has been fleet-routed/)).toBeNull();
   });
 
-  // fix-round HIGH-2: `!error && !data` is also true before a fetch has even
+  // `!error && !data` is also true before a fetch has even
   // begun — e.g. while `PersistQueryClientProvider` is still restoring from
   // IndexedDB, `isLoading` reads `false` because nothing has started
   // fetching yet. That must render as the ordinary loading state, never as
@@ -312,7 +312,7 @@ describe('the web fleet routing surface', () => {
     expect(text).toContain('edited or truncated');
   });
 
-  // station#3444: the copy must say "retrying automatically" only when the
+  // archive#3444: the copy must say "retrying automatically" only when the
   // query actually keeps polling (resolveFleetReceiptsRefetchInterval),
   // never derived from a message-shape check that cannot tell a stopped
   // credential rejection apart from a still-retrying transient failure.
@@ -324,7 +324,7 @@ describe('the web fleet routing surface', () => {
     expect(text).toContain('will not retry automatically');
   });
 
-  // fix-round HIGH-1: "retrying automatically" is honest only for a
+  // "retrying automatically" is honest only for a
   // TRANSPORT failure (no Response ever arrived) — the query keeps its
   // unconditional 30s poll, but so does a non-terminal HTTP-status failure,
   // and that case has its own arm below because the host DID respond.
@@ -337,7 +337,7 @@ describe('the web fleet routing surface', () => {
     expect(text).not.toContain("Couldn't load");
   });
 
-  // fix-round HIGH-1: the string this class of defect keeps re-deleting.
+  // The string this class of defect keeps re-deleting.
   // A response DID arrive (a non-terminal HTTP status, or a 2xx body
   // reporting failure) — "Station isn't responding" would be false, so this
   // must be the neutral copy, not the transport-failure one.
@@ -430,7 +430,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     expect(text).not.toContain('has not served any fleet inference yet');
   });
 
-  // fix-round HIGH-2: mirrors the routing side's sibling above.
+  // Mirrors the routing side's sibling above.
   test('renders the loading state, not an error alert, when there is no error and no data yet', () => {
     const text = renderServe({});
     expect(text).toContain('Reading what this Station has served');
@@ -446,7 +446,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     expect(text).toContain('has not served any fleet inference yet');
   });
 
-  // station#3444: same derivation as the routing side's copy — mirrored here
+  // archive#3444: same derivation as the routing side's copy — mirrored here
   // because `useFleetServeReceiptsQuery` gets its own independent terminal
   // stop.
   test('says the query will not retry on a terminal (403) failure', () => {
@@ -457,7 +457,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     expect(text).toContain('will not retry automatically');
   });
 
-  // fix-round HIGH-1: mirrors the routing side's sibling pair above.
+  // Mirrors the routing side's sibling pair above.
   test('says retrying automatically for a genuine transport failure (no response ever arrived)', () => {
     const text = renderServe({
       error: new TypeError('Failed to fetch'),

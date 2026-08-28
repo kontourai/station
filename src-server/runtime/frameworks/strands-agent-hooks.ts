@@ -16,7 +16,7 @@ import { syncStrandsMessagesToMemory } from './strands-message-sync.js';
 
 /**
  * Trusted per-invocation contexts, keyed by the IDENTITY of the strands
- * SDK's per-invocation `invocationState` object (station#1834 rounds 3-4).
+ * SDK's per-invocation `invocationState` object (archive#1834 rounds 3-4).
  *
  * The wrapper binds a fresh context per stream/invoke call, and every hook
  * event (BeforeToolCall/AfterToolCall/AfterInvocation) carries the same
@@ -58,14 +58,14 @@ export function resolveStrandsInvocationContext(
 }
 
 /**
- * Wire ONLY the beforeToolCall gate onto a Strands agent (station#1834).
+ * Wire ONLY the beforeToolCall gate onto a Strands agent (archive#1834).
  *
  * Split out of `wireStrandsAgentHooks` so temp agents (default agent,
  * /invoke, CLI) get the tool gate without the message-sync/usage wiring —
  * their persistence is owned by `StrandsAgentWrapper`.
  *
  * Denials are recorded as toolUseId -> the structured `ToolCallDenial` (not
- * just its reason string, station#3091) so a downstream consumer can tell a
+ * just its reason string, archive#3091) so a downstream consumer can tell a
  * policy-authored denial apart from a human's own decline. The FunctionTool
  * wrappers built by `createStrandsFunctionTools` look the id up and surface
  * the reason as a real tool ERROR result.
@@ -81,7 +81,7 @@ export function wireStrandsToolGate(options: {
   strandsAgent.addHook(BeforeToolCallEvent, async (event) => {
     // Resolve THIS invocation's context from the event's own state — the
     // fallback base carries agent identity only, never another stream's
-    // conversation/user/delegation (station#1834 round 3).
+    // conversation/user/delegation (archive#1834 round 3).
     const invocation = resolveStrandsInvocationContext(
       (event as { invocationState?: Record<string, unknown> }).invocationState,
       invocationCtx,
@@ -94,7 +94,7 @@ export function wireStrandsToolGate(options: {
       },
       invocation,
     );
-    // Any non-`true` result is a denial (station#1834): a ToolCallDenial
+    // Any non-`true` result is a denial (archive#1834): a ToolCallDenial
     // object is truthy, so a bare `!approved` would execute denied tools.
     if (approved !== true) {
       deniedToolCalls.set(

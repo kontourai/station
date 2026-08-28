@@ -22,7 +22,7 @@ export function ChatEmptyState({ agentSlug, agentName }: ChatEmptyStateProps) {
   const agentsLoaded = useAgentsLoaded();
   const agent = agents.find((a) => a.slug === agentSlug);
 
-  // station#1193 (epic #1191, slice A): a "runtime-only" recommendation means
+  // archive#1193: a "runtime-only" recommendation means
   // an external engine is ready to chat with no Station model connection —
   // but that's only a real gap for an agent Station's OWN engine executes.
   // An agent bound to an external engine is exactly as chat-capable as the
@@ -43,13 +43,13 @@ export function ChatEmptyState({ agentSlug, agentName }: ChatEmptyStateProps) {
   const isExternalEngineAgent =
     !!resolvedEngine && resolvedEngine.name !== 'Station';
 
-  // station#1193 review finding 2: `useAgents()` reads `[]` both while the
+  // archive#1193: `useAgents` reads `[]` both while the
   // catalog is still loading AND once it's durably empty — indistinguishable
   // from here. On a cold load where system `status` resolves before the
   // agent catalog does, that would read a genuine external-engine-bound
   // agent as unresolved and flash "needs a model connection" for one render
-  // before self-correcting. `useAgentsLoaded()` (AgentsContext.tsx, the
-  // existing not-loaded-vs-durably-empty primitive from #801/#945) gates the
+  // before self-correcting. `useAgentsLoaded` (AgentsContext.tsx, the
+  // existing not-loaded-vs-durably-empty primitive from archive#801/archive#945) gates the
   // whole runtime-only-needs-model decision so we show the neutral/normal
   // empty state instead of a wrong flash while the catalog is still in
   // flight.
@@ -60,9 +60,9 @@ export function ChatEmptyState({ agentSlug, agentName }: ChatEmptyStateProps) {
 
   // Loading state (status not yet resolved) keeps today's normal copy so the
   // guided variant doesn't flash in before readiness is known.
-  // station#1544: this used `chatSetupNeeded`, which differed from
+  // archive#1544: this used `chatSetupNeeded`, which differed from
   // `shouldShowSetupBanner` only by excluding the 'engine-picker' variant.
-  // That variant has been unproducible since #1387 and is now gone, so the
+  // That variant has been unproducible since archive#1387 and is now gone, so the
   // two predicates were identical and only one remains.
   if (status && (shouldShowSetupBanner(status) || runtimeOnlyNeedsModel)) {
     const content = runtimeOnlyNeedsModel

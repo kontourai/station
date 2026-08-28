@@ -9,7 +9,7 @@ const deleteMutate = vi.fn();
 const logChat = vi.fn();
 
 // The card observes generation runs via `useMutationState` (shared mutation
-// key, #3310); tests drive that observation directly.
+// key, archive#3310); tests drive that observation directly.
 let mutationStates: Array<{
   status: 'pending' | 'error' | 'success' | 'idle';
   conversationId?: string;
@@ -61,7 +61,7 @@ const SUMMARY = {
 };
 
 // The dock host claims its own entry point (the header gear opens
-// ChatSettingsPanel), which is what licenses the #3310 demotion. A host that
+// ChatSettingsPanel), which is what licenses the archive#3310 demotion. A host that
 // does NOT claim one is covered separately below.
 function renderCard(
   opts: { hasSettingsEntryPoint?: boolean; conversationId?: string } = {},
@@ -232,7 +232,7 @@ describe('SessionSummaryCard', () => {
     },
   );
 
-  // #3310: the un-generated state pays zero transcript pixels — the entry
+  // archive#3310: the un-generated state pays zero transcript pixels — the entry
   // point lives in the chat-settings menu, not in a permanent band.
   test('renders nothing when no summary exists and nothing is in flight', () => {
     const { container } = renderCard();
@@ -242,7 +242,7 @@ describe('SessionSummaryCard', () => {
     ).toBeNull();
   });
 
-  // #3310: a failed summary QUERY is nothing the user did — degrade silently
+  // archive#3310: a failed summary QUERY is nothing the user did — degrade silently
   // (logged), never an alert band inside the chat.
   test('a failed summary query renders nothing and logs instead of alerting', () => {
     queryResult = {
@@ -300,7 +300,7 @@ describe('SessionSummaryCard', () => {
 });
 
 /**
- * kontourai/station#3310 review (MERGE-BLOCKER): `ChatMessageList` has a
+ * archive#3310 (MERGE-BLOCKER): `ChatMessageList` has a
  * second host — `ACPChatPanel` — which renders no gear and no
  * `ChatSettingsPanel`. Demoting the inline button unconditionally removed the
  * ONLY way to summarize an ACP chat, while the component's own docblock went
@@ -340,7 +340,7 @@ describe('SessionSummaryCard entry-point reachability', () => {
 });
 
 /**
- * kontourai/station#3310 review (SF-3): the card mounts ONCE per host and is
+ * archive#3310: the card mounts ONCE per host and is
  * never re-keyed when the active chat changes, while `submittedAt` is
  * wall-clock. A single dismissal scalar therefore let a dismissal in one
  * conversation hide an OLDER, never-seen failure in another — that chat

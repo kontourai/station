@@ -135,7 +135,7 @@ export type SchedulerDispatchSettlement = Readonly<{
  * right. Calling the residual bucket "not classified as damage" is the most
  * this actually derives. The pre-existing `SchedulerStorageUnavailableError`
  * still says "temporarily unavailable" for that case, which was true before
- * this change and is disclosed rather than widened here (station#3220).
+ * this change and is disclosed rather than widened here (archive#3220).
  *
  * Both stay under one `kind` deliberately. Every existing caller already
  * treats `unavailable` as a failure, so widening the discriminant instead
@@ -244,7 +244,7 @@ export class SchedulerStorageCorruptError extends Error {
   constructor() {
     // Mechanism-neutral on purpose: SQLite now reports this either from the
     // boot check or from an ordinary statement hitting a damaged page, and the
-    // operator's next move is the same in both cases (station#3220).
+    // operator's next move is the same in both cases (archive#3220).
     super(
       'Scheduler storage is corrupt. Stop every Station using this home, then restore a validated backup with `station home restore --from=<backup-dir> --confirm`.',
     );
@@ -741,13 +741,13 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     // own — so the marker is written once, wherever it first appears. This
     // ledger has far fewer statements than the EventStore's ~180, but "few
     // enough to remember" is exactly the reasoning that leaves the next
-    // statement unobserved. Nothing READS that marker yet (station#3217 is
+    // statement unobserved. Nothing READS that marker yet (archive#3217 is
     // building the first consumer); today it is operator diagnostics plus the
     // in-process latch below, which is the part that changes behaviour.
     //
     // CLASSIFYING is each catch site's job (see `unavailableFrom`): the watch
     // rethrows unchanged, so it cannot tell a caller what happened. That
-    // stays with the code that owns the outcome type (station#3220).
+    // stays with the code that owns the outcome type (archive#3220).
     this.db = watchForSqliteCorruption(
       new DatabaseSync(databasePath, { timeout: busyTimeoutMs }),
       {
@@ -782,14 +782,14 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       this.db.exec(
         `PRAGMA busy_timeout = ${Math.max(0, Math.floor(busyTimeoutMs))}`,
       );
-      // station#3661: a mode CONVERSION on a never-WAL database needs an
+      // archive#3661: a mode CONVERSION on a never-WAL database needs an
       // exclusive lock that `busy_timeout` does not govern, so two instances
       // first-opening a brand-new home raced here and one died on
       // `database is locked` before the ledger existed. The retry is bounded
       // and the pragma is advisory — see `enableWalJournalMode`.
-      // station#3661 review MEDIUM-1: contention must not kill startup (that
+      // archive#3661 review MEDIUM-1: contention must not kill startup (that
       // is the whole defect), but this store fails CLOSED on anything else —
-      // an I/O error or a read-only home — exactly as it did before #3661,
+      // an I/O error or a read-only home — exactly as it did before archive#3661,
       // rather than coming up quietly in rollback-journal mode.
       applyWalJournalMode(this.db, {
         store: 'scheduler ledger',
@@ -828,7 +828,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
    * corruption marker for still answered `created`, and the operator was told
    * a job exists that the next boot's `quick_check` refuses to even open. That
    * is a durability claim nothing computed, made by a process simultaneously
-   * holding the observation that falsifies it (station#3220 review).
+   * holding the observation that falsifies it (archive#3220 review).
    *
    * Scope is exactly the operations that promise something about the FUTURE:
    * creating, editing or removing a job, claiming a new run, and
@@ -2861,7 +2861,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     // reaches this line after corruption has already armed the latch — and
     // without this guard SQLite can serve the fence write from cached pages,
     // so Station invokes a real unattended agent behind a fence living in
-    // bytes that will not survive the next boot (station#3220 delta review).
+    // bytes that will not survive the next boot (archive#3220 delta review).
     const refused = this.refuseIfCorrupt();
     if (refused) return refused;
     try {
@@ -3259,7 +3259,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     // opaque id on construction and removes it on close, so it answers
     // without a birth fingerprint. Reaching for one here is what stranded a
     // crashed occurrence whenever a contended `ps` could not supply it
-    // (station#3188) — a NULL `owner_birth` read as "live forever", and an
+    // (archive#3188) — a NULL `owner_birth` read as "live forever", and an
     // owner whose own probe failed could not reclaim even its own prior
     // claim. A foreign owner that died and had its pid recycled to us never
     // has its id in this registry, so the same answer is correct for reuse.

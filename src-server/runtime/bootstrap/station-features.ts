@@ -1,5 +1,5 @@
 /**
- * station#980 fix (HIGH, independent review): `STATION_FEATURES` parsing,
+ * archive#980 fix (HIGH, independent review): `STATION_FEATURES` parsing,
  * shared so `runtime-initialize.ts`'s one-time boot computation and
  * `station-runtime.ts`'s live `getManagedChatOrchestrationEnabled` getter
  * agree on the same check. The getter reads `process.env` directly through

@@ -34,7 +34,7 @@ interface RuntimeDefaultAgentContext {
   memoryAdapters: Map<string, FileMemoryAdapter>;
   agentMetadataMap: Map<string, any>;
   /**
-   * station#1834: hook-construction inputs for the default agent's tool gate.
+   * archive#1834: hook-construction inputs for the default agent's tool gate.
    * Optional so both bootstrap paths can pass what they have; safe empty
    * defaults are used otherwise. `agentHooksMap` registration is what lets
    * interactive chat streams register a conversation-scoped approval
@@ -48,7 +48,7 @@ interface RuntimeDefaultAgentContext {
   >;
   agentHooksMap?: Map<string, ReturnType<typeof createAgentHooks>>;
   /**
-   * station#1834 review round 2: the guardian the default agent's gate
+   * archive#1834 review round 2: the guardian the default agent's gate
    * consults, matching what persisted agents get from
    * `runtime-agent-builder.ts`. Present ⇒ wired; both production bootstrap
    * paths construct it from the same runtime services the builder uses.
@@ -57,7 +57,7 @@ interface RuntimeDefaultAgentContext {
   /** Optional so isolated bootstrap callers retain the existing fail-closed behavior. */
   resolveUnattendedGrant?: AgentHooksDeps['resolveUnattendedGrant'];
   /**
-   * station#1194 (epic #1191, slice B): the resolved engine binding for the
+   * archive#1194 (epic archive#1191, slice B): the resolved engine binding for the
    * built-in default agent, from the onboarding engine picker (or the
    * unchosen sensible default) — `null`/absent means Station's own engine,
    * byte-identical to this function's pre-#1194 behavior. Resolved by the
@@ -69,17 +69,17 @@ interface RuntimeDefaultAgentContext {
 }
 
 /**
- * station#3063: the PERSISTED shape of the built-in station-control
+ * archive#3063: the PERSISTED shape of the built-in station-control
  * integration — deliberately instance-INDEPENDENT. No `command`, no `args`,
  * no `env`: those are the running instance's spawn identity, resolved fresh
  * at load time by `ConfigLoader`'s builtin-runtime-identity overlay
  * (`stationControlRuntimeIdentity`, station-control-runtime-env.ts).
  *
- * Baking them into the file is what caused the #3063 cross-process reload
+ * Baking them into the file is what caused the archive#3063 cross-process reload
  * loop: two servers sharing one home (desktop app + launchd service) each
  * rewrote the file with their OWN dist path and port on every reload, and
  * each write retriggered the other process's config watcher — bytes that
- * can never converge, so the #1588 byte-identical save skip never engaged.
+ * can never converge, so the archive#1588 byte-identical save skip never engaged.
  * With this shape, both instances derive byte-identical files and a
  * converged home sees zero writes.
  */
@@ -100,7 +100,7 @@ export function createRuntimeSelfIntegration() {
 }
 
 /**
- * station#1547: the built-in `station-docs` tool server.
+ * archive#1547: the built-in `station-docs` tool server.
  *
  * Note what this factory does NOT take and does NOT return: no `port`, and no
  * `env` key at all. That absence is load-bearing, not an oversight —
@@ -111,12 +111,12 @@ export function createRuntimeSelfIntegration() {
  *
  * `runtime-default-agent.test.ts` pins that emptiness against this factory's
  * real output AND against `stationDocsRuntimeIdentity` (the load-time
- * overlay that now carries `command`/`args` — station#3063). If a future
+ * overlay that now carries `command`/`args` — archive#3063). If a future
  * change needs a credential here, that test fails on purpose: this stops
  * being a credential-free docs server and becomes a different feature
  * needing a different security review.
  *
- * station#3063: like `createRuntimeSelfIntegration` above, this is the
+ * archive#3063: like `createRuntimeSelfIntegration` above, this is the
  * PERSISTED, instance-independent shape — `command`/`args` (the running
  * instance's dist path) moved into the load-time overlay so the file's
  * bytes are identical no matter which co-homed instance wrote them.
@@ -138,7 +138,7 @@ export function createRuntimeDocsIntegration() {
 }
 
 /**
- * station#3063: writes the two built-in integration definitions
+ * archive#3063: writes the two built-in integration definitions
  * (`station-control`, `station-docs`) to the home's `integrations/` root in
  * their instance-independent persisted shape.
  *
@@ -152,7 +152,7 @@ export function createRuntimeDocsIntegration() {
  *    `reloadAgents()`): `onlyIfMissing` — existence-gated, never
  *    content-gated. A reload may only ever CREATE an absent file (self-heal
  *    after a user deletes one), because a write creates the file, so a
- *    reload-driven write loop is structurally impossible. This is the #1588
+ *    reload-driven write loop is structurally impossible. This is the archive#1588
  *    anti-pattern fix: a reload must not mutate its own watched inputs.
  */
 export async function materializeBuiltinIntegrations(
@@ -177,14 +177,14 @@ export async function bootstrapRuntimeDefaultAgent(
 ): Promise<Record<string, any>> {
   const { selfIntegrationId } = createRuntimeSelfIntegration();
   const { docsIntegrationId } = createRuntimeDocsIntegration();
-  // station#1547: materialized BEFORE the external-engine early return below,
+  // archive#1547: materialized BEFORE the external-engine early return below,
   // so an externally-bound built-in agent (which never builds a
   // Station-engine instance) still has a resolvable `station-docs` ToolDef
   // for `session-agent-resolution.ts` to deliver.
   //
-  // station#3063: existence-gated (`onlyIfMissing`). This function runs
+  // archive#3063: existence-gated (`onlyIfMissing`). This function runs
   // inside every `reloadAgents()` — including the watcher-triggered ones —
-  // and a reload that WRITES its own watched inputs is the #1588/#3063
+  // and a reload that WRITES its own watched inputs is the archive#1588/#3063
   // reload-loop anti-pattern. The unconditional boot-time materialization
   // lives in `runtime-initialize.ts`; here we only self-heal a file a user
   // deleted mid-run, which is loop-safe because a write creates the file.
@@ -194,21 +194,21 @@ export async function bootstrapRuntimeDefaultAgent(
 
   const binding = context.builtinEngineBinding ?? null;
   if (binding) {
-    // station#1194 (epic #1191, slice B): bound to an external engine via
+    // archive#1194 (epic archive#1191, slice B): bound to an external engine via
     // the onboarding picker (or the sensible unchosen default) — Station's
     // own engine cannot execute another engine's identity, so this mirrors
     // the "no launchable model" skip below exactly (no VoltAgent instance,
     // no station-engine model resolution attempted), but the reason and the
     // resulting metadata are different: the binding is honestly recorded on
     // `agentMetadataMap` via `execution.agentConnectionId` (the same field
-    // every other external-engine-bound agent record carries — station#954)
+    // every other external-engine-bound agent record carries — archive#954)
     // so `GET /api/agents`'s `defaultSpec()` projection and every reader of
     // `resolveEngineCapabilityMatrix` classify this agent correctly, instead
     // of silently clobbering the user's choice back to "not configured".
     context.activeAgents.delete('default');
     context.agentTools.delete('default');
     context.memoryAdapters.delete('default');
-    // station#1834: drop the Station-engine gate too — a stale hooks entry
+    // archive#1834: drop the Station-engine gate too — a stale hooks entry
     // for an agent the external engine now owns would let chat streams
     // register requesters against an instance no agent consults.
     context.agentHooksMap?.delete('default');
@@ -223,7 +223,7 @@ export async function bootstrapRuntimeDefaultAgent(
       'Default agent bound to an external engine; Station-engine instance not built',
       {
         engineId: binding.matrix.engineId,
-        // station#1549: derive from the SAME two inputs the resolver used.
+        // archive#1549: derive from the SAME two inputs the resolver used.
         // Passing the matrix alone would log 'observation-required' for a
         // connection that was bound because its observation said yes.
         capability: engineControlPlaneCapability(
@@ -271,19 +271,19 @@ export async function bootstrapRuntimeDefaultAgent(
     );
   }
 
-  // #914: one store, constructed once and shared. The agent used to be built
+  // archive#914: one store, constructed once and shared. The agent used to be built
   // without a memory adapter while a *separate* `FileMemoryAdapter` was
   // registered under the same slug, so the agent wrote to the framework's own
   // in-process default while every read path (transcript, history, stats) went
   // to the registered adapter. `default` is not in `agentSpecs`, so its turns
-  // were only reaching disk via the compensating temp-agent write that #914
+  // were only reaching disk via the compensating temp-agent write that archive#914
   // removes — without this the built-in Station agent would persist nothing.
   const defaultMemoryAdapter = new FileMemoryAdapter({
     projectHomeDir: context.configLoader.getProjectHomeDir(),
     usageAggregator: context.usageAggregator,
   });
 
-  // station#1834: the default agent is the executor for every unattended
+  // archive#1834: the default agent is the executor for every unattended
   // path (scheduler jobs, feedback analysis, global /invoke, the CLI), and
   // as a temp agent it used to carry NO beforeToolCall gate at all — any
   // tool it held executed unapproved. Build the real shared hooks with the

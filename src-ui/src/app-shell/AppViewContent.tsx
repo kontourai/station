@@ -144,8 +144,8 @@ const ConsoleBoardView = lazy(() =>
     default: module.ConsoleBoardView,
   })),
 );
-// The standalone placement of the Activity Workspace Pane (epic
-// station#4142 M3) — the pane path to the sessions surface, never the
+// The standalone placement of the Activity Workspace Pane (
+// archive#4142) — the pane path to the sessions surface, never the
 // surface directly.
 const ActivityView = lazy(() =>
   import('../views/ActivityView').then((module) => ({
@@ -198,7 +198,7 @@ export function AppViewContent(props: AppViewContentProps) {
   // Resolved ONCE and handed to both consumers: the frame that renders the
   // header, and the boundary that renders the body while the route's chunk is
   // in flight. Two calls would be two chances to disagree about what the
-  // arriving page looks like — which is the whole of #3660.
+  // arriving page looks like — which is the whole of archive#3660.
   const frameSpec = resolvePageFrame(props.currentView);
   return (
     // The frame is the outermost thing a route renders, above the boundary
@@ -471,7 +471,7 @@ function AppViewContentBody({
  * `project-new` is the one genuinely-first-run coincidence (zero connections
  * AND zero projects): the first-run `SetupLauncher` already covers the full
  * screen with its own backdrop, so stacking `NewProjectModal` behind it is a
- * second, redundant overlay (#191 R3). Suppressing it here only changes
+ * second, redundant overlay (archive#191). Suppressing it here only changes
  * behavior for this view; a later, non-blocking banner (e.g. the user's only
  * connection gets disabled mid-session on some other view) is untouched and
  * still renders its normal content underneath.

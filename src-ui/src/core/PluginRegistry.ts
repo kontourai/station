@@ -118,7 +118,7 @@ function isSameOriginBundleUrl(url: string): boolean {
  * `window.__station_ai_plugins` is a shared mutable window property that any
  * executing bundle can write at any time — including a bundle whose load the
  * registry already reported as failed, which keeps running after the rejection
- * and after `performReload`'s `delete` (station#4302). So presence of an entry
+ * and after `performReload`'s `delete` (archive#4302). So presence of an entry
  * is never on its own evidence that the load the registry awaited produced it;
  * every read here is paired with the admission check in `loadPlugin`.
  */
@@ -389,7 +389,7 @@ export class PluginRegistry {
       // adopted by the pass that was waiting for it; and on any later pass it
       // is identical to `priorRegistration`, so it cannot be adopted there
       // either. That is the property: a plugin the registry reported as
-      // failed cannot become live by finishing late (station#4302).
+      // failed cannot become live by finishing late (archive#4302).
       const pluginExports =
         observedRegistration && observedRegistration !== priorRegistration
           ? observedRegistration
@@ -451,7 +451,7 @@ export class PluginRegistry {
    * Executes one plugin bundle in the shell's own realm.
    *
    * A SAME-ORIGIN bundle is loaded BY URL and is given no nonce
-   * (station#4287). The HTTP shell serves
+   * (archive#4287). The HTTP shell serves
    * `script-src 'self' 'nonce-<per-response>' 'wasm-unsafe-eval'`; this used to
    * fetch the bundle's bytes and run them as an inline `<script>` carrying that
    * nonce, and code holding a nonce can mint further nonce'd scripts — remote
@@ -484,7 +484,7 @@ export class PluginRegistry {
     apiBaseGeneration: number,
     signal: AbortSignal,
   ): Promise<PluginBundleExports | undefined> {
-    // Plugin-only shared modules are fetched on demand; the bundle's require()
+    // Plugin-only shared modules are fetched on demand; the bundle's require
     // shim reads them synchronously once it executes, so resolve them first.
     if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration))
       return undefined;
@@ -553,7 +553,7 @@ export class PluginRegistry {
           // So this rejection means "the registry is not waiting for this any
           // more", NOT "this code will not run". A late bundle still executes in
           // the shell realm and can write `window.__station_ai_plugins` behind
-          // the registry's back (station#4302). The inline path could refuse
+          // the registry's back (archive#4302). The inline path could refuse
           // this because it re-checked the origin between fetch and append; a
           // browser-driven load structurally cannot.
           //
@@ -678,7 +678,7 @@ export class PluginRegistry {
     //
     // This `delete` is tidying, not the guarantee: a bundle still in flight
     // from the previous pass re-creates the global right after it runs
-    // (station#4302), so the property is enforced at admission in
+    // (archive#4302), so the property is enforced at admission in
     // `loadPlugin`, which requires each pass to observe its own registration
     // rather than trusting whatever the window holds.
     delete (window as any).__station_ai_plugins;
@@ -735,7 +735,7 @@ export class PluginRegistry {
     if (registration.isolated && registration.plugin) {
       const plugin = registration.plugin;
       // The isolated host only renders for a remote Station's plugin Pane, so
-      // it must not ride the entry chunk (station#2467's ratchet). LazyBoundary
+      // it must not ride the entry chunk (archive#2467's ratchet). LazyBoundary
       // also gives a failed chunk fetch a contained retry instead of an
       // unhandled rejection.
       return () =>

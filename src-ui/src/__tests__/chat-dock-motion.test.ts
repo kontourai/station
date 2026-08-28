@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#3309 motion polish. The dock's chrome, its inbox panel and its
+ * archive#3309 motion polish. The dock's chrome, its inbox panel and its
  * background-tasks sheet all animate now, and every one of them has to satisfy
  * two contracts that a passing render cannot show you: the motion grammar
  * (`docs/design/motion.md` — token durations/easings, never literals, never

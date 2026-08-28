@@ -12,7 +12,7 @@ import {
 /**
  * SHELL-07, measured on the audited build:
  *
- * | step                                   | .content-view.scrollTop |
+ * | step | .content-view.scrollTop |
  * | /settings scrolled (scrollHeight 8428) | 3000                    |
  * | → /registry                            | 0                       |
  * | → back to /settings                    | 0  ← position lost      |
@@ -151,7 +151,7 @@ describe('useScrollRestoration', () => {
   });
 
   test('restores on a content-size signal without waiting for the poll', () => {
-    // M4: the restore used to write AND read `scrollTop` every animation
+    // the restore used to write AND read `scrollTop` every animation
     // frame until the content could hold it — a forced layout up to ~60x/s
     // for up to eight seconds, precisely while the route was assembling. It
     // now waits for the content to say it grew.
@@ -210,10 +210,10 @@ describe('useScrollRestoration', () => {
   });
 
   test('saves the position on navigation intent, before the route swap', () => {
-    // M4: the scroll listener was the only save path, and a browser
+    // the scroll listener was the only save path, and a browser
     // dispatches `scroll` asynchronously. Code that scrolls the container and
     // navigates in the same task therefore navigated before the save could
-    // happen. `navigationStore.navigate()` dispatches `popstate` synchronously
+    // happen. `navigationStore.navigate` dispatches `popstate` synchronously
     // while the outgoing route is still mounted, so that is where the last
     // position is caught.
     const { container, rerender } = render(<Harness routeKey="/settings" />);

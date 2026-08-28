@@ -41,7 +41,7 @@ describe('useActiveChatSessions helpers', () => {
         {
           role: 'user',
           content: 'hello',
-          // station#1293: a stable client-only id for rollback-by-id.
+          // archive#1293: a stable client-only id for rollback-by-id.
           clientId: expect.any(String),
           contentParts: [
             { type: 'text', content: 'hello' },
@@ -70,7 +70,7 @@ describe('useActiveChatSessions helpers', () => {
     expect(currentMessages).toEqual([{ role: 'assistant', content: 'hi' }]);
   });
 
-  // station#1295: no normal write path stamped a user-send message before —
+  // archive#1295: no normal write path stamped a user-send message before —
   // pin that the outgoing message now carries a real timestamp so a healthy
   // chat's inbox recency isn't derived from an epoch 0.
   it('stamps the outgoing user message with a real timestamp, not 0', () => {
@@ -122,7 +122,7 @@ describe('useActiveChatSessions helpers', () => {
     ).toBe('unexpected');
   });
 
-  // station#1295: the backend rarely supplies a per-message timestamp today
+  // archive#1295: the backend rarely supplies a per-message timestamp today
   // (no normal write path persisted one), but when it does, the mapper must
   // prefer it over the batch fallback rather than overwriting it.
   it('prefers a real backend timestamp over the fallback when present', () => {
@@ -138,9 +138,9 @@ describe('useActiveChatSessions helpers', () => {
     );
   });
 
-  // station#1295 regression: fixtures used to hardcode plausible stamps —
+  // archive#1295 regression: fixtures used to hardcode plausible stamps —
   // this pins the genuinely-absent case, which is the actual historical
-  // shape (no write path ever set `timestamp`). station#1311 review update:
+  // shape (no write path ever set `timestamp`). archive#1311 update:
   // with no `conversationUpdatedAt` anchor supplied, the fallback is still
   // "now" for the newest message (never 0), but earlier un-timestamped
   // messages back off from it to stay in order rather than all sharing one
@@ -156,8 +156,8 @@ describe('useActiveChatSessions helpers', () => {
     expect(result[1].timestamp).not.toBe(0);
   });
 
-  // station#1311 independent-review fault injection: normalizing the SAME
-  // backend messages hours apart used to yield a newer `Date.now()` stamp
+  // archive#1311: normalizing the SAME
+  // backend messages hours apart used to yield a newer `Date.now` stamp
   // each time — an old, already-read conversation would jump to the top of
   // recency on nothing more than a reopen or an SSE-reconnect catchup
   // sweep. Anchoring to the conversation's real `updatedAt` (resolved by
@@ -191,7 +191,7 @@ describe('useActiveChatSessions helpers', () => {
       expect(second[second.length - 1].timestamp).toEqual(
         first[first.length - 1].timestamp,
       );
-      // Neither call re-inflated recency toward whatever `Date.now()`
+      // Neither call re-inflated recency toward whatever `Date.now`
       // happened to be at call time.
       expect(first[first.length - 1].timestamp).not.toBe(
         Date.parse('2026-01-01T05:00:00.000Z'),
@@ -212,7 +212,7 @@ describe('useActiveChatSessions helpers', () => {
         Date.parse('2026-01-01T00:00:00.000Z'),
       );
       // Old stays older than recent regardless of how many times either is
-      // re-normalized, or when — no Date.now() read leaks into the result
+      // re-normalized, or when — no Date.now read leaks into the result
       // when a real anchor is supplied.
       vi.setSystemTime(new Date('2026-07-29T00:00:00.000Z'));
       const oldConversationAgain = normalizeConversationMessages(

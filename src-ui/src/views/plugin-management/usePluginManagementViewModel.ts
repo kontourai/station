@@ -56,7 +56,7 @@ export function consentFailureMessage(
 }
 
 /**
- * What a DECLINED install left behind (station#4288): nothing, and the
+ * What a DECLINED install left behind (archive#4288): nothing, and the
  * message says so rather than reporting a failure the reader would have to
  * investigate. Consent is now taken before the install request is made, so
  * declining is not an error — it is the operator's answer, honoured.
@@ -77,7 +77,7 @@ export function usePluginManagementViewModel() {
     deselect: deselectPlugin,
   } = useUrlSelection('/plugins');
 
-  // Review H1: `error`/`refetch` too, or a failed read renders the definitive
+  // `error`/`refetch` too, or a failed read renders the definitive
   // "No plugins installed yet" over plugins Station simply could not read.
   const {
     data: plugins = [],
@@ -143,9 +143,9 @@ export function usePluginManagementViewModel() {
   const addLayoutFromPluginMutation = useAddProjectLayoutFromPluginMutation();
   const reloadPluginsMutation = useReloadPluginsMutation();
   const revokePermissionMutation = useRevokePluginPermissionMutation();
-  // station#3815: the permission being withdrawn, so its own row shows the
+  // archive#3815: the permission being withdrawn, so its own row shows the
   // pending state instead of the whole section going busy.
-  // A SET, not one string (review LOW): the UI deliberately leaves every
+  // A SET, not one string — the UI deliberately leaves every
   // other row actionable, so two removals can be in flight at once. With a
   // single slot the second replaced the first, and whichever settled first
   // cleared the pending state of the one still running.
@@ -231,7 +231,7 @@ export function usePluginManagementViewModel() {
       return;
     }
 
-    // station#4288. The gate, and the reason it is HERE rather than in
+    // archive#4288. The gate, and the reason it is HERE rather than in
     // `onSuccess`: `installMutation.mutate` is the mutation. Asking after it
     // resolves asks about a plugin that is already on disk — and for the
     // contributions that run in the browser, already able to have run. So the
@@ -387,8 +387,7 @@ export function usePluginManagementViewModel() {
       });
     } catch (error) {
       // A failed withdrawal used to be silent: the row stopped spinning, the
-      // confirmation closed, and the permission was still there (review
-      // MEDIUM). Nothing is more misleading on a permission surface than a
+      // confirmation closed, and the permission was still there. Nothing is more misleading on a permission surface than a
       // removal that looks like it happened.
       setMessage({
         type: 'error',

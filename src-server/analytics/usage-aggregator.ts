@@ -24,13 +24,13 @@ import {
 const logger = createLogger({ name: 'usage-aggregator' });
 
 /**
- * The orchestration substrate as lifetime analytics reads it (station#3245):
+ * The orchestration substrate as lifetime analytics reads it (archive#3245):
  * every session, already folded by the one shared derivation.
  *
  * This is a CONSUMER interface — the aggregator states what it needs and the
  * orchestration service satisfies it — so the aggregator never touches the
  * event store, never re-implements per-turn vs session-cumulative scope, and
- * inherits station#3201's unreported-vs-zero discipline from the fold for
+ * inherits archive#3201's unreported-vs-zero discipline from the fold for
  * free. `OrchestrationService.listSessionUsage` is the only implementation.
  */
 export interface OrchestrationUsageSource {
@@ -204,7 +204,7 @@ export class UsageAggregator {
       // Filter to real transcripts before counting. The loop below already
       // does; this Set did not, and `'c.ndjson.<pid>.<uuid>.tmp'` survives
       // `.replace('.ndjson','')` as a DISTINCT id, so any stray inflates the
-      // conversation count. station#2252 made destructive rewrites publish
+      // conversation count. archive#2252 made destructive rewrites publish
       // via a temp file in this directory, so a crash between the write and
       // the rename now leaves exactly such a stray — and `mergeRescannedUsageStats`
       // merges lifetime totals with `Math.max`, which latches the inflated
@@ -254,7 +254,7 @@ export class UsageAggregator {
       }
     }
 
-    // station#3245: the orchestration substrate, folded by the SAME
+    // archive#3245: the orchestration substrate, folded by the SAME
     // derivation the stats route uses. It runs after the memory walk and is
     // handed the exact id set that walk just counted, so a session living in
     // both substrates cannot contribute twice — see

@@ -25,7 +25,7 @@ interface CheckpointReadBounds {
 }
 
 /**
- * station#2802 fix round (M3): the read path composes the home index with
+ * archive#2802 fix round (M3): the read path composes the home index with
  * live object verification. The index alone cannot be served as truth for
  * `captured` records — after `gc.reflogExpire` (default 90 days) the
  * reflog entry goes away, `git gc` prunes the checkpoint commit, and the

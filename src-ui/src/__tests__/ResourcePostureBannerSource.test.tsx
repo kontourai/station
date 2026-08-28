@@ -9,7 +9,7 @@ import { ResourcePostureBannerSource } from '../components/notifications/Resourc
 import { bannerStore } from '../contexts/banner-store';
 
 /**
- * station#3089: the UI half of "route -> query -> rendered state". Only
+ * archive#3089: the UI half of "route -> query -> rendered state". Only
  * `fetch` is stubbed here — `useResourcePostureQuery` (the real SDK hook),
  * `fetchResourcePosture`, and `ResourcePostureBannerSource` all run for
  * real, so this proves the component renders exactly the value the (mocked)

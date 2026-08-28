@@ -17,7 +17,7 @@ export function formatBuildAge(ageSeconds: number): string {
 /**
  * Renders whichever provenance fields the instance could report.
  *
- * Every field is independently optional (station#1085). A row is rendered only
+ * Every field is independently optional (archive#1085). A row is rendered only
  * when its value is present, so a missing build timestamp no longer takes the
  * revision, branch and instance down with it; the "unavailable" hint is
  * reserved for an instance that reported no provenance at all.

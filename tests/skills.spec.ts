@@ -128,8 +128,8 @@ test.describe('Skills (via Registry + API)', () => {
     await page.goto('/skills');
     await page.waitForSelector('.split-pane', { timeout: 15_000 });
 
-    // /skills redirects to /guidance?tab=skills, and station#4463 slice 1
-    // fixed the page title at 'Guidance' — it no longer changes to 'Skills'
+    // /skills redirects to /guidance?tab=skills, and archive#4463
+    // pins the page title at 'Guidance' — it does not change to 'Skills'
     // per tab (the tab strip already names the section).
     await expect(
       page.getByRole('heading', { name: 'Guidance', level: 1, exact: true }),

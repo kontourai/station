@@ -9,7 +9,7 @@ const LEVELS = ['', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
 export default function LogsTab() {
   const { apiBase } = useApiBase();
-  // #3843 T3. D6 redacts this read for any principal that did not prove home
+  // archive#3843. redacts this read for any principal that did not prove home
   // possession, and it is right to. What was missing is the sentence: a page
   // that quietly serves `[REDACTED]` reads as a broken page rather than as a
   // correct boundary. The read itself is remote-safe — the host performs it

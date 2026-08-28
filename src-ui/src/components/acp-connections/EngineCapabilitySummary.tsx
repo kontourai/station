@@ -5,7 +5,7 @@ import {
 import './EngineCapabilitySummary.css';
 
 /**
- * The two-row engine description (station#3722 slice 1): WHAT IT CAN DO as
+ * The two-row engine description (archive#3722): WHAT IT CAN DO as
  * chips derived from the engine's capability matrix, and WHAT STATION GATES
  * from the matrix's tool-policy cell. Every rendered word traces to a matrix
  * cell — the matrix is the single per-engine declaration the agent editor
@@ -15,7 +15,7 @@ import './EngineCapabilitySummary.css';
  * no derivation for an external engine's own toolbox (a custom engine's
  * tools are whatever it brings), and a chip that is sometimes a guess is
  * worse than no chip — the tools row says exactly that instead. Widening the
- * matrix with audited runtime capabilities is #3722's remaining scope.
+ * matrix with audited runtime capabilities is archive#3722's remaining scope.
  */
 
 /** The matrix cells that read as user-meaningful "Station can deliver X". */
@@ -57,7 +57,7 @@ const TOOL_CATEGORY_LABELS: Record<BuiltInToolCategory, string> = {
 
 /**
  * The tools-ownership sentence, now derived from the audited `builtInTools`
- * cell (station#3722) rather than an engineId branch:
+ * cell (archive#3722) rather than an engineId branch:
  *
  * - `station-configured` — the Station engine has no toolbox of its own.
  * - `documented` — the cell's evidence-backed categories, named in user
@@ -66,7 +66,7 @@ const TOOL_CATEGORY_LABELS: Record<BuiltInToolCategory, string> = {
  *   it renders only where a matrix cell cites a real observation seam.
  * - `unenumerated` — Station cannot list the toolbox; say so.
  *
- * The #3726 review caught the pre-audit version contradicting the chip row
+ * The archive#3726 caught the pre-audit version contradicting the chip row
  * above it ("Station does not choose what <engine> can use" while the Tool
  * servers chip said Station delivers some); the supply clause still composes
  * with the toolServers cell so the two claims cannot diverge.
@@ -114,7 +114,7 @@ export function deriveToolControlSummary(
       // The absolute phrasing is earned only where built-ins are PROVEN to
       // exist (a documented cell); an unenumerated engine gets conditional
       // wording, or the control sentence would assert the very inventory
-      // the tools row just said Station cannot establish (#3728 review).
+      // the tools row just said Station cannot establish (archive#3728).
       return matrix.builtInTools.state === 'documented'
         ? 'Its built-in tools cannot be switched off from Station.'
         : 'Station cannot switch off any built-in tools it may provide.';

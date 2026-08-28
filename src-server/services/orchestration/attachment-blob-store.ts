@@ -85,7 +85,7 @@ function count(
 }
 
 /**
- * Content-addressed storage for chat attachment bytes (station#3374).
+ * Content-addressed storage for chat attachment bytes (archive#3374).
  *
  * The event log records that a turn carried `screenshot.png`; this holds the
  * pixels. Addressing by SHA-256 of the decoded bytes means the same image

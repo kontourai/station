@@ -123,7 +123,7 @@ describe('ProfilePage', () => {
     expect(screen.getByText(/No usage data yet/i)).toBeTruthy();
   });
 
-  // Review M2. `useAnalytics` already derived the usage read's error and this
+  // `useAnalytics` already derived the usage read's error and this
   // page ignored it, so a failed read settled with no stats and was drawn as
   // "No usage data yet" — a claim about the user's own activity made over a
   // request that never answered.

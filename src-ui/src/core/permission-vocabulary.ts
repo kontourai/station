@@ -2,7 +2,7 @@ import type { PermissionTier } from '@kontourai/station-contracts/plugin';
 
 /**
  * The words Station uses for what a plugin permission LETS A PLUGIN DO
- * (station#3815).
+ * (archive#3815).
  *
  * These lived inside `PermissionManager` when the consent modal was the only
  * surface that named a permission. Reviewing what a plugin already holds is
@@ -54,7 +54,7 @@ export function describePermission(permission: string): string {
  */
 export const TIER_MEANING: Record<PermissionTier, string> = {
   // NOT "reads only": `navigation.dock` is passive and steers shell
-  // navigation (review LOW). The tier's real meaning is how it is obtained,
+  // navigation. The tier's real meaning is how it is obtained,
   // which is also what a person needs to know when deciding to keep it.
   passive: 'Low risk. Granted automatically at install.',
   active: 'Acts on your behalf. Granted when you approve it here.',

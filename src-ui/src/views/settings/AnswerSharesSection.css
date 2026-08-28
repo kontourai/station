@@ -1,4 +1,4 @@
-/* Shared answers settings section (station#1423). Station base chrome, not a
+/* Shared answers settings section (archive#1423). Station base chrome, not a
    Console Kit trust surface — this is the operator's own management list, so
    it uses Station's --bg-/--text- tokens and the shared .button classes like
    its sibling settings sections. */
@@ -15,7 +15,7 @@
   justify-content: space-between;
   gap: var(--space-3, 0.75rem);
   padding: var(--space-3, 0.75rem) 0;
-  /* --border-subtle chained onto --border until station#1254 (re-seeded here by
+  /* --border-subtle chained onto --border until archive#1254 (re-seeded here by
      station#1423/#1492) — neither token exists, so the fallback resolved to
      nothing and the rows had no separator. --border-primary is the subtle
      line. */

@@ -1,5 +1,5 @@
 /**
- * station#3203. The tray badge counts attention items with no
+ * archive#3203. The tray badge counts attention items with no
  * `acknowledgedAt`, and until this change only Dismiss recorded one — so
  * acting on a row left the number where it was and the bell stopped meaning
  * "things you have not seen".

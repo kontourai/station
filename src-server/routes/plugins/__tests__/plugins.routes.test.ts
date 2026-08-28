@@ -94,7 +94,7 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
   grantPermissions: vi.fn(),
   hasGrant: vi.fn().mockReturnValue(true),
   processInstallPermissions: vi.fn(),
-  // station#4288: the list route reads the derivation, not the raw entry.
+  // archive#4288: the list route reads the derivation, not the raw entry.
   readPluginGrantState: vi.fn().mockReturnValue({
     recorded: ['network'],
     granted: ['network'],
@@ -157,7 +157,7 @@ vi.mock('node:fs', async (importOriginal) => {
       .mockReturnValue([{ name: 'test-plugin', isDirectory: () => true }]),
     // Real JSON-schema reads (e.g. the domain validator's
     // `schemas/*.schema.json` singleton, transitively pulled in by
-    // `config-loader-agents.js`'s `owningProjectExists` reuse — station#1004
+    // `config-loader-agents.js`'s `owningProjectExists` reuse — archive#1004
     // review HIGH-1) must reach the real file, never the plugin-manifest
     // fixture below, or AJV compiles the fixture's shape as a schema and
     // throws "unknown keyword".
@@ -421,7 +421,7 @@ describe('Plugin Routes', () => {
   });
 
   /**
-   * station#4288: consent belongs to the bytes it was given for, so an update
+   * archive#4288: consent belongs to the bytes it was given for, so an update
    * must re-bind BEFORE anything reads a grant from the replaced tree. The
    * ordering is the load-bearing part — a re-bind after `loadPluginProviders`
    * would still let the new code register providers under the old consent.
@@ -524,7 +524,7 @@ describe('Plugin Routes', () => {
   });
 
   /**
-   * station#4288, delta review MEDIUM 1 — the same defect the install
+   * archive#4288, delta review MEDIUM 1 — the same defect the install
    * rollback carries, found in this route while fixing that one.
    * `rebindGrantsAfterContentChange` refreshes the memoized digest to the
    * UPDATED tree's value. The rollback then restores the OLD tree and the old
@@ -722,7 +722,7 @@ describe('Plugin Routes', () => {
     expect(cpSync).toHaveBeenCalledWith(
       '/tmp/project/plugins/actual-plugin',
       expect.any(String),
-      // station#4288: `verbatimSymlinks` is load-bearing, not cosmetic — see
+      // archive#4288: `verbatimSymlinks` is load-bearing, not cosmetic — see
       // `PLUGIN_TREE_COPY`. Without it the backup resolves relative symlinks
       // to absolute paths, so restoring it produces a tree with a different
       // content digest and a rolled-back update strips every permission.

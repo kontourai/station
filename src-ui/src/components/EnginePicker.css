@@ -1,4 +1,4 @@
-/* ═══ Engine Picker (station#1194) ═══ */
+/* ═══ Engine Picker (archive#1194) ═══ */
 
 .engine-picker {
   position: fixed;
@@ -97,7 +97,7 @@
   cursor: pointer;
 }
 
-/* station#1549: a connection Station has not observed yet. Not a choice —
+/* archive#1549: a connection Station has not observed yet. Not a choice —
    no radio, no pointer affordance — so it must not read as one. */
 .engine-picker__option--pending {
   cursor: default;

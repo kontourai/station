@@ -1,5 +1,5 @@
 /**
- * station#3552: read one credential's quota from the provider that owns it.
+ * archive#3552: read one credential's quota from the provider that owns it.
  *
  * This module is a READER. It never mints, refreshes, or stores a credential —
  * it borrows the access token an engine already wrote into a config directory,

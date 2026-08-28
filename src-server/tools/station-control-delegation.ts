@@ -104,13 +104,13 @@ interface SshEnvironmentView {
 }
 
 /**
- * station#1123 slice 2: `'peer'` is a directly-reachable Station this
+ * archive#1123: `'peer'` is a directly-reachable Station this
  * process has an outbound bearer credential for (`PeerCredentialStore`),
  * resolved alongside — never in place of — the SSH tunnel path. A `'peer'`
  * target's `requestOptions` always carries an `Authorization: Bearer`
  * header — that is the entire point of this kind existing.
  *
- * station#1123 slice 3: a `'ssh'` target's `requestOptions` now ALSO carries
+ * archive#1123: a `'ssh'` target's `requestOptions` now ALSO carries
  * that same `Authorization: Bearer` header when a peer credential happens to
  * be provisioned for the same `environmentId` — see `connectSshTarget`. This
  * is what lets SSH-tunneled peers satisfy the credential requirement in
@@ -160,7 +160,7 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
 
 /**
  * How a `projectSlug` came to name the project the work lands in
- * (station#1463 — see `resolveProject`'s docblock for the full reasoning).
+ * (archive#1463 — see `resolveProject`'s docblock for the full reasoning).
  *
  * - `local` — the target is this Station, so the slug IS the local identity.
  * - `directory-corroborated` — a remote target whose project working
@@ -171,16 +171,16 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
  *   landing the work in a different project than the caller meant. It is
  *   recorded rather than assumed correct, and it is not identity.
  *
- * station#1463 fix round — two corrections to the first cut, which called
+ * archive#1463 fix round — two corrections to the first cut, which called
  * this `path-verified` and treated it as reason to record NOTHING:
  *
  * 1. `connectSshTarget` throws unless `profile.verifiedProjectPath` exists,
  *    so every SSH delegation arrived here with a `projectPath` and every SSH
- *    delegation was therefore "verified". The disclosure #1463 exists to
+ *    delegation was therefore "verified". The disclosure archive#1463 exists to
  *    make only ever fired for peer targets — the entire SSH population, the
  *    one that is cross-machine by construction, was exempted from it.
  * 2. The corroboration is weaker than "verified" claims. It proves a
- *    DIRECTORY, not a project: #1462 is the standing proof that two projects
+ *    DIRECTORY, not a project: archive#1462 is the standing proof that two projects
  *    can be configured on one directory, so the remote `getProject(slug)`
  *    may have returned either of them, and the session then runs under a
  *    project scope the caller could not verify. The project paths are remote
@@ -192,7 +192,7 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
  *
  * So: corroboration is now byte-equality only, it is named for what it
  * proves, and it is RECORDED rather than treated as silence. All three
- * values are stamped (#189 slice 4's idiom), so an absent value means
+ * values are stamped (archive#189's idiom), so an absent value means
  * "recorded before this branch" and nothing else.
  */
 export type DelegationProjectSlugJoin =
@@ -303,7 +303,7 @@ export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
   model?: string;
-  /** station#978: per-invocation settings passthrough on a follow-up turn. */
+  /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
 }
 
@@ -373,7 +373,7 @@ export interface DelegatedTaskEventPage {
 }
 
 /**
- * station#3409: no `resumable` here, and none on the dispatch or
+ * archive#3409: no `resumable` here, and none on the dispatch or
  * request-response handles either. These describe an accepted WRITE at the
  * instant it was accepted; none of them reads back a lifecycle state, so
  * none of them can derive whether a LATER turn would be accepted. The three
@@ -438,7 +438,7 @@ export interface DelegatedTaskSnapshot {
     title?: string;
     type?: string;
     /**
-     * station#1783 (ADR 0012 residual). This tool is an HTTP client to a
+     * archive#1783 (ADR 0012 residual). This tool is an HTTP client to a
      * TARGET environment's Station, and the delegating agent reads this
      * snapshot as a statement about that Station. Reporting an open request
      * with no qualification told the agent to wait on an answer that
@@ -456,7 +456,7 @@ export interface DelegatedTaskSnapshot {
   canInterrupt: boolean;
   /**
    * Whether another turn would be ACCEPTED for this task right now — derived
-   * from `status`, never asserted (station#3409).
+   * from `status`, never asserted (archive#3409).
    *
    * It was the literal `true` on every handle this module returns, including
    * a `canceled` task whose `delegate continue` refuses. An agent reading the
@@ -529,7 +529,7 @@ function readAuthorityForInput(input: {
 function dispatchContextForAuthority(
   authority: SessionReadAuthority,
   clientOrigin?: import('@kontourai/station-contracts/client-origin').ClientOrigin,
-  // station#4075 stage 2: additive alongside `clientOrigin` — the caller's
+  // archive#4075 stage 2: additive alongside `clientOrigin` — the caller's
   // resolved principal, threaded through to `OrchestrationService.dispatch`
   // so the ONE `sendTurn` production implementation below stamps it onto
   // the dispatch context. Never derived from `authority` itself: unlike
@@ -570,7 +570,7 @@ function localServiceRequiredInHostedMode(
   }
 }
 /**
- * station#4543 LOW-2: the exact shape `delegateTask` itself mints
+ * archive#4543 LOW-2: the exact shape `delegateTask` itself mints
  * (`task:${randomUUID()}`) — and the only shape `metadata.conversationId`/
  * `metadata.environmentId` may be re-stamped from via the
  * `conversationIdentity` internal escape hatch (see `delegateTask`'s
@@ -851,14 +851,14 @@ function requireLoopbackTunnel(value: string | undefined): string {
 }
 
 /**
- * station#1123 slice 2: distinguishes "no SSH profile matches this
+ * archive#1123: distinguishes "no SSH profile matches this
  * environmentId at all" from every other SSH failure (unavailable list,
  * connect failure, binding mismatch, not-ready, OR a matching profile that
  * exists but is not yet verified) — `resolveTarget` falls back to the
  * peer-credential store ONLY on this exact, narrow case. An environment
  * that genuinely HAS an SSH profile — verified or not — keeps reporting
  * its own SSH-specific failure instead of masking it behind an unrelated
- * "no peer either" error. Review fix (LOW, station#1123 PR #1178): this
+ * "no peer either" error. Review fix (LOW, archive#1123 PR archive#1178): this
  * used to also cover "profile found but unverified", silently falling
  * through to peer resolution for that case despite this docblock's claim
  * that only true not-found does — narrowed to match the documented intent
@@ -932,7 +932,7 @@ async function connectSshTarget(
     );
   }
 
-  // station#1123 slice 3: attach an outbound peer credential to the SSH
+  // archive#1123: attach an outbound peer credential to the SSH
   // tunnel too, when one is provisioned for this environmentId, so protected
   // calls satisfy runtime authentication. SSH profile resolution/connection
   // above is unaffected either way — this only decides whether the returned
@@ -940,7 +940,7 @@ async function connectSshTarget(
   // provisioned, the connection remains usable but protected API calls fail
   // loudly with `401 authentication_required`.
   //
-  // Security-review follow-up (station#1123 slice 3): fail-open stays, but
+  // Security-review follow-up (archive#1123): fail-open stays, but
   // silently — `fetchPeerCredential` only returns `null` for a clean 404
   // ("no credential provisioned"); every other failure (network error,
   // non-2xx, malformed JSON) throws. Conflating those two outcomes in a bare
@@ -988,7 +988,7 @@ interface PeerCredentialView {
 }
 
 /**
- * station#1123 slice 2: fetches the outbound peer credential provisioned for
+ * archive#1123: fetches the outbound peer credential provisioned for
  * `environmentId` from `PeerCredentialStore` (via the internal-only
  * `GET /api/environments/peers/:environmentId/credential` leaf). `null`
  * (never a throw) only for "no credential provisioned" (404) — every other
@@ -1029,7 +1029,7 @@ async function fetchPeerCredential(
 }
 
 /**
- * station#1123 slice 2: resolves a directly-reachable peer target from the
+ * archive#1123: resolves a directly-reachable peer target from the
  * outbound `PeerCredentialStore`, attaching the stored bearer credential as
  * an `Authorization` header — the whole point of this kind existing (see
  * `docs/design/station-peer-pairing.md` §4's "why this is not cosmetic").
@@ -1075,7 +1075,7 @@ async function resolveTarget(
   try {
     return await connectSshTarget(input.environmentId, input.projectPath);
   } catch (error) {
-    // station#1123 slice 2: fall back to a directly-reachable peer ONLY
+    // archive#1123: fall back to a directly-reachable peer ONLY
     // when SSH genuinely has no matching profile — every other SSH error
     // (unavailable list, connect failure, binding mismatch, not-ready) is
     // reported as-is, and every environmentId with an existing SSH profile
@@ -1182,7 +1182,7 @@ async function pinSshDispatchWorkspace(
 }
 
 /**
- * station#1463: a `projectSlug` names a project in ONE Station's local
+ * archive#1463: a `projectSlug` names a project in ONE Station's local
  * namespace. Slugs are generated locally, with local dedupe suffixes
  * (`project-service.ts`), so two Stations holding the same slug for the same
  * project is a coincidence — and two *different* projects can hold the same
@@ -1190,7 +1190,7 @@ async function pinSshDispatchWorkspace(
  * `target.apiBase` therefore proves only that a project by that name exists
  * there, never that it is the project the caller meant.
  *
- * The durable fix is #1425's portable manifest `id` as the cross-machine join
+ * The durable fix is archive#1425's portable manifest `id` as the cross-machine join
  * key; this is the honest interim. Of the two options the issue names —
  * require confirmation, or record the join as unverified — this takes the
  * second, deliberately:
@@ -1254,7 +1254,7 @@ async function resolveProject(
     projectPath ??= project.workingDirectory;
   }
   if (!projectPath) return undefined;
-  // Deliberately NOT the existence check the orchestration path gained in #791.
+  // Deliberately NOT the existence check the orchestration path gained in archive#791.
   // That issue asked for the same choice in both places, but the two are not
   // symmetric: this resolves a project belonging to `target.apiBase`, which is
   // routinely a *remote* Station reached over SSH or a tunnel. Its working
@@ -1663,7 +1663,7 @@ function taskStatus(
     return 'running';
   }
   if (session.status === 'error') return 'failed';
-  // station#1827: a `dead` engine binding (untyped session record, hence
+  // archive#1827: a `dead` engine binding (untyped session record, hence
   // the string literal) is a terminal failure exactly like `error` — this
   // fallback only runs when `lifecycleState` is absent, and mirrors
   // `providerStatusToLifecycleState`'s equivalent branch.
@@ -1692,7 +1692,7 @@ async function loadDelegatedTask(
     orchestrationService,
     readAuthority,
   );
-  // station#4543 MED-1 (issue-author ruling): a delegated task's real
+  // archive#4543 MED-1 (issue-author ruling): a delegated task's real
   // session id always carries the `task:` prefix (`delegateTask` mints
   // `task:${randomUUID()}`). A bare uuid is not a separate identity — it is
   // the same task missing its prefix — so a primary-lookup miss retries
@@ -2781,7 +2781,7 @@ export async function delegateTask(
       'The selected Station could not start the delegated task',
     );
   }
-  // station#4543 LOW-2: a caller-supplied `sessionId` becomes this task's
+  // archive#4543 LOW-2: a caller-supplied `sessionId` becomes this task's
   // `metadata.conversationId` below (via `conversationIdentity`) — reject a
   // non-conforming custom id here, before any resolution HTTP call, rather
   // than let it be stamped into a reserved key whose contract promises
@@ -2870,7 +2870,7 @@ export async function delegateTask(
   if (session) {
     assertSessionBinding(session, target, bindingTarget, readAuthority.userId);
   } else {
-    // station#4543 fix: `environmentId` (like `conversationId`) is a
+    // archive#4543 fix: `environmentId` (like `conversationId`) is a
     // RESERVED_ORCHESTRATION_METADATA_KEYS entry — `prepareStart` strips it
     // from every public `sessionCommands.execute` caller unconditionally,
     // trusted or not (see provider.ts's docblock). Writing it in the plain
@@ -2916,7 +2916,7 @@ export async function delegateTask(
             environmentName: target.environmentName,
             taskId: sessionId,
             ...(project?.slug ? { projectSlug: project.slug } : {}),
-            // station#1463: record the resolved project join on every Agent.
+            // archive#1463: record the resolved project join on every Agent.
             ...(project?.slugJoin ? { projectSlugJoin: project.slugJoin } : {}),
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
             ...(input.delegation ? { delegation: input.delegation } : {}),
@@ -3210,7 +3210,7 @@ export async function executeExecutionTargetMessage(
       );
     },
     startSession: async (_access: EnvironmentAccess, startInput) => {
-      // station#2821 hardening L3: `sessionVisibility` is a reserved
+      // archive#2821 hardening L3: `sessionVisibility` is a reserved
       // metadata key (no public startSession command may set it — see
       // RESERVED_ORCHESTRATION_METADATA_KEYS), so the ordinary public
       // command surface strips it unconditionally. This foreground seam is
@@ -3332,7 +3332,7 @@ export type ContinueForegroundMessageInput = Omit<
  * chat with no workspace at all) still yields no `workspace` key, which is the
  * one shape the continuation guard accepts as legitimately absent.
  *
- * station#3421: the project shape was rebuilt and the directory shape was not,
+ * archive#3421: the project shape was rebuilt and the directory shape was not,
  * so every conversation bound to a plain directory failed to resume.
  */
 export function resumedWorkspaceBinding(
@@ -3443,7 +3443,7 @@ export async function continueExecutionTargetMessage(
       target: {
         environment: { kind: 'current' },
         agent: agentId(boundTarget.id),
-        // station#3421: a continuation names a conversation, and that
+        // archive#3421: a continuation names a conversation, and that
         // conversation already knows its workspace -- so it is rebuilt from the
         // binding, never re-supplied by the caller (the CLI deliberately sends
         // none, and refuses workspace flags on a resume).

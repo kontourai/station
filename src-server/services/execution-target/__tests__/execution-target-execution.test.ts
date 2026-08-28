@@ -799,7 +799,7 @@ describe('executeForegroundMessage', () => {
   });
 
   test('refuses a conversation bound to an unavailable engine-default alias with the catalog reason (#3027)', async () => {
-    // station#3027 clean break: the symmetric authored-spec gate marks every
+    // archive#3027 clean break: the symmetric authored-spec gate marks every
     // spec-less engine default `available: false`, and an EXISTING
     // alias-bound conversation refuses on its next turn with the same
     // user-visible reason — a deliberate refusal carrying the enable remedy,
@@ -912,7 +912,7 @@ describe('executeForegroundMessage', () => {
   });
 
   test('continues a tilde-configured project conversation on a second turn', async () => {
-    // THE station#3147 regression, and the shape nothing covered. Projects
+    // THE archive#3147 regression, and the shape nothing covered. Projects
     // store their working directory tilde-literal — `~/.station/projects/
     // <slug>/project.json` holds `~/dev/...` verbatim — while the session cwd
     // persisted at turn 1 is the EXPANDED form. The resolver was the one

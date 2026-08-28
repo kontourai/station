@@ -12,7 +12,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * Review H1, sharpest instance in the app: a FAILED `useProjectLayoutQuery`
+ * Review, sharpest instance in the app: a FAILED `useProjectLayoutQuery`
  * read leaves `layout` undefined, so `codingWorkingDirectory` returns `''`
  * exactly as it would for a genuinely unconfigured project — all three
  * coding panes rendered "Workspace directory needed", which is WRONG

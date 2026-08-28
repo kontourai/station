@@ -8,7 +8,7 @@ import {
 
 describe('SurfaceRegistry', () => {
   test('drives the exact sidebar and command-palette inventories from one authority', () => {
-    // station#3313 (Settings IA, option A): Settings holds a System slot;
+    // archive#3313 (Settings IA, option A): Settings holds a System slot;
     // Feature Previews is a Settings section (palette deep link only); the
     // Developer surfaces advertise only with the developer-tools flag on.
     //

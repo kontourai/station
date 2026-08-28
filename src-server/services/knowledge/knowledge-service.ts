@@ -281,7 +281,7 @@ export class KnowledgeService {
   /**
    * RAG context — searches rag-behavior namespaces for relevant content, and
    * returns the chunk/source facts that describe the returned string
-   * alongside it (station#2649). ONE derivation for the injected text and its
+   * alongside it (archive#2649). ONE derivation for the injected text and its
    * receipt (see `buildKnowledgeRagContextDetailed`), so the per-turn context
    * record cannot name a chunk the model never saw.
    */
@@ -337,7 +337,7 @@ export class KnowledgeService {
       includePatterns,
       excludePatterns,
       storageAdapter: this.storageAdapter,
-      // station#1501 slice 3b: `dataDir` IS the Station home this service's
+      // archive#1501: `dataDir` IS the Station home this service's
       // `storageAdapter` was constructed over (`runtime-service-bootstrap.ts`
       // passes `context.projectHomeDir` to both), so the resource resolver
       // reads the same projects/manifests/bindings rather than whatever

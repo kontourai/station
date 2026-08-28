@@ -409,7 +409,7 @@ describe('knowledge-record routes', () => {
     });
   });
 
-  // station#1879: a read-only projection adapter (e.g. the conversation-history
+  // archive#1879: a read-only projection adapter (e.g. the conversation-history
   // root landed in W2) throws `ReadOnlyStoreError` from every mutation verb. This
   // fake stands in for that adapter shape so the 405 mapping is proven here,
   // independent of the real conversation-store adapter's own test suite.

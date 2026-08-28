@@ -104,7 +104,7 @@ describe('resolveWorkspacePaneCatalogPresentation', () => {
   test('a remote-isolation gate never reaches mcp-tool-ui or standard-data renderers', () => {
     // "Not in the builtin registry" is not "plugin-provided": these two kinds
     // are also absent from it, and enabling remote extensions repairs neither
-    // (sol delta review of #2640). Only kind 'plugin-component' may carry the
+    // (sol of archive#2640). Only kind 'plugin-component' may carry the
     // gate.
     const mcp = {
       id: 'plugin:third-party:mcp-issues',

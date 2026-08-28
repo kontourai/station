@@ -8,14 +8,14 @@ import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
  * Four defects across these families shipped behind green gates, each for a
  * different reason, and this spec exists to close all four routes:
  *
- * 1. **station#1125** — `--error-text` used as a solid fill under white text
+ * 1. **archive#1125** — `--error-text` used as a solid fill under white text
  *    (2.78:1 in dark). Fixed by `--error-fill`.
- * 2. **station#1167** — `--error-text` used as text on a 6-15% tint OF ITSELF.
+ * 2. **archive#1167** — `--error-text` used as text on a 6-15% tint OF ITSELF.
  *    The original audit compared the text against the *declared* backdrop
  *    instead of the composited tint, which turns a 3.91:1 failure into a
  *    4.52:1 pass. Only compositing catches it, so every measurement here goes
  *    through `contrastRatio`, which walks the ancestor chain.
- * 3. **station#1168** — `var(--error-primary)` / `var(--error-secondary)`,
+ * 3. **archive#1168** — `var(--error-primary)` / `var(--error-secondary)`,
  *    referenced in eight places and defined in none. A `var()` with no
  *    fallback naming an undefined custom property is invalid at
  *    computed-value time: `background` collapses to transparent and `color`
@@ -24,10 +24,10 @@ import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
  *    (unpainted white-on-white measures 1:1, but unpainted error *text* just
  *    inherits body copy and measures fine), so every fill surface below also
  *    asserts that it is actually **painted**.
- * 4. **station#1246** — the same shape again, in the success half of the same
+ * 4. **archive#1246** — the same shape again, in the success half of the same
  *    component: `var(--success-primary)` / `var(--success-secondary)`, one CSS
- *    rule above the one #1168 fixed, plus `var(--color-bg-tertiary)` (not one
- *    of the `--color-*` aliases) two rules further up. #1168's search was
+ *    rule above the one archive#1168 fixed, plus `var(--color-bg-tertiary)` (not one
+ *    of the `--color-*` aliases) two rules further up. archive#1168's search was
  *    scoped to the `--error-` prefix, so it reached none of them. The
  *    tool-call badge row was measured live before the fix: every chip in it
  *    painted `rgba(0, 0, 0, 0)` and the "User approved" badge rendered in the
@@ -43,7 +43,7 @@ import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
  * The surfaces are injected rather than driven to, so the rules under test are
  * the real, shipped ones; what is synthesised is only the DOM they attach to.
  * Most live in the entry stylesheet. `.workspace-header__dropdown-item` no
- * longer does — station#883 deferred the SDK barrel out of the entry chunk, so
+ * longer does — archive#883 deferred the SDK barrel out of the entry chunk, so
  * that rule ships in the chunk sheet its component owns, and its test loads it
  * through the app's readiness contract before probing. Each probe therefore carries
  * an explicit "the rule still matches this element" guard — without one, a
@@ -159,7 +159,7 @@ test.describe('error/danger token family contrast', () => {
     // probe below is mounted fresh (a newly inserted element has no
     // before-change style, so it does not transition), but the hover step and
     // any future in-place theme flip do, and a spec that measures colour must
-    // not depend on that distinction holding. Same instrument as #1217.
+    // not depend on that distinction holding. Same instrument as archive#1217.
     await page.addStyleTag({
       content: '*, *::before, *::after { transition: none !important; }',
     });
@@ -172,9 +172,9 @@ test.describe('error/danger token family contrast', () => {
   });
 
   /**
-   * station#1167. `.button--danger-outline` sets `--error-text` as its own
+   * archive#1167. `.button--danger-outline` sets `--error-text` as its own
    * text over a 10% tint of `--error-text`; `.tool-call__status-badge--error`
-   * and `.tool-call__code--error` are station#1168's foregrounds. All are
+   * and `.tool-call__code--error` are archive#1168's foregrounds. All are
    * <= 14px, so 1.4.3 asks for 4.5:1 — none of them qualify as large text.
    */
   for (const surface of [
@@ -228,7 +228,7 @@ test.describe('error/danger token family contrast', () => {
   /**
    * The white-on-danger fills. `--error-fill` exists precisely because
    * `--error-text` and its `--status-error` alias cannot carry white text in
-   * the dark theme (2.78:1). The opacity assertion is the station#1168 half:
+   * the dark theme (2.78:1). The opacity assertion is the archive#1168 half:
    * `.chat-input__stop-btn:hover` used to read an undefined token, so its fill
    * collapsed to transparent and a white Stop glyph landed on a white
    * composer.
@@ -309,7 +309,7 @@ test.describe('error/danger token family contrast', () => {
 });
 
 /**
- * The success half of the tool-call status row (station#1246).
+ * The success half of the tool-call status row (archive#1246).
  *
  * These three chips sit next to each other in the same header, and all three
  * had the same defect: `.tool-call__server-badge` and `.tool-call__status-badge`
@@ -353,12 +353,12 @@ test.describe('success token family contrast', () => {
     },
     // `.tool-call__server-badge` used to be measured here as a third member of
     // this family. The tool-call row no longer carries a per-server badge at
-    // all — station#3657 left `.tool-call__status-badge` (and its `--error` /
+    // all — archive#3657 left `.tool-call__status-badge` (and its `--error` /
     // `--warning` modifiers, `ToolCallDisplay.tsx:180-209`) owning every status
     // token in the row, and server identity moved to the MCP UI pill set
     // (`MCPToolUIFrame.tsx:956`). Nothing in src-ui renders or styles the old
     // class, so the probe measured an unpainted chip — the exact reading
-    // station#1246 built this gate to catch, produced here by a class that is
+    // archive#1246 built this gate to catch, produced here by a class that is
     // simply gone rather than by a token that stopped resolving.
     //
     // Removed rather than rewritten because its replacement is already in this
@@ -380,7 +380,7 @@ test.describe('success token family contrast', () => {
             backdrop,
           );
 
-          // station#1246 itself: an undefined token leaves the chip unpainted,
+          // archive#1246 itself: an undefined token leaves the chip unpainted,
           // and an unpainted chip against body copy still measures ~16:1. The
           // ratio assertion below cannot see the defect; this one can.
           const paint = await backgroundPaint(probe);
@@ -478,7 +478,7 @@ test.describe('success token family contrast', () => {
 });
 
 /**
- * station#1254: the surfaces that were converted off custom properties no rule
+ * archive#1254: the surfaces that were converted off custom properties no rule
  * ever declared.
  *
  * Twenty-four names across eight owning surfaces, every one of them **invalid
@@ -611,7 +611,7 @@ interface ConvertedSurface {
   opaque?: boolean;
   /**
    * It must paint a *translucent* fill. Without this a tint-only surface is
-   * an inert assertion: its text colour comes from a token this issue did not
+   * an inert assertion: its text colour comes from a token the tint work did not
    * touch, so reverting the tint leaves the ratio comfortable and the test
    * green. Proven by fault injection — `.coding-inspector__cta-action` passed
    * against the pre-fix build until this was added.
@@ -848,9 +848,9 @@ for (const suite of CONVERTED_SUITES) {
 }
 
 /**
- * The station#1254 surfaces, plus the two non-text ramps the sweep produced.
+ * The archive#1254 surfaces, plus the two non-text ramps the sweep produced.
  * These used to be entry-stylesheet-only; `.workspace-header__dropdown-item`
- * moved into a lazily injected chunk sheet in station#883 and now loads its
+ * moved into a lazily injected chunk sheet in archive#883 and now loads its
  * own stylesheet first (see the test).
  */
 test.describe('station#1254 — recovered surfaces and the fill ramps', () => {
@@ -873,7 +873,7 @@ test.describe('station#1254 — recovered surfaces and the fill ramps', () => {
   test('.workspace-header__dropdown-item colours itself and meets 1.4.3, both themes', async ({
     page,
   }) => {
-    // This surface no longer ships in the entry stylesheet. station#883
+    // This surface no longer ships in the entry stylesheet. archive#883
     // deferred the SDK barrel out of the entry chunk, so `LayoutHeader.css`
     // is injected with the chunk that owns it — and on `/` with empty data no
     // layout route renders, so nothing pulls it in and this probe would read
@@ -935,7 +935,7 @@ test.describe('station#1254 — recovered surfaces and the fill ramps', () => {
    * the resting `--bg-secondary` fill — it **removed** it. An invalid
    * declaration resets the property rather than yielding to the rule below, so
    * the control lost its surface at the moment the pointer arrived; it
-   * measured `rgba(0, 0, 0, 0)` on hover before station#1254.
+   * measured `rgba(0, 0, 0, 0)` on hover before archive#1254.
    */
   test('the image-preview nav keeps a fill and a legible glyph through hover, both themes', async ({
     page,

@@ -243,7 +243,7 @@ class FakeAdapter implements ProviderAdapterShape {
       runtimeId: engineRuntimeId(`${provider}-runtime`),
       builtin: true,
       executionClass: provider === 'bedrock' ? 'managed' : 'connected',
-      // station#980: the private `station-agent` adapter carries the real
+      // archive#980: the private `station-agent` adapter carries the real
       // `engineId: 'station'` (station-agent-adapter.ts:237), not the legacy
       // `executionClass` — mirrored here so `engineExecutionForAdapter`
       // resolves `'station'` for it exactly as it does in production.
@@ -413,7 +413,7 @@ function createRegistry(
 }
 
 /**
- * station#3476: boot recovery restores a session's state and starts no
+ * archive#3476: boot recovery restores a session's state and starts no
  * engine, so a test that needs the recovered session LIVE has to do what a
  * user does — send it a turn. This drives the whole lazy-materialisation
  * path: `dispatch({sendTurn})` →
@@ -760,7 +760,7 @@ describe('OrchestrationService', () => {
   afterEach(() => {
     eventStore.close();
     rmSync(tmp, { recursive: true, force: true });
-    // station#1101: drop any dangling waitForReceipt()/subscribeForTest()
+    // archive#1101: drop any dangling waitForReceipt()/subscribeForTest()
     // listener so one test's subscription can never observe or hang on a
     // later test's receipt-bus publishes.
     receiptBus.resetForTest();
@@ -787,7 +787,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#4237: Station OBSERVES a connected runtime's tool calls, it does
+   * archive#4237: Station OBSERVES a connected runtime's tool calls, it does
    * not dispatch them. What it spools must therefore carry no exit code and no
    * duration — only the status the runtime itself reported.
    */
@@ -1403,7 +1403,7 @@ describe('OrchestrationService', () => {
     });
   });
 
-  // station#2821 hardening L3: `sessionVisibility` is now a reserved
+  // archive#2821 hardening L3: `sessionVisibility` is now a reserved
   // metadata key (RESERVED_ORCHESTRATION_METADATA_KEYS), so the ordinary
   // public `sessionCommands.execute` seam strips it from every caller —
   // trusted or not, since the strip cannot tell them apart. The one
@@ -1459,7 +1459,7 @@ describe('OrchestrationService', () => {
     );
   });
 
-  // station#2821 hardening L3 enforcement proof: without
+  // archive#2821 hardening L3 enforcement proof: without
   // `ephemeralSessionVisibility`, the SAME metadata shape a public
   // `startSession` command body could carry (an untyped `z.record`) must not
   // be able to hide an ordinary session from listings. This is the negative
@@ -1525,7 +1525,7 @@ describe('OrchestrationService', () => {
     );
   });
 
-  // station#4543 MED-2: the combined test above asserts BOTH keys absent in
+  // archive#4543 MED-2: the combined test above asserts BOTH keys absent in
   // one `not.objectContaining({conversationId, environmentId})` — Jest/
   // Vitest's `objectContaining` requires every listed key to match, so
   // `not.objectContaining` is satisfied the moment EITHER key is missing.
@@ -1807,7 +1807,7 @@ describe('OrchestrationService', () => {
     ).resolves.toMatchObject({ session: { lifecycleState: 'completed' } });
   });
 
-  // station#3581 review BLOCK 1: everything above proves the READ-side
+  // archive#3581 review BLOCK 1: everything above proves the READ-side
   // folds (`deriveLifecycleTransition`/`deriveAgentRunStatus`,
   // `findTerminalFailureEvent`) reject a stale terminal correctly. It
   // proves NOTHING about the WRITE path, because every fixture in
@@ -1869,7 +1869,7 @@ describe('OrchestrationService', () => {
     });
     // The stale/orphaned terminal for turn-1, arriving after turn-2's real
     // failure — same shape as codex's late `'turn/completed'` notification
-    // (#3572).
+    // (archive#3572).
     claude.events.push({
       eventId: randomUUID(),
       provider: 'claude',
@@ -1912,7 +1912,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#4075 stage 2 acceptance: "two live clients — principal A
+   * archive#4075 stage 2 acceptance: "two live clients — principal A
    * dispatches a turn while principal B [steers], both attributions
    * recorded correctly and distinctly on their respective turn.started
    * events." A genuine two-process/two-HTTP-credential run was not
@@ -1928,7 +1928,7 @@ describe('OrchestrationService', () => {
    * `ClientOriginTurnPropagation.begin/settle` -> adapter event queue ->
    * `consumeAdapterEvents` -> `projectAndPublishEvent`/`apply()` ->
    * `EventStore.appendEvent` pipeline end-to-end (via `claude.events.push`,
-   * the same idiom `station#3581 review BLOCK 1` above uses to prove a
+   * the same idiom `archive#3581 review BLOCK 1` above uses to prove a
    * write path rather than a hand-built fixture), passing two DISTINCT
    * `PrincipalRef`s as the dispatch context — the exact seam
    * `orchestration.ts`'s `resolveActorPrincipal` populates per request in
@@ -2037,7 +2037,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): `sendTurn`'s
+   * archive#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): `sendTurn`'s
    * begin/settle runs INSIDE `sessionExecutionCoordinator.runTurnStart`,
    * which serializes distinct turn starts per thread; `steerTurn`'s
    * original case had no such wrap — two concurrent steers on one thread
@@ -2287,7 +2287,7 @@ describe('OrchestrationService', () => {
     ).toHaveLength(1);
   });
 
-  // station#3451 finding 5: a turn-scoped, non-deferred runtime.error is a
+  // archive#3451 finding 5: a turn-scoped, non-deferred runtime.error is a
   // genuine terminal outcome for this metric — before this fix it was
   // dropped entirely (neither 'completed' nor 'aborted' matched it).
   test('ENGINE TELEMETRY (station#3451 finding 5): a turn-scoped runtime.error records outcome: failed', () => {
@@ -2709,7 +2709,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#4075 stage 2 review round 3 (the ruling's composition
+   * archive#4075 stage 2 review round 3 (the ruling's composition
    * question): does the EXISTING hosted `canReadSession` predicate
    * (tenant match via the private binding index, AND an exact owner-id
    * match) compose correctly with `tenant:<id>` as a possible OWNER value,
@@ -3800,7 +3800,7 @@ describe('OrchestrationService', () => {
         type: 'startSession',
         input: { threadId, provider: 'bedrock' },
       });
-      // Epic #4024 slice 1: the watchdog now lives inside the extracted
+      // Epic archive#4024: the watchdog now lives inside the extracted
       // TurnProgressTracker; the reach-in follows it one level down.
       const watchdog = (
         service as unknown as {
@@ -4081,14 +4081,14 @@ describe('OrchestrationService', () => {
       threadProviders: Map<string, unknown>;
       sessionReadModel: Map<string, unknown>;
       sessionConnectionIds: Map<string, unknown>;
-      // Slice 6 (#4166) moved both authz indexes into the SessionAuthorization
+      // Slice 6 (archive#4166) moved both authz indexes into the SessionAuthorization
       // collaborator; the seam still clears them on the SAME instance, so the
       // per-flag contract reaches them through the service's `sessionAuthz`.
       sessionAuthz: {
         tenantContexts: Map<string, unknown>;
         sessionOwnerCache: Map<string, unknown>;
       };
-      // Slice 11 (#4218) moved both flow/policy caches into the
+      // Slice 11 (archive#4218) moved both flow/policy caches into the
       // FlowPolicySidecar collaborator; the seam still clears them on the
       // SAME instance, so the per-flag contract reaches them through the
       // service's `flowPolicy`.
@@ -4244,7 +4244,7 @@ describe('OrchestrationService', () => {
    * One method's body: from its declaration to whatever member is declared
    * NEXT, whichever that turns out to be.
    *
-   * Review L6 (#4218) called out the previous form — a slice between two
+   * Review L6 (archive#4218) called out the previous form — a slice between two
    * NAMED markers — as not-a-body, since a member declared between them but
    * CALLED from above the gate keeps every relative index intact while
    * inverting the ordering the invariant exists to protect. That was not
@@ -4268,7 +4268,7 @@ describe('OrchestrationService', () => {
 
   describe('the cooperative-stop settle-read precedes the quarantine gate (source invariant)', () => {
     /**
-     * Slice 10 (#4204): moving `settleCompletedTurn` below the quarantine
+     * Slice 10 (archive#4204): moving `settleCompletedTurn` below the quarantine
      * gate changes observable behavior ONLY for a quarantined thread with
      * an in-flight cooperative stop — a state no runtime fixture had ever
      * constructed, so the perturbation was 100% green under the whole
@@ -4297,7 +4297,7 @@ describe('OrchestrationService', () => {
 
   describe('the ingest policy/spool calls sit below the publish continue-gate (source invariant)', () => {
     /**
-     * Slice 11 (#4218): the two FlowPolicySidecar ingest calls must run
+     * Slice 11 (archive#4218): the two FlowPolicySidecar ingest calls must run
      * ONLY for events the publish seam accepted — moving either above the
      * continue-gate changes observable behavior only for events the gate
      * declines (coalesced deltas, quarantined threads), populations no
@@ -4353,7 +4353,7 @@ describe('OrchestrationService', () => {
 
   describe('shutdown reads the retiring set before it drains (source invariant)', () => {
     /**
-     * Slice 12 (#4024): `retiringAdapters()` and `shutdownRetirementTasks()`
+     * Slice 12 (archive#4024): `retiringAdapters()` and `shutdownRetirementTasks()`
      * used to be one expression over one map. Split across a module seam,
      * they are two calls that MUST happen at the same synchronous tick —
      * an await between them lets a retirement settle and drop out of the
@@ -4412,7 +4412,7 @@ describe('OrchestrationService', () => {
   describe('turn-stall detection (station#2959)', () => {
     test('detects a turn with no observed progress past its agent window — observe-only: counted, logged, and nothing terminated', async () => {
       vi.useFakeTimers();
-      // station#2959: mocked metrics are module-level and NOT cleared between
+      // archive#2959: mocked metrics are module-level and NOT cleared between
       // tests in this file (no global clearMocks), so a prior test's calls
       // to this same counter are still on the mock. Clear it so this test's
       // assertion reflects only what THIS test caused.
@@ -4478,10 +4478,10 @@ describe('OrchestrationService', () => {
           .filter((event) => event.method === 'session.stop-settled');
         expect(stopSettled).toEqual([]);
 
-        // station#4054: this is a watchdog-owned observation on the same
+        // archive#4054: this is a watchdog-owned observation on the same
         // summary Home reads, not a synthetic terminal event or a new state
         // label. The value is captured from the real session projection so
-        // the UI cannot accidentally pin an invented fixture shape (#1715).
+        // the UI cannot accidentally pin an invented fixture shape (archive#1715).
         const afterSilence = (await bounded.listSessionReadModel()).find(
           (session) => session.threadId === threadId,
         );
@@ -4548,7 +4548,7 @@ describe('OrchestrationService', () => {
       }
     });
 
-    // #4054 fix round F2: an approval wait deliberately SUSPENDS observation
+    // archive#4054 fix round F2: an approval wait deliberately SUSPENDS observation
     // (SUSPEND_METHODS), so a marker fired before the wait must clear — a
     // frozen-but-growing "No progress events for 30m" during a human wait
     // would overclaim. After resume, a fresh full-window silence may
@@ -4900,7 +4900,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3476 review MEDIUM-1: quarantine's docblock promises that "local
+   * archive#3476 review MEDIUM-1: quarantine's docblock promises that "local
    * routing and persisted resumability are retired fail-closed", but its
    * durable half used to run only `if (adapter)` — a precondition that held
    * because boot recovery eagerly started every restored session. It no
@@ -5035,7 +5035,7 @@ describe('OrchestrationService', () => {
   );
 
   /**
-   * station#3476: boot reconciliation reaches this path
+   * archive#3476: boot reconciliation reaches this path
    * (`CredentialProfileRecovery.restoreSession`) for any thread that still
    * held a prepared credential-recovery intent at shutdown — i.e. a session
    * this process has only restored, never started. Resolving the adapter by
@@ -5085,7 +5085,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3525: `restartCredentialProfileProviderSession` stops a session
+   * archive#3525: `restartCredentialProfileProviderSession` stops a session
    * mid-turn and immediately re-dispatches that same turn — the sharpest
    * case named in the issue, since a user not watching could otherwise be
    * told "your agent needs attention" about a turn Station is transparently
@@ -5204,7 +5204,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3525 fix round: the reviewer's exact ask — "one test standing up
+   * archive#3525 fix round: the reviewer's exact ask — "one test standing up
    * the real `OrchestrationService` and the real
    * `wireTurnCompletionNotifications` together on a two-turn thread." Every
    * other test in this arc proved arming with a stub consumer or proved
@@ -5215,7 +5215,7 @@ describe('OrchestrationService', () => {
    * codex-shaped `stopSession` (publishes `runtime.error` for the open turn
    * before `session.exited`, mirroring `codex-adapter-transport.ts`'s
    * `publishOrphanedTurnFailure`), and asserts NO push is scheduled for a
-   * user who is not watching — the exact scenario station#3525 exists to
+   * user who is not watching — the exact scenario archive#3525 exists to
    * fix, proven end-to-end rather than by reading either half in isolation.
    */
   test('BOTH REAL HALVES: a credential-profile restart on a two-turn thread schedules no "needs attention" push for the internal stop', async () => {
@@ -5371,14 +5371,14 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3525 fix round FIX 1 (BLOCKING, the discriminating fixture named
+   * archive#3525 fix round FIX 1 (BLOCKING, the discriminating fixture named
    * by review): the arm in `restartCredentialProfileProviderSession` used to
    * be unconditional, but the reason suppression is correct is conditional —
    * "Station is about to transparently re-dispatch the exact same turn" is
    * only true when the restart SUCCEEDS. A path entered because credentials
    * just failed is exactly where `adapter.startSession` failing AGAIN is a
    * likely outcome, not an edge case. Without the fix, this scenario traded
-   * #3525's false positive for a false negative on the SAME surface: a real
+   * archive#3525's false positive for a false negative on the SAME surface: a real
    * failure (nothing is retrying any more) would be silently swallowed.
    *
    * A first version of this fix (rescind the armed Set entry in a catch
@@ -5690,7 +5690,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3525 fix round MEDIUM 1: the arm and the `stopSession` call now
+   * archive#3525 fix round MEDIUM 1: the arm and the `stopSession` call now
    * get their OWN `try`/`catch`, separate from the rest of the restart. If
    * `stopSession` itself rejects, the session was NEVER torn down (e.g.
    * codex's real `stopSession` rethrows when `terminateRecord` fails,
@@ -6644,7 +6644,7 @@ describe('OrchestrationService', () => {
     await waitForReceipt(
       (receipt) => receipt.kind === 'session.recovery.completed',
     );
-    // station#3476: the forged-receipt strip is proved on the lazy start.
+    // archive#3476: the forged-receipt strip is proved on the lazy start.
     await materializeBySendingATurn(recoveryService, threadId);
     await waitFor(
       () => recoveredAcp.startSession.mock.calls.length,
@@ -7556,7 +7556,7 @@ describe('OrchestrationService', () => {
     ).toEqual({});
   });
 
-  // station#1410 (D5): the counter's denominator is "completed turns", and a
+  // archive#1410 (D5): the counter's denominator is "completed turns", and a
   // completed turn carrying no turn id is exactly the population `absent` is
   // meant to expose. Counting only turns that HAVE an id would report a
   // flawless assembly rate for precisely the engines that cannot correlate.
@@ -7828,7 +7828,7 @@ describe('OrchestrationService', () => {
       turns: 1,
       toolCalls: 1,
       // Carried so a consumer can name the engine whose measurements are
-      // (or are not) present — station#3201.
+      // (or are not) present — archive#3201.
       provider: 'claude',
     });
   });
@@ -8065,11 +8065,11 @@ describe('OrchestrationService', () => {
       proposedSessionId: thread,
       createdAt: '2026-07-23T00:00:00.000Z',
     });
-    // station#1090 exposed two latent holes in this fixture, both previously
+    // archive#1090 exposed two latent holes in this fixture, both previously
     // invisible because a failed recovery closed the row in silence. The
     // session claims `projectSlug: 'station'`, which `configuredProjects` did
     // not have — so recovery threw "Chat is bound to project 'station', which
-    // this Station does not have" (#1022's guard, working) — and
+    // this Station does not have" (archive#1022's guard, working) — and
     // `FakeAdapter.startSession` is a bare `vi.fn()` resolving `undefined`,
     // which recovery cannot use either. This test is about conversation
     // identity, not recovery, so make the fixture coherent rather than assert
@@ -8087,7 +8087,7 @@ describe('OrchestrationService', () => {
       provider: 'claude',
       threadId: thread,
       status: 'ready',
-      // station#3476: recovery restores THIS row rather than overlaying an
+      // archive#3476: recovery restores THIS row rather than overlaying an
       // adapter's start result, so the persisted row is now the only source
       // of the session's model — state the fixture's model here.
       model: 'claude-sonnet',
@@ -8204,7 +8204,7 @@ describe('OrchestrationService', () => {
       }),
     ]);
 
-    // S2 of #1302: the global counterpart folds every agent's sessions
+    // S2 of archive#1302: the global counterpart folds every agent's sessions
     // (not one) and enriches each item with the live session fields the
     // inventory contract adds on top of what `readSessionConversation`
     // already returns.
@@ -8370,7 +8370,7 @@ describe('OrchestrationService', () => {
     expect(replay).not.toHaveBeenCalled();
   });
 
-  // S2 of #1302's flagged perf hazard: `readSessionConversation` derives a
+  // S2 of archive#1302's flagged perf hazard: `readSessionConversation` derives a
   // title by reading each session's full message history — expensive at
   // scale. `listAllSessionConversations` caps to
   // `CONVERSATION_HISTORY_MAX_ENTRIES` (100) BEFORE that derivation runs, so
@@ -8384,7 +8384,7 @@ describe('OrchestrationService', () => {
     // (`startReconciliation().then(() => recoverSessions())`) against the
     // empty store BEFORE seeding synthetic sessions directly into the event
     // store below — otherwise that background chain races the test's own
-    // `afterEach` (`eventStore.close()`), which the #1101 fix elsewhere in
+    // `afterEach` (`eventStore.close()`), which the archive#1101 fix elsewhere in
     // this file documents the same way.
     service.initialize();
     await waitForReceipt(
@@ -8440,14 +8440,14 @@ describe('OrchestrationService', () => {
     );
   }, 20000);
 
-  // station#4466: `listSessionReadModel` backs `/api/orchestration/sessions/read-model`,
+  // archive#4466: `listSessionReadModel` backs `/api/orchestration/sessions/read-model`,
   // which the Activity view hits on mount and re-polls. It used to fold every
   // visible thread by calling `eventStore.listSessionProjectionEvents(threadId)`
   // (and `countEventsByThread(threadId)`) inside a `.map` — roughly a dozen
   // separate indexed SQL round trips PER THREAD, so the read's total query
   // count scaled with the population instead of being bounded. This is not a
   // strict perf gate (wall-clock varies by environment/CI load, matching the
-  // disclosed-measurement convention `S2 of #1302` above uses) — the
+  // disclosed-measurement convention `S2 of archive#1302` above uses) — the
   // meaningful assertions are the batched query-count bound and the exact
   // set of returned threads; the logged duration is a disclosed measurement
   // for the PR, not an enforced threshold.
@@ -8483,7 +8483,7 @@ describe('OrchestrationService', () => {
     try {
       // Settle `initialize()`'s fire-and-forget recovery reconciliation
       // against the EMPTY store before seeding synthetic sessions below —
-      // the same reason the `S2 of #1302` test above does this: recovery is
+      // the same reason the `S2 of archive#1302` test above does this: recovery is
       // a one-time startup scan, not a per-poll cost, and left unsettled it
       // would race the seeding loop and contaminate this test's query count
       // with its own (unrelated, one-time) per-session reads.
@@ -8640,7 +8640,7 @@ describe('OrchestrationService', () => {
         ),
       ).toBe(1);
 
-      // station#4466 investigation note (not this fix's scope): the total
+      // archive#4466 investigation note (not this fix's scope): the total
       // query count is still well above 4, because `isEphemeralSession`
       // (called once per thread from this same method's readable-thread
       // filter, BEFORE the batched fold below it) and
@@ -8662,7 +8662,7 @@ describe('OrchestrationService', () => {
     }
   }, 20000);
 
-  // station#4466: `listAgentRuns` is `listSessionReadModel`'s copy-pasted
+  // archive#4466: `listAgentRuns` is `listSessionReadModel`'s copy-pasted
   // sibling — same `.map` over `listSessionProjectionEvents`/
   // `countEventsByThread` per thread, in this same service. Switched to the
   // same batched primitives; this pins the wiring the way the route test
@@ -9712,7 +9712,7 @@ describe('OrchestrationService', () => {
     // resolver must expand exactly like every other server-side consumer.
     //
     // HOME is redirected at the temp dir so the expanded path can actually
-    // exist: since #791 the resolver fails closed on a missing directory, and
+    // exist: since archive#791 the resolver fails closed on a missing directory, and
     // asserting expansion against a path nobody created would only prove the
     // two behaviours had been wired together wrongly.
     const previousHome = process.env.HOME;
@@ -9845,7 +9845,7 @@ describe('OrchestrationService', () => {
       },
     });
     expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(homedir());
-    // station#1174: a defaulted $HOME is flagged as such, distinguishing it
+    // archive#1174: a defaulted $HOME is flagged as such, distinguishing it
     // from a real project/user cwd that just happens to sit at $HOME — the
     // Claude adapter's cwd-less skills overlay keys off this exact flag.
     expect(claude.startSession.mock.calls.at(-1)?.[0].cwdDefaulted).toBe(true);
@@ -9867,7 +9867,7 @@ describe('OrchestrationService', () => {
     // (input.cwd ?? config.cwd ?? managed session workspace); the resolver's
     // default must not shadow the
     // connection-configured directory, so it still hands ACP an undefined
-    // cwd. #1403 moved the END of that chain to a private workspace so
+    // cwd. archive#1403 moved the END of that chain to a private workspace so
     // deferring here never exposes HOME or the server directory — pinned at
     // the adapter and workspace-helper tests.
     const acp = new FakeAdapter('acp');
@@ -9887,7 +9887,7 @@ describe('OrchestrationService', () => {
       },
     });
     expect(acp.startSession.mock.calls.at(-1)?.[0].cwd).toBeUndefined();
-    // station#1174: still no real project/user cwd, even though this
+    // archive#1174: still no real project/user cwd, even though this
     // provider's own resolution chain leaves `cwd` itself untouched here.
     expect(acp.startSession.mock.calls.at(-1)?.[0].cwdDefaulted).toBe(true);
   });
@@ -9961,7 +9961,7 @@ describe('OrchestrationService', () => {
       },
     });
     expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(worktreeDir);
-    // station#1174: a real, explicit project-bound cwd is never flagged as
+    // archive#1174: a real, explicit project-bound cwd is never flagged as
     // defaulted -- the Claude adapter's cwd-less skills overlay must never
     // engage for a session that has an actual project/user cwd.
     expect(
@@ -10024,7 +10024,7 @@ describe('OrchestrationService', () => {
     expect(claude.startSession).not.toHaveBeenCalled();
   });
 
-  // station#1501 slice 3a. The shadow's whole value is that it observes the
+  // archive#1501. The shadow's whole value is that it observes the
   // seam over REAL traffic without being able to change it, so these tests
   // assert both halves: every branch and every engine family produces a
   // sample, and nothing the observer does reaches the session.
@@ -10293,7 +10293,7 @@ describe('OrchestrationService', () => {
 
     test('RECOVERY traffic is shadowed too — the population most likely to carry a stale directory', async () => {
       // Recovery re-settles the cwd of every session restored at boot
-      // (#1011), through the SAME seam. A shadow wired only to live starts
+      // (archive#1011), through the SAME seam. A shadow wired only to live starts
       // would make "the record is empty" cheap to satisfy in exactly the
       // wrong way: sessions created before a checkout moved are the ones
       // whose project resolution is most likely to have changed under them.
@@ -10350,7 +10350,7 @@ describe('OrchestrationService', () => {
       await waitForReceipt(
         (receipt) => receipt.kind === 'session.recovery.completed',
       );
-      // station#3476: the cwd re-settlement moved with the rest of the start
+      // archive#3476: the cwd re-settlement moved with the rest of the start
       // pipeline to first use, so drive it the way a user does.
       await materializeBySendingATurn(
         recoveryService,
@@ -10441,7 +10441,7 @@ describe('OrchestrationService', () => {
   });
 
   test('rejects modelOptions.systemPrompt unconditionally, for every provider (review r1 HIGH fix)', async () => {
-    // system-prompt passthrough is explicitly out of station#978's scope.
+    // system-prompt passthrough is explicitly out of archive#978's scope.
     // Regression guard for the reverted `MODEL_OPTION_SCOPE_EXEMPT_KEYS`
     // bypass: bedrock genuinely reads/applies modelOptions.systemPrompt
     // (bedrock-adapter.ts) and is reachable as an ordinary Engine
@@ -10952,7 +10952,7 @@ describe('OrchestrationService', () => {
   });
 
   test('ACP start fails closed when its session agent has no authored spec (#3027)', async () => {
-    // station#3027 flipped #2732's ACP best-effort contract: the
+    // archive#3027 flipped archive#2732's ACP best-effort contract: the
     // authored-spec gate is symmetric across every delivery-capable engine,
     // and kiro/opencode reach it as provider 'acp' — exactly the providers a
     // claude-only (or any name-listed) gate silently missed.
@@ -11171,7 +11171,7 @@ describe('OrchestrationService', () => {
     );
   });
 
-  // station#1462: adoption binds the child to exactly one project. Before the
+  // archive#1462: adoption binds the child to exactly one project. Before the
   // fix this picked whichever of the two `listProjects()` yielded first and
   // adopted into it silently.
   test('refuses to adopt an attached source whose workspace is configured as two projects', async () => {
@@ -11361,7 +11361,7 @@ describe('OrchestrationService', () => {
   });
 
   test('an adopted session inherits the adopting caller as owner and is unreadable by a different user (station#1165)', async () => {
-    // Reproduces #1165: `AttachedSessionAdoption.adopt` must stamp the
+    // Reproduces archive#1165: `AttachedSessionAdoption.adopt` must stamp the
     // adopting caller's userId into the adapter's `adoptSession` metadata the same
     // way `startSession` is stamped server-side at the `/commands` route
     // (`orchestration.ts`'s `userId: deps.getUserId?.() ?? getCachedUser().alias`),
@@ -11369,7 +11369,7 @@ describe('OrchestrationService', () => {
     // real owner instead of leaving the adopted thread permanently
     // ownerless. `ownerlessSessionAccess: 'single-user-compat'` mirrors
     // `runtime-initialize.ts`'s production default so this test exercises
-    // the exact policy #1165 is about (under this suite's default `deny`
+    // the exact policy archive#1165 is about (under this suite's default `deny`
     // policy, the pre-existing source-thread precheck wouldn't even let a
     // userId-bearing dispatch through, masking the bug this test targets).
     const sourceThreadId = 'external:claude:source-1165';
@@ -11438,7 +11438,7 @@ describe('OrchestrationService', () => {
     // claude-adapter.ts's `startTrackedSession`,
     // `metadata: { ...input.metadata, cwd: input.cwd }`) to prove
     // ownership resolves end-to-end through `canUserReadSession`, the same
-    // shape the `session-owner cache (station#1120)` suite uses below.
+    // shape the `session-owner cache (archive#1120)` suite uses below.
     claudeLocal.events.push({
       eventId: `evt-adopted-configured-${childThreadId}`,
       provider: 'claude',
@@ -11888,7 +11888,7 @@ describe('OrchestrationService', () => {
     expect(claude.adoptSession).not.toHaveBeenCalled();
   });
 
-  // station#1867: `listSessionReadModel` feeds the SSE `/events` snapshot and
+  // archive#1867: `listSessionReadModel` feeds the SSE `/events` snapshot and
   // must never trigger an unbounded synchronous `listEvents(threadId)` over a
   // thread with a very large event log — that single `.all()` wedged the whole
   // server. It uses the complete, method-targeted projection + COUNT pair so
@@ -11946,7 +11946,7 @@ describe('OrchestrationService', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const listEventsSpy = vi.spyOn(eventStore, 'listEvents');
-    // station#4466 review remediation: assert bounded WORK, not just that a
+    // archive#4466 review remediation: assert bounded WORK, not just that a
     // named method was called with the right threadId. An earlier version
     // of this test spied `listSessionProjectionEventsForThreads` and
     // `countEventsByThreads` and asserted only `toHaveBeenCalledWith(...)` —
@@ -13179,7 +13179,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3525: a connection smoke's turn is never a user conversation —
+   * archive#3525: a connection smoke's turn is never a user conversation —
    * it exists only to prove connectivity — so its own diagnostic timeout
    * ending the turn mid-flight must not be able to push "your agent needs
    * attention" (nothing keys suppression on the `stationSmoke` metadata
@@ -13329,7 +13329,7 @@ describe('OrchestrationService', () => {
     await isolated.shutdown();
   });
 
-  // station#3304: a SQLITE_BUSY from the stream loop's own event-store work
+  // archive#3304: a SQLITE_BUSY from the stream loop's own event-store work
   // rendered as "Agent connection error: database is locked" — a mislabel:
   // the agent connection was fine and our own store was locked, typically by
   // another Station process using the same home.
@@ -13451,7 +13451,7 @@ describe('OrchestrationService', () => {
     await isolated.shutdown();
   });
 
-  // Fix-round finding on station#3304: the per-thread surfacing publish
+  // Fix-round finding on archive#3304: the per-thread surfacing publish
   // writes to the SAME locked store. Under sustained BUSY it threw inside
   // the catch, escaped via the fire-and-forget consumption call, and the
   // remaining threads never received their runtime.error.
@@ -13952,7 +13952,7 @@ describe('OrchestrationService', () => {
     const runs = await stationAgentService.listAgentRuns();
     const run = runs.find((r) => r.sessionId === 'thread-managed-chat');
     // No run-projection/run-service change was needed to get here (per the
-    // station#980 architecture map): a station-agent session is a first-class
+    // archive#980 architecture map): a station-agent session is a first-class
     // run the moment it exists, exactly like any other provider's.
     expect(run).toMatchObject({
       runId: 'thread-managed-chat',
@@ -14009,7 +14009,7 @@ describe('OrchestrationService', () => {
     ]);
   });
 
-  // Guard (station#977): the connected-CLI softening above is scoped to
+  // Guard (archive#977): the connected-CLI softening above is scoped to
   // claude/codex only — a Station-engine provider like bedrock must never
   // be routed through the deferred-to-engine gate at all. (Station-engine
   // model resolution's own exact-match rejection lives entirely outside
@@ -14143,11 +14143,11 @@ describe('OrchestrationService', () => {
 
   test('passes an empty selector through to the engine when there is no local default (station#1154)', async () => {
     // The FakeAdapter carries no `metadata.defaultModel` (unlike the real
-    // ClaudeAdapter, station#977). station#1154: this used to throw
+    // ClaudeAdapter, archive#977). archive#1154: this used to throw
     // "requires an exact model selector" — but codex genuinely has no
-    // enumerable default (station#977 deliberately left it unset, no
+    // enumerable default (archive#977 deliberately left it unset, no
     // hardcoded guess) and works fine launched with no --model at all, so
-    // Station imposing a hard requirement here was inconsistent with #977's
+    // Station imposing a hard requirement here was inconsistent with archive#977's
     // own defer-to-engine design. No explicit selector and no local default
     // now defers to the engine instead of rejecting: the input is passed
     // through unchanged (modelId stays undefined) and the adapter's own
@@ -14167,10 +14167,10 @@ describe('OrchestrationService', () => {
     expect(claude.startSession.mock.calls[0][0]).not.toHaveProperty('modelId');
   });
 
-  // station#1154: codex deliberately carries no `metadata.defaultModel`
-  // (station#977 — there is no verifiable engine-wide default to hardcode),
+  // archive#1154: codex deliberately carries no `metadata.defaultModel`
+  // (archive#977 — there is no verifiable engine-wide default to hardcode),
   // so it hits the "no local default" branch on every no-`--model` launch.
-  // Unlike the other #977 regression tests above (which simulate "no
+  // Unlike the other archive#977 regression tests above (which simulate "no
   // default" via a claude FakeAdapter with `defaultModel` unset), these
   // exercise the real codex shape end to end: a codex adapter registered
   // with no `metadata.defaultModel` at all.
@@ -14280,7 +14280,7 @@ describe('OrchestrationService', () => {
   });
 
   // Regression: an external engine WITH an explicit model still goes
-  // through the catalog/defer path unchanged by the station#1154 fix — the
+  // through the catalog/defer path unchanged by the archive#1154 fix — the
   // pass-through only applies when the resolved selector is empty.
   test('still validates an explicit codex model selector against the catalog (station#1154 regression)', async () => {
     const codex = new FakeAdapter('codex');
@@ -14308,7 +14308,7 @@ describe('OrchestrationService', () => {
     );
   });
 
-  // station#977 ("local default + defer to engine"): an explicit selector
+  // archive#977 ("local default + defer to engine"): an explicit selector
   // that misses Station's own (live or known) catalog is no longer treated
   // as "nothing is launchable" for an external engine — Station's catalog is
   // advisory, not authoritative, for claude/codex. The engine itself is the
@@ -14389,7 +14389,7 @@ describe('OrchestrationService', () => {
         turnId: 'claude-turn-selector-2',
       });
 
-    // station#977: a turn-level selector that misses the catalog is also
+    // archive#977: a turn-level selector that misses the catalog is also
     // deferred to the engine now, not rejected.
     await service.dispatch({
       type: 'sendTurn',
@@ -14489,7 +14489,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3476: a restored session must be a real, usable session before
+   * archive#3476: a restored session must be a real, usable session before
    * anything starts an engine for it — listed, readable, and reporting its
    * state honestly. The measured defect was 18 engines spawned 36 seconds
    * after boot for conversations nobody had opened; this is what replaces
@@ -14530,7 +14530,7 @@ describe('OrchestrationService', () => {
       // `isLoaded` is the discriminating assertion here: every other field
       // above would still be listed straight off the persisted row if
       // recovery restored nothing at all. It means "this process holds the
-      // session in its in-memory read model", which after station#3476 is
+      // session in its in-memory read model", which after archive#3476 is
       // what a restored session is — not "an engine is live", which is what
       // `answerability`'s attachment half reports.
       isLoaded: true,
@@ -14591,7 +14591,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3476: the commands that do NOT need an engine. Starting one in
+   * archive#3476: the commands that do NOT need an engine. Starting one in
    * order to stop, interrupt, or steer it would be the same defect this
    * issue removes, so each takes an engine-free branch — and each must still
    * do the useful half of its job.
@@ -14686,7 +14686,7 @@ describe('OrchestrationService', () => {
      * The other command that reaches a restored session. `startSession` on
      * an existing thread is a REATTACH, and the reattach branch requires
      * both an in-memory session and the adapter holding it — a pairing that
-     * was impossible before station#3476 and is now the ordinary state of
+     * was impossible before archive#3476 and is now the ordinary state of
      * every session restored at boot. Without materialising first it fails
      * with "Session already exists for thread".
      */
@@ -14709,7 +14709,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3476 review HIGH-1: `startSession` is the one command whose
+     * archive#3476 review HIGH-1: `startSession` is the one command whose
      * ownership gate lives INSIDE the session command module —
      * `dispatchWithReceipt` short-circuits to the module before its own
      * `canReadSessionForCommand` check, and `assertStartAllowed` only checks
@@ -14776,7 +14776,7 @@ describe('OrchestrationService', () => {
     });
 
     /** A startSession whose resolution the test controls, for driving the
-     * materialisation window (station#3493 residual 1). */
+     * materialisation window (archive#3493 residual 1). */
     const gateStartSessionOnce = () => {
       const gate = deferred<void>();
       claude.startSession.mockImplementationOnce(async (input) => {
@@ -14797,7 +14797,7 @@ describe('OrchestrationService', () => {
     };
 
     /**
-     * station#3493 residual 1: `sessionAdapters` is bound only after
+     * archive#3493 residual 1: `sessionAdapters` is bound only after
      * `adapter.startSession` resolves, so for the whole start latency a
      * materialising thread used to read dormant — and a Stop inside that
      * window wrote the row `ready`, forgot the binding, and returned
@@ -14826,7 +14826,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3493 residual 1, the interrupt half: mid-materialisation there
+     * archive#3493 residual 1, the interrupt half: mid-materialisation there
      * IS work to cancel — the turn that triggered the start is about to be
      * announced. `no-active-turn` (do nothing, report done) was the lie;
      * the honest answer is the same one the engine-session-not-yet path
@@ -14853,7 +14853,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3493 residual 1, the steer half: only `isDormantSessionThread`'s
+     * archive#3493 residual 1, the steer half: only `isDormantSessionThread`'s
      * mid-materialisation guard protects steer, so this pins that the guard
      * is load-bearing — a steer inside the window must not resolve
      * `no-active-turn` (a turn is imminent; "nothing to steer" is the same
@@ -14880,7 +14880,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3493 fix-round HIGH: the Stop's await on an in-flight
+     * archive#3493 fix-round HIGH: the Stop's await on an in-flight
      * materialisation is bounded by the adapter-stop deadline. A wedged
      * `adapter.startSession` (this deferred never resolves) must not turn a
      * Stop press into a forever-hang — on expiry the command refuses with a
@@ -14931,8 +14931,8 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3493 fix-1/fix-3 seam, end-to-end: a materialisation that
-     * FAILS records station#1090's `error` row; a Stop landing after that
+     * archive#3493 fix-1/fix-3 seam, end-to-end: a materialisation that
+     * FAILS records archive#1090's `error` row; a Stop landing after that
      * failure takes the dormant branch (the settled start left nothing
      * live) and must preserve the `error` marker rather than promote the
      * row to `ready`.
@@ -14968,7 +14968,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3493 residual 3: `error` is station#1090's row-level marker
+     * archive#3493 residual 3: `error` is archive#1090's row-level marker
      * that a start failed, and boot recovery deliberately keeps retrying
      * such rows. A dormant Stop used to write `status: 'ready'` over it —
      * erasing the summary state every list and the next recovery read
@@ -15004,7 +15004,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3493 residual 4: the startSession path types the host's
+     * archive#3493 residual 4: the startSession path types the host's
      * resource-posture refusal (`code: 'resource_posture_critical'`,
      * receipt `rejected`) while the turn path's general catch stripped the
      * code and classified the same refusal `failed`. One host refusal, one
@@ -15042,7 +15042,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#3493 residual 6: the model-change conflict used to be raised
+     * archive#3493 residual 6: the model-change conflict used to be raised
      * only by `validateReattach`, which needs the adapter — so a dormant
      * session's conflicting reattach spawned the engine first and refused
      * after. The conflict is answerable from the persisted row alone and
@@ -15083,17 +15083,17 @@ describe('OrchestrationService', () => {
     });
 
     service.initialize();
-    // station#1101: was `await new Promise((resolve) => setTimeout(resolve, 0));`
+    // archive#1101: was `await new Promise((resolve) => setTimeout(resolve, 0));`
     // — a fixed one-tick wait for the fire-and-forget
     // `startReconciliation().then(() => recoverSessions())` chain to
     // settle. Under load a single tick is not guaranteed to be enough
-    // (#1045), and it's provably not a signal of anything in particular
+    // (archive#1045), and it's provably not a signal of anything in particular
     // when it IS enough. Await the actual milestone instead.
     await waitForReceipt(
       (receipt) => receipt.kind === 'session.recovery.completed',
     );
 
-    // station#3476: restoring state starts no engine...
+    // archive#3476: restoring state starts no engine...
     expect(claude.startSession).not.toHaveBeenCalled();
     // ...and the first turn materialises it, with the persisted cursor.
     await materializeBySendingATurn(service, 'thread-9');
@@ -15103,7 +15103,7 @@ describe('OrchestrationService', () => {
         threadId: 'thread-9',
         provider: 'claude',
         resumeCursor: { cursor: 'resume-1' },
-        // #1023: recovery carries no directory binding, so the resumed
+        // archive#1023: recovery carries no directory binding, so the resumed
         // engine gets the same explicit $HOME default as any unbound start.
         cwd: homedir(),
       }),
@@ -15128,7 +15128,7 @@ describe('OrchestrationService', () => {
         payload: expect.objectContaining({
           ...event,
           sessionState: 'running',
-          // #1073: the recovered session's attach events no longer fabricate
+          // archive#1073: the recovered session's attach events no longer fabricate
           // 'running' — before this state-change it was truthfully 'queued'.
           previousState: 'queued',
         }),
@@ -15237,12 +15237,12 @@ describe('OrchestrationService', () => {
     });
 
     recoveryService.initialize();
-    // station#1101: was a fixed setTimeout(0) tick — see the first
+    // archive#1101: was a fixed setTimeout(0) tick — see the first
     // recovery-milestone conversion above for the rationale.
     await waitForReceipt(
       (receipt) => receipt.kind === 'session.recovery.completed',
     );
-    // station#3476: the metadata replay + agent resolution now run when the
+    // archive#3476: the metadata replay + agent resolution now run when the
     // conversation is first used, not at boot.
     await materializeBySendingATurn(recoveryService, 'thread-recovery-agent');
 
@@ -15491,7 +15491,7 @@ describe('OrchestrationService', () => {
       createdAt: '2026-03-28T00:00:00.000Z',
       updatedAt: '2026-03-28T00:00:00.000Z',
     });
-    // Since #2907 an interrupt is a bounded cooperative stop, which needs a
+    // Since archive#2907 an interrupt is a bounded cooperative stop, which needs a
     // turn to target: with no active turn in the projection it returns before
     // reaching the adapter. Seed one so this test still proves what it is
     // about — that the command is ROUTED to the owning adapter — rather than
@@ -15530,7 +15530,7 @@ describe('OrchestrationService', () => {
     );
   });
 
-  // station#3473 paths 3/4: a codex deferred-retriable `runtime.error`
+  // archive#3473 paths 3/4: a codex deferred-retriable `runtime.error`
   // (willRetry) must not make Stop a silent no-op. Before this fix,
   // `interruptUserTurnCooperatively` re-derived "no active turn" from the
   // same fold `hasActiveTurn` intentionally under-reports through and
@@ -15588,9 +15588,9 @@ describe('OrchestrationService', () => {
     );
   });
 
-  // station#3524: the #3473 fix above only closed this gap for a session's
+  // archive#3524: the archive#3473 fix above only closed this gap for a session's
   // FIRST turn — `firstTurnStartedWithPrompt` always retains turn 1's start,
-  // so the eviction #3524 describes never manifested there. This is the SAME
+  // so the eviction archive#3524 describes never manifested there. This is the SAME
   // scenario for a SECOND turn: before the event-store fix, the bounded fact
   // set read `{ turn.started(turn-1), runtime.error(turn-2) }` — turn-2's own
   // `turn.started` had no slot — and `interruptibleTurnIdForEvents` fell
@@ -15847,12 +15847,12 @@ describe('OrchestrationService', () => {
     });
   });
 
-  // station#3559: steerTurn's active-turn lookup was narrowed from the
+  // archive#3559: steerTurn's active-turn lookup was narrowed from the
   // unbounded `listEvents(threadId)` (fewer SQL rows plus skipped
   // `JSON.parse` per excluded row — NOT attachment-blob hydration, which
   // fires only on `turn.started` and is paid identically either way; see
   // `InternalStopSuppression.arm`'s docblock for the corrected account and
-  // station#1867 for the original unbounded-read incident this narrowing is
+  // archive#1867 for the original unbounded-read incident this narrowing is
   // still worth avoiding for) to `listEventsByMethods` scoped to exactly the
   // methods `nextActiveTurnId` inspects. This test pins two
   // things a mis-scoped method list would break: (1) `listEvents` is never
@@ -15920,7 +15920,7 @@ describe('OrchestrationService', () => {
     );
   });
 
-  // station#3559 fix round finding 5: the spy assertion above pins the exact
+  // archive#3559 fix round finding 5: the spy assertion above pins the exact
   // method list, but that alone does not prove the narrowing is
   // BEHAVIOURALLY bit-identical to folding the full log — dropping
   // `turn.completed`, `runtime.error`, or `session.exited` from the literal
@@ -16807,7 +16807,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#3386. The store labels which budget withheld an event's payload;
+   * archive#3386. The store labels which budget withheld an event's payload;
    * this mapper is where that label had to survive, and where dropping it
    * would have left the marker true server-side and absent on the wire — the
    * exact shape of the defect it exists to close.
@@ -17018,7 +17018,7 @@ describe('OrchestrationService', () => {
         (count) => count > 0,
       );
 
-      // station#3495: ownership resolution is now a single SQL read that
+      // archive#3495: ownership resolution is now a single SQL read that
       // returns at most one row (same predicate, same ordering, same first
       // hit as the scan it replaces). The amplification property this suite
       // exists to pin is unchanged — count the store read that actually
@@ -17119,7 +17119,7 @@ describe('OrchestrationService', () => {
         (count) => count > 0,
       );
 
-      // station#3495: ownership resolution is now a single SQL read that
+      // archive#3495: ownership resolution is now a single SQL read that
       // returns at most one row (same predicate, same ordering, same first
       // hit as the scan it replaces). The amplification property this suite
       // exists to pin is unchanged — count the store read that actually
@@ -17166,7 +17166,7 @@ describe('OrchestrationService', () => {
         ),
       ).toBe(true);
 
-      // station#4075 stage 2: `EventStore.appendEvent` now REJECTS a
+      // archive#4075 stage 2: `EventStore.appendEvent` now REJECTS a
       // second ownership-shaped event that disagrees with the thread's
       // first owner — the exact write-path invariant this test's own
       // comment already named as normally preventing a real owner change.
@@ -17257,7 +17257,7 @@ describe('OrchestrationService', () => {
         outcome: 'evicted',
       });
 
-      // station#3495: ownership resolution is now a single SQL read that
+      // archive#3495: ownership resolution is now a single SQL read that
       // returns at most one row (same predicate, same ordering, same first
       // hit as the scan it replaces). The amplification property this suite
       // exists to pin is unchanged — count the store read that actually
@@ -17421,7 +17421,7 @@ describe('OrchestrationService', () => {
   });
 
   /**
-   * station#1090. This test used to be named "marks persisted sessions closed
+   * archive#1090. This test used to be named "marks persisted sessions closed
    * when resume fails during recovery" and asserted `status: 'closed'` — it
    * pinned the defect. Closing was wrong in three ways, all measured on
    * origin/main (1e5b45d2) with a real ACP connection: the user got no
@@ -17432,7 +17432,7 @@ describe('OrchestrationService', () => {
    * transcript belonged to.
    *
    * Refusing to reopen stays correct — the ACP fingerprint check exists so a
-   * running agent is never silently relocated (#1089) — so this asserts the
+   * running agent is never silently relocated (archive#1089) — so this asserts the
    * refusal is now legible, not that it stopped happening.
    */
   test('keeps a session recoverable and records why when resume fails during recovery (#1090)', async () => {
@@ -17448,7 +17448,7 @@ describe('OrchestrationService', () => {
     });
 
     service.initialize();
-    // station#1101: was a fixed setTimeout(0) tick. The
+    // archive#1101: was a fixed setTimeout(0) tick. The
     // 'session.recovery.completed' receipt fires once the whole recovery
     // pass finishes regardless of per-session outcome, so it's the correct
     // signal here too — this test exercises the FAILURE path (startSession
@@ -17456,9 +17456,9 @@ describe('OrchestrationService', () => {
     await waitForReceipt(
       (receipt) => receipt.kind === 'session.recovery.completed',
     );
-    // station#3476: the refused resume now happens on first use. The turn
+    // archive#3476: the refused resume now happens on first use. The turn
     // fails loudly rather than reporting success into nothing, and the
-    // durable #1090 evidence below is unchanged.
+    // durable archive#1090 evidence below is unchanged.
     await expect(
       materializeBySendingATurn(service, 'thread-closed'),
     ).rejects.toThrow('resume failed');
@@ -17933,7 +17933,7 @@ describe('OrchestrationService', () => {
       );
       expect(existsSync(join(passRunDir, 'report.json'))).toBe(true);
       expect(existsSync(join(passRunDir, 'report.md'))).toBe(true);
-      // #290: nothing mirrors generated run state back into `.flow/runs`.
+      // archive#290: nothing mirrors generated run state back into `.flow/runs`.
       expect(existsSync(join(cwd, '.flow', 'runs'))).toBe(false);
     }, 15_000);
 
@@ -17998,7 +17998,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * The fixture class station#189 found missing. Every other Flow fixture in
+     * The fixture class archive#189 found missing. Every other Flow fixture in
      * this file gates step 0, so none of them could reach the state the
      * shipped `station-delivery` definition is always in: its first step
      * `plan` declares no gate, bare `evaluate` throws `no gate for current
@@ -19120,7 +19120,7 @@ describe('OrchestrationService', () => {
     });
 
     /**
-     * station#189 S4. These exercise the whole read path — session events ->
+     * archive#189 S4. These exercise the whole read path — session events ->
      * binding/cwd -> real sidecar files on disk -> join — rather than the
      * pure resolver alone, because the wiring is where a join can silently
      * read the wrong workspace.
@@ -19688,7 +19688,7 @@ describe('OrchestrationService', () => {
   });
 });
 
-// ── Session-lifecycle logger.child correlation (station#1897 logging slice 3) ──
+// ── Session-lifecycle logger.child correlation (archive#1897 logging slice 3) ──
 
 describe('OrchestrationService — session lifecycle logger correlation', () => {
   let tmp: string;
@@ -19791,7 +19791,7 @@ describe('OrchestrationService — session lifecycle logger correlation', () => 
   });
 });
 
-// station#3530: credential profiles already store one app-home per account
+// archive#3530: credential profiles already store one app-home per account
 // (`credentialProfileStorageId(engineId, ref)`), but selection lived on the
 // CONNECTION, so every agent on an engine shared one account. An agent can now
 // name its own via `execution.credentialProfileRef`, applied at the shared

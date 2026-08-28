@@ -71,7 +71,7 @@ export interface ForegroundMessageInput {
   delegation?: AgentDelegationContext;
   userId?: string;
   /**
-   * station#4075 stage 2: the caller's resolved `PrincipalRef`, additive
+   * archive#4075 stage 2: the caller's resolved `PrincipalRef`, additive
    * alongside `userId`. Resolved at the HTTP/auth seam like `clientOrigin`
    * below; threaded to `deps.sendTurn`'s context so the resulting
    * `turn.started` is attributed at emit time (never inferred after the
@@ -89,7 +89,7 @@ export interface ForegroundMessageInput {
    */
   ephemeral?: boolean;
   /**
-   * station#2821 hardening M3: the inbound webhook token identity that
+   * archive#2821 hardening M3: the inbound webhook token identity that
    * started this turn, stamped into session-start metadata beside
    * `sessionVisibility` so an operator can answer "which sessions did this
    * token start?" from disk. Server-owned like `ephemeral` above — never a
@@ -941,7 +941,7 @@ function validateContinuationWorkspace(
   // sameRealPath, not raw `!==`. The worktree branch above has always used it;
   // this one did not, so a trailing slash or a symlinked path (/tmp vs
   // /private/tmp on macOS) read as "a different directory" while being the
-  // same one. The root cause of station#3147 was upstream — an unexpanded
+  // same one. The root cause of archive#3147 was upstream — an unexpanded
   // `~/…` reaching here — and is fixed at the resolver, but a guard that
   // rejects equivalent spellings of one directory is its own defect, and this
   // one refuses to continue a conversation, which is not a failure mode worth

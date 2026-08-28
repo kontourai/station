@@ -45,7 +45,7 @@ export type RuntimeDevicePairingSource =
 export type CredentialLocality = 'home-possession';
 
 /**
- * WHICH home-possession mint path issued the credential (station#3677 PR 3).
+ * WHICH home-possession mint path issued the credential (archive#3677 PR 3).
  * `local-grant` is the only kind whose proof — reading the per-boot
  * owner-only secret FILE — cannot be produced from any browser or webview
  * JS context; `ui-bootstrap` proves the same possession but hands the
@@ -196,7 +196,7 @@ export interface RuntimeHttpSecurityOptions {
     context: RuntimeDeviceActivityClassifierContext,
   ) => PairedDeviceLastSeenFrom | undefined;
   /**
-   * Scoped pairing (station#1098): resolves the space-delimited scope string
+   * Scoped pairing (archive#1098): resolves the space-delimited scope string
    * a credential was granted (the operator credential resolves to every
    * scope; a paired device resolves to its grant's scope), or `undefined`
    * for an invalid credential. Every protected route is checked against
@@ -210,7 +210,7 @@ export interface RuntimeHttpSecurityOptions {
    * to pre-scoping auth with no compile error. A harness that genuinely
    * doesn't care about scoping (most existing boundary tests) still must
    * supply a resolver — typically one that maps every credential it accepts
-   * to `DEFAULT_GRANT_PAIRING_SCOPE`, which is the honest pre-station#1098 behavior:
+   * to `DEFAULT_GRANT_PAIRING_SCOPE`, which is the honest pre-archive#1098 behavior:
    * every valid credential could reach every protected route.
    */
   resolveGrantedScope: (
@@ -222,7 +222,7 @@ export interface RuntimeHttpSecurityOptions {
   maxFailures?: number;
   windowMs?: number;
   maxTrackedPeers?: number;
-  // ── Mutation budgets (station#514) ──
+  // ── Mutation budgets (archive#514) ──
   /** Max request body bytes for a standard authenticated JSON mutation. */
   maxMutationBodyBytes?: number;
   /** Max request body bytes for an enumerated streaming mutation (chat turns). */
@@ -281,7 +281,7 @@ export function getDirectSocketAddress(
 }
 
 /**
- * The auth boundary's attested-proxy classification (station#2051).
+ * The auth boundary's attested-proxy classification (archive#2051).
  *
  * `undefined` means no attestation headers were presented — the caller
  * reached the API directly, and {@link classifyRuntimePeer} on the socket
@@ -337,7 +337,7 @@ function isAttestedStationProxyHop(request: RuntimeCallerRequest): boolean {
 /**
  * The address Station's own UI proxy saw its DIRECTLY connected client at, or
  * `undefined` when this request did not cross that hop under a trusted
- * attestation (station#1490).
+ * attestation (archive#1490).
  *
  * `undefined` therefore means two different things and the caller must decide
  * which it is looking at: no proxy in the loop at all (read the direct socket
@@ -366,7 +366,7 @@ export function attestedProxyPeerAddress(
 export function isLoopbackAuthority(authority: string | undefined): boolean {
   // Through `validAuthority` first, so nothing but a bare `host:port` is ever
   // judged: `station.local@127.0.0.1:5274` parses to the loopback hostname and
-  // would otherwise read as this machine (the same absorption station#3752's
+  // would otherwise read as this machine (the same absorption archive#3752's
   // review caught one layer up).
   const exact = validAuthority(authority);
   if (exact === undefined) return false;
@@ -380,7 +380,7 @@ export function isLoopbackAuthority(authority: string | undefined): boolean {
 
 /**
  * The `Host` the BROWSER used, for a URL this server mints FOR the browser
- * (station#3752 — today the consent review URL).
+ * (archive#3752 — today the consent review URL).
  *
  * Station's own UI proxy rewrites `Host` to the upstream address, so the
  * request's own `Host` names `127.0.0.1:<serverPort>` for every browser that
@@ -436,7 +436,7 @@ export function attestedBrowserVisibleHost(
  * spell anything there. Consumers embed this in a URL as
  * `new URL('http://' + host)`, and WHATWG parsing happily absorbs userinfo,
  * paths and queries — so `station.local@evil.example:3000` would mint a
- * review URL on `evil.example` (station#3752 review, MEDIUM). Anything but a
+ * review URL on `evil.example` (archive#3752 review, MEDIUM). Anything but a
  * bare authority is refused here, and the caller falls back or fails closed.
  */
 function validAuthority(value: string | undefined): string | undefined {
@@ -523,7 +523,7 @@ export function bindRuntimeLocalOperator(
 ): boolean {
   const local = localRuntimeCaller.evaluate({ principal });
   boundLocalOperator.set(request, local);
-  // The stricter approve-capable flag (station#3677 PR 3) is bound at the
+  // The stricter approve-capable flag (archive#3677 PR 3) is bound at the
   // same single write point: local AND minted via the local-grant secret
   // file. A ui-bootstrap mint, the internal-token principal, and every
   // pre-#3677 record (locality with no recorded kind) all bind false —
@@ -542,7 +542,7 @@ export function isBoundRuntimeLocalOperator(request: Request): boolean {
 }
 
 /**
- * The approve-capable local predicate (station#3677 PR 3): bound true only
+ * The approve-capable local predicate (archive#3677 PR 3): bound true only
  * for a caller whose credential was minted through the LOCAL-GRANT path —
  * the per-boot owner-only secret file that no browser or webview JS can
  * read. This is the authority the native consent broker requires; the
@@ -707,9 +707,9 @@ export class RuntimeAuthFailureLimiter {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Mutation budgets (station#514): body-size ceilings and per-principal rate
+// Mutation budgets (archive#514): body-size ceilings and per-principal rate
 // budgets for authenticated mutations, composed into `configureRuntimeSecurity`
-// alongside the auth-failure limiter above. #496's route-local Task bounds stay
+// alongside the auth-failure limiter above. archive#496's route-local Task bounds stay
 // as defence in depth; this is the shared layer every product route inherits.
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -934,7 +934,7 @@ export class RuntimeMutationBudget {
       1,
       options.maxMutationBodyBytes ?? 1_048_576,
     );
-    // station#1885: the streaming mutation surface is enumerated above, and
+    // archive#1885: the streaming mutation surface is enumerated above, and
     // every entry is a chat/invoke route whose relay body carries
     // base64-expanded attachment data URLs. The contracts layer models the
     // maximum encoded JSON command body — including base64 expansion and

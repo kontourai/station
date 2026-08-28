@@ -1,5 +1,5 @@
 /**
- * station#1501 slice 3b review, FIX 3 — the checkout remote read is BOUNDED.
+ * archive#1501 review, FIX 3 — the checkout remote read is BOUNDED.
  *
  * Separate file because it replaces `git-exec.js` wholesale: the sibling
  * `checkout-remote-reader.test.ts` drives a real `git`, and the two mocking

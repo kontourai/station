@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#2931 — heading ownership, expressed by the components rather than
+ * archive#2931 — heading ownership, expressed by the components rather than
  * remembered by each view (docs/design/shell-skeletons.md §2.1). These assert
  * the LEVEL a title renders at, which is the whole mechanism: `.detail-header__title`
  * sets its own font-size, so the element name is the only thing that changes and
@@ -66,7 +66,7 @@ describe('DetailHeader heading level', () => {
     expect(
       screen.getByRole('heading', { name: 'Providers', level: 2 }),
     ).toBeTruthy();
-    // ...and the item title sits one level under it, not beside it.
+    //...and the item title sits one level under it, not beside it.
     expect(
       screen.getByRole('heading', { name: 'Add provider', level: 3 }),
     ).toBeTruthy();

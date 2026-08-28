@@ -22,7 +22,7 @@ interface ChatSettingsPanelProps {
   dockMode: DockMode;
   /**
    * The placement this device has STORED, which on a narrow screen is not the
-   * one in effect (station#3928). They are different facts and the panel needs
+   * one in effect (archive#3928). They are different facts and the panel needs
    * both: one to say what is happening, the other to say what is being kept.
    * Conflating them made the "remembered" sentence unreachable — it compared
    * the effective placement against the only available one, which are equal by
@@ -34,8 +34,8 @@ interface ChatSettingsPanelProps {
   autoHideEnabled: boolean;
   setAutoHideEnabled: (v: boolean) => void;
   /**
-   * kontourai/station#3310: "Summarize session" demoted out of the transcript
-   * — the un-generated state no longer costs a permanent band above every
+   * archive#3310: "Summarize session" demoted out of the transcript
+   * the un-generated state no longer costs a permanent band above every
    * chat, so this gear panel is its entry point (reachable from the desktop
    * header's gear and the mobile overflow's "Chat settings"). Absent when no
    * conversation is active. This is a per-session ACTION, not a device
@@ -96,7 +96,7 @@ export function ChatSettingsPanel({
       <h3 id="chat-settings-title" className="chat-settings-modal__title">
         Chat Settings
       </h3>
-      {/* station#settings-revamp slice 4: every control below is device-
+      {/* archive#settings-revamp: every control below is device-
             scope (docs/design/settings-architecture.md §3 S4), consistent
             with the /settings "This device" scope caption. */}
       <p className="chat-settings-modal__caption">
@@ -117,7 +117,7 @@ export function ChatSettingsPanel({
 
         So it states the derivation instead: what this screen uses, why, and
         what is being remembered for the screen that can use it.
-      */}
+*/}
       <fieldset className="chat-settings-modal__section">
         <legend className="chat-settings-modal__label">Dock Position</legend>
         {availableDockSlotPlacements.length > 1 ? (

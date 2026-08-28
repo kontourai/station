@@ -225,7 +225,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
       },
     ]);
     const { app, agentService } = setup(getRuntimeConnections);
-    // station#1195: codex's toolServers cell flipped from unsupported to
+    // archive#1195: codex's toolServers cell flipped from unsupported to
     // session/wire (Codex can now receive tool servers), so `tools:
     // {mcpServers: [...]}` no longer produces an undeliverable finding for
     // codex — this fixture now authors `skills` instead, which codex's

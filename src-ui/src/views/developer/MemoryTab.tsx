@@ -97,15 +97,15 @@ export default function MemoryTab() {
       ) : null}
 
       {(() => {
-        // station#771: `!rootId`/`graph` falsy also cover a settled query
+        // archive#771: `!rootId`/`graph` falsy also cover a settled query
         // error, which used to render as "no memory stores are configured" /
         // "no recall graph available" — a fabricated negative fact, not the
         // read failure that actually happened.
         //
-        // station#771 fix round (review HIGH): both error branches are now
+        // archive#771: both error branches are now
         // gated on the data ALSO being absent — a refetch failure with
         // cached roots/graph on hand must keep rendering them, never blank a
-        // working tab behind an error card (the #769 contract: ProjectPage
+        // working tab behind an error card (the archive#769 contract: ProjectPage
         // renders cached data with no banner on a refetch failure).
         const detail = rootsLoading ? (
           <Skeleton variant="block" />

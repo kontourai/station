@@ -230,7 +230,7 @@ export function FileTreePanel({
   const copyPath = async (entry: FileEntry) => {
     // The old `?.` short-circuited its own `.catch`, so the one origin that
     // actually has no clipboard — plain http:// from another device — was the
-    // one case this error never reported (station#3341).
+    // one case this error never reported (archive#3341).
     //
     // Clearing on success is deliberate and matches every other action in this
     // panel (`addToChat`, `sendToTerminal` both `setActionError(null)` first):

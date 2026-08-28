@@ -23,7 +23,7 @@
  * station-control server path, so an env-less third-party MCP server the
  * agent author points at never receives it.
  *
- * Review fix (station#1157 round 2, HIGH companion): `ResolvedAgentToolServer`
+ * Review fix (archive#1157 round 2, HIGH companion): `ResolvedAgentToolServer`
  * structurally cannot carry `env` (secret boundary at resolution — see
  * session-agent-resolution.ts's own doc comment), so the real
  * `STATION_API_BASE`/`STATION_PORT` operational values station-control

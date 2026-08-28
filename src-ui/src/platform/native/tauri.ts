@@ -143,7 +143,7 @@ const CAPABILITY_IDS: NativeCapabilityId[] = [
   'share-intake',
 ];
 // `native-consent-broker` is deliberately NOT required: a UI served by a
-// newer Station must still verify an older shell's report (station#3677).
+// newer Station must still verify an older shell's report (archive#3677).
 const REQUIRED_CAPABILITY_IDS: NativeCapabilityId[] = [
   'capability-report',
   'desktop-tray',
@@ -957,7 +957,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
       // `ImpactFeedbackStyle`/`NotificationFeedbackType` used to be runtime
       // enum objects (`ImpactFeedbackStyle.Light`); the plugin now generates
       // them as plain string-literal TYPES only (`dist-js/bindings.d.ts`:
-      // `export type ImpactFeedbackStyle = 'light' | 'medium' | ...`), with
+      // `export type ImpactFeedbackStyle = 'light' | 'medium' |...`), with
       // no matching runtime export in `dist-js/index.js` at all — so the old
       // `.Light`/`.Medium`/`.Success`/`.Error` member access threw at
       // runtime (caught by the try/catch below, silently returning a

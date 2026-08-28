@@ -39,7 +39,7 @@ import {
 /**
  * The classified check the rest of the product reads, named structurally so
  * these legacy routes can consult it without depending on the whole service
- * (#3654 review, M2).
+ * (archive#3654 review, M2).
  *
  * `testConnection` is the explicit, classified check — the same one the
  * connections UI and the CLI run, including the fallback chat probe that is
@@ -48,7 +48,7 @@ import {
  *
  * `getModelConnectionCheck` READS the standing receipt for one connection:
  * no provider is constructed, no request is made, no other connection is
- * touched (#3654 review round 2). The first version of this consulted the
+ * touched (archive#3654 review round 2). The first version of this consulted the
  * whole model listing, which runs catalogue discovery against every
  * configured provider — a GET for one connection amplified into network
  * traffic to all of them, at a polling frequency no one here can see.
@@ -82,7 +82,7 @@ export function createProviderRoutes(
    * "did AWS answer with a catalogue", so an IAM identity allowed
    * `InvokeModel` and denied the listing — a connection an explicit test can
    * prove works, and whose pass is protected from being superseded by that
-   * very catalogue answer — reported `healthy: false` here (#3654 review, M2).
+   * very catalogue answer — reported `healthy: false` here (archive#3654 review, M2).
    * Reading the receipt instead means these endpoints and the connections
    * surface answer from one derivation, and reading only THIS connection's
    * receipt means a targeted GET stays targeted.
@@ -247,7 +247,7 @@ export function createProviderRoutes(
 
       // An explicit test is exactly what the connection service's classified
       // check is, chat fallback and all — running the bare health boolean here
-      // instead answered a narrower question than the caller asked (#3654
+      // instead answered a narrower question than the caller asked (archive#3654
       // review, M2).
       if (options.connectionService) {
         const outcome = await options.connectionService.testConnection(id);

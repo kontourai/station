@@ -218,7 +218,7 @@ test.describe('Notifications hierarchy', () => {
     await notificationsButton.click();
     const compactNotifications = page.locator('.notification-history');
     await expect(compactNotifications).toBeVisible();
-    // station#3222: the tray section names the badge's own population. All
+    // archive#3222: the tray section names the badge's own population. All
     // four are unacknowledged and all four fit, so it reads as one number —
     // the same number the button the reader just clicked is showing.
     await expect(
@@ -349,7 +349,7 @@ test.describe('Notifications hierarchy', () => {
 });
 
 /*
- * station#3203 mobile worst case. The failure rows gained a real cause line
+ * archive#3203 mobile worst case. The failure rows gained a real cause line
  * plus an engine/agent identity line, which is strictly more text in a panel
  * that already carries two actions per entry — the shape that overflows a
  * phone. The fixture is deliberately the WORST case, not a short one: a long
@@ -504,7 +504,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
       .click();
     const tray = page.locator('.notification-history');
     await expect(tray).toBeVisible();
-    // station#3222: the count pair lives in this heading, so the 390px
+    // archive#3222: the count pair lives in this heading, so the 390px
     // containment assertions below cover it too.
     await expect(
       tray.getByRole('heading', {

@@ -1,5 +1,5 @@
 /**
- * station#2802 slice 1 + fix round — checkpoint index store coverage.
+ * archive#2802 + fix round — checkpoint index store coverage.
  *
  * Exercises the real JsonFileStore-backed persistence over temp
  * directories: the recordTurnPhase read-decide-write surface (including its

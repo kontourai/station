@@ -61,7 +61,7 @@ export async function reserveContiguousBlock(
  * Self-allocates a contiguous block of `span` free ports on `host` and returns
  * its base. Station binds its HTTP listener on the base, its terminal WebSocket
  * on `base + 1`, its voice WebSocket on `base + 2`, and its consent listener
- * on `base + 3` (station#3677), so the whole block must be free
+ * on `base + 3` (archive#3677), so the whole block must be free
  * simultaneously.
  *
  * Discovers a candidate base via an ephemeral (`:0`) bind, holds it open while

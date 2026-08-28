@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import { nextTabIndex } from '../utils/tab-navigation';
-// Self-imported rather than left to each host to remember: station#3306 was
+// Self-imported rather than left to each host to remember: archive#3306 was
 // exactly this failure mode (a direct navigation rendered `.page__tabs`
 // unstyled because the host forgot this stylesheet). The primitive owning
 // its own required CSS makes that class of bug structurally impossible for
@@ -8,7 +8,7 @@ import { nextTabIndex } from '../utils/tab-navigation';
 import '../views/page-layout.css';
 
 /**
- * The shared TRUE-tab primitive (station#4463 slice 2, fix round). Reserved
+ * The shared TRUE-tab primitive (archive#4463). Reserved
  * for hosts switching between panels in one composite widget — real
  * `role="tablist"`/`role="tab"`/`aria-selected`, a documented tabpanel
  * contract via `tabElementId`/`tabPanelElementId`, and WAI-ARIA APG's
@@ -166,7 +166,7 @@ export const Tabs = forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         // flexbox trims a flex item's own leading whitespace at the start
         // of its line box, so this span's leading space renders as nothing
         // ("Models0" instead of "Models 0" — visible/accessible-name
-        // divergence, station#4463 slice 2 review HIGH-1 fix round). The
+        // divergence, archive#4463). The
         // visual gap instead comes from `page-layout.css`'s
         // `.page__tab-count` rule (`margin-left`), which the span below
         // carries.

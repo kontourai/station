@@ -56,11 +56,11 @@ import {
 } from './console-bridge.js';
 import { consoleArtifactRoot } from './local-artifact-paths.js';
 
-/** OTel `consumer` attribute recorded on the coalesce-ratio/burst-size instruments (station#1093 Part B). */
+/** OTel `consumer` attribute recorded on the coalesce-ratio/burst-size instruments (archive#1093 Part B). */
 const COALESCE_CONSUMER = 'console_bridge';
 
 /**
- * Max concurrent per-thread flushes (station#1093 Part B / issue's "bounded
+ * Max concurrent per-thread flushes (archive#1093 Part B / issue's "bounded
  * refetch concurrency (~8)"). Each flush does its own thread-scoped
  * targeted EventStore refetch plus (optionally) a sequence
  * of hub POSTs, so bounding concurrency caps how many of those can run at
@@ -237,7 +237,7 @@ export class ConsoleBridgeService {
   private hubOutageWarned = false;
   private unsubscribe: (() => void) | null = null;
   /**
-   * station#1093 Part B: replaces the hand-rolled `dirtyThreads` Set +
+   * archive#1093 Part B: replaces the hand-rolled `dirtyThreads` Set +
    * single `setTimeout` debounce this service used before Part A's shared
    * primitives existed. That old debounce already coalesced a synchronous
    * burst of N canonical events for one thread into exactly one

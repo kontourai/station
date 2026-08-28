@@ -46,7 +46,7 @@ describe('provider-settings utils', () => {
   });
 
   test('filterModelProviders searches the inventory it is given', () => {
-    // station#3747: membership is the model inventory route's answer now
+    // archive#3747: membership is the model inventory route's answer now
     // (`isLlmModelConnection`, asserted at the service), so this helper only
     // searches. It used to re-derive membership here, and a second derivation
     // of a server fact is exactly what that issue removed.
@@ -63,7 +63,7 @@ describe('provider-settings utils', () => {
   });
 });
 
-// LOW-1 / TESTS(d) (review fix round): the persisted config must OMIT the
+// TESTS(d): the persisted config must OMIT the
 // fields the selected authMode doesn't use, not merely empty them.
 describe('finalizeConnectionConfig — Bedrock auth-mode persistence', () => {
   test('chain mode omits authMode, profile, and apiKey entirely', () => {
@@ -123,7 +123,7 @@ describe('finalizeConnectionConfig — Bedrock auth-mode persistence', () => {
   });
 });
 
-// HIGH-2 (review fix round): Save must be blocked when the selected auth
+// Save must be blocked when the selected auth
 // mode's required field is empty — never silently persisted as chain auth.
 describe('isConnectionConfigValid — Bedrock auth-mode required fields', () => {
   test('chain mode is always valid', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 /**
- * station#1049 — the unit suite in station-agent-adapter.test.ts stubs
+ * archive#1049 — the unit suite in station-agent-adapter.test.ts stubs
  * `hasAgent: () => true`, which is exactly why the real divergence (the
  * flip's `hasAgent` only consulted the in-memory active-agent set, while
  * `POST /api/agents/:slug/chat` also serves persisted-but-not-yet-active
@@ -137,9 +137,9 @@ describe('StationAgentAdapter x real agent registry (station#1049)', () => {
   });
 
   test('surfaces the /chat 409 reason for a persisted-but-inactive agent (station#1071)', async () => {
-    // The live case that motivated #1049: the agent is real and on disk, but
+    // The live case that motivated archive#1049: the agent is real and on disk, but
     // its model connection is unresolved, so /chat answers 409 with the
-    // actionable reason. The widened gate lets the turn REACH /chat; #1071 is
+    // actionable reason. The widened gate lets the turn REACH /chat; archive#1071 is
     // the second half — that reason must survive to the caller instead of
     // being flattened to the generic rejection.
     const reason = "Agent 'assistant' is not currently launchable.";

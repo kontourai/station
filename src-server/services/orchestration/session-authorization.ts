@@ -15,7 +15,7 @@ import {
   orchestrationStreamPresenceSubjectForSession,
 } from './orchestration-stream-presence.js';
 
-// station#1120: bounded per-thread `threadId -> ownerUserId` cache backing
+// archive#1120: bounded per-thread `threadId -> ownerUserId` cache backing
 // `sessionOwnerUserId()` (the /events SSE route's per-event authorization
 // gate). Sized like `attached-session-follow-service.ts`'s MAX_SEEN_EVENT_IDS
 // LRU — generous relative to realistic concurrently-relevant thread counts.
@@ -37,7 +37,7 @@ export interface SessionAuthorizationDeps {
 }
 
 /**
- * Tenancy & owner authorization (epic #4024 slice 6, #4166): the C8 cluster
+ * Tenancy & owner authorization (epic archive#4024, archive#4166): the C8 cluster
  * from the seam map — the file's predicate hub (`canReadSession` was its
  * most-called private helper) and the first extracted cluster with ZERO
  * back-closures into sibling clusters, which is why both indexes
@@ -58,7 +58,7 @@ export class SessionAuthorization {
   /** Never derived from command metadata; persists only in the event store. */
   private readonly tenantContexts = new Map<string, TenantExecutionContext>();
   /**
-   * threadId -> ownerUserId (station#1120). Backs `sessionOwnerUserId()`,
+   * threadId -> ownerUserId (archive#1120). Backs `sessionOwnerUserId()`,
    * called per event per connected client from the `/events` SSE route's
    * `canUserReadSession` authorization gate. Only ever holds a POSITIVE,
    * already-resolved owner — see `cacheSessionOwner()`'s doc comment for
@@ -104,7 +104,7 @@ export class SessionAuthorization {
   }
 
   /**
-   * station#1120: this is the `/events` SSE route's per-event,
+   * archive#1120: this is the `/events` SSE route's per-event,
    * per-connected-client authorization gate (`canUserReadSession` ->
    * `canReadSession` -> here), so it must stay cheap — a full
    * `eventStore.listEvents(threadId)` per call was a 50x N amplification on
@@ -133,8 +133,8 @@ export class SessionAuthorization {
       return cached;
     }
     sessionOwnerCacheOps.add(1, { outcome: 'miss' });
-    // station#3495: the whole predicate lives in SQL and at most ONE row comes
-    // back. station#1867 had already narrowed this from `listEvents(threadId)`
+    // archive#3495: the whole predicate lives in SQL and at most ONE row comes
+    // back. archive#1867 had already narrowed this from `listEvents(threadId)`
     // to the ownership-shaped methods, but the read stayed unbounded: on the
     // live store's hot thread it returned 517,718 rows (2,146 ms, rss 45 MB ->
     // 893 MB), `JSON.parse`d all 517,718 payloads (+661 ms, rss -> 1,206 MB),
@@ -153,7 +153,7 @@ export class SessionAuthorization {
       this.cacheSessionOwner(threadId, ownerUserId);
       return ownerUserId;
     }
-    // Deliberately NOT cached (station#1120 safety requirement): an
+    // Deliberately NOT cached (archive#1120 safety requirement): an
     // ownerless/unresolved result (unknown thread, or a read-only-attached
     // session that never carries a `metadata.userId`) always falls through
     // to a full store read on the next call. Caching a negative result
@@ -166,7 +166,7 @@ export class SessionAuthorization {
   }
 
   /**
-   * station#1120 safety argument: this cache can only ever be populated
+   * archive#1120 safety argument: this cache can only ever be populated
    * with a POSITIVE owner already read, just now, straight from the event
    * store — never a guess, default, or "no owner" placeholder. Given that,
    * a cache HIT can only return a value that was true at some point after

@@ -26,7 +26,7 @@ const AUTO_COLLAPSE_DELAY_MS = 5000;
  * meaning outside a Chat pane.
  *
  * Dock CHROME (geometry, dragging, snap, placement, `dock.toggle` /
- * `dock.maximize`) moved to `useDockShellChrome` (station#4460): that state
+ * `dock.maximize`) moved to `useDockShellChrome` (archive#4460): that state
  * has to survive an ambient occupant switch, so it is owned by the
  * persistent `DockShell`/full-screen placement, never by the occupant that
  * unmounts.
@@ -41,11 +41,11 @@ export function useChatDockState({
   const settings = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
 
-  // Device-scope chat display preferences (station#settings-revamp slice 4,
-  // docs/design/settings-architecture.md §3 S4 "Chat/session", §6 slice 4).
-  // Read LIVE every render via `useDeviceSettings()` (`useSyncExternalStore`
+  // Device-scope chat display preferences (archive#settings-revamp,
+  // docs/design/settings-architecture.md §3 "Chat/session", §6).
+  // Read LIVE every render via `useDeviceSettings` (`useSyncExternalStore`
   // under the hood) rather than seeded once into local `useState` — a
-  // review finding (slice 4 review) caught that a one-time seed misses an
+  //  caught that a one-time seed misses an
   // external store change while this hook stays mounted (Settings → Import,
   // or a cross-tab write): the toggle would keep showing the pre-import
   // value, and clicking it would then write the OPPOSITE of what's
@@ -74,11 +74,11 @@ export function useChatDockState({
 
   // Font size keeps its documented per-session URL-override semantics, but
   // the "device setting" leg of that precedence must also be LIVE (the same
-  // review finding as above) — so only the SESSION's own explicit change is
+  // as above) — so only the SESSION's own explicit change is
   // tracked in local state; the URL param is read once (a session-scoped,
   // never-reactive input by design); the live device-scope value flows
-  // straight from `useDeviceSettings()`. Resolution order, pinned by tests
-  // (docs/design/settings-architecture.md §6 slice 4):
+  // straight from `useDeviceSettings`. Resolution order, pinned by tests
+  // (docs/design/settings-architecture.md §6):
   // sessionOverride > urlParam > the LIVE device setting > the Station-
   // configured default. An explicit in-session change (the A−/A+/reset
   // controls) both pins the display for the rest of this session AND writes

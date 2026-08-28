@@ -13,7 +13,7 @@ interface QueuedMessagesProps {
    * Why the last attempt to drain the head of this queue failed, as the
    * server described it. Rendered beside the message it is holding back and
    * persisted with the queue, so a reload does not leave a retained follow-up
-   * with no explanation (UX audit T3).
+   * with no explanation.
    */
   failure?: { message: string; code?: string; at: number };
   /** Retry the head of the queue now, rather than waiting for the next turn. */

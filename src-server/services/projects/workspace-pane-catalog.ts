@@ -98,7 +98,7 @@ function tabsForCurrentLayout(resolved: ResolvedCatalogLayout): LayoutTab[] {
   // persistence. Describe their existing renderer generically from catalog
   // data; no renderer is loaded or executed here.
   if (resolved.item.source !== 'builtin') return [];
-  // station#3798: the synthesised renderer name is the layout's `type`, and
+  // archive#3798: the synthesised renderer name is the layout's `type`, and
   // not every builtin layout HAS a Pane renderer — `session-board` and
   // `tasks` are reached as routes and never appear in the build's renderer
   // inventory. Synthesising a tab for them advertised a Pane whose renderer
@@ -107,7 +107,7 @@ function tabsForCurrentLayout(resolved: ResolvedCatalogLayout): LayoutTab[] {
   // a transient sentence, with a Retry that can never help, for a permanent
   // structural fact. The verdict is derived from the registered renderer set
   // rather than a layout name, so a renderer added later needs no edit here.
-  // Contributing no tab is the shape station#3778 already chose for a Pane
+  // Contributing no tab is the shape archive#3778 already chose for a Pane
   // whose subject does not exist: no descriptor, no instance, no availability
   // entry, while the layout stays a listed contribution.
   if (!isRegisteredBuiltinWorkspacePaneRendererName(resolved.definition.type)) {
@@ -133,7 +133,7 @@ function tabsForCurrentLayout(resolved: ResolvedCatalogLayout): LayoutTab[] {
  */
 export interface WorkspacePaneCatalogLayoutOffer {
   /**
-   * Whether this project offers the layout as a Pane at all (station#3778).
+   * Whether this project offers the layout as a Pane at all (archive#3778).
    *
    * Distinct from availability on purpose: availability explains a Pane that
    * exists, and there is no honest availability sentence for a Pane whose
@@ -235,7 +235,7 @@ export function readCurrentWorkspacePaneCatalog(
     ...directPluginPanes.map(({ descriptor }) => descriptor),
     ...portablePanes.map((pane) => pane.descriptor),
   ]);
-  // station#3543: every direct plugin declaration receives one server-issued,
+  // archive#3543: every direct plugin declaration receives one server-issued,
   // Project-bound occurrence, exactly as the legacy bridge and portable kits
   // do — a descriptor without an instance can never bind a renderer. The
   // bound contribution is the distribution service's on-disk installation

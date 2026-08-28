@@ -9,20 +9,20 @@ describe('resolveNotificationOpenHref', () => {
         'thread-1',
         'runtime',
       ),
-      // station#1284 (AC4): dock=open so the deep link actually opens the
+      // archive#1284 (AC4): dock=open so the deep link actually opens the
       // chat dock, not just the project layout.
     ).toBe('/projects/my%20project?chat=thread-1&dock=open');
   });
 
   test('falls back to /activity for a runtime session with no project', () => {
-    // /activity is not a dock target — no dock=open here (station#1284).
+    // /activity is not a dock target — no dock=open here (archive#1284).
     expect(resolveNotificationOpenHref({}, 'thread/one', 'runtime')).toBe(
       '/activity?session=thread%2Fone',
     );
   });
 
   test('falls back to the root chat route for a managed session with no project', () => {
-    // station#1284 (AC4): dock=open — the root route's dock is the target.
+    // archive#1284 (AC4): dock=open — the root route's dock is the target.
     expect(resolveNotificationOpenHref({}, 'session-1', 'managed')).toBe(
       '/?chat=session-1&dock=open',
     );

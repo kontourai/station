@@ -1,5 +1,5 @@
 /**
- * Workspace Home role routes (station#3122 stage 3 / station#3677 PR 2):
+ * Workspace Home role routes (archive#3122 stage 3 / archive#3677 PR 2):
  * READ, REVOKE, and the GRANT channel on the distinct-origin consent surface.
  *
  * Why the grant rides ConsentTransaction: the granted party is same-origin
@@ -17,14 +17,14 @@
  * `consent:decide` grant, or local-native authority
  * (`consentDecisionAuthority`, pairing-route-scopes.ts).
  *
- * The three riders recorded on the parked channel (#3637) are closed by
+ * The three riders recorded on the parked channel (archive#3637) are closed by
  * construction here:
  * - Request-snapshot TOCTOU: the target fingerprint is derived in ONE pass
  *   ({@link deriveHomeRoleTrustTarget}), revalidated byte-for-byte before
  *   granting under the per-plugin content lock, and compared AGAIN against
  *   the commit-time derivation — the lock is a cooperative in-process mutex,
  *   so the fingerprint comparison, not the lock, is what refuses a tree that
- *   changed between revalidation and commit (#3720 review).
+ *   changed between revalidation and commit (archive#3720 review).
  * - Digest coverage: the fingerprint's `contentDigest` covers the plugin's
  *   entire on-disk tree ({@link computePluginContentDigest}), not just the
  *   pane bundle. What it honestly cannot attest: code the plugin fetches at
@@ -45,7 +45,7 @@
  * and must be no more reachable than the operator's own credential.
  *
  * `DELETE /home-role` — revocation. KNOWN, ACCEPTED DEFECT (availability,
- * not escalation — station#3673): this mutation is reachable by same-origin
+ * not escalation — archive#3673): this mutation is reachable by same-origin
  * plugin fetch, so plugin code can revoke the role holder. The result is
  * always the built-in floor — the fail-closed direction — which is why it
  * ships. It is deliberately NOT gated behind Sec-Fetch navigation headers:
@@ -105,7 +105,7 @@ export interface PluginHomeRoleRouteDeps {
   /**
    * The distinct-origin consent surface. Absent (or not listening) means the
    * grant channel refuses truthfully with 503 — Home role approvals FAIL
-   * CLOSED while read/revoke and the rest of Station stay usable (#3677
+   * CLOSED while read/revoke and the rest of Station stay usable (archive#3677
    * owner decision 3).
    */
   consentChannel?: ConsentChannelService;
@@ -258,7 +258,7 @@ export function registerPluginHomeRoleRoutes(
     transactionId: string,
     status: string,
   ) => {
-    // station#3752: the BROWSER's host, not the proxied one. Station's UI
+    // archive#3752: the BROWSER's host, not the proxied one. Station's UI
     // proxy rewrites `Host` to the upstream address, and a review URL built
     // from that names a host the browser has no transaction cookie for, so
     // the review page refused every operator.
@@ -269,7 +269,7 @@ export function registerPluginHomeRoleRoutes(
       }),
       transactionId,
     );
-    // station#3731: a review URL is the BROWSER's way in, and only a browser
+    // archive#3731: a review URL is the BROWSER's way in, and only a browser
     // needs one. A caller that can decide in native OS chrome does not, and
     // refusing it here left the native path's listener-independence
     // unreachable — with the listener down nothing could be ORIGINATED, so
@@ -320,7 +320,7 @@ export function registerPluginHomeRoleRoutes(
       );
     }
     const state = channel.state();
-    // Same rule as the responder above (station#3731).
+    // Same rule as the responder above (archive#3731).
     if (
       state.status !== 'listening' &&
       !isBoundLocalGrantMintedOperator(c.req.raw)
@@ -383,7 +383,7 @@ export function registerPluginHomeRoleRoutes(
       // vary for a fresh budget per name).
       rateKey: 'plugin-ui',
       description: {
-        // Rider 3, corrected by the #3720 review: the first cut framed the
+        // Rider 3, corrected by the archive#3720 review: the first cut framed the
         // item list as "readable by the Home pane through the projection" —
         // exactly the false bound the contract's own doc comment
         // (WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS) forbids a consent
@@ -424,7 +424,7 @@ export function registerPluginHomeRoleRoutes(
         // Re-derived inside the decision guard, then COMPARED byte-for-byte
         // against the reviewed fingerprint. The first cut asserted the two
         // "cannot differ" because revalidateTarget had just proved the tree
-        // unchanged — a claim nothing computed (#3720 review, HIGH): the
+        // unchanged — a claim nothing computed (archive#3720 review, HIGH): the
         // content lock is a cooperative in-process mutex, so an external
         // writer mutating between revalidation and this derivation would
         // have committed a descriptor and digest the user never reviewed.

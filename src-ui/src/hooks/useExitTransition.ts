@@ -24,7 +24,7 @@ export interface ExitTransition {
 
 /**
  * Keeps a surface mounted for its exit animation after `open` goes false, then
- * unmounts it (station#3309).
+ * unmounts it (archive#3309).
  *
  * Under `prefers-reduced-motion: reduce` there is no exit to wait for, so the
  * unmount is synchronous — deferring it anyway would leave an invisible

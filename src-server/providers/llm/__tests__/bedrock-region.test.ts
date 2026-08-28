@@ -1,5 +1,5 @@
 /**
- * station#1557. Three surfaces disagreed about one setting: the inference
+ * archive#1557. Three surfaces disagreed about one setting: the inference
  * path read the stored config and ignored `AWS_REGION`, the model-catalogue
  * route read `AWS_REGION` and ignored the stored config, and the Settings
  * badge told the user the stored value was inert whenever `AWS_REGION`
@@ -160,7 +160,7 @@ describe('the readers cannot diverge again', () => {
   /**
    * EVERY site that decides a Bedrock region.
    *
-   * The first #1557 fix listed two of these, and review found the list was
+   * The first archive#1557 fix listed two of these, and review found the list was
    * the defect: `framework-model-factory.ts` — the chain every Station-agent
    * execution path runs — kept its own `appConfig.region || 'us-east-1'` tail
    * with no `AWS_REGION`, so unifying the badge and the catalogue around a

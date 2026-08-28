@@ -37,7 +37,7 @@ describe('toPassthroughToolDef (shared ResolvedAgentToolServer → ToolDef mappi
   });
 
   // Station#1157 DRY requirement: the mapping used to be a private
-  // duplicate-risk function inside acp-adapter.ts (#895 wave A). It now
+  // duplicate-risk function inside acp-adapter.ts (archive#895 wave A). It now
   // lives here, and BOTH the ACP and Claude adapters import this exact
   // module rather than re-declaring their own copy — this is a static,
   // source-level regression guard for that requirement (a behavioral test

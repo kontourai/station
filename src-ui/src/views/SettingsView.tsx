@@ -65,19 +65,19 @@ import {
 } from './settings/VoiceFeaturesSection';
 
 /**
- * station#settings-revamp slice 3: three registry-driven scope sections
+ * archive#settings-revamp: three registry-driven scope sections
  * (docs/design/settings-architecture.md §5) replace the single flat nav —
- * Station (S1), Defaults (S2), This device (S3). Leaf section DOM ids are
+ * Station, Defaults, This device. Leaf section DOM ids are
  * unchanged from pre-slice-3 (`useSectionNavigation` deep links and
  * existing tests key off them); only the top-level nav/page grouping
  * restructures. `station-config` is the one new leaf (the previously
  * hidden Station fields — see StationConfigSection.tsx). "My knowledge
- * store" (station#settings-revamp slice 5: renamed from "Knowledge Store" to
+ * store" (archive#settings-revamp: renamed from "Knowledge Store" to
  * disambiguate from the project-scoped and infrastructure-scoped Knowledge
- * surfaces, docs/design/settings-architecture.md §3 S5) stays its own
+ * surfaces, docs/design/settings-architecture.md §3) stays its own
  * top-level card outside every scope group.
  */
-// Ordered by what a person came here to do (station#1826): the sections with
+// Ordered by what a person came here to do (archive#1826): the sections with
 // controls first (Station configuration, System, Shared answers), then the
 // read-mostly surfaces (Station host status, the Diagnostics bundle). A
 // settings page should open with what you change, not what an engineer
@@ -402,7 +402,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const { serverConfig, droppedDeviceKeys } =
         await parseImportedSettingsFile(file);
       setConfig({ ...config, ...serverConfig });
-      // station#settings-revamp slice2 review finding 2: an invalid device
+      // archive#settings-revamp: an invalid device
       // value is dropped (not silently merged, not a hard failure) — surface
       // that it happened rather than absorbing it without a trace.
       setError(
@@ -548,7 +548,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           config read left Settings drawing "still loading" forever. Error is
           not loading. The header and section nav above stay put either way
           (6-OPS-23): the frame a page owns is known before its data is.
-        */}
+*/}
         {configError ? (
           <ErrorState
             title="Unable to load settings"
@@ -574,7 +574,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     <>
       <div className="settings">
         {highlightNotice}
-        {/* station#1826: the three-card "This device / Station / Defaults"
+        {/* archive#1826: the three-card "This device / Station / Defaults"
             legend is gone. It restated the taxonomy the grouped nav below
             already shows, in implementation vocabulary, and treated
             "Defaults" (a precedence rule) as a peer of two storage
@@ -642,11 +642,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             </>
           )}
 
-          {/* station#3313: previews persist on the Station (PUT
+          {/* archive#3313: previews persist on the Station (PUT
               /api/feature-previews/:id), so the section lives in this scope. */}
           {sectionVisible('feature-previews') && <FeaturePreviewsSection />}
 
-          {/* station#1423: answer permalinks the operator has minted. Station
+          {/* archive#1423: answer permalinks the operator has minted. Station
               scope because the shares live on this Station and every client
               of it sees the same list. */}
           {sectionVisible('answer-shares') && <AnswerSharesSection />}
@@ -770,7 +770,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 description="Toggle between light and dark mode."
                 control={<ThemeToggle />}
               />
-              {/* #3314: the restore path for a section removed via the
+              {/* archive#3314: the restore path for a section removed via the
                   sidebar's own × affordance. */}
               <PageRow
                 {...settingsRow('sidebar-sections')}
@@ -935,9 +935,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * title and three grey blocks: the page's whole navigable shape was known the
  * whole time and withheld anyway.
  *
- * station#4463 slice 2: this used to render its own all-caps `STATION` /
+ * archive#4463: this used to render its own all-caps `STATION` /
  * `DEFAULTS` / `THIS DEVICE` group-label `<span>`s inline in the same row as
- * the section links — the shell audit named this a bug (two label
+ * the section links — the named this a bug (two label
  * vocabularies colliding in one control), and the fix is not to relabel it
  * but to remove it: every scope group's content already opens with its own
  * caption ("Saved to this Station — every client sees the same values.",
@@ -949,7 +949,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * `SectionNav`, not `Tabs`: these are real, deep-linkable URL sections
  * (`?view=`) navigated via `useSectionNavigation`'s `hrefForSection`, not an
  * in-place tab widget — see `components/SectionNav.tsx`'s docblock for why
- * that distinction is load-bearing (station#4463 slice 2 review).
+ * that distinction is load-bearing (archive#4463).
  */
 /** Exported for `SettingsSectionNav.test.tsx` — the nav's shape is worth testing directly, independent of the many hooks a full `SettingsView` render would require mocking. */
 export function settingsSectionNavItems(

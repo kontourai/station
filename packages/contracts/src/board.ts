@@ -1,7 +1,7 @@
 /**
- * station#4079 slice 1 — the board face's persisted shape.
+ * The board face's persisted shape.
  *
- * Design comment (station#4079, planner): "A board is a face, not an
+ * Design intent (archive#4079): "A board is a face, not an
  * entity. Board state = pinned-widget rows + tab rows keyed on the durable
  * session/Task identity, stored server-side ... Board existence ⇔ rows
  * exist." A board is never a client cache: it is read from and written to
@@ -11,12 +11,13 @@
  * Layout is ORDINAL, never geometric: each widget carries a dense `position`
  * among its tab's widgets (renormalized after every pin/unpin/move) and a
  * `size` preset — the agent's vocabulary is presets and `after: <name>`,
- * never pixels (design comment).
+ * never pixels.
  *
- * Two versioning axes, both stored per widget (design comment: "replay
- * proofing ... same axes #1399's contract already stores"):
- *  - `revision` — monotonic CONTENT revision. Slice 1 always writes 0 (a pin
- *    creates content; update-in-place, which bumps it, is slice 4).
+ * Two versioning axes, both stored per widget ("replay
+ * proofing ... same axes the UI-block contract already stores"):
+ *  - `revision` — monotonic CONTENT revision. A pin
+ *    creates content at revision 0 (update-in-place, which bumps it, is not
+ *    implemented).
  *  - `generation` — a random id stamped at PUT time (materialization
  *    identity). It changes whenever a widget is newly created at an id —
  *    including a delete followed by a re-pin under the same `name` — so a
@@ -52,9 +53,9 @@ export interface BoardTab {
 export interface BoardWidget {
   readonly id: string;
   /**
-   * Agent/user-facing stable name. Slice 1 stores it verbatim; the
+   * Agent/user-facing stable name. Stored verbatim; the
    * generated-identity collision diversion the design calls out for
-   * update-in-place is slice 4.
+   * update-in-place is not implemented.
    */
   readonly name: string;
   readonly tabId: string;
@@ -82,8 +83,7 @@ export interface Board {
 }
 
 /**
- * `id`-derived directory segment bound (fix round, B1). Independent review
- * traced the ACTUAL grammar these ids are minted with — there is no strict
+ * `id`-derived directory segment bound. There is no strict
  * repo-wide slug/id format to allowlist against:
  *  - a Session/conversation id is a caller-supplied, free-form string up to
  *    512 bytes (`src-server/routes/orchestration/orchestration.ts`'s

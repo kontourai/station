@@ -7,7 +7,7 @@
 //   rule.
 // - `ErrorState` — Console Kit ships no error primitive, so this wraps
 //   `Empty` with a fixed error affordance (icon + retry `action` slot). It is
-//   OWNED by `@kontourai/station-sdk` (published component set, station#4201)
+//   OWNED by `@kontourai/station-sdk` (published component set, archive#4201)
 //   and re-exported here; shell code keeps importing it from this barrel.
 // - `Skeleton`/`SkeletonList`/`SkeletonBlock` — re-exported from the existing
 //   `../Skeleton` module (itself already a thin Console Kit `Skeleton`

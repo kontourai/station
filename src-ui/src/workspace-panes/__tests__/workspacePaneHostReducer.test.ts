@@ -259,7 +259,7 @@ describe('Workspace Pane host reducer', () => {
 });
 
 /**
- * station#3795: `restore` re-parses, so restoring the document already held
+ * archive#3795: `restore` re-parses, so restoring the document already held
  * used to mint a new identity — invalidating every `[state.document]` effect
  * in the host, one of which writes the document to localStorage. The lease
  * path restores on every grant, so that write fired for a document nobody had

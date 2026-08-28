@@ -1,11 +1,11 @@
 /**
  * WorkflowStatusLine — compact "Workflow" row surfaced in task/session detail
  * panes when a flow-agents durable sidecar (`.kontourai/flow-agents/<slug>/
- * state.json`) is joined to the subject (#582, epic #580). Renders nothing
+ * state.json`) is joined to the subject (archive#582). Renders nothing
  * when there is no state to show — callers own the absence check.
  *
  * `matchKind: 'title-heuristic'` is a fixed-forward honesty requirement from
- * the #582 review: a title-slugified join is never presented as verified
+ * the archive#582: a title-slugified join is never presented as verified
  * identity, so it always carries a visible "matched by title" qualifier.
  * `'workItemRef'` (or omitted, for the project-level fallback list) renders
  * without that qualifier.

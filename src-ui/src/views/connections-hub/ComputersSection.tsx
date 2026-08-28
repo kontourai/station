@@ -5,7 +5,7 @@
  * It replaces `KnownEnvironmentsSection` + `SshEnvironmentsSection`, which
  * rendered two lists with two card grammars — and, because both folded the
  * same SSH profiles, listed an SSH computer twice. The fold below is the one
- * station#1096 built (identity merge across paired/manual/SSH); what changed
+ * archive#1096 built (identity merge across paired/manual/SSH); what changed
  * is that a folded SSH row now carries the server's phase state and its
  * connect/stop action rather than a second, weaker copy of it.
  *
@@ -99,7 +99,7 @@ function SshForwardState({
     transport: forward.transport,
     launcherError,
     launcherUnknown,
-    // station#3711: derived in sshForwardState, not here — a caller-side
+    // archive#3711: derived in sshForwardState, not here — a caller-side
     // ternary is exactly the shape that regressed to `isSuccess`-as-boolean.
     probe: deriveSshForwardProbeState(instance),
   });
@@ -138,7 +138,7 @@ export function ComputersSection() {
   const { rows, environments, sshEnvironments, isLoading, isError, refetch } =
     useComputerRows({ hideEndpoint });
   const registry = knownEnvironmentRegistry();
-  // station#settings-revamp slice 5: outbound peer credentials' one UI home,
+  // archive#settings-revamp: outbound peer credentials' one UI home,
   // read-only — the CLI stays the whole provisioning mechanism. `GET
   // /api/environments/peers` is `access:manage`-gated for a REMOTE caller, so
   // a non-operator browser session can 403; render this only on success.
@@ -325,7 +325,7 @@ export function ComputersSection() {
                   or the creator becomes the next view-but-can't-act dead end.
                   The row's action cell still holds exactly one control; removal
                   is a low-emphasis link inside the row body.
-                */}
+*/}
                 {row.sshEnvironmentId && (
                   <button
                     type="button"

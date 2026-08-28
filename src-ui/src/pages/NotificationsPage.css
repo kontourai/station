@@ -163,7 +163,7 @@
 /*
  * Attention-item styling (the "Needs attention" section's cards, including
  * `.attention-*` action affordances) moved to
- * `components/attention/AttentionCard.css` (station#1170) — that component
+ * `components/attention/AttentionCard.css` (archive#1170) — that component
  * is now also rendered from SessionsView, which doesn't load this
  * lazy-loaded page chunk. `.notification-card*` below stays here: it's
  * still owned by the plain notification list (NotificationCard.tsx),
@@ -387,7 +387,7 @@
   }
 }
 
-/* station#1780: the same observation line the popover row renders. */
+/* archive#1780: the same observation line the popover row renders. */
 .notification-card__answerability {
   font-style: italic;
   overflow-wrap: anywhere;

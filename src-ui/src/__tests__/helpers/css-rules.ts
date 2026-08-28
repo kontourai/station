@@ -3,13 +3,13 @@
  * assert stacking and geometry contracts against the CSS source.
  *
  * It exists because those tests looked for a block whose selector list was
- * EXACTLY the selector — `.chat-dock {` — and station#3929 consolidated the
+ * EXACTLY the selector — `.chat-dock {` — and archive#3929 consolidated the
  * dock's shared geometry into `:is(.chat-dock, .dock-slot) {` so that one
  * placement is stated once instead of twice. The declarations still reach
  * `.chat-dock`; the tests simply could not see them, and reported a missing
  * `z-index` on a dock that has one.
  *
- * The widening is deliberately narrow: an `:is()` list naming the selector,
+ * The widening is deliberately narrow: an `:is` list naming the selector,
  * and nothing else. A rule that merely MENTIONS the selector somewhere in its
  * list — `.app__main--dock-right:has(> .chat-dock) > .banner-host` — is a rule
  * about the banner host, and treating it as a dock rule would be a worse

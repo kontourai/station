@@ -213,7 +213,9 @@ describe('desktop build manifest', () => {
     ) as { scripts: Record<string, string> };
 
     expect(pkg.scripts.tauri).toBe('cd src-desktop && tauri');
-    expect(pkg.scripts['build:desktop']).toBe('node scripts/build-desktop.mjs');
+    expect(pkg.scripts['build:desktop']).toBe(
+      'npm run product-version:check && node scripts/build-desktop.mjs',
+    );
     const wrapper = readFileSync(
       new URL('../build-desktop.mjs', import.meta.url),
       'utf8',

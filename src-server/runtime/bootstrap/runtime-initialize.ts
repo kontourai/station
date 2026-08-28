@@ -159,9 +159,9 @@ export interface InitializeRuntimeDeps {
     loadACPConfig: () => Promise<unknown>;
     getProjectHomeDir: () => string;
     loadIntegration: (id: string) => Promise<ToolDef>;
-    /** #895 wave A: resolve an on-disk agent's spec for session-agent capability resolution. */
+    /** archive#895 wave A: resolve an on-disk agent's spec for session-agent capability resolution. */
     loadAgent: (slug: string) => Promise<AgentSpec>;
-    /** station#3063: boot-time built-in integration materialization. */
+    /** archive#3063: boot-time built-in integration materialization. */
     saveIntegration: (id: string, def: ToolDef) => Promise<void>;
     hasIntegration: (id: string) => Promise<boolean>;
     /** Agent-record enumeration for boot-time engine adoption. */
@@ -171,14 +171,14 @@ export interface InitializeRuntimeDeps {
   storageAdapter: FileStorageAdapter;
   skillService: {
     discoverSkills: (...args: any[]) => Promise<void>;
-    /** #895 wave A: resolve a skill id to its installed on-disk directory. */
+    /** archive#895 wave A: resolve a skill id to its installed on-disk directory. */
     getSkill: (id: string) => Promise<{ path?: string }>;
   };
   feedbackService: FeedbackService;
   voiceService: VoiceSessionService;
   acpBridge: ACPManager;
   /**
-   * station#1194 (epic #1191, slice B): resolves the built-in default
+   * archive#1194 (epic archive#1191, slice B): resolves the built-in default
    * agent's engine binding from the LIVE ready-connections list — optional
    * so installations/tests that don't wire it see no behavior change
    * (`undefined` binding == Station's own engine, byte-identical).
@@ -191,7 +191,7 @@ export interface InitializeRuntimeDeps {
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
-  /** station#3245: lifetime analytics' read of the orchestration substrate. */
+  /** archive#3245: lifetime analytics' read of the orchestration substrate. */
   orchestrationUsageRef?: OrchestrationUsageRef;
   monitoringEmitter?: MonitoringEmitter;
   activeAgents: Map<string, Agent>;
@@ -207,7 +207,7 @@ export interface InitializeRuntimeDeps {
   >;
   toolNameMapping: Map<string, unknown>;
   toolNameReverseMapping: Map<string, string>;
-  /** station#1834: hook-construction inputs for the default agent's tool gate. */
+  /** archive#1834: hook-construction inputs for the default agent's tool gate. */
   agentFixedTokens?: Map<
     string,
     { systemPromptTokens: number; mcpServerTokens: number }
@@ -250,7 +250,7 @@ export interface InitializeRuntimeDeps {
    * *before* `initializeRuntimeAgents()` or `new VoltAgent(...)` run. Lets
    * `StationRuntime` assign its own fields early so closures bound at
    * construction time (e.g. `createVoltAgentInstance`, `configureRoutes`)
-   * never observe them as `undefined` mid-initialize (#208).
+   * never observe them as `undefined` mid-initialize (archive#208).
    */
   onCoreConfigReady: (core: {
     appConfig: AppConfig;
@@ -368,7 +368,7 @@ export async function initializeRuntime(
   if (features.includes('strands-runtime')) {
     appConfig.runtime = 'strands';
   }
-  // station#980: default OFF. In-memory only (never persisted to
+  // archive#980: default OFF. In-memory only (never persisted to
   // config/app.json) — mirrors the `strands-runtime` flag just above.
   // **Boot-time snapshot only — NOT the source of truth after this point.**
   // `this.appConfig` (station-runtime.ts) is wholesale reassigned from a
@@ -401,7 +401,7 @@ export async function initializeRuntime(
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),
     resolvePreToolPolicy: deps.resolveAcpPreToolPolicy,
-    // station#1684: the wire-safe substitution for the built-in
+    // archive#1684: the wire-safe substitution for the built-in
     // station-control server on the ACP channel (see
     // acp-mcp-passthrough.ts's header comment). Same per-session,
     // 12-hour-TTL, station-control-scoped token the Codex closure in
@@ -425,7 +425,7 @@ export async function initializeRuntime(
   let stationAgentsReady = false;
   const stationAgentAdapter = new StationAgentAdapter({
     apiBase: `http://127.0.0.1:${port}`,
-    // station#1049: the active set alone under-recognizes agents the real
+    // archive#1049: the active set alone under-recognizes agents the real
     // chat route can still report on (a persisted agent whose model failed
     // to resolve at registration is "known" to /chat, which returns a
     // specific 409 — not "unknown"). This is a strict widening (accept-more,
@@ -433,7 +433,7 @@ export async function initializeRuntime(
     // the managed-chat-orchestration flip AND the always-on `delegateTask`
     // Station-agent branch (which uses provider 'station-agent' regardless of
     // the flag) — not flip-only, contrary to what the flag's name suggests.
-    // station#1992: the active set keys the built-in default agent under the
+    // archive#1992: the active set keys the built-in default agent under the
     // internal runtime key 'default' (runtime-default-agent.ts), while every
     // caller reaching this gate uses the public slug 'station' — and the
     // registry-declared default agent has no persisted file for the loader
@@ -467,7 +467,7 @@ export async function initializeRuntime(
   const flowRunService = new FlowRunService();
   const hostedTenantRegistry = loadHostedTenantRegistryFromEnvironment();
   const publicAdapterRegistry = createProviderAdapterRegistry();
-  // #895 wave A: resolve per-agent capability delivery (ACP tool servers,
+  // archive#895 wave A: resolve per-agent capability delivery (ACP tool servers,
   // Claude skills) into a session's ResolvedAgentDefinition before dispatch.
   // Fail-open closures, mirroring the ClaudeAdapter skills wiring above:
   // an unknown agent/tool-server/skill degrades to "not resolved", never a
@@ -488,7 +488,7 @@ export async function initializeRuntime(
     },
     logger,
   });
-  // station#1745: the `providerRegistrationSettled` barrier that used to be
+  // archive#1745: the `providerRegistrationSettled` barrier that used to be
   // built here is gone. Plugin-contributed adapters still do not exist in
   // `publicAdapterRegistry` until `loadRuntimePluginAssets` (below) has run,
   // several awaits AFTER `orchestrationService.initialize()` — but nothing
@@ -554,7 +554,7 @@ export async function initializeRuntime(
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
     nativeDeclaredPullRequestResolver,
-    // station#1501 slice 3a: shadow `resolveProjectResource` against the
+    // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
     // and discarded on purpose — `observeCwdShadow` never resolves, rejects,
     // or delays a session start (project-resource-shadow.ts decision 1).
@@ -580,12 +580,12 @@ export async function initializeRuntime(
         ? { name: spec.name, ...(spec.icon ? { icon: spec.icon } : {}) }
         : undefined;
     },
-    // station#2959: per-agent turn-stall window override. Unlike
+    // archive#2959: per-agent turn-stall window override. Unlike
     // `resolveSessionAgent` above, applies to every provider — not gated by
     // `sessionDeliveryChannels`/`ENGINE_CAPABILITY_MATRICES`.
     loadAgentExecutionConfig: composeAgentExecutionConfigLoader(configLoader),
     monitoringEmitter,
-    // station#4080 slice 1: the interrupted-turn consumer's ONLY use of this
+    // archive#4080: the interrupted-turn consumer's ONLY use of this
     // map is the narrow `InterruptedTurnMemoryAdapter` seam — see
     // `OrchestrationServiceOptions.memoryAdapters`'s doc for why
     // orchestration accepts it structurally rather than typed as
@@ -600,9 +600,9 @@ export async function initializeRuntime(
   });
   orchestrationService.initialize();
 
-  // station#1501 slice 3b, seam S5 (`docs/design/portable-project-identity.md`
+  // archive#1501, seam S5 (`docs/design/portable-project-identity.md`
   // §2.2.1): where the attached-session reverse map's candidate roots come
-  // from. The #1462 tie-break itself is untouched, and
+  // from. The archive#1462 tie-break itself is untouched, and
   // `resolveAttachedProjectRoots` (which owns the never-drop-a-candidate rule
   // and carries its rationale) is the only thing this wiring decides.
   const attachedProjectResourceResolver = new ProjectResourceResolver({
@@ -631,7 +631,7 @@ export async function initializeRuntime(
     policyService: getAgentPolicyService(logger),
     flowRunService,
     emitEvent: (event) => {
-      // station#1399 fix round 2, B3 (writer-inventory ratchet): a
+      // archive#1399 fix round 2, B3 (writer-inventory ratchet): a
       // `platform.mutation` event's own construction never sets
       // `method: 'tool.completed'`, so this is a no-op today — routed
       // through the safe sanitizer anyway so every `appendEvent`/
@@ -655,7 +655,7 @@ export async function initializeRuntime(
   // files. Off by default (start() is a no-op without config); fail-soft —
   // Console being down never affects sessions. Retained (not fire-and-forget)
   // and returned below so `shutdownRuntimeServices` can `stop()` it (review
-  // fix, HIGH, station#1093 Part B fix round) — its coalescing worker now
+  // fix, HIGH, archive#1093 Part B fix round) — its coalescing worker now
   // owns a real timer that must be disposed on shutdown, not just abandoned.
   const consoleBridgeService = new ConsoleBridgeService({
     eventBus,
@@ -680,7 +680,7 @@ export async function initializeRuntime(
     });
   }
 
-  // station#1557: the catalogue and the LLM provider must use the region the
+  // archive#1557: the catalogue and the LLM provider must use the region the
   // chat turn will use, resolved once (`providers/llm/bedrock-region.ts`).
   const bedrockRegionResolution = resolveBedrockRegion({
     configRegion: appConfig.region,
@@ -735,7 +735,7 @@ export async function initializeRuntime(
     }
   }
 
-  // #208: hand appConfig/framework/modelCatalog to StationRuntime immediately —
+  // archive#208: hand appConfig/framework/modelCatalog to StationRuntime immediately —
   // initializeRuntimeAgents() (below) and new VoltAgent(...)/configureRoutes()
   // both need them mid-flight, through closures bound at StationRuntime
   // construction time, well before initializeRuntime() itself returns.
@@ -776,7 +776,7 @@ export async function initializeRuntime(
     usageAggregator: nextUsageAggregator,
   });
 
-  // station#3063: the ONE unconditional materialization of the built-in
+  // archive#3063: the ONE unconditional materialization of the built-in
   // integration files (`station-control`, `station-docs`) per process
   // lifetime — at boot, before the first agent construction resolves either
   // id. The persisted shape is instance-independent (no dist path, no port —
@@ -785,7 +785,7 @@ export async function initializeRuntime(
   // carrying the pre-#3063 identity-baked files is rewritten once to the
   // stable form. Reload paths (`bootstrapRuntimeDefaultAgent`) deliberately
   // never rewrite an existing file — a reload that mutates its own watched
-  // inputs is the #1588/#3063 reload-loop anti-pattern.
+  // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
@@ -841,7 +841,7 @@ export async function initializeRuntime(
         agentFixedTokens: deps.agentFixedTokens,
         agentHooksMap: deps.agentHooksMap as any,
         resolveUnattendedGrant: deps.resolveUnattendedGrant,
-        // station#1834 review round 2: the same guardian composition
+        // archive#1834 review round 2: the same guardian composition
         // runtime-agent-builder gives every persisted agent.
         approvalGuardian: new ApprovalGuardianService({
           appConfig,
@@ -903,7 +903,7 @@ export async function initializeRuntime(
       routes.a2a();
       routes.ui();
       routes.doc();
-      // station#2000: inspect Hono's live registration list only after both
+      // archive#2000: inspect Hono's live registration list only after both
       // Station and VoltAgent framework surfaces have mounted. A missing
       // capability entry is a startup error, never an implicit public route.
       assertRuntimeHttpRouteCoverage(app.routes);
@@ -995,7 +995,7 @@ export async function initializeRuntime(
   // Bind the dedicated listener only after every awaited initialization step
   // succeeds, so a rejected startup cannot strand the global voice-port guard.
   attachVoiceWebSocket(port + 2, voiceService, host, {
-    // Scoped pairing (station#1098): a valid credential must ALSO carry
+    // Scoped pairing (archive#1098): a valid credential must ALSO carry
     // orchestration:operate. Shared with terminal's identical gate
     // (`runtime-service-bootstrap.ts`) via `credentialAuthorizedForScope`.
     verifyCredential: (credential) =>

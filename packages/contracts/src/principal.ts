@@ -1,13 +1,13 @@
 /**
  * PrincipalRef — the ONE principal vocabulary for "who did this" in Station
- * (docs/design/principals.md, station#4075 stage 1 architecture map).
+ * (docs/design/principals.md, archive#4075 architecture map).
  *
  * There is deliberately no second registry: `UnattendedPrincipal` in
  * `src-server/runtime/types.ts` (voice/scheduled-job/delegated-child) is
  * already principal-shaped, and its stable identity is representable as a
- * `kind: 'agent'` PrincipalRef. Stage 1 declares the `agent` kind for that
- * future subsumption but does not construct one yet — no production code
- * builds an `agent`-kind PrincipalRef in this stage. Station#4075 stage 2
+ * `kind: 'agent'` PrincipalRef. The `agent` kind is declared for that
+ * future subsumption; no production code
+ * builds an `agent`-kind PrincipalRef yet. archive#4075 stage 2
  * threads PrincipalRef through the dispatch/event path and does the actual
  * subsumption.
  *
@@ -27,7 +27,7 @@
  * widens, or checks any capability; a well-formed `PrincipalRef` proves
  * nothing about what its holder may do.
  *
- * ## id grammar (station#4075 stage 1 review, FINDING 1 — collision-free)
+ * ## id grammar (collision-free)
  *
  * Every `id` is `<kind>:<components...>`, so no two distinct kinds can ever
  * collide — a bare pre-kind-prefix scheme let `servicePrincipal` collide
@@ -42,18 +42,17 @@
  *   on the first colon after the `human:` prefix, never on every colon, so a
  *   colon-bearing subject (e.g. an email-shaped tailnet login) round-trips
  *   exactly. A subject that is empty or contains only whitespace is
- *   REJECTED — `'human:a: '` names nobody (station#4075 stage 1 review round
- *   2, N5). A subject containing a control character ANYWHERE — not only a
+ *   REJECTED — `'human:a: '` names nobody. A subject containing a control character ANYWHERE — not only a
  *   control-only subject — is ALSO rejected, printable content or not: C0
  *   controls (0x00 through 0x1F), DEL (0x7F), and C1 controls (0x80 through
  *   0x9F) are all banned (see the code-unit range check in this file); an
  *   embedded NUL or other control byte inside an identity id is a downstream
  *   log/serialization hazard, and this repo's own zero-tolerance content
  *   gate (`rename-inventory`) already treats control bytes in tracked text
- *   as banned (station#4075 stage 1 review round 3).
+ *   as banned.
  * - `service:<slug>` / `agent:<slug>` — `slug` MUST match
  *   {@link PRINCIPAL_COMPONENT_PATTERN} in full (no colons at all).
- * - `tenant:<tenantId>` — station#4075 stage 2 review round 3 (the hosted
+ * - `tenant:<tenantId>` — archive#4075 (the hosted
  *   composition regression this ruling fixed): `tenantId` MUST match
  *   {@link PRINCIPAL_COMPONENT_PATTERN} in full, the SAME grammar as
  *   `service`/`agent`. RESERVED exactly like {@link LOCAL_OPERATOR_PROVIDER}
@@ -66,8 +65,7 @@
  * `humanPrincipal('a:b', 'c', ...)` gets a thrown
  * {@link InvalidPrincipalComponentError}, never a silently reinterpreted id.
  *
- * ## Validators describe, constructors mint (station#4075 stage 1 review
- * round 2, N1)
+ * ## Validators describe, constructors mint
  *
  * {@link isPrincipalRef} answers "is this a well-shaped `PrincipalRef`?" — a
  * pure, permissive description of the wire/storage shape, used to validate
@@ -114,8 +112,7 @@ export interface PrincipalRef {
    * still contain at least one non-whitespace character: an empty or
    * blank display is not a "no label" state Station represents, and
    * accepting one here let a value pass this validator that the durable
-   * store's own reader then rejected, bricking the store (station#4075
-   * stage 1 review round 2, N2).
+   * store's own reader then rejected, bricking the store (archive#4075).
    */
   readonly display: string;
 }
@@ -134,7 +131,7 @@ export const PRINCIPAL_COMPONENT_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
  * Reserved `provider` value for Station's own contract-defined local
  * single-operator principal — NOT a real identity provider, and never
  * produced by an `IdentitySource`. {@link humanPrincipal} REFUSES to mint a
- * principal for this provider (station#4075 stage 1 review round 2, N1) —
+ * principal for this provider (archive#4075) —
  * the only sanctioned mint site is the authority-gated resolver
  * (`src-server/services/identity/principal-resolver.ts`), which constructs
  * the `human:local:operator` literal directly after verifying mint-time
@@ -156,7 +153,7 @@ export const LOCAL_OPERATOR_SUBJECT = 'operator';
 
 /**
  * Wire-stable error code for `PrincipalUnresolvedError`
- * (`src-server/services/identity/principal-resolver.ts`) — station#4518.
+ * (`src-server/services/identity/principal-resolver.ts`) — archive#4518.
  * A caller this resolver cannot place is a DETERMINISTIC authz failure
  * (no verified identity, no home-possession/tenant authority fact), never a
  * transient one; the same request retried with the same credential fails
@@ -211,7 +208,7 @@ function isValidComponent(value: unknown): value is string {
 /**
  * Whether a code UNIT (not code point) falls in a control range: C0
  * (0x00 through 0x1F inclusive), DEL (0x7F), or C1 (0x80 through 0x9F
- * inclusive) - station#4075 stage 1 review round 3. Implemented as a
+ * inclusive). Implemented as a
  * numeric charCodeAt scan rather than a regex/character-class literal so
  * this source file itself never needs to contain a literal control byte
  * to describe one; every bound below is an ordinary hex number.
@@ -236,9 +233,9 @@ function containsControlCharacter(value: string): boolean {
  * control character anywhere in the string - not only a control-only
  * subject. A subject consisting of nothing but a single NUL, or a
  * printable subject with a NUL (or other control byte) embedded between
- * two ordinary characters, are BOTH rejected (station#4075 stage 1 review
- * round 3: a plain trim()-only check does not strip control characters,
- * so it let both through while minting a genuinely control-byte-bearing
+ * two ordinary characters, are BOTH rejected (a plain trim()-only check
+ * does not strip control characters,
+ * so it lets both through while minting a genuinely control-byte-bearing
  * principal id - a downstream log/serialization hazard, and this repo's
  * own zero-tolerance content gate (rename-inventory) already treats
  * control bytes in tracked text as banned).
@@ -278,8 +275,7 @@ function requireNonBlankDisplay(display: string): void {
  * regardless of caller (see "Validators describe, constructors mint"
  * above).
  *
- * `subject` accept/reject contract (station#4075 stage 1 review rounds 2–3,
- * N5): ACCEPTED — at least one non-whitespace, non-control character, and
+ * `subject` accept/reject contract (N5): ACCEPTED — at least one non-whitespace, non-control character, and
  * otherwise any content at all: colons, unicode, uppercase, mixed case, all
  * allowed, since it is always the id's final segment. REJECTED — empty,
  * whitespace-only, OR containing a control character ANYWHERE in the string
@@ -327,8 +323,9 @@ export function humanPrincipal(
  * with a `human:`-prefixed id's internal structure once concatenated).
  * `display` must contain at least one non-whitespace character.
  *
- * station#4075 stage 1 review FINDING 1 superseded the original "bare
- * wire-value id" design: a `service:` prefix is now always added, so a
+ * The `service:` prefix is deliberate (archive#4075
+ * superseded the original "bare
+ * wire-value id" design): a `service:` prefix is now always added, so a
  * caller that previously fed a raw `userId` string (e.g. `'invoke-user'`)
  * into a monitoring join now gets `'service:invoke-user'` instead — a
  * disclosed, deliberate break of "byte-identical wire value" in favor of
@@ -354,9 +351,8 @@ export function servicePrincipal(slug: string, display: string): PrincipalRef {
 
 /**
  * Build an agent principal from a stable slug — same grammar as
- * {@link servicePrincipal}. Reserved for station#4075 stage 2's
- * `UnattendedPrincipal` subsumption; no production code calls this in
- * stage 1.
+ * {@link servicePrincipal}. Reserved for
+ * `UnattendedPrincipal` subsumption; no production code calls this yet.
  */
 export function agentPrincipal(slug: string, display: string): PrincipalRef {
   if (!isValidComponent(slug)) {
@@ -375,22 +371,22 @@ export function agentPrincipal(slug: string, display: string): PrincipalRef {
 }
 
 /**
- * `tenant` — station#4075 stage 2 review round 3.
+ * `tenant` — the hosted-tenant principal kind (archive#4075).
  *
  * ## Why this kind exists
  *
- * Pre-stage-2, a hosted-tenant request Station could not tie to a specific
+ * Before this kind existed, a hosted-tenant request Station could not tie to a specific
  * human was stamped with the SERVER OPERATOR's own OS alias — a standing
  * attribution lie (every unidentified caller in every tenant read as the
  * SAME "operator" identity, which is not who acted and not even a real
- * person the tenant knows). Stage 2's fail-closed resolver correctly
- * refused to keep doing that, which exposed the lie as a hard failure
+ * person the tenant knows). The fail-closed resolver correctly
+ * refuses to keep doing that, which exposed the lie as a hard failure
  * instead of a silent one — but a hosted deployment fronted purely by
  * hostname-based tenant routing (no per-caller identity provider such as
  * Tailscale Serve WhoIs in the loop) has NO verified individual to name
  * either. `tenant` is the honest middle ground: **the finest honest
  * attribution available — a verified tenant binding with no verified
- * individual.** Per-user hosted identity (station#1859, the tenancy/grants
+ * individual.** Per-user hosted identity (archive#1859, the tenancy/grants
  * track) upgrades these to real `human` principals once it exists; nothing
  * about this kind is meant to be a permanent ceiling.
  *
@@ -441,7 +437,7 @@ export function principalIdMatchesKind(
     const provider = rest.slice(0, colonIndex);
     const subject = rest.slice(colonIndex + 1);
     // N5: a whitespace-only subject (e.g. 'human:a: ') names nobody, and
-    // (round 3) a subject carrying a control character anywhere — even
+    // a subject carrying a control character anywhere — even
     // alongside printable content — is also rejected; see isValidSubject.
     return isValidComponent(provider) && isValidSubject(subject);
   }
@@ -455,8 +451,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Runtime guard for a `PrincipalRef` read from storage or the wire.
- * Validates that `id` actually parses under `kind`'s grammar (station#4075
- * stage 1 review FINDING 1 — a bare shape sniff previously accepted any
+ * Validates that `id` actually parses under `kind`'s grammar (a bare
+ * shape sniff would accept any
  * non-empty string as `id`), that `display` is non-blank (N2 — this must
  * match the durable store's own reader exactly, or a value can pass here
  * and brick the store on its next read), and rejects unknown extra fields

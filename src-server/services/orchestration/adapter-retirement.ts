@@ -31,7 +31,7 @@ export interface AdapterRetirementDeps {
 }
 
 /**
- * Adapter retirement and the bounded-await helpers (epic #4024 slice 12).
+ * Adapter retirement and the bounded-await helpers (epic archive#4024).
  *
  * Scope is deliberately NARROWER than the decomposition map's "C1 — adapter
  * lifecycle": adapter currency, stream consumption, readiness and the

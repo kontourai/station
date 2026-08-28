@@ -130,7 +130,7 @@
   }
 }
 
-/* UX audit T3: the reason a queued follow-up is still queued, rendered with
+/* the reason a queued follow-up is still queued, rendered with
    the message it is holding back rather than only as a transient notice. */
 .queued-messages__failure {
   display: flex;

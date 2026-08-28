@@ -10,7 +10,7 @@ import {
 // Mirrors builtin-runtime-workflow.spec.ts's mock-SSE harness (orchestration
 // commands + events) rather than sharing its local helpers directly, since
 // this scenario only needs a single runtime agent and a route set scoped to
-// the pending-queue flow (#613).
+// the pending-queue flow (archive#613).
 
 const PROJECT = {
   id: 'p-default',
@@ -266,7 +266,7 @@ test.describe('Pending message queue (#613)', () => {
     // the next-to-send row at the BOTTOM, so "Move message down" moves a
     // row toward sending sooner. Move beta down: it becomes next to send
     // (order 1), alpha rises to order 2 — and beta's rendered position
-    // must actually move toward the bottom (review #613-1 direction rule).
+    // must actually move toward the bottom (archive#613's direction rule).
     await betaRow.getByRole('button', { name: 'Move message down' }).click();
     await expect(betaRow.locator('.queued-message__order')).toHaveText('1');
     await expect(alphaRow.locator('.queued-message__order')).toHaveText('2');

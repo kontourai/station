@@ -77,7 +77,7 @@ export class AnthropicLLMProvider extends AiSdkLLMProvider {
           has_more?: unknown;
           last_id?: unknown;
         };
-        // station#1430: no `supportsTools` here — Anthropic's `GET
+        // archive#1430: no `supportsTools` here — Anthropic's `GET
         // /v1/models` response objects are `{ id, type, display_name,
         // created_at }` (verified against the live API shape). It reports no
         // capability field, so there is nothing truthful to read; every

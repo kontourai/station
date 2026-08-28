@@ -111,7 +111,7 @@ function fakeExternalEngineAdapter(input: {
     status: 'installed' | 'missing' | 'error';
     category?: 'required' | 'optional';
   }>;
-  // station#1193 review finding 1: `getPrerequisites` is OPTIONAL on
+  // archive#1193 review finding 1: `getPrerequisites` is OPTIONAL on
   // `ProviderAdapterShape` — set this to omit the method entirely (as a
   // real plugin adapter that never wired up an auth probe would), rather
   // than defaulting to an empty-but-present function.
@@ -397,7 +397,7 @@ describe('System Routes', () => {
     ]);
   });
 
-  // station#1085: this used to fail closed on any one missing variable, so the
+  // archive#1085: this used to fail closed on any one missing variable, so the
   // packaged desktop app — which set none of them — showed "Build provenance
   // is unavailable" while a `./station start` instance showed everything.
   describe('partial build provenance', () => {
@@ -540,7 +540,7 @@ describe('System Routes', () => {
       });
     });
 
-    // station#1985: `readBuildProvenance`'s third parameter is the baked
+    // archive#1985: `readBuildProvenance`'s third parameter is the baked
     // esbuild fallback, injected directly here so these tests never have to
     // mutate real `globalThis` state. Nested inside this describe so `now`
     // and `complete` are in scope, matching the other cases in this block.
@@ -745,7 +745,7 @@ describe('System Routes', () => {
     const elapsedMs = performance.now() - startedAt;
 
     // Contract coupling: lowering the client timeout below the route's actual
-    // worst case must break this test instead of reviving station#1345.
+    // worst case must break this test instead of reviving archive#1345.
     expect(elapsedMs).toBeLessThan(HEALTH_PROBE_TIMEOUT_MS);
     expect(body.prerequisites).toEqual([]);
     expect(body.prerequisitesState).toBe('pending');
@@ -964,7 +964,7 @@ describe('System Routes', () => {
   });
 
   /*
-   * station#3653 — the catalogue-less connection. An OpenAI-compatible
+   * archive#3653 — the catalogue-less connection. An OpenAI-compatible
    * endpoint that serves chat and answers `GET /models` with an empty list
    * earns a PASSED explicit-test receipt from `probeChatCompletion`'s real
    * one-token turn against its configured `defaultModel`, so it is not
@@ -1217,7 +1217,7 @@ describe('System Routes', () => {
     );
   });
 
-  // station#1193 (epic #1191, slice A): "chat ready" is engine-agnostic — a
+  // archive#1193 (epic archive#1191, slice A): "chat ready" is engine-agnostic — a
   // ready external engine (Claude Code/Codex, or a connected ACP engine) is
   // symmetric with a ready Station model connection, and readiness for a
   // native engine means CLI resolvable AND authenticated, never bare `which`.
@@ -1317,7 +1317,7 @@ describe('System Routes', () => {
       ]);
     });
 
-    // station#1194: the two regressions this slice fixes, both reproduced
+    // archive#1194: the two regressions this slice fixes, both reproduced
     // from a real machine before the change (see the issue's payload dump).
     test('chat is ready via a ready engine alone — no model connection, no default agent', async () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValueOnce(false);
@@ -1334,7 +1334,7 @@ describe('System Routes', () => {
       const app = createSystemRoutes(createMockDeps() as any, mockLogger);
       const body = await waitForStatusDiscovery(app);
       // Previously false while runtime.ready was true — the contradiction
-      // #1191 opens with. A ready engine connection is already manufactured
+      // archive#1191 opens with. A ready engine connection is already manufactured
       // into a selectable agent, so a turn can genuinely run.
       expect(body.capabilities.chat.ready).toBe(true);
       expect(body.capabilities.chat.source).toBe('claude-cli');
@@ -1379,7 +1379,7 @@ describe('System Routes', () => {
       expect(body.capabilities.chat.ready).toBe(true);
     });
 
-    // station#1194 review (HIGH): resolveExternalEngineReadiness used to
+    // archive#1194 review (HIGH): resolveExternalEngineReadiness used to
     // hardcode `enabled: true` and had no appConfig to consult, so it could
     // not see a connection the user had disabled. enriched-agents.ts DOES
     // read that setting and withholds the selectable agent, so the disabled
@@ -1427,7 +1427,7 @@ describe('System Routes', () => {
       ]);
     });
 
-    // station#1345 deliberately replaces always-fresh prerequisite discovery
+    // archive#1345 deliberately replaces always-fresh prerequisite discovery
     // with stale-while-revalidate. A connection toggle can therefore retain
     // the cached answer until the 60s TTL, then refreshes in the background.
     test('refreshes cached engine readiness after the prerequisite TTL', async () => {
@@ -1651,7 +1651,7 @@ describe('System Routes', () => {
       ]);
     });
 
-    // station#1193 review finding 1: `getPrerequisites` is OPTIONAL on
+    // archive#1193 review finding 1: `getPrerequisites` is OPTIONAL on
     // `ProviderAdapterShape`. A plugin external-engine adapter that never
     // wired one up must fail closed (NOT ready) rather than reading as
     // "ready" from an empty-but-unverified prerequisite list.
@@ -1749,7 +1749,7 @@ describe('System Routes', () => {
     });
   });
 
-  // station#1985: additive self-report of this Station instance's
+  // archive#1985: additive self-report of this Station instance's
   // build/port identity, fail-open (never a 503) mirroring
   // readBuildProvenance's own degrade-don't-fabricate doctrine.
   test('GET /instance returns component + full fields when build provenance is complete', async () => {

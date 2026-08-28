@@ -8,9 +8,9 @@ import {
 } from '../utils/sessionDisplay';
 
 /**
- * station#1781 — the session-display fold family, made answerability-aware.
+ * archive#1781 — the session-display fold family, made answerability-aware.
  *
- * The live regression this closes: station#1791 retired the boot-time
+ * The live regression this closes: archive#1791 retired the boot-time
  * cancellation write, so a dead session's `pendingReview` /
  * `lifecycleState: 'review_pending'` never converge. `delegatedTaskPriority`
  * returned 0 — the HIGHEST rank — for exactly that shape, and
@@ -124,7 +124,7 @@ describe('delegatedTaskPriority', () => {
 describe('terminal and unanswerable are independent facts', () => {
   test('AC5 (control): a failed session is terminal but NOT unanswerable', () => {
     // `past_resume` is `{completed, canceled}` only — `failed -> queued |
-    // running` is a live retry path (station#1090). A predicate that treated
+    // running` is a live retry path (archive#1090). A predicate that treated
     // `failed` as unanswerable would defeat that retry design, which is why
     // `open-requests.ts` carries a predicate pin for it.
     const failed = task({ lifecycleState: 'failed' });
@@ -135,7 +135,7 @@ describe('terminal and unanswerable are independent facts', () => {
   test('and a non-terminal session can be unanswerable', () => {
     // The two questions cross, which is why the surfaces read them
     // separately rather than through one conjunction — see the note in
-    // `sessionDisplay.ts` on station#1781's suggested `isActionableSession`.
+    // `sessionDisplay.ts` on archive#1781's suggested `isActionableSession`.
     const stranded = task({
       lifecycleState: 'needs_input',
       answerability: observation,

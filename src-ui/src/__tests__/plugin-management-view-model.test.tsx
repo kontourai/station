@@ -34,7 +34,7 @@ const mocks = vi.hoisted(() => ({
   reloadPlugins: vi.fn(),
   revokePermission: vi.fn(async () => ({ granted: [] })),
   requestConsent: vi.fn(),
-  // Review H1: `data: plugins = []` alone makes a failed `usePluginsQuery`
+  // `data: plugins = []` alone makes a failed `usePluginsQuery`
   // read indistinguishable from a host with no plugins installed, so
   // `PluginManagementView` claimed "No plugins installed yet" over a read
   // that never answered.
@@ -106,7 +106,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useReloadPluginsMutation: () => ({
     mutateAsync: mocks.reloadPlugins,
   }),
-  // station#3815: withdrawing a permission.
+  // archive#3815: withdrawing a permission.
   useRevokePluginPermissionMutation: () => ({
     mutateAsync: mocks.revokePermission,
   }),
@@ -162,7 +162,7 @@ describe('usePluginManagementViewModel', () => {
   });
 
   /**
-   * station#4288. Everything below drives the real sequence: preview, then
+   * archive#4288. Everything below drives the real sequence: preview, then
    * decide, then — only then — install. The preview payload is what the
    * server now returns; the decision is assembled from it, never invented by
    * the client.

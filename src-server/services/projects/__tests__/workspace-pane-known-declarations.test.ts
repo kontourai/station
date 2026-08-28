@@ -233,7 +233,7 @@ describe('known Workspace Pane declarations', () => {
       }),
     );
     // Chat is issued for a Project AND placed projectless by the shell dock
-    // (station#3970). This asserts the Project-bound half, which the dock's
+    // (archive#3970). This asserts the Project-bound half, which the dock's
     // arrival must not cost: dropping it would take Chat out of every layout.
     expect(createWorkspaceChatPaneInstance('project-a')).toEqual(
       expect.objectContaining({ descriptorId: 'pane:builtin:chat' }),

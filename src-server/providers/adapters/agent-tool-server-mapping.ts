@@ -1,16 +1,16 @@
 /**
  * Station#1157: the ResolvedAgentToolServer → ToolDef mapping shared by
  * every external-engine adapter that delivers an agent's authored
- * `toolServers` to its engine (ACP today; Claude as of #1157). Lives here,
+ * `toolServers` to its engine (ACP today; Claude as of archive#1157). Lives here,
  * not duplicated per adapter, so the resolved-tool-server shape has exactly
  * one translation into the adapter-facing `ToolDef` — see
  * `docs/design/agent-engine-unification.md` §5's single-source-of-truth
  * requirement, the same rationale `engine-capability-matrix.ts` already
  * documents for the capability matrix itself.
  *
- * Originally `acp-adapter.ts`'s private `toPassthroughToolDef` (#895 wave
+ * Originally `acp-adapter.ts`'s private `toPassthroughToolDef` (archive#895 wave
  * A); moved here unchanged when the Claude adapter needed the identical
- * mapping (#1157) rather than a second copy.
+ * mapping (archive#1157) rather than a second copy.
  */
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';

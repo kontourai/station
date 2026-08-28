@@ -82,7 +82,7 @@ describe('runtime resource posture', () => {
     ).toMatchObject({ kind: 'critical', busyPercent: 95 });
   });
 
-  // station#3089 fault-injection target (a): the boundary that separates
+  // archive#3089 fault-injection target (a): the boundary that separates
   // degraded from critical. One busy percent below the critical threshold
   // must classify degraded, never critical — a `>=` vs `>` slip on this
   // comparison would make an engine-start refusal fire one point early (or
@@ -114,7 +114,7 @@ describe('runtime resource posture', () => {
     ).toMatchObject({ kind: 'degraded', busyPercent: 86 });
   });
 
-  // station#3089 fault-injection target (b): the observed value must be
+  // archive#3089 fault-injection target (b): the observed value must be
   // carried into the refusal message a client eventually renders — not
   // resampled or summarized away. This is the server-side half of that
   // proof; `chatErrorTranslation.test.ts` proves the client half (the

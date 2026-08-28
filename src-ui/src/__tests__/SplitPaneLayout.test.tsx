@@ -114,10 +114,10 @@ describe('SplitPaneLayout', () => {
     expect(screen.getByText('Create a workspace skill.')).toBeTruthy();
   });
 
-  // station#4463 slice 2 (the double-empty rule): an empty list has nothing
+  // archive#4463 (the double-empty rule): an empty list has nothing
   // to select, so the detail pane's default "nothing selected" copy is not a
   // second fact — it repeats the list pane's own empty message. Review's
-  // queue showed both at once (the 2026-08-26 shell audit); this is the
+  // queue showed both at once (the); this is the
   // mechanism every split-pane route inherits.
   describe('the double-empty rule', () => {
     test('an empty list suppresses the default detail empty state entirely', () => {
@@ -199,7 +199,7 @@ describe('SplitPaneLayout', () => {
       expect(screen.getByText('Add catalog')).toBeTruthy();
     });
 
-    // L5 (fix round): a failed read is ALSO an empty items array, so the
+    // a failed read is ALSO an empty items array, so the
     // detail default must defer here too — the list pane's error message is
     // the one fact worth showing, not "error" beside a "nothing selected"
     // that has nothing to do with the read that failed.
@@ -246,7 +246,7 @@ describe('SplitPaneLayout', () => {
     });
   });
 
-  // Review H1: the eight split-pane routes each derived "the list is empty"
+  // the eight split-pane routes each derived "the list is empty"
   // from `items.length === 0`, which is ALSO what a failed read produces —
   // Guidance asserted "No installed skills yet" over a 500. The failure branch
   // is the shell's, so every route gets it from one place.
@@ -276,9 +276,9 @@ describe('SplitPaneLayout', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  // station#771 fix round (review HIGH): `error` used to outrank `items`
+  // archive#771: `error` used to outrank `items`
   // unconditionally, so a REFETCH failure with cached items still on hand
-  // blanked a working list behind an error card — the exact regression #769
+  // blanked a working list behind an error card — the exact regression archive#769
   // exists to prevent (ProjectPage renders cached data with no banner on a
   // refetch failure). A non-empty `items` must win: the list keeps
   // rendering, with no new banner UI, exactly as it did before the refetch.
@@ -372,7 +372,7 @@ describe('SplitPaneLayout', () => {
     expect(onSearch).toHaveBeenCalledWith('');
   });
 
-  // station#4463 slice 2 fix round (M3, delta review round 3): a typed query
+  // archive#4463: a typed query
   // over a collection that is ALREADY empty is not what emptied it — without
   // `collectionEmpty`, this misattributed the emptiness to the search
   // ("Nothing in X matches your search") and offered a "Clear filter" action
@@ -619,7 +619,7 @@ describe('SplitPaneLayout', () => {
 
     expect(screen.getByLabelText('Loading list')).toBeTruthy();
     expect(screen.getByLabelText('Loading detail')).toBeTruthy();
-    // station#4463 slice 2: the list wait is the shared `SkeletonList` row
+    // archive#4463: the list wait is the shared `SkeletonList` row
     // shape (icon + two lines), not a bespoke local skeleton.
     expect(container.querySelectorAll('.skeleton-list__item')).toHaveLength(7);
     expect(
@@ -628,7 +628,7 @@ describe('SplitPaneLayout', () => {
       ),
     ).toHaveLength(3);
 
-    // Fix round M1: count/nesting alone did not catch the rhythm actually
+    // Count/nesting alone did not catch the rhythm actually
     // drifting when the local skeletons were collapsed onto the shared
     // primitives — the shared circle defaults to 28px, visibly taller than
     // what this replaced. The icon size is a directly-binding CSS property
@@ -1148,10 +1148,10 @@ describe('SplitPaneLayout', () => {
   });
 
   /**
-   * station#1259. The row this restores to is a list item, and the detail pane
+   * archive#1259. The row this restores to is a list item, and the detail pane
    * the sheet opened is free to delete it — a bare ref to the button was then a
-   * detached node, and `.focus()` on one is a silent no-op that leaves `<body>`
-   * focused (station#1126). The test above is the surviving-row control; this
+   * detached node, and `.focus` on one is a silent no-op that leaves `<body>`
+   * focused (archive#1126). The test above is the surviving-row control; this
    * is the case that had no restore at all.
    *
    * jsdom is the right level for this half: it is about a node leaving the
@@ -1444,8 +1444,8 @@ describe('SplitPaneLayout', () => {
       expect(header?.textContent).toContain(
         'Connect model services for chats and agents',
       );
-      // The trail minus its own name — station#4463 slice 1 (the 2026-08-26
-      // shell audit) retired the page header's old self-referential eyebrow
+      // The trail minus its own name — archive#4463 (the
+      //) retired the page header's old self-referential eyebrow
       // shape (`SCHEDULE` above **Schedule**); only the real ancestor
       // ('connections') remains, and the current page's own segment
       // ('providers', which restates the page's h1) is dropped.
@@ -1466,7 +1466,7 @@ describe('SplitPaneLayout', () => {
       ).toBeTruthy();
     });
 
-    // station#4463 slice 1 fix round: `framedBreadcrumbSegments` only drops a
+    // archive#4463: `framedBreadcrumbSegments` only drops a
     // trailing segment that RESTATES the title. When it does not (a real
     // multi-level trail — an entity slug ahead of an editor tab, say), the
     // last segment is KEPT — and a kept terminal crumb must never auto-link
@@ -1569,7 +1569,7 @@ describe('SplitPaneLayout', () => {
 });
 
 /**
- * 2026-08-26 audit F6: a row with `trailing` content (Agents' Chat/Connect
+ * a row with `trailing` content (Agents' Chat/Connect
  * button, Sessions' project-filter pill) ellipsized names like "Claude Code"
  * and "Station" at the pane's generous default width (280px,
  * `SPLIT_PANE_DEFAULT_WIDTH`). `.split-pane__item`'s own right padding is

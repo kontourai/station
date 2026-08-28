@@ -1,13 +1,13 @@
 /**
  * tour-steps — the anchored coachmark tour that teaches why evidence sits
- * beside work (station#2652 chapter 3).
+ * beside work (archive#2652 chapter 3).
  *
  * Two rules this module exists to hold:
  *
  * 1. **No step spells a route.** Each step names the canonical surface as a
  *    `NavigationView`, and `tourStepPath` derives the path through
  *    `getPathForView` — the same helper `OnboardingGate`, the header, and the
- *    sidebar already navigate with. Post-#2678 the repo has exactly one
+ * sidebar already navigate with. Post-archive#2678 the repo has exactly one
  *    spelling per surface plus a central retirement table
  *    (`getLegacyPathRedirect`); a tour that hardcoded `/connections/models`
  *    would still "work" via that redirect and would quietly reintroduce the
@@ -93,7 +93,7 @@ export function tourStepPath(step: FirstRunTourStep): string | null {
  * position is indistinguishable from a real one to the person reading it.
  */
 /**
- * station#3280 review finding 1: `tourStepId` is DURABLE resume state
+ * archive#3280: `tourStepId` is DURABLE resume state
  * (device-settings.ts), so a step rename must keep every previously
  * persisted id resolving to the renamed step — not silently to step 0.
  */

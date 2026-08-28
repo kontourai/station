@@ -8,7 +8,7 @@ import {
 } from '../device-pairing-service.js';
 
 /**
- * station#3277: the persist-before-mutate contract on the four clone-and-swap
+ * archive#3277: the persist-before-mutate contract on the four clone-and-swap
  * mutation paths (exchange, revokeDevice, removeRevokedDevice,
  * recordCredentialActivity — each builds a next registry, persists it, and
  * only then swaps it into memory) is proven elsewhere by revoking write
@@ -26,7 +26,7 @@ import {
  * which is the last step of the temp-file-then-rename write and therefore the
  * point where a partially applied mutation would become observable.
  *
- * Scope: station#3324 brought the remaining `#persistRegistry` callers onto
+ * Scope: archive#3324 brought the remaining `#persistRegistry` callers onto
  * the same contract, so every mutation path is exercised here. The one
  * deliberate asymmetry is the `lastUsedAt` touch, which sits on a READ path
  * (verifyCredential/identifyDevice): it persists before mutating like the

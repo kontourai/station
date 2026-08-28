@@ -76,7 +76,7 @@ export function useScrollRestoration(
     };
     element.addEventListener('scroll', save, { passive: true });
     // Navigation intent, saved BEFORE the route swap. `navigationStore.
-    // navigate()` pushes the URL and dispatches `popstate` synchronously,
+    // navigate` pushes the URL and dispatches `popstate` synchronously,
     // and React's resulting re-render is scheduled rather than applied, so
     // the container still holds the outgoing route's content here and its
     // `scrollTop` is still true. A `scroll` event is the only other save

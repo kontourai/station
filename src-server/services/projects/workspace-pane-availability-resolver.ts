@@ -142,7 +142,7 @@ function defaultAvailabilityInput(
     rollout: 'available',
     distribution:
       candidate.contribution?.enabled === true ? 'enabled' : 'disabled',
-    // #1370 must not infer renderer execution from a descriptor reference.
+    // archive#1370 must not infer renderer execution from a descriptor reference.
     // Until a host adapter proves it, fail closed but retain the pane.
     renderer: 'unknown',
     context,

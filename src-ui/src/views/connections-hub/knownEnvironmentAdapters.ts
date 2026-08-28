@@ -1,6 +1,6 @@
 /**
  * Read-adapter: paired/manual `SavedConnection`s (`@kontourai/station-connect`)
- * → the unified `KnownEnvironment` model (station#1096 R4). Pure projection,
+ * → the unified `KnownEnvironment` model (archive#1096). Pure projection,
  * mirroring `packages/sdk/src/query-domains/knownEnvironments.ts`'s SSH
  * adapter — this module never writes to `ConnectionStore`; the device-pairing
  * mechanism stays the source of truth for credentials, reconnect state, and
@@ -75,7 +75,7 @@ export function savedConnectionsToKnownEnvironments(
 
 /**
  * True when a saved connection can actually be used to control the Station
- * it points at right now — station#1134 review round 1 (HIGH): a connection
+ * it points at right now — archive#1134: a connection
  * can be `saved` (present in `ConnectionStore`) without ever having
  * completed authorization, e.g. the user cancelled
  * `ConnectionManagerModalContent`'s authorize panel, leaving
@@ -85,7 +85,7 @@ export function savedConnectionsToKnownEnvironments(
  * "safe to log, serialize, and display" with no mechanism-specific state) —
  * so the Stations-list UI needs this side lookup instead of inferring
  * control from `source: 'paired'` alone, which was the exact class of
- * unevidenced claim #1116's review fixed for the source badge.
+ * unevidenced claim archive#1116's review fixed for the source badge.
  *
  * `'not-required'` means access is managed outside this projection; it never
  * infers protected-route authority from a loopback/same-origin address.

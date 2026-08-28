@@ -212,7 +212,7 @@ describe('ReviewQueueView', () => {
     }));
   });
 
-  // station#4463 slice 1 (2026-08-26 shell audit): the nav item is 'Review',
+  // archive#4463: the nav item is 'Review',
   // so the page title is 'Review' too — 'Review Queue' disagreed with its own
   // nav noun. The subtitle keeps the fuller queue description.
   test('titles the page "Review", matching its nav item — not "Review Queue"', () => {
@@ -290,7 +290,7 @@ describe('ReviewQueueView', () => {
     expect(
       screen.getByText(/That review receipt isn’t available/i),
     ).toBeTruthy();
-    // The promise this message exists for: no substitution (station#3965).
+    // The promise this message exists for: no substitution (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -689,7 +689,7 @@ describe('failed sources never read as an empty queue', () => {
   });
 
   test('unavailable review-evidence projects are named with their reason while readable receipts still render', () => {
-    // Per-project isolation (#3303): one unreadable project must not blank
+    // Per-project isolation (archive#3303): one unreadable project must not blank
     // the whole independent-review section, and must not be invisible either.
     // The partial case is NOT phrased as a failed load — the source loaded —
     // and each project carries its reason (the operator remedy differs).

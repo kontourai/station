@@ -130,7 +130,7 @@ function ToolResultSection({
 }) {
   const result = event[K.TOOL_CALL_RESULT];
   if (!result) return null;
-  // station#3507: a producer (the OTLP agent-telemetry ingest route, or a
+  // archive#3507: a producer (the OTLP agent-telemetry ingest route, or a
   // tool whose own return value is a plain string) can report an
   // already-string result — re-stringifying it here would wrap it in an
   // extra layer of quotes/escapes, the same double-encode this issue fixed

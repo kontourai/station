@@ -1,5 +1,5 @@
 /**
- * station#1863 — SIGKILL-test fixture.
+ * archive#1863 — SIGKILL-test fixture.
  *
  * This is the "owner" process that the test SIGKILLs. It spawns a detached
  * engine child (which itself spawns a grandchild, mirroring `kiro-cli` →

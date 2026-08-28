@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3136. The dock's unavailable-agent banner used to open with
+ * archive#3136. The dock's unavailable-agent banner used to open with
  * "This agent can't launch with its current model." for EVERY unavailable
  * agent and then interpolate the server's `unavailableReason` — which, for an
- * engine-default alias (station#3027), says the row has no authored Agent
+ * engine-default alias (archive#3027), says the row has no authored Agent
  * definition at all. The banner asserted one cause and quoted another.
  *
  * These tests pin the lead-in to the machine-readable `enable` signal the
@@ -29,7 +29,7 @@ vi.mock('@kontourai/station-connect', () => ({
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agentsMock.current,
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 

@@ -38,14 +38,14 @@ export class BoardTabNotFoundError extends Error {}
  */
 export class BoardReferenceInvalidError extends Error {}
 /**
- * Slice 1 has no update-in-place (station#4079 design: generated-identity
+ * Slice 1 has no update-in-place (archive#4079 design: generated-identity
  * collision diversion is slice 4). A `pin` naming an already-used widget
  * `name` fails closed rather than silently clobbering the existing widget —
  * unpin it first, or move it, to reuse a name.
  */
 export class BoardWidgetNameConflictError extends Error {}
 
-/** Input to {@link BoardStore.pin} — the block is already host-accepted (station#1399's pin-boundary gate runs before this store is ever called). */
+/** Input to {@link BoardStore.pin} — the block is already host-accepted (archive#1399's pin-boundary gate runs before this store is ever called). */
 export interface PinWidgetInput {
   readonly block: UIBlock;
   readonly name: string;
@@ -97,7 +97,7 @@ function validTab(value: unknown): value is BoardTab {
 /**
  * Deliberately shallow: this store's ONLY writer is {@link BoardStore.pin},
  * which always persists an already host-accepted block (`board-provenance
- * .ts`'s `acceptBoardWidgetBlock`, station#1399's contract functions). A
+ * .ts`'s `acceptBoardWidgetBlock`, archive#1399's contract functions). A
  * full per-field UIBlock re-validation on every read would duplicate that
  * gate rather than trust the boundary that already ran it — this checks only
  * that the stored value still looks like the object shape the writer
@@ -208,7 +208,7 @@ function renormalizeTabs(tabs: readonly BoardTab[]): BoardTab[] {
 
 /**
  * Inserts `widget` into `tabId`, positioned after the widget named `after`
- * (or appended when omitted/not found — station#4079 design: "Agent
+ * (or appended when omitted/not found — archive#4079 design: "Agent
  * vocabulary is presets and `after: <name>` — never pixels"), then
  * renormalizes the whole tab to dense 0-based positions.
  */
@@ -267,15 +267,15 @@ function boardIdSegment(label: string, value: string): string {
 }
 
 /**
- * station#4079 slice 1 — the board's persisted store. One JSON file per
- * owning {@link BoardReference} (station#4079 design: "keyed on the durable
+ * archive#4079 — the board's persisted store. One JSON file per
+ * owning {@link BoardReference} (archive#4079 design: "keyed on the durable
  * session/Task identity"), mirroring `session-summary-store.ts`'s
  * per-coordinate file layout. Mutation goes through
  * `mutateJsonFile` (`@kontourai/station-shared/json-file-storage`), the same
  * lock-serialized read/derive/publish primitive `SpatialBoardStore` uses —
  * every pin/unpin/move on one board file is serialized by that primitive's
  * per-path mutation lock, closing the CAS-less-read-modify-write class this
- * repo has hit three times before (station#1588/#1600/#1606).
+ * repo has hit three times before (archive#1588/#1600/#1606).
  *
  * Chosen over the alternative "one shared JSON-store keyed by id"
  * (`conversation-acknowledgement-store.ts`'s `JsonFileStore` idiom): a board
@@ -372,7 +372,7 @@ export class BoardStore {
   }
 
   /**
-   * Pins `input.block` — which MUST already have cleared the station#1399
+   * Pins `input.block` — which MUST already have cleared the archive#1399
    * provenance-accept gate (`board-provenance.ts#acceptBoardWidgetBlock`,
    * called by the route/tool boundary before this method is ever reached) —
    * onto the board, creating its owning tab on first use. Returns the

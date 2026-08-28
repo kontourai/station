@@ -14,7 +14,7 @@ import {
 import type { EventStore } from '../event-store.js';
 
 /**
- * Unit pins for the C14 extraction (epic #4024 slice 3, #4143). Three
+ * Unit pins for the C14 extraction (epic archive#4024, archive#4143). Three
  * contracts the seam map calls identity-critical and the service suite
  * cannot see from outside the collaborator:
  *

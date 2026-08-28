@@ -2,8 +2,8 @@
  * Compact relative-time formatting shared by the work-item surfaces (Home
  * lanes, inbox panel, mobile task switcher).
  *
- * station#1795: `updatedAt` is only ever a real epoch-ms stamp when it is
- * positive — a real `Date.now()`-derived value is never 0 or negative. The
+ * archive#1795: `updatedAt` is only ever a real epoch-ms stamp when it is
+ * positive — a real `Date.now`-derived value is never 0 or negative. The
  * reported bug was exactly this guard's absence: an un-timestamped item's
  * `updatedAt` reduced to a literal 0 upstream and this function happily
  * computed "20668d" (elapsed since 1970) as if that were a real duration.

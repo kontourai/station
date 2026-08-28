@@ -1,5 +1,5 @@
 /**
- * station#1500 slice 2.5 of epic #1425 — the scoped contribution projection
+ * archive#1500 of epic archive#1425 — the scoped contribution projection
  * builder (`docs/design/portable-project-identity.md` §4.2).
  *
  * Turns one scope's persisted offer plus what this Station can observe about the
@@ -33,7 +33,7 @@
  *
  * ## No OpenTelemetry instrument, and why that is the honest choice here
  *
- * `AGENTS.md` requires instrumentation for a new feature, and station#1686
+ * `AGENTS.md` requires instrumentation for a new feature, and archive#1686
  * records the counter-defect: an instrument nobody can read from a real Station
  * is not evidence. This slice ships **no consumer and no route** by its own
  * acceptance criteria, so a counter here could only ever record zero — and the
@@ -98,7 +98,7 @@ export interface InferenceObservation {
   /**
    * The launchable model RECORD ids this connection currently yields — the ids
    * `station.model-inventory/v2` mints, which are unique per Station, NOT
-   * provider-native model names (station#1503 review, L11). A caller that
+   * provider-native model names (archive#1503 review, L11). A caller that
    * supplied bare names would make two connections serving the same model emit
    * two entries sharing `ContributedInference.id`, which that field documents
    * as the key a consumer addresses. Nothing here de-duplicates: both entries
@@ -127,7 +127,7 @@ export type ContributionAxisSource<T> =
        * When the axis's underlying source was observed, ISO-8601 — or `null`
        * ONLY when the caller genuinely cannot say.
        *
-       * **`null` is decisive, not inert** (station#1503 delta review, N1). A
+       * **`null` is decisive, not inert** (archive#1503 delta review, N1). A
        * contributing axis that reports `null` makes the whole projection's
        * `sourceObservedAt` null, which reads as `unknown` and, per §6.1, as
        * NOT SATISFIED. That is the correct fail-closed rule — but it means a
@@ -198,7 +198,7 @@ function sortDiagnostics(
         // BINARY to git — 532 lines of it never rendered in the pull request,
         // `grep`/`git grep -I` skipped it entirely, and the repo's own
         // control-character gate (`npm run rename:inventory`, built after
-        // station#1398 for exactly this hazard) failed. `scripts/
+        // archive#1398 for exactly this hazard) failed. `scripts/
         // rename-inventory.mjs` says it plainly: a literal control character
         // "makes the file binary to git grep and file(1), so it silently opts
         // out of this gate and every other text scanner in the repo."
@@ -351,7 +351,7 @@ function projectExecution(
     // among the repos it actually projected.
     //
     // An entry with NO `verifiedAt` makes the whole axis unobserved (`null`),
-    // rather than dropping out of the comparison (station#1503 review, M3). A
+    // rather than dropping out of the comparison (archive#1503 review, M3). A
     // repo offered on the compat branch has never been verified in its life;
     // letting a sibling repo's recent verification speak for it upgrades an
     // unobserved claim to a fresh one. Same rule, one level down, as
@@ -570,7 +570,7 @@ export function projectContribution(
     projectedAt: input.projectedAt,
     // The OLDEST observation across every axis that CONTRIBUTED — and `null`
     // when a contributing axis cannot say when it observed (§4.2 decision 3,
-    // station#1503 review M3). The `contributed` flag is what stops an axis
+    // archive#1503 review M3). The `contributed` flag is what stops an axis
     // that put nothing in the body from voting, and what stops one that put
     // something in without a clock from silently abstaining.
     sourceObservedAt: foldSourceObservedAt([

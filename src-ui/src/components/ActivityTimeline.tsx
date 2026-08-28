@@ -36,7 +36,7 @@ export function ActivityTimeline() {
     refetch,
   } = useActivityUsageQuery(fromDate, toDate);
 
-  // station#771: this used to fall straight through to `!data?.byDate` on a
+  // archive#771: this used to fall straight through to `!data?.byDate` on a
   // settled error, so a failed read vanished — no chart, no message, no
   // console trace. Cached data from a prior successful load still renders
   // (never blank a working page on a refetch failure).

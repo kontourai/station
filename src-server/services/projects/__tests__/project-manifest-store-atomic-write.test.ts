@@ -1,5 +1,5 @@
 /**
- * station#1499 slice 2, review HIGH-4: the file holding a project's portable
+ * archive#1499, review HIGH-4: the file holding a project's portable
  * `id` — the one value in this system that must never change once anything has
  * joined on it — was written with `writeFileSync(path, data, { flag: 'wx' })`.
  * That is open(O_CREAT|O_EXCL) → write → close: the target exists at ZERO

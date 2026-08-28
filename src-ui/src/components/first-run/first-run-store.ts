@@ -1,6 +1,6 @@
 /**
  * first-run-store — where the guided first run got to on this device
- * (station#2652).
+ * (archive#2652).
  *
  * Module-singleton over `deviceSettingsStore`, mirroring
  * `contexts/onboarding-setup-store.ts` exactly: `getSnapshot` reads the device
@@ -49,7 +49,7 @@ const KNOWN_FIRST_RUN_CHAPTERS: Record<FirstRunChapter, true> = {
 };
 
 /**
- * `Object.hasOwn`, never `in` (delta review LOW-C): `in` walks the prototype
+ * `Object.hasOwn`, never `in`: `in` walks the prototype
  * chain, so `'toString'`, `'constructor'`, `'valueOf'` and `'__proto__'` all
  * read as known chapters. That is reachable — `firstRunProgress` is a
  * composite device setting with no shape validator, so Settings Import
@@ -105,7 +105,7 @@ export function resolveResumePoint(
 }
 
 /**
- * Where the explicit "Take the tour" action should land (review L3).
+ * Where the explicit "Take the tour" action should land
  *
  * Distinct from `resolveResumePoint` on purpose. That rule answers "continue
  * the guided run where it stopped", which for a run abandoned at the questions

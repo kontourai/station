@@ -1,7 +1,7 @@
 import type { HomeWorkItem } from './home-view-model';
 
 /**
- * station#1297: what clicking/selecting a `HomeWorkItem` should do, decided
+ * archive#1297: what clicking/selecting a `HomeWorkItem` should do, decided
  * once from the item's own shape rather than three divergent per-surface
  * branches (`ChatDockInboxPanel` branched on `chatSessionId`,
  * `MobileTaskSwitcher` on `kind === 'chat'`, `HomeView.continueWork` on kind
@@ -64,18 +64,18 @@ export function resolveWorkItemOpenAction(
     agentSlug: item.agentSlug,
     controlMode: item.controlMode,
     projectSlug: item.projectSlug,
-    // station#1312 review (cosmetic): a project-less session must not carry
+    // archive#1312 (cosmetic): a project-less session must not carry
     // a display name at all, or the fallback renders as a bogus project
     // badge in `ChatDockTabBar`. Mirrors `useChatDockActiveChatSync`'s
     // `conversation.projectSlug ?? undefined` (it doesn't even have a
     // project display name to consider).
     //
-    // station#3227 A3: this read `item.projectSlug ? item.projectLabel : …`
+    // archive#3227 A3: this read `item.projectSlug ? item.projectLabel : …`
     // back when `projectLabel` was exactly `projectSlug` whenever the slug
     // existed. `projectLabel` is now the canonical `sessionProjectLabel`,
     // which for a session carrying BOTH a delegated and a local slug returns
     // the delegated one plus its caveat ("station (unverified name match)")
-    // — a sentence, correct on a row pill, wrong inside a tab badge. Reading
+    // a sentence, correct on a row pill, wrong inside a tab badge. Reading
     // the raw slug the guard already tested is byte-identical to the old
     // behaviour and cannot pick up a caveat.
     projectName: item.projectSlug,
@@ -87,7 +87,7 @@ export function resolveWorkItemOpenAction(
 
 /**
  * A session named directly rather than by a `HomeWorkItem` — the shape the
- * project page's Live work section (station#3202) has, because it renders
+ * project page's Live work section (archive#3202) has, because it renders
  * `OrchestrationSessionSummary`s straight out of the Sessions lane model
  * rather than Home's merged work list.
  */
@@ -107,10 +107,10 @@ export interface ConversationOpenSubject {
  * The rehydrate-vs-navigate half of the policy, for a caller that already
  * knows it is holding an orchestration session and not a live chat tab.
  *
- * Split out rather than copied (station#3202). `resolveWorkItemOpenAction`
+ * Split out rather than copied (archive#3202). `resolveWorkItemOpenAction`
  * above now delegates to it, so "can Station reopen this, or must it hand you
  * to /activity?" is decided in exactly one place — the whole point of
- * station#1297, which existed because three surfaces had each branched their
+ * archive#1297, which existed because three surfaces had each branched their
  * own way.
  */
 export function resolveConversationOpenAction(
@@ -136,7 +136,7 @@ export function resolveConversationOpenAction(
 }
 
 /**
- * station#1297: the shared open-chat focus action's payload
+ * archive#1297: the shared open-chat focus action's payload
  * (dispatched by `HomeView.continueWork` and `ProjectSidebar`, both outside
  * the `ChatDock` subtree that owns `openConversation`/`focusSession`).
  * `ChatDock`'s listener used to read only `sessionId` and silently drop the
@@ -198,13 +198,13 @@ export interface WorkItemOpenHandlers {
   ) => Promise<boolean> | boolean | undefined;
   onOpenSession: (threadId: string) => void;
   /**
-   * station#3687: whether the agent catalog has resolved successfully at
+   * archive#3687: whether the agent catalog has resolved successfully at
    * least once (`useAgentsLoaded`). `openConversation`'s `false` means "the
    * agent does not exist" ONLY once the catalog has answered — while it is
-   * pending or failed, `useAgents()` supplies the shared empty array and
+   * pending or failed, `useAgents` supplies the shared empty array and
    * EVERY rehydrate resolves `false`, which used to bounce every inbox click
    * to `/activity`. Absent means "unknown", which is treated as loaded so
-   * existing callers keep the #801 fallback.
+   * existing callers keep the archive#801 fallback.
    */
   agentsLoaded?: boolean;
 }
@@ -213,12 +213,12 @@ export interface WorkItemOpenHandlers {
  * What actually happened to a click, so the caller can be honest about it —
  * acknowledge and stay quiet on a real open, explain a degraded catalog, and
  * say why a row has no open action instead of a silent dead click (the four
- * seams of station#3687's report that live at this layer).
+ * seams of archive#3687's report that live at this layer).
  */
 export type WorkItemOpenOutcome =
   /** Focused, opened, or navigated — the row did what a click promises. */
   | 'opened'
-  /** The row's agent no longer exists; landed on `/activity` (#801). */
+  /** The row's agent no longer exists; landed on `/activity` (archive#801). */
   | 'fallback'
   /** The agent catalog has not answered yet — nothing was navigated. */
   | 'catalog-pending'
@@ -230,7 +230,7 @@ export type WorkItemOpenOutcome =
  * (`ChatDockInboxPanel`, `MobileTaskSwitcher` — both rendered inside
  * `ChatDock`, which owns `openConversation`). Awaits the rehydrate attempt
  * so a stale/deleted agent still lands the user on `/activity` instead of a
- * silent no-op (station#801's rule, extended to this seam).
+ * silent no-op (archive#801's rule, extended to this seam).
  */
 export async function openWorkItem(
   item: HomeWorkItem,
@@ -259,7 +259,7 @@ export async function openWorkItem(
             action.model,
           );
       if (opened === false) {
-        // station#3687 seam 1: `false` from an unanswered catalog is not
+        // archive#3687 seam 1: `false` from an unanswered catalog is not
         // "this agent was deleted" — it is "nothing is known yet". Bouncing
         // the user to /activity on that reading turned every inbox click
         // into a teleport while a query was merely pending.

@@ -4837,7 +4837,7 @@ for (const requiredHelper of [
 const agentConnectionView = readRequiredSource(
   '../src-ui/src/views/AgentConnectionView.tsx',
 );
-if (agentConnectionView.includes('fetch(')) {
+if (hasRawFetchCall(agentConnectionView)) {
   errors.push('AgentConnectionView must not issue raw fetch() calls.');
 }
 for (const requiredHook of [

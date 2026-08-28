@@ -13,7 +13,7 @@ export const INTERNAL_INGRESS_IDENTITY_HEADER = 'x-station-ingress-identity';
 export const INTERNAL_TENANT_HEADER = 'x-station-internal-tenant';
 /**
  * The address Station's own loopback UI proxy saw its directly connected
- * client at (station#1490). Attested, never relayed: the proxy strips any
+ * client at (archive#1490). Attested, never relayed: the proxy strips any
  * client-supplied copy before setting its own, and a reader must accept it
  * only alongside a trusted {@link INTERNAL_API_TOKEN_HEADER} from a loopback
  * direct peer.
@@ -28,7 +28,7 @@ export const INTERNAL_TENANT_HEADER = 'x-station-internal-tenant';
 export const INTERNAL_PROXY_PEER_HEADER = 'x-station-proxy-peer';
 /**
  * The `Host` the BROWSER used, as seen by Station's own loopback UI proxy
- * before it rewrote `Host` to the upstream address (station#3752). Attested
+ * before it rewrote `Host` to the upstream address (archive#3752). Attested
  * exactly like {@link INTERNAL_PROXY_PEER_HEADER}: the proxy strips any
  * client-supplied copy before setting its own, and a reader must accept it
  * only alongside a trusted {@link INTERNAL_API_TOKEN_HEADER} from a loopback

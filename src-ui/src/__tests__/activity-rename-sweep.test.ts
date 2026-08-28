@@ -9,7 +9,7 @@ import {
 import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
 
 /**
- * station#3280: Activity owns the canonical `activity` identity and
+ * archive#3280: Activity owns the canonical `activity` identity and
  * `/activity` route. Prior `/sessions` URLs are a permanent redirect boundary:
  * persisted notifications and old Discord messages remain reachable without a
  * store migration, while every current producer mints the canonical path.

@@ -1,5 +1,5 @@
 /**
- * FirstRunFlow — the guided tour (station#2652 chapter 4).
+ * FirstRunFlow — the guided tour (archive#2652 chapter 4).
  *
  * WHAT THIS IS NOW, AND WHAT IT WAS. This used to be the whole guided run:
  * connect → "which agents do you use?" → about you → tour, all four chapters
@@ -23,7 +23,7 @@
  * Progress is persisted on every step (`firstRunStore`), so closing the app
  * mid-tour resumes where it stopped rather than restarting or disappearing.
  *
- * Focus (station#2652 review H2): the run captures the return target when it
+ * Focus (archive#2652): the run captures the return target when it
  * is *asked for* — before its own surface mounts — and restores it when the
  * run ends, using the shared `captureReturnFocus`/`restoreReturnFocus`
  * helpers. Capture/restore live here rather than in `Coachmark` deliberately:
@@ -80,14 +80,14 @@ export function FirstRunFlow() {
    * our own surface mounts and focuses itself, which is why this cannot be
    * done in an effect.
    *
-   * WHAT THIS ACTUALLY CAPTURES (station#2652 delta review MEDIUM-2). We are
-   * usually invoked FROM an overlay: `CommandPalette.runCommand` is `close();
-   * command.run();`, and `close()` is a batched `setOpen(false)` that has not
-   * flushed when `run()` calls us — so `document.activeElement` is still the
+   * WHAT THIS ACTUALLY CAPTURES (archive#2652). We are
+   * usually invoked FROM an overlay: `CommandPalette.runCommand` is `close;
+   * command.run;`, and `close` is a batched `setOpen(false)` that has not
+   * flushed when `run` calls us — so `document.activeElement` is still the
    * palette's own `<input>`, which unmounts a tick later. At restore time
    * `applyReturnFocus` skips that disconnected node and walks to the nearest
    * surviving ancestor. That is the shared module's documented "sensible
-   * substitute" tier, not the #1126 focus-to-body defect, and the palette
+   * substitute" tier, not the archive#1126 focus-to-body defect, and the palette
    * separately restores the true trigger on its own close. Started from a
    * persistent control, we do return to that control exactly.
    *
@@ -105,7 +105,7 @@ export function FirstRunFlow() {
     next();
   }, []);
 
-  // Downgrade safety (station#2652 review MEDIUM-4). `firstRunProgress` is a
+  // Downgrade safety (archive#2652). `firstRunProgress` is a
   // composite device setting persisted verbatim, so a chapter written by a
   // newer Station survives a downgrade — and this build renders nothing for
   // it. `resolveResumePoint`'s documented "restart rather than crash"
@@ -116,17 +116,17 @@ export function FirstRunFlow() {
     firstRunStore.enterChapter(resolveResumePoint(progress).chapter);
   }, [progress]);
 
-  // The only way in: `requestFirstRunTour()`, from the command palette or from
+  // The only way in: `requestFirstRunTour`, from the command palette or from
   // `FirstRunHomeChapter` completing. The action says "Take the tour", so it
   // opens the TOUR — `resolveTourEntryPoint`, not the general resume rule,
-  // which would reopen a chapter the user already left (review L3).
+  // which would reopen a chapter the user already left.
   useEffect(() => {
     const start = () => {
       const entry = resolveTourEntryPoint(firstRunStore.getSnapshot());
       beginRun(() => {
         firstRunStore.enterChapter(entry.chapter);
         setStepIndex(entry.stepIndex);
-        // Review L1: a previous run left this pinned to the step it ended on,
+        // a previous run left this pinned to the step it ended on,
         // so re-entry at that same step would skip its own navigation and
         // render an unanchored coachmark over whatever page the user is on.
         lastNavigatedStep.current = null;

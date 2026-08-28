@@ -52,7 +52,7 @@ export interface StationProfile {
   createdAt: number;
   updatedAt: number;
   /**
-   * station#1818 part 3 review round 1 (MEDIUM) — set only by
+   * archive#1818 — set only by
    * `station_local_self_provision` (`src-desktop/src/lib.rs`), minted once
    * on a local Station's first self-provision and persisted verbatim on
    * every write after that. This is the identifier the device-pairing

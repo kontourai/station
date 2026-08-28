@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 1 — the contributed-subset projection
+ * archive#1398 — the contributed-subset projection
  * (`docs/design/inference-fleet.md` §4.2, §11 slice 1).
  *
  * Turns the Station's own `station.model-inventory/v2` plus the operator's

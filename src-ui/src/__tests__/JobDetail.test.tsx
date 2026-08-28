@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3238 (bug 2) — the run-history table collapsed `RunStatus` (a
+ * archive#3238 (bug 2) — the run-history table collapsed `RunStatus` (a
  * 7-member tri-state: queued | starting | running | waiting_for_approval |
  * completed | failed | cancelled) into a boolean by checking only
  * `status === 'completed'`. Every in-flight or user-actionable status
@@ -27,7 +27,7 @@ vi.mock('../hooks/useScheduler', () => ({
   useFetchRunOutputRef: () => ({ mutateAsync: vi.fn(), isPending: false }),
   // Added when useScheduler gained it and JobDetail adopted it. This
   // factory must name EVERY export the component reaches, so each new
-  // hook reds this suite until listed (station#4292). The partial-mock
+  // hook reds this suite until listed (archive#4292). The partial-mock
   // form vitest suggests does not work here as-is: falling through to
   // the real hooks needs a QueryClientProvider around the render.
   useResolveIndeterminateJobMonitor: () => ({

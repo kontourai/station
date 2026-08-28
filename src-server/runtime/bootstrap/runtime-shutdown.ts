@@ -94,7 +94,7 @@ export async function shutdownRuntimeServices({
       ? () => attachedSessionFollowService.stop()
       : undefined,
   );
-  // station#1093 Part B fix round (HIGH): the coalescing worker backing
+  // archive#1093 Part B fix round (HIGH): the coalescing worker backing
   // this service now owns a real (unref'd, but still real) batch timer —
   // `stop()` disposes it so nothing outlives shutdown.
   await attempt(

@@ -1,5 +1,5 @@
 /**
- * station#1195 e2e (the Codex analog of #1157's own round-2 review fix):
+ * archive#1195 e2e (the Codex analog of archive#1157's own round-2 review fix):
  * end-to-end regression through the FULL seam a unit-level test of either
  * layer alone can't prove — a real (realistically-shaped) `station-control`
  * integration record, exactly as `runtime-default-agent.ts`'s
@@ -127,7 +127,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     });
 
     // Survives resolution — NOT secret-boundary-env, despite the real
-    // toolDef carrying env (the same class of gap #1157's own round-2
+    // toolDef carrying env (the same class of gap archive#1157's own round-2
     // review fix caught: a fixture that dodges the resolver's blanket
     // env filter never proves the exemption actually fires end to end).
     expect(resolved.agent?.toolServers).toEqual([
@@ -190,7 +190,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
   });
 
   /**
-   * station#1684 REPLACES this case's original form ("...is STILL rejected
+   * archive#1684 REPLACES this case's original form ("...is STILL rejected
    * secret-boundary-env for ACP"). ACP's matrix cell now names its own
    * mechanism, so the SAME record is exempt at resolution for ACP exactly as
    * it is for Codex. What the original was really protecting — that nothing

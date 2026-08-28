@@ -211,7 +211,7 @@ export function currentAuthorizedTurnCorrelation():
 }
 
 /**
- * Narrow observer seam for the durable Action layer (#3841) to bind later.
+ * Narrow observer seam for the durable Action layer (archive#3841) to bind later.
  * Dispatch and fleet receipts remain authoritative; an observer is only a
  * progress/custody projection and its failures must never alter a turn.
  */

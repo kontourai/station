@@ -1,5 +1,5 @@
 /**
- * station#1831: with pending changes, the Settings "Unsaved changes /
+ * archive#1831: with pending changes, the Settings "Unsaved changes /
  * Discard / Save" pill rendered BEHIND the chat dock (both were fixed,
  * bottom-anchored, z-index 100, and the dock's later stacking-context won),
  * so the primary action for committing edits was occluded. The dock is
@@ -20,7 +20,7 @@ import { ruleBodiesFor } from './helpers/css-rules';
 
 function cssBlock(source: string, selector: string): string {
   // Every top-level block that TARGETS `selector`, not only one spelled
-  // exactly that way: station#3929 moved the dock's shared geometry into
+  // exactly that way: archive#3929 moved the dock's shared geometry into
   // `:is(.chat-dock, .dock-slot)`, and an exact-match reader reported a
   // missing z-index on a dock that has one.
   const bodies = ruleBodiesFor(source, selector);

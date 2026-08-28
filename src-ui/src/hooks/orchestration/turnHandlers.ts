@@ -52,7 +52,7 @@ export function handleTurnStartedEvent(
   event: Extract<OrchestrationEvent, { method: 'turn.started' }>,
 ) {
   // Durable per-turn confirmation of the actually-applied approval mode
-  // (#727 review round 3, item 1) — clears/updates the pending-apply chip
+  // (archive#727 3) — clears/updates the pending-apply chip
   // state once the adapter has genuinely resolved this turn's posture.
   const approvalMode = isApprovalMode(event.metadata?.approvalMode)
     ? event.metadata.approvalMode
@@ -102,15 +102,15 @@ export function handleTurnStartedEvent(
   }
   activeChatsStore.updateChat(event.threadId, {
     // The dispatch this turn came from has started; the pre-start cancel
-    // window it named is over (UX audit T1 review).
+    // window it named is over
     pendingClientTurnId: undefined,
     status: 'sending',
     orchestrationTurnOpen: true,
-    // station#1410: the identity of the turn whose text is about to be
+    // archive#1410: the identity of the turn whose text is about to be
     // buffered, so a terminal event for a DIFFERENT turn cannot attach its
     // provenance to this one.
     openTurnId: event.turnId,
-    // station#3352: the shell below is this turn's first and only copy, so it
+    // archive#3352: the shell below is this turn's first and only copy, so it
     // is authoritative again — a reconnect catch-up for the PREVIOUS turn must
     // not leave the projection rendering this one alongside it.
     openTurnShellSuperseded: false,
@@ -162,10 +162,10 @@ export function handleTurnStartedEvent(
 export function handleTurnCompletedEvent(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'turn.completed' }>,
-  /** station#1410: envelope carried beside this frame, when the server sent one. */
+  /** archive#1410: envelope carried beside this frame, when the server sent one. */
   provenance?: unknown,
 ) {
-  // station#1410 (D1): attach the sidecar only when this terminal event
+  // archive#1410: attach the sidecar only when this terminal event
   // closes the turn whose text is actually buffered.
   //
   // Adapters emit a terminal for an EARLIER turn after the next one has
@@ -264,7 +264,7 @@ export function handleTurnAbortedEvent(
 export function handleRuntimeErrorEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.error' }>,
 ) {
-  // station#3451 finding 8 (L1 fix round: corrected wording, not code):
+  // archive#3451 (corrected wording, not code):
   // `RuntimeErrorEvent extends CanonicalRuntimeEventBase`, which carries an
   // optional TOP-LEVEL `turnId` — publishers set it there (muse-adapter.ts,
   // bedrock-adapter.ts's `publishTurnFailure`, codex's `'error'`/
@@ -297,7 +297,7 @@ export function handleRuntimeErrorEvent(
   // change what counts as "the same failure repeating".
   const repeatsCurrentTurn =
     !chat?.orchestrationTurnOpen && chat?.error === event.message;
-  // station#1827: the streaming bubble is literally "the chat's only
+  // archive#1827: the streaming bubble is literally "the chat's only
   // content" a dead engine binding used to leave behind (the ticket's
   // reported symptom) — translate it through the same table
   // `ChatDockBody`'s marker rendering already uses, instead of showing the
@@ -330,14 +330,14 @@ export function handleRuntimeErrorEvent(
           ...(streamingMessage.contentParts || []),
           { type: 'text' as const, content: errorPartPrefix },
         ];
-  // station#1827: the code rides along in the marker (`[CHAT_ERROR:code]`)
+  // archive#1827: the code rides along in the marker (`[CHAT_ERROR:code]`)
   // so `ChatDockBody`'s marker rendering can classify it the same way
   // without re-deriving from prose — see that file's parsing of this exact
   // shape. Absent code keeps the original `[CHAT_ERROR]` shape byte-for-byte.
   const markerPrefix = `[SYSTEM_EVENT] [CHAT_ERROR${
     event.code ? `:${event.code}` : ''
   }] ${event.message}`;
-  // UX audit V3 review round 3: the turn this failure is ABOUT. An attributed
+  // the turn this failure is ABOUT. An attributed
   // error names it; an unattributed one ends whichever turn was open when it
   // arrived, which is the honest attribution and the one the transcript's
   // pruning reads. `undefined` (a failure with no turn context at all) leaves
@@ -387,21 +387,21 @@ export function handleRuntimeErrorEvent(
     error: event.message,
     orchestrationStatus: 'errored',
     // Mirrors the server fold: no adapter emits a terminal turn event on
-    // failure, so runtime.error closes the turn (#761).
+    // failure, so runtime.error closes the turn (archive#761).
     orchestrationTurnOpen: false,
     openTurnId: undefined,
     streamingMessage: {
       ...streamingMessage,
       contentParts: nextParts,
     },
-    // station#1207: this event is also how a silent stall on the
+    // archive#1207: this event is also how a silent stall on the
     // station-agent adapter's inner /chat bridge surfaces (no dedicated
     // `turn.failed` method exists — `runtime.error` IS the terminal-failure
     // signal for this path, see `failTurn` in `station-agent-adapter.ts`).
     // Append the exact `[SYSTEM_EVENT] [CHAT_ERROR]` marker shape the direct
     // `/chat` path persists server-side (`chat-lifecycle.ts`) so
     // `ChatDockBody`'s ALREADY-WORKING "Send again" rendering
-    // (`findPrecedingUserTurn`, #797) picks it up for free instead of a
+    // (`findPrecedingUserTurn`, archive#797) picks it up for free instead of a
     // second bespoke retry mechanism — this module has no access to
     // `sendMessage` (a hook closure), but `ChatDockBody` already does.
     // Client/session-only (not server-persisted like the direct path's
@@ -417,7 +417,7 @@ export function handleRuntimeWarningEvent(
 ) {
   toastStore.show(event.message, event.threadId, 5000);
 
-  // #727 review item 1b (CRITICAL): a mid-session escalation to 'never'
+  // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'
   // that the adapter rejected (no allowDangerouslySkipPermissions granted
   // at spawn) must not leave the composer chip showing a posture that
   // never actually applied. The adapter reports which mode IS actually in

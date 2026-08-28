@@ -273,7 +273,7 @@ describe('FileTreePanel', () => {
     );
   });
 
-  // station#3341: `navigator.clipboard?.writeText(p).catch(...)` short-circuits
+  // archive#3341: `navigator.clipboard?.writeText(p).catch(...)` short-circuits
   // the whole expression when there is no clipboard, so the `.catch` that was
   // supposed to report this never ran on the one origin that needs it.
   test('an insecure origin with no clipboard API reports the failure', async () => {

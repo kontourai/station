@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1827. `handleRuntimeErrorEvent` (turnHandlers.ts) is where the
+ * archive#1827. `handleRuntimeErrorEvent` (turnHandlers.ts) is where the
  * ticket's reported symptom actually rendered — the streaming bubble that
  * was "the chat's only content", repeated. These pin: (1) a terminal
  * engine-session `runtime.error` renders translated copy with the raw
@@ -114,7 +114,7 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
   });
 });
 
-// station#3451 finding 8: RuntimeErrorEvent extends CanonicalRuntimeEventBase,
+// archive#3451: RuntimeErrorEvent extends CanonicalRuntimeEventBase,
 // which carries an optional TOP-LEVEL `turnId` — publishers set it there
 // (muse, bedrock's publishTurnFailure, codex's 'error'/turn.status:'failed'
 // sites), never inside `details`. Reading only `event.details?.turnId` meant

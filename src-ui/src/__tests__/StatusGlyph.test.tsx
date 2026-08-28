@@ -10,7 +10,7 @@ import {
 describe('StatusGlyph', () => {
   test('pins the accessible glyph and color for every lifecycle state', () => {
     // Accessible names are the USER's vocabulary (lifecycleLabelText rule,
-    // station#1783): 'Unanswerable' is the system's internal term and must
+    // archive#1783): 'Unanswerable' is the system's internal term and must
     // never be spoken to a screen reader.
     const cases = [
       ['Needs attention', 'Needs attention', '!', 'attention'],

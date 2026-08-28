@@ -25,7 +25,7 @@ const loadToolCallBatchSheet = () =>
  * parameter — `loadToolCallBatchSheet` collapses to a concrete component
  * typed over the `ToolCallLike` constraint, not this module's actual `P`.
  * That erasure (not a real type-safety gap: the same `group`/`renderCall`
- * pair below is always genuinely `ToolCallGroup<P>`/`(part: P, ...) => ...`
+ * pair below is always genuinely `ToolCallGroup<P>`/`(part: P,...) =>...`
  * at runtime) is what a bare `(part: P) => ReactNode` can't satisfy a
  * `(part: ToolCallLike) => ReactNode`-shaped prop for. This thin, still-lazy
  * wrapper restores the generic at the one call site that needs it, instead

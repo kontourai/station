@@ -74,7 +74,7 @@ test.describe('Connection Manager Modal', () => {
         },
       }),
     );
-    // The manual-add flow (#942) handshakes a candidate host's public
+    // The manual-add flow (archive#942) handshakes a candidate host's public
     // `/.well-known/station/v1` endpoint and gates the Add button on it
     // before saving. The suite adds hosts on addresses nothing is actually
     // listening on (e.g. 10.0.0.5), so without this the handshake runs for
@@ -85,7 +85,7 @@ test.describe('Connection Manager Modal', () => {
     // The body includes `compatibility` per the real shape
     // (`EnvironmentSecurityService.getPublicHandshake`,
     // src-server/services/ssh/environment-security-service.ts) — every field
-    // a real host actually sends, not just the pre-#942 subset — so this
+    // a real host actually sends, not just the pre-archive#942 subset — so this
     // mock stays representative of what `checkHostCompatibility` really
     // parses instead of accidentally testing a payload no server sends.
     await page.route('**/.well-known/station/v1', (route) =>
@@ -113,10 +113,10 @@ test.describe('Connection Manager Modal', () => {
     await page.goto('/');
     // Wait for the connection chip to appear in the header
     await expect(
-      // station#3311 made the connection control self-describing: its
+      // archive#3311 made the connection control self-describing: its
       // accessible name now carries the state and the connection identity
       // ("Manage Stations — Connected · <name>"), so this matches by prefix.
-      // The bare string is still the control’s `title` (station#3297).
+      // The bare string is still the control’s `title` (archive#3297).
       page.getByRole('button', { name: /^Manage Stations/ }),
     ).toBeVisible({
       timeout: 10000,
@@ -183,8 +183,8 @@ test.describe('Connection Manager Modal', () => {
   });
 
   test('can add a new connection manually', async ({ page }) => {
-    // #945 LOW: a bare "the connection eventually appears" assertion would
-    // pass identically even if the app silently stopped calling the #942
+    // archive#945 LOW: a bare "the connection eventually appears" assertion would
+    // pass identically even if the app silently stopped calling the archive#942
     // pre-save handshake — `ConnectionManagerModalContent`'s own post-add
     // health probe (`checkOne`) hits this exact same `.well-known/station/v1`
     // URL, so a naive "was this URL ever requested" counter cannot tell the
@@ -239,7 +239,7 @@ test.describe('Connection Manager Modal', () => {
     // The modal remains open across the endpoint change, preserving context.
     const dialog = page.getByRole('dialog');
     // A successful add now carries straight into authorising the new host
-    // instead of returning to the list (#986) — the pairing panel names it
+    // instead of returning to the list (archive#986) — the pairing panel names it
     // by name, not "this Station".
     await expect(
       dialog.getByText(/Send a short-lived request to Office\./),
@@ -272,7 +272,7 @@ test.describe('Connection Manager Modal', () => {
       .fill('http://203.0.113.5:3141');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
 
-    // Back out of the authorize step this add now continues into (#986) —
+    // Back out of the authorize step this add now continues into (archive#986) —
     // switching to an already-saved connection does not require completing
     // pairing on the one just added.
     await page
@@ -336,7 +336,7 @@ test.describe('Connection Manager Modal', () => {
       .fill('http://delete-me:3141');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
 
-    // Back out of the authorize step this add now continues into (#986).
+    // Back out of the authorize step this add now continues into (archive#986).
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Back' })
@@ -478,14 +478,14 @@ test.describe('Connection Manager Modal', () => {
       }),
     ).toHaveCount(0, { timeout: 10_000 });
 
-    // station#3311: the state moved from the title attribute into visible
+    // archive#3311: the state moved from the title attribute into visible
     // text, so the accessible name is now "Manage Stations — <state>…".
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
-    // #198: the correct same-origin default is the page's OWN origin (the UI
+    // archive#198: the correct same-origin default is the page's OWN origin (the UI
     // port Playwright actually navigated to via baseURL/PW_BASE_URL), not
     // the server port — the old assertion here
-    // (`http://localhost:${STATION_PORT}`) pinned the pre-#198 bug where the
+    // (`http://localhost:${STATION_PORT}`) pinned the pre-archive#198 bug where the
     // UI server unconditionally injected the server's own localhost URL
     // regardless of the page's real origin.
     const pageOrigin = new URL(page.url()).origin;

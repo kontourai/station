@@ -224,7 +224,7 @@ describe('SessionConversationItem', () => {
     expect(screen.getByRole('status').textContent).toBe('Thread ID copied.');
   });
 
-  // station#3341: "Copied" and the haptic used to fire for a write that never
+  // archive#3341: "Copied" and the haptic used to fire for a write that never
   // resolved — including the insecure-origin case where there is no clipboard.
   it('a refused write never claims a copy and never buzzes', async () => {
     clipboardRefuses();

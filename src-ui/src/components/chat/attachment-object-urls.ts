@@ -1,6 +1,6 @@
 /**
  * Object URLs for attachment blobs fetched from `GET /api/attachments/:ref`
- * (station#3385).
+ * (archive#3385).
  *
  * An `<img src>` cannot carry a bearer token, so the bytes are fetched and
  * wrapped in an object URL. That leaves the browser holding the blob until

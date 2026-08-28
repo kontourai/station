@@ -174,11 +174,11 @@ export async function resolveChatAgentModelOverride({
         instructions,
         model,
         tools: guardedTools,
-        // #914: this rebuilds the agent for a session model override on an
+        // archive#914: this rebuilds the agent for a session model override on an
         // *existing* conversation, so without the slug's own store the
         // override silently costs the user their history.
         memoryAdapter: ctx.memoryAdapters?.get(slug),
-        // station#1834: the rebuilt agent keeps the slug's OWN gate — the
+        // archive#1834: the rebuilt agent keeps the slug's OWN gate — the
         // same hooks instance chat streams register approval requesters on,
         // so interactive approvals keep working under a model override
         // instead of the tools running ungated.

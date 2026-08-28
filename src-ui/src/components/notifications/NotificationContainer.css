@@ -165,7 +165,7 @@
 }
 
 .toast-card__link {
-  /* station#3513: a third control in this file outside the reach of
+  /* archive#3513: a third control in this file outside the reach of
      index.css's global mobile touch-target net — it sits inside
      `.toast-card__conversation`, not `.toast-card__actions`. Its rendered
      width already clears the 44px floor (the conversation title text pads
@@ -251,7 +251,7 @@
 
 .notification-container__dismiss-all {
   align-self: flex-end;
-  /* station#3513: a direct child of `.notification-container`, not of any
+  /* archive#3513: a direct child of `.notification-container`, not of any
      `__actions`/`__footer`/`__toolbar` wrapper, so `index.css`'s global
      mobile touch-target net (a descendant selector) never reaches it. Below
      the 44px WCAG 2.5.5 floor at every viewport, not just mobile ones, so
@@ -268,7 +268,7 @@
   pointer-events: auto;
 }
 
-/* ── Toast stack (station#1960) ── */
+/* ── Toast stack (archive#1960) ── */
 
 .toast-stack {
   position: relative;
@@ -392,7 +392,7 @@
   }
 
   .toast-card__action {
-    /* station#3513 fix round: `min-height: 44px` here used to duplicate a
+    /* archive#3513 fix round: `min-height: 44px` here used to duplicate a
        floor `index.css`'s global mobile touch-target net already wins at
        (0,2,0) vs this rule's (0,1,0) specificity — `.toast-card__action` is
        a child of `.toast-card__actions`, which the net's `[class*="__actions"]`
@@ -403,7 +403,7 @@
   }
 }
 
-/* station#3513: `.toast-card__dismiss` sits inside `.toast-card__header`, not
+/* archive#3513: `.toast-card__dismiss` sits inside `.toast-card__header`, not
    `.toast-card__actions`, so it is outside the reach of `index.css`'s global
    mobile touch-target net (a descendant selector scoped to `__actions`/
    `__footer`/`__toolbar` wrappers) the same way `.notification-container__

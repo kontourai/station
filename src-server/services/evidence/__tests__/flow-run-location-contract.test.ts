@@ -10,7 +10,7 @@ import {
 } from '../local-artifact-paths.js';
 
 /**
- * #290 pins Station's generated-run location to Flow's, and the ONLY thing
+ * archive#290 pins Station's generated-run location to Flow's, and the ONLY thing
  * that made that true was Station spelling `.kontourai/flow/runs` in its own
  * source. That is a mirror of an upstream contract with no trip-wire: if Flow
  * moved its runtime root, Station would keep computing the old directory and
@@ -36,7 +36,7 @@ describe('Flow run location contract (#290)', () => {
    */
   test("Station's runs root is Flow's runtime root, not its durable .flow root", () => {
     expect(flowRunsRoot(cwd)).toBe(join(flowRuntimeRoot(cwd), 'runs'));
-    // The durable authored root is a DIFFERENT contract that #290 leaves
+    // The durable authored root is a DIFFERENT contract that archive#290 leaves
     // alone; generated state must never resolve underneath it.
     expect(flowRunsRoot(cwd).startsWith(flowRoot(cwd))).toBe(false);
   });

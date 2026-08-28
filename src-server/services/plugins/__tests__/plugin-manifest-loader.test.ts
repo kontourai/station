@@ -41,7 +41,7 @@ describe('plugin-manifest-loader', () => {
     );
   });
 
-  // station#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,
+  // archive#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,
   // the provider resolver, the installed-plugin registry) and the manifest's
   // own `name` wins over the directory it was installed into. It was
   // validated only as a non-empty string, so `"name": "__proto__"` reached
@@ -100,7 +100,7 @@ describe('plugin-manifest-loader', () => {
     });
   });
 
-  // station#4307 review: a DECLARED SETTING's key is a store key too. It is
+  // archive#4307 review: a DECLARED SETTING's key is a store key too. It is
   // written into `overrides[plugin].settings` by `PUT /:name/settings` and
   // read back into the map handed to a plugin server module as
   // `config.get`/`config.all` — and nothing inspected it. A manifest declaring

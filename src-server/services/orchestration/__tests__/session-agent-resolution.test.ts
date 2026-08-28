@@ -20,7 +20,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 function agentSpec(overrides: Partial<AgentSpec> = {}): AgentSpec {
   return {
     name: 'Test Agent',
-    // #895 wave B: default unauthored (empty) so pre-existing
+    // archive#895 wave B: default unauthored (empty) so pre-existing
     // toolServers/skills-focused tests don't also pick up a systemPrompt
     // report; prompt-focused tests below override this explicitly.
     prompt: '',
@@ -156,7 +156,7 @@ describe('createSessionAgentResolver', () => {
     // that a hand-written ToolDef does. `station-control` needs a per-engine
     // exemption (and gets none on acp); station-docs needs none anywhere,
     // because it declares no env at all.
-    // station#3063: the LOADED shape is the persisted factory output plus the
+    // archive#3063: the LOADED shape is the persisted factory output plus the
     // running instance's spawn-identity overlay — exactly what
     // `ConfigLoader.loadIntegration` now returns for a built-in id.
     const { docsIntegration } = createRuntimeDocsIntegration();
@@ -231,7 +231,7 @@ describe('createSessionAgentResolver', () => {
         agentSlug: 'station',
         toolServers: {
           source: 'agent',
-          // station#1547 added `station-docs` to the runtime-owned Station
+          // archive#1547 added `station-docs` to the runtime-owned Station
           // identity's synthetic spec, so it is requested here too. This
           // resolver deliberately resolves ONLY `station-control`, which is
           // what makes `undelivered` the interesting assertion: a requested
@@ -265,7 +265,7 @@ describe('createSessionAgentResolver', () => {
       // substitution mechanism and is delivered on 'acp' too — the engine
       // class that can never receive the control server.
       const { docsIntegration } = createRuntimeDocsIntegration();
-      // station#3063: composed with the load-time spawn-identity overlay,
+      // archive#3063: composed with the load-time spawn-identity overlay,
       // matching what `ConfigLoader.loadIntegration` serves in production.
       const docsToolDef = {
         ...docsIntegration,
@@ -352,7 +352,7 @@ describe('createSessionAgentResolver', () => {
   });
 
   /**
-   * station#1684 REPLACES station#1195's "ACP still rejects station-control"
+   * archive#1684 REPLACES archive#1195's "ACP still rejects station-control"
    * pin. That test named a real requirement — an env-bearing tool server must
    * not cross the ACP wire — and the requirement is unchanged; what changed is
    * that ACP's matrix cell now names a reviewed substitution
@@ -655,8 +655,8 @@ describe('createSessionAgentResolver', () => {
       ],
     });
     // The env never survives resolution regardless of the exemption —
-    // ResolvedAgentToolServer structurally cannot carry it (station#1157's
-    // rule, unchanged by station#1195).
+    // ResolvedAgentToolServer structurally cannot carry it (archive#1157's
+    // rule, unchanged by archive#1195).
     expect(JSON.stringify(result)).not.toContain('STATION_API_BASE');
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY

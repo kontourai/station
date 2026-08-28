@@ -94,7 +94,7 @@ vi.mock('../views/project-settings/KnowledgeSection', () => ({
   KnowledgeSection: () => <section>Knowledge section</section>,
 }));
 
-// station#1502 slice 4 — stubbed like its siblings: this suite is the SHELL
+// archive#1502 — stubbed like its siblings: this suite is the SHELL
 // port's pin, and the section's own behavior (§3.6's states, §4.1's
 // not-backing path) is covered by `project-settings/__tests__/
 // ResourcesSection.test.tsx` against its own SDK mock.

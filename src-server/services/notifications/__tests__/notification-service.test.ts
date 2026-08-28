@@ -1042,7 +1042,7 @@ describe('NotificationService', () => {
     await action;
   });
 
-  // station#1912: the latent hazard the issue named but did not reproduce —
+  // archive#1912: the latent hazard the issue named but did not reproduce —
   // `poll()` calling `schedule()` for the SAME still-open provider item (same
   // dedupeTag) used to resurrect it after a dismissal.
   test('a dismissed dedupeTag is not resurrected by a later schedule() call with the same tag', async () => {
@@ -1071,7 +1071,7 @@ describe('NotificationService', () => {
     expect(await svc.list({ status: ['delivered'] })).toHaveLength(0);
   });
 
-  // Same hazard, exercised through the REAL poll() path (station#1912 AC:
+  // Same hazard, exercised through the REAL poll() path (archive#1912 AC:
   // "a regression test that a dismissed provider-contributed notification is
   // not re-added by the next poll()") rather than a direct schedule() call.
   test('poll() does not re-add a dismissed provider notification on its next cycle', async () => {
@@ -1097,7 +1097,7 @@ describe('NotificationService', () => {
 
     // The provider still returns the SAME pending request on the next poll
     // cycle (it has not expired or been resolved yet) — this is the actual
-    // shape station#1912 named: an already-dismissed notification whose
+    // shape archive#1912 named: an already-dismissed notification whose
     // underlying request is still live at the provider.
     await svc.poll();
 

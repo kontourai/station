@@ -1,4 +1,4 @@
-// station#1301 slice 1 — the one hook the UI uses to read a chat's
+// archive#1301 — the one hook the UI uses to read a chat's
 // background-tasks Running/Finished view. Subscribes to both external
 // stores it depends on (`backgroundTasksStore` for tool/delegate events,
 // `activeChatsStore` for the existing provider-background-subagent

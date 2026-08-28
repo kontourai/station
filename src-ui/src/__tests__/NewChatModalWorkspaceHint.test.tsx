@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1089 — the rendered surface, not just the pure resolver.
+ * archive#1089 — the rendered surface, not just the pure resolver.
  *
  * The new-chat picker's workspace control printed "~ (defaults to home)" for
  * any project with no `workingDirectory`. Measured on origin/main (1e5b45d2):

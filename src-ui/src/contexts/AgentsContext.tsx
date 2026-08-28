@@ -21,8 +21,8 @@ export function useAgents(): AgentData[] {
 
 /**
  * Whether `/api/agents` is currently serving the LAST STABLE catalog rather
- * than a read of the runtime as it is now (station#1574's `catalogState`,
- * surfaced by station#3751).
+ * than a read of the runtime as it is now (archive#1574's `catalogState`,
+ * surfaced by archive#3751).
  *
  * A consumer that renders a state WORD off these rows — "Ready", "Needs: …" —
  * is reading a verdict computed for a configuration that may already be gone.
@@ -34,7 +34,7 @@ export function useAgentCatalogReconciling(): boolean {
 
 /**
  * True once the agent-catalog query has resolved SUCCESSFULLY at least once
- * — deliberately not "settled" (success or error). `useAgents()` alone
+ * — deliberately not "settled" (success or error). `useAgents` alone
  * cannot distinguish "not loaded yet" from "loaded, zero agents" — both read
  * as `[]` — which matters to any consumer that needs to tell a catalog that
  * legitimately has nothing in it apart from one that just hasn't answered
@@ -62,7 +62,7 @@ export function useAgentsLoaded(): boolean {
  * distinct from `useAgentsLoaded` (success only): a caller that must not
  * stall forever on an unavailable catalog needs "the question was asked and
  * answered", not "the answer was good". The first-run engines chapter
- * (station#3027) gates on both — it waits for an answer here, then treats a
+ * (archive#3027) gates on both — it waits for an answer here, then treats a
  * FAILED catalog as "no work", because without the agent list it cannot tell
  * an engine that is already enabled from one that is not, and guessing
  * creates duplicates.
@@ -93,10 +93,10 @@ export function useAgentActions() {
   return {
     createAgent: (agent: AgentData) =>
       createMutation.mutateAsync(agent as unknown as Record<string, unknown>),
-    // `project: null` is the ownership-clearing wire signal (station#1004
+    // `project: null` is the ownership-clearing wire signal (archive#1004
     // §4) — distinct from `AgentData.project`'s read shape
     // (`string | undefined`), which never represents "clear this".
-    // station#3662: `execution: null` is the engine-binding-clearing wire
+    // archive#3662: `execution: null` is the engine-binding-clearing wire
     // signal, for the same reason and with the same shape — an Agent moved to
     // Station's own engine must actively lose its `agentConnectionId`, which
     // an omitted (undefined) block cannot express because the server's update

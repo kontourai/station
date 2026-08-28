@@ -53,7 +53,7 @@ export function RegistryView({
   );
   // The URL is authoritative: Back/Forward (or any in-app navigation that
   // changes /registry/:tab while this view stays mounted) must re-sync the
-  // rendered tab — initializer-only state desyncs on popstate (#2678 review).
+  // rendered tab — initializer-only state desyncs on popstate (archive#2678).
   useEffect(() => {
     setActiveTab(initialTab ?? 'agents');
   }, [initialTab]);

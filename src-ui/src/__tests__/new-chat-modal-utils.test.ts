@@ -274,7 +274,7 @@ describe('new-chat-modal-utils', () => {
     expect(selection.agent?.slug).toBe('recent');
     expect(selection.effectiveModel).toMatchObject({
       id: 'live-model',
-      // station#3391 made `modelDisplayLabel` the ONE derivation of what a
+      // archive#3391 made `modelDisplayLabel` the ONE derivation of what a
       // model id is called, and prettifies an id with no catalog entry rather
       // than showing the user an internal id. This expectation predates that
       // unification; asserting the raw id here pins the behaviour #3391
@@ -1529,7 +1529,7 @@ describe('new-chat-modal-utils', () => {
       ).toBeUndefined();
     });
 
-    // station#3027(c): what the ROW renders. The server sentence stays as
+    // archive#3027(c): what the ROW renders. The server sentence stays as
     // written (API clients, the 400 body on a refused turn, and delegation all
     // consume it) — the picker just stops shouting it.
     describe('unavailable presentation', () => {
@@ -1658,7 +1658,7 @@ describe('new-chat-modal-utils', () => {
   });
 
   /**
-   * station#1089. Measured on origin/main (1e5b45d2) against a live instance:
+   * archive#1089. Measured on origin/main (1e5b45d2) against a live instance:
    * project `scope-only` (created with no `workingDirectory`) + connection
    * `oc-elsewhere` (`cwd: /tmp/s1089-elsewhere`) produced
    * `session.cwd = /tmp/s1089-elsewhere`, and the engine CLI's own `getcwd`

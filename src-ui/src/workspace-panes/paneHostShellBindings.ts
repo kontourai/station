@@ -7,7 +7,7 @@ import { BANNER_PRIORITY, bannerStore } from '../contexts/banner-store';
 
 /**
  * The shell half of the pane-host contract, shared by BOTH transports
- * (station#4201, `docs/design/pane-host-contract.md`).
+ * (archive#4201, `docs/design/pane-host-contract.md`).
  *
  * The design's claim is that one interface serves two runtime tiers. That
  * claim is only worth something if the two adapters agree about what a
@@ -122,7 +122,7 @@ export function paneAppSurfaceIdForRoute(pathname: string): string | null {
 }
 
 /**
- * D8's one-line redirect notice, and the banner id it is presented under.
+ * one-line redirect notice, and the banner id it is presented under.
  * Exported so both adapters, the mounter's unit test and the durable E2E all
  * name the same sentence rather than four copies that can drift.
  */
@@ -137,7 +137,7 @@ export const BOARD_UNAVAILABLE_BANNER_ID = 'project:board-unavailable';
  * said it knows no Builder run for this project); the sentence and the banner
  * id are the shell's, which is why they live here and not in the pane. Keyed
  * by reason so a second reason is a row in this table rather than a second
- * hardcoded sentence beside the first — the shape C1's review asked for.
+ * hardcoded sentence beside the first — the shape review asked for.
  */
 const PANE_UNAVAILABLE_PRESENTATION: Record<
   PaneUnavailableReason,
@@ -160,7 +160,7 @@ const PANE_UNAVAILABLE_PRESENTATION: Record<
  *
  * `userInitiated` because the reader just navigated here and the guard
  * redirected them — their own action, not a background condition
- * (station#3823).
+ * (archive#3823).
  */
 export function presentPaneUnavailable(
   reason: PaneUnavailableReason,

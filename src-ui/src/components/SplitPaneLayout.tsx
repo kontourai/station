@@ -77,7 +77,7 @@ interface SplitPaneItem {
    *
    * Outside, because `badge`/`icon` render inside a `<button>` and a button
    * may not contain interactive content — a control here (the Sessions list's
-   * project-filter pill, station#3027) has to be a sibling of the row button,
+   * project-filter pill, archive#3027) has to be a sibling of the row button,
    * not a descendant. A row without this prop renders exactly the markup it
    * always did; the flex wrapper only appears when there is something to put
    * in it.
@@ -125,7 +125,7 @@ interface SplitPaneLayoutProps {
    * Accepts a render function for the same reason `listIntro` does: a footer
    * that starts new work needs to select the row it just created, and going
    * through the skeleton's own `selectItem` keeps the mobile return-focus
-   * capture (station#1259) that a raw `onSelect` call would skip.
+   * capture (archive#1259) that a raw `onSelect` call would skip.
    */
   sidebarActions?:
     | React.ReactNode
@@ -146,13 +146,13 @@ interface SplitPaneLayoutProps {
    * Every split-pane route derives its list from a query, and a failed query
    * settles with no data — which `items.length === 0` cannot tell apart from
    * a genuinely empty collection. Guidance therefore asserted "No installed
-   * skills yet" over a 500 (review H1). Error is not empty: when this is
+   * skills yet" over a 500. Error is not empty: when this is
    * truthy AND `items` is empty, the list pane renders `ErrorState` with a
    * Retry instead of the empty branch below.
    *
-   * station#771 fix round (review HIGH): this used to outrank `items`
+   * archive#771: this used to outrank `items`
    * unconditionally, so a REFETCH failure with cached items still on hand
-   * blanked a working list behind an error card — the exact regression #769
+   * blanked a working list behind an error card — the exact regression archive#769
    * exists to prevent (`ProjectPage` renders cached data with no banner on a
    * refetch failure). A non-empty `items` now always wins: the list keeps
    * rendering, silently, exactly as it did before the query re-fired.
@@ -178,8 +178,8 @@ interface SplitPaneLayoutProps {
    * Without this, a route whose collection is genuinely empty AND has a
    * stale/typed query attributed the emptiness to the query — "Nothing in
    * X matches your search" with a "Clear filter" action that fixes
-   * nothing, because there is nothing regardless of the filter (station#4463
-   * slice 2 fix round, M3, delta review round 3). Defaults to `false`
+   * nothing, because there is nothing regardless of the filter (archive#4463).
+   * Defaults to `false`
    * (unset callers keep exactly their current behavior).
    */
   collectionEmpty?: boolean;
@@ -207,7 +207,7 @@ interface SplitPaneLayoutProps {
 /** Hoisted so the provider's value is referentially stable across renders. */
 const DETAIL_PANE_CONTEXT = { inDetailPane: true } as const;
 
-// Station#4463 slice 2: this used to hand-roll its own icon+2-line row
+// archive#4463: this used to hand-roll its own icon+2-line row
 // placeholder — the exact shape `SkeletonList` already owns (its own doc
 // comment names this layout as the reason it exists). One shared component,
 // one CSS rhythm, for every split-pane list across the app.
@@ -297,12 +297,12 @@ export function SplitPaneLayout({
   const mobileDetailWasLogicallyOpenRef = useRef(false);
   const externalMobileReturnFocus = useSplitPaneExternalReturnFocus();
   /**
-   * station#1259. Only the `'return'` half of the mobile effect below is
+   * archive#1259. Only the `'return'` half of the mobile effect below is
    * return-focus; the element it returns to is a list row, and the detail pane
    * the sheet opened is free to delete, rename or filter that row out while it
    * is on screen. A bare ref to the button was then a detached node, and
-   * `.focus()` on one is a silent no-op that leaves `<body>` focused — the
-   * station#1126 outcome. Capture the row *and its ancestors* while all of them
+   * `.focus` on one is a silent no-op that leaves `<body>` focused — the
+   * archive#1126 outcome. Capture the row *and its ancestors* while all of them
    * are still attached so the restore has somewhere to fall back to.
    */
   const mobileFocusReturnRef = useRef<HTMLElement[]>([]);
@@ -339,7 +339,7 @@ export function SplitPaneLayout({
     if (!pendingGroupMemberFocus) return;
     const target = itemButtonRefs.current.get(pendingGroupMemberFocus);
     if (!target) {
-      // Review F3: a missed target (member unmounted between activation and
+      // a missed target (member unmounted between activation and
       // commit) must clear the pending id — leaving it set makes the NEXT
       // activation of the same member a same-value setState that React bails
       // out on, so the effect never re-runs and focus silently dies forever.
@@ -674,7 +674,7 @@ export function SplitPaneLayout({
   /**
    * Framed, the eyebrow is the page header's: `framedBreadcrumbSegments`
    * drops the trailing crumb that restates the frame's own `<h1>`
-   * unconditionally (station#4463 slice 1 — the 2026-08-26 shell audit
+   * unconditionally (archive#4463 — the shell audit
    * retired the self-referential eyebrow this used to render, e.g.
    * `SCHEDULE` above `Schedule`), leaving only real ancestors — none for a
    * top-level route, the parent for a subpage. Unframed, the old dedup
@@ -707,7 +707,7 @@ export function SplitPaneLayout({
       // terminal and stays inert text unless the view wired an explicit
       // link to it. This is deliberately UNCONDITIONAL on `framed`.
       //
-      // station#4463 slice 1 fix round: an earlier version of this made
+      // archive#4463: an earlier version of this made
       // every framed segment "an ancestor by construction" on the theory
       // that `framedBreadcrumbSegments` already drops the one naming the
       // current page — but that only holds when the trailing segment
@@ -802,7 +802,7 @@ export function SplitPaneLayout({
    * The collection's primary action. Framed, it renders in the page header's
    * action cell — the same place Schedule's `+ Add Job` has always been —
    * through a portal, so `activateAdd`'s mobile return-focus capture
-   * (station#1259) is the same code on the same element wherever it lands.
+   * (archive#1259) is the same code on the same element wherever it lands.
    * Unframed it stays in the list footer, exactly as before.
    *
    * `sidebarActions` deliberately does NOT travel with it: those are list
@@ -840,7 +840,7 @@ export function SplitPaneLayout({
       {/*
        * Everything rendered in the detail slot is at ITEM level: the list
        * pane's page-level heading above already owns the collection title
-       * (station#2931, docs/design/shell-skeletons.md §2.1). `DetailHeader`
+       * (archive#2931, docs/design/shell-skeletons.md §2.1). `DetailHeader`
        * reads this and renders one level down, so a view cannot stack a
        * second page-level title on the collection's by forgetting the rule.
        */}
@@ -852,12 +852,12 @@ export function SplitPaneLayout({
         ) : emptyContent ? (
           emptyContent
         ) : items.length === 0 && !unselectedDetailOpen ? /*
-         * station#4463 slice 2 (the double-empty rule): the list pane just
+         * archive#4463 (the double-empty rule): the list pane just
          * above already rendered its own "nothing here" — either `Empty`
          * (truly empty) or `FilteredEmpty` (search matched nothing). An
          * empty list has no item to select, so "Select an item" here is not
          * a second fact, it is the same fact restated — Review's queue
-         * showed both side by side (SHELL audit, 2026-08-26). The detail
+         * showed both side by side (SHELL audit). The detail
          * pane defers to the list's message instead of repeating it.
          * `emptyContent` is a caller's own surface (an install/add flow, a
          * create-first-run card) and is trusted as-is; `unselectedDetailOpen`
@@ -967,7 +967,7 @@ export function SplitPaneLayout({
               }
             />
           ) : items.length === 0 ? (
-            // M3 (delta review round 3): a typed query over an ALREADY-empty
+            // a typed query over an ALREADY-empty
             // collection is not what emptied it — `collectionEmpty` says so
             // explicitly, so this never misattributes "nothing here" to the
             // search (and never offers a "Clear filter" that fixes nothing).

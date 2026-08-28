@@ -1,11 +1,11 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1827. `ChatDockBody`'s `[SYSTEM_EVENT] [CHAT_ERROR:code]` marker
+ * archive#1827. `ChatDockBody`'s `[SYSTEM_EVENT] [CHAT_ERROR:code]` marker
  * rendering is the "small UI slice" this ticket asks for: a plain-language
  * headline, the raw engine text behind a disclosure, and a "start fresh
  * session" affordance — reusing the existing `SystemEventMessage` marker +
- * `translateChatError` pattern (#191 R2, #797) rather than inventing a
+ * `translateChatError` pattern (archive#191, archive#797) rather than inventing a
  * parallel one. This mounts the REAL `SystemEventMessage` (unlike the
  * sibling render-gate test, which mocks it out) so the rendered action
  * button and disclosure text are asserted for real.
@@ -23,7 +23,7 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 
@@ -224,7 +224,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
 
     fireEvent.click(actionButton);
-    // The recovery is async since station#3385 — it resolves any attachment
+    // The recovery is async since archive#3385 — it resolves any attachment
     // the failed turn carried before handing the draft on, so that a turn
     // whose bytes are gone is refused rather than migrated without them. The
     // payload it eventually delivers must still be exactly the old one.
@@ -375,7 +375,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
   });
 
   /**
-   * station#3764: the filler keeps #2467's flex fill AND carries the real
+   * archive#3764: the filler keeps archive#2467's flex fill AND carries the real
    * chat empty state. It used to hold a generic `Empty label="No messages
    * yet"` — a true sentence that is not the reason nothing can be sent, and
    * which made the guided zero-provider rescue unreachable from the dock
