@@ -244,19 +244,17 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     // the same sidecar and would otherwise turn a healthy listener into a
     // 30-second deadlock. The proof pulls native status on start, so it is
     // also correct if the sidecar published before its event listener mounted.
-    let active = true;
+    const controller = new AbortController();
     let subscription: { dispose(): void } | undefined;
     void Promise.all([
       import('./native/startupReadiness'),
       nativePlatformPromise,
     ]).then(([{ startStartupReadinessProof }, adapter]) => {
-      const next = startStartupReadinessProof(adapter);
-      if (active) {
-        subscription = next;
-      } else next.dispose();
+      const next = startStartupReadinessProof(adapter, controller.signal);
+      subscription = next;
     });
     return () => {
-      active = false;
+      controller.abort();
       subscription?.dispose();
     };
   }, []);

@@ -19,6 +19,7 @@ import { TEST_IMPACT_MANIFEST } from '../test-impact-manifest.mjs';
 import {
   CANONICAL_COMPLETION_COMMAND,
   CANONICAL_COMPLETION_LANE,
+  CI_FAST_TIMEOUT_MS,
   CLASS_LABELS,
   FULL_REGRESSION_PHASES,
   FULL_REGRESSION_TIMEOUT_MS,
@@ -121,7 +122,7 @@ describe('canonical completion lane literal', () => {
     expect(resolveLane('ci-fast')).toMatchObject({
       completion: false,
       diagnostic: true,
-      timeoutMs: 5 * 60_000,
+      timeoutMs: CI_FAST_TIMEOUT_MS,
       weight: 20,
     });
     expect(

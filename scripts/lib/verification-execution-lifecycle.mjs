@@ -1,4 +1,7 @@
-import { CI_FAST_INFRASTRUCTURE_EXIT_CODE } from '../run-ci-fast.mjs';
+import {
+  CI_FAST_INFRASTRUCTURE_EXIT_CODE,
+  CI_FAST_OWNER_INFRASTRUCTURE_PREFIX,
+} from '../run-ci-fast.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -14,6 +17,15 @@ export const OWNED_TERMINATION_GRACE_MS = 5_000;
 export const OWNED_TERMINATION_FORCE_MS = 5_000;
 export const OWNED_CLEANUP_SETTLE_MS =
   OWNED_TERMINATION_GRACE_MS * 2 + OWNED_TERMINATION_FORCE_MS * 2 + 1_000;
+
+function ciFastInfrastructureCause(output) {
+  const lines = String(output?.stderr?.text ?? '').split(/\r?\n/);
+  const line = lines.findLast((entry) =>
+    entry.startsWith(CI_FAST_OWNER_INFRASTRUCTURE_PREFIX),
+  );
+  const cause = line?.slice(CI_FAST_OWNER_INFRASTRUCTURE_PREFIX.length).trim();
+  return cause || undefined;
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -194,11 +206,19 @@ export function createOwnedRunner({
         output: captured,
         cleanup: { status: 'failed', survivingOwnedChildren: 0 },
       };
+    const ciFastInfrastructure =
+      lane.id === 'ci-fast' &&
+      result.status === CI_FAST_INFRASTRUCTURE_EXIT_CODE;
+    const infrastructureCause = ciFastInfrastructure
+      ? ciFastInfrastructureCause(captured)
+      : undefined;
     return {
       ...result,
-      ...(lane.id === 'ci-fast' &&
-      result.status === CI_FAST_INFRASTRUCTURE_EXIT_CODE
-        ? { infrastructureError: true }
+      ...(ciFastInfrastructure
+        ? {
+            infrastructureError: true,
+            ...(infrastructureCause ? { infrastructureCause } : {}),
+          }
         : {}),
       output: captured,
       cleanup: {

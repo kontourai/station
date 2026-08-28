@@ -65,6 +65,7 @@ describe('desktop startup readiness proof', () => {
     await expect(proveAndCommitStartupReadiness(native as never)).resolves.toBe(
       false,
     );
+    expect(native.getBundledServerStatus).toHaveBeenCalledTimes(5);
     expect(native.commitStartupRecoveryUi).not.toHaveBeenCalled();
   });
   it('commits truthful service recovery without a sidecar ticket', async () => {
@@ -130,5 +131,81 @@ describe('desktop startup readiness proof', () => {
     });
     expect(native.subscribeToStartupReadinessRetry).toHaveBeenCalledOnce();
     proof.dispose();
+  });
+  it('aborts an in-flight retry delay before disposing its subscription', async () => {
+    const disposeSubscription = vi.fn();
+    const native = {
+      ...adapter([{ status: 'error' }]),
+      subscribeToStartupReadinessRetry: vi.fn(() => ({
+        dispose: disposeSubscription,
+      })),
+    };
+    const proof = startStartupReadinessProof(native as never);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(native.getBundledServerStatus).toHaveBeenCalledOnce();
+
+    proof.dispose();
+    proof.dispose();
+    await Promise.resolve();
+
+    expect(disposeSubscription).toHaveBeenCalledOnce();
+    expect(native.getBundledServerStatus).toHaveBeenCalledOnce();
+    expect(native.commitStartupReadiness).not.toHaveBeenCalled();
+  });
+  it('owns a parent signal that was already aborted before lazy proof startup', async () => {
+    const disposeSubscription = vi.fn();
+    const native = {
+      ...adapter([{ status: 'ok', value: running(6) }]),
+      subscribeToStartupReadinessRetry: vi.fn(() => ({
+        dispose: disposeSubscription,
+      })),
+    };
+    const parent = new AbortController();
+    parent.abort();
+
+    const proof = startStartupReadinessProof(native as never, parent.signal);
+
+    await Promise.resolve();
+    expect(disposeSubscription).toHaveBeenCalledOnce();
+    expect(native.getBundledServerStatus).not.toHaveBeenCalled();
+    expect(native.commitStartupReadiness).not.toHaveBeenCalled();
+    proof.dispose();
+    expect(disposeSubscription).toHaveBeenCalledOnce();
+  });
+  it('cancels a retry delay before a sixth-sidecar poll can begin', async () => {
+    const native = adapter([{ status: 'error' }]);
+    const controller = new AbortController();
+    const pending = proveAndCommitStartupReadiness(
+      native as never,
+      controller.signal,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(native.getBundledServerStatus).toHaveBeenCalledOnce();
+    controller.abort();
+    await expect(pending).resolves.toBe(false);
+    expect(native.getBundledServerStatus).toHaveBeenCalledOnce();
+  });
+  it('passes cancellation into the native transport', async () => {
+    const native = adapter([{ status: 'ok', value: running(5) }]);
+    const controller = new AbortController();
+    transport.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          instanceId: 'desktop-sidecar-stable',
+          bootId: 'boot-5',
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      proveAndCommitStartupReadiness(native as never, controller.signal),
+    ).resolves.toBe(true);
+    expect(transport).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal }),
+    );
   });
 });

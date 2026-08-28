@@ -516,7 +516,15 @@ jobs:
           version-script: npm run version-packages
           pr-title: 'chore: version packages'
           commit-message: 'chore: version packages'
-        # No step `env:` at all, deliberately — each absence below is a
+        env:
+          # Self-hosted runners cannot produce sigstore provenance: npm's
+          # trusted publishing auto-attaches it and the registry rejects the
+          # publish with E422 ("Only github-hosted runners are supported").
+          # Disabling provenance leaves OIDC trusted-publishing auth intact —
+          # only the attestation is dropped. Restoring real provenance means
+          # moving this job to a github-hosted runner (#683).
+          NPM_CONFIG_PROVENANCE: 'false'
+        # Exactly ONE env var above, deliberately — each absence below is a
         # decision:
         #
         # No GITHUB_TOKEN: v2 takes the token through the `github-token`
@@ -590,6 +598,15 @@ jobs:
           specs="$(node scripts/lib/parse-published-packages.mjs "$PUBLISHED_PACKAGES")"
           while IFS=$'\t' read -r name version; do
             [ -n "$name" ] || continue
+            # changesets' published-packages includes PRIVATE packages (it
+            # "publishes" them as git tags only) — recording those fabricates
+            # npm ships that never reached the registry. Only a row the
+            # registry itself confirms is a ship; anything else is a named
+            # skip, never a silent one.
+            if ! npm view "$name@$version" version > /dev/null 2>&1; then
+              echo "not on the npm registry (tag-only or private publish) — no ledger row: $name@$version"
+              continue
+            fi
             node scripts/lib/deploy-ledger-commit.mjs \
               --commit-subject "docs(ledger): record stable-npm $name@$version from run $GITHUB_RUN_ID" \
               --summary-line "- recorded: \`stable-npm $name@$version\` at \`$GITHUB_SHA\`" \
@@ -601,6 +618,7 @@ jobs:
                 --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
                 --gate-result "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main ($GITHUB_SHA)" \
                 --github-repo "$GITHUB_REPOSITORY" \
+                --package "$name" \
                 --artifact "npm:$name@$version (dist-tag latest)"
           done <<< "$specs"
 
