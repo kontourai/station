@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // EnvironmentStatus reflects the connected Station HOST's detected engines
@@ -68,15 +68,24 @@ describe('EnvironmentStatus (Host runtime IA)', () => {
     fixtures.loading = true;
     render(<EnvironmentStatus apiBase="http://host" />);
 
-    expect(screen.getByRole('heading', { name: 'Station host' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toBe(
+    const heading = screen.getByRole('heading', { name: 'Station host' });
+    const section = heading.closest('section');
+    expect(section).toBeTruthy();
+    const stationHost = within(section!);
+    expect(stationHost.getByRole('heading', { name: 'Station host' })).toBe(
+      heading,
+    );
+    expect(stationHost.getByRole('status').textContent).toBe(
       'Checking provider software on the Station host…',
     );
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByText('Detected provider software')).toBeNull();
-    expect(screen.queryByText('Node.js')).toBeNull();
-    expect(screen.queryByText(/required item to resolve/i)).toBeNull();
-    expect(screen.queryByText(/provider software detected/i)).toBeNull();
+    expect(stationHost.queryByRole('alert')).toBeNull();
+    expect(stationHost.queryByText('Detected provider software')).toBeNull();
+    expect(stationHost.queryByText('Node.js')).toBeNull();
+    expect(stationHost.queryByText(/required item to resolve/i)).toBeNull();
+    expect(stationHost.queryByText(/provider software detected/i)).toBeNull();
+    expect(
+      stationHost.queryByText(/^Station host (?:is )?(?:ready|healthy)\.?$/i),
+    ).toBeNull();
   });
 
   test('frames detected tooling as the host runtime, not user settings', () => {
