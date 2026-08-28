@@ -69,6 +69,9 @@ node scripts/check-prepush-orchestration-transfer.mjs
 echo "[station pre-push] static gates (UI contracts, content)"
 node scripts/check-prepush-static-gates.mjs
 
+echo "[station pre-push] Basis MCP app freshness"
+node scripts/check-basis-mcp-apps.mjs
+
 # ~6s, and only when this push changes the SDK's own sources (#3629). The
 # barrel invariant already exists as a test; what was missing is running it
 # while the change is still the author's problem. Five omissions reached main

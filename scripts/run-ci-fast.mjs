@@ -42,6 +42,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/check-basis-mcp-apps.mjs']),
+  ]),
   Object.freeze(['npm', Object.freeze(['run', 'verification:policy:gate'])]),
   // PRECONDITION for the aggregate below, not a build step for its own sake
   // (station#4273). `typecheck:ui` resolves `@kontourai/station-connect`
