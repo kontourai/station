@@ -55,6 +55,27 @@ function producerCommand(source = release) {
   return match[1];
 }
 
+type LockedCargoPackage = { name: string; version: string };
+type NormalizedComponent = {
+  name?: unknown;
+  version?: unknown;
+  purl?: unknown;
+};
+
+function lockedCargoPackages(): LockedCargoPackage[] {
+  return readFileSync(resolve(native, 'Cargo.lock'), 'utf8')
+    .split(/^\[\[package\]\]\r?$/m)
+    .slice(1)
+    .map((block) => {
+      const name = /^name = "([^"]+)"$/m.exec(block)?.[1];
+      const version = /^version = "([^"]+)"$/m.exec(block)?.[1];
+      if (!name || !version) {
+        throw new Error('Cargo.lock package record is missing name or version');
+      }
+      return { name, version };
+    });
+}
+
 afterEach(() => {
   if (existsSync(output)) rmSync(output);
 });
@@ -69,9 +90,14 @@ test.skipIf(!hasProducerToolchain)(
     });
     const source = JSON.parse(readFileSync(output, 'utf8'));
     expect(source.specVersion).toBe('1.5');
-    expect(source.components).toHaveLength(561);
+    const lockedPackages = lockedCargoPackages();
+    expect(
+      lockedPackages.filter(({ name }) => name === 'station'),
+    ).toHaveLength(1);
+    const expectedDependencyComponents = lockedPackages.length - 1;
+    expect(source.components).toHaveLength(expectedDependencyComponents);
     const components = cyclonedxComponents(source, 'cargo', output);
-    expect(components).toHaveLength(561);
+    expect(components).toHaveLength(expectedDependencyComponents);
     expect(JSON.stringify(components)).not.toMatch(/file:|\/private\//);
     expect(components).toContainEqual(
       expect.objectContaining({
@@ -79,6 +105,47 @@ test.skipIf(!hasProducerToolchain)(
         purl: 'pkg:cargo/android-native-keyring-store@1.0.0',
       }),
     );
+    const lockedVersions = (name: string) =>
+      [
+        ...new Set(
+          lockedPackages
+            .filter((locked) => locked.name === name)
+            .map((locked) => locked.version),
+        ),
+      ].sort();
+    const pluginNames = ['tauri-plugin-process', 'tauri-plugin-updater'];
+    const expectedPlugins = pluginNames
+      .flatMap((name) => {
+        const versions = lockedVersions(name);
+        expect(versions, `${name} must be locked`).not.toHaveLength(0);
+        return versions.map((version) => ({
+          name,
+          version,
+          purl: `pkg:cargo/${name}@${version}`,
+        }));
+      })
+      .sort((left, right) =>
+        `${left.name}@${left.version}`.localeCompare(
+          `${right.name}@${right.version}`,
+        ),
+      );
+    const normalizedPlugins = (components as NormalizedComponent[])
+      .filter(
+        (component) =>
+          typeof component.name === 'string' &&
+          pluginNames.includes(component.name),
+      )
+      .map((component) => ({
+        name: component.name,
+        version: component.version,
+        purl: component.purl,
+      }))
+      .sort((left, right) =>
+        `${left.name}@${left.version}`.localeCompare(
+          `${right.name}@${right.version}`,
+        ),
+      );
+    expect(normalizedPlugins).toEqual(expectedPlugins);
   },
   120_000,
 );
