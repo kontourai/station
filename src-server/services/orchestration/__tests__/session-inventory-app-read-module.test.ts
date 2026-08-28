@@ -325,4 +325,84 @@ describe('SessionInventoryAppReadModule', () => {
     if (paged.status !== 'available') return;
     expect(paged.continuations[0]!.continuationToken).not.toBe(first);
   });
+  test('terminal pages remove the continuation and deny old-token replay, caller, authority, TTL, and page-cap reuse', async () => {
+    let at = 0;
+    const module = make({
+      read: async () => ({
+        status: 'found' as const,
+        projection: validProjection('open'),
+      }),
+      page: async () => ({ status: 'found' as const, page: validPage() }),
+      authorize: () => true,
+      isEnabled: () => true,
+      now: () => at,
+    });
+    const opened = await module.open({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    if (opened.status !== 'available') throw new Error('expected valid open');
+    const token = opened.continuations[0]!.continuationToken;
+    await expect(
+      module.page({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: 'other_'.padEnd(32, 'b'),
+        authority: authority(),
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: token,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    await expect(
+      module.page({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: sessionReadAuthorityFromRequest(
+          'other',
+          undefined,
+          undefined,
+        ),
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: token,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    const terminal = await module.page({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+      occurrenceId: opened.occurrenceId,
+      groupId: 'inputs',
+      continuationToken: token,
+    });
+    expect(terminal).toMatchObject({ status: 'available', continuations: [] });
+    await expect(
+      module.page({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: token,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    at = 5 * 60_000 + 1;
+    await expect(
+      module.page({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: token,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+  });
 });
