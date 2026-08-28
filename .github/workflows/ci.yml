@@ -10,12 +10,6 @@ on:
     types: [opened, synchronize, reopened, edited]
   # Manual trigger for bounded fast feedback and the completion gate on demand.
   workflow_dispatch:
-    inputs:
-      fast_only:
-        description: Temporary candidate-proof mode; skips full regression.
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -25,7 +19,7 @@ jobs:
     name: Exact full-diff classification
     # Keep candidate feedback off the starved heavy listener; non-PR jobs use
     # this full-diff result.
-    if: ${{ github.event_name != 'pull_request_target' && inputs.fast_only != true }}
+    if: ${{ github.event_name != 'pull_request_target' }}
     # station#1931: this MUST NOT be provider-hosted. Every other job in this
     # workflow `needs:` it, so while provider-hosted jobs cannot start (org
     # billing, 2026-08-01) a zero-step failure here SKIPS the entire
@@ -273,7 +267,7 @@ jobs:
     # Avoid the weight-6, roughly 65-minute heavy-host lease on every push or
     # PR; dispatch remains available for an explicitly requested completion gate.
     needs: [classify, fast-checks]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' && inputs.fast_only != true }}
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
     concurrency:
       group: ci-full-regression-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
