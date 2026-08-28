@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
@@ -469,49 +475,79 @@ describe('StationInstanceReconciler Interface', () => {
     const lockingInstance = { ...instance, instanceId: 'locking-instance' };
     const root = mkdtempSync(join(tmpdir(), 'station-instance-reconcile-'));
     const lock = join(root, 'station-test.reconcile');
-    let finishStart!: () => void;
-    const adapter = platform([
-      observed(),
-      observed({
-        supervisor: { ...observed().supervisor, state: 'active' },
-        identity: { ...observed().identity, state: 'healthy', found: true },
-        ready: true,
-      }),
-    ]);
-    adapter.acquireInstanceLock = vi.fn((_ref, options) =>
-      acquireFileMutationLock(lock, { timeoutMs: options.timeoutMs }),
-    );
-    adapter.start = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishStart = resolve;
-        }),
-    );
-    const firstReconciler = createStationInstanceReconciler(adapter);
-    const secondReconciler = createStationInstanceReconciler(adapter);
-    await expect(
-      firstReconciler.reconcile({
+    let settleStart!: () => void;
+    const startSettlement = new Promise<void>((resolve) => {
+      settleStart = resolve;
+    });
+    let reconciliation: Promise<unknown> | undefined;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    try {
+      let enterStart!: () => void;
+      const startEntered = new Promise<void>((resolve) => {
+        enterStart = resolve;
+      });
+      const adapter = platform([observed()]);
+      adapter.acquireInstanceLock = vi.fn((_ref, options) =>
+        acquireFileMutationLock(lock, { timeoutMs: options.timeoutMs }),
+      );
+      adapter.start = vi.fn(() => {
+        enterStart();
+        return startSettlement;
+      });
+      const firstReconciler = createStationInstanceReconciler(adapter);
+      const secondReconciler = createStationInstanceReconciler(adapter);
+      const pending = firstReconciler.reconcile({
         instance: lockingInstance,
         desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
         deadlineMs: 100,
-      }),
-    ).resolves.toMatchObject({ kind: 'partial' });
-    expect(existsSync(lock)).toBe(true);
-    expect(statSync(lock).mode & 0o777).toBe(0o600);
-    // Exercise the filesystem Adapter's lock directly: sharedOperations is
-    // deliberately bypassed, proving the production lock itself contends.
-    expect(() => acquireFileMutationLock(lock, { timeoutMs: 0 })).toThrow();
-    await expect(
-      secondReconciler.reconcile({
-        instance: lockingInstance,
-        desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'stopped' },
-      }),
-    ).resolves.toMatchObject({ kind: 'contended' });
-    finishStart();
-    await vi.waitFor(() => expect(existsSync(lock)).toBe(false));
-    const retryRelease = acquireFileMutationLock(lock, { timeoutMs: 0 });
-    retryRelease();
-    expect(existsSync(lock)).toBe(false);
+      });
+      reconciliation = pending;
+      await startEntered;
+      expect(adapter.start).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(pending).resolves.toEqual({
+        kind: 'partial',
+        reason: 'Reconciliation deadline expired after action may have acted',
+      });
+
+      expect(existsSync(lock)).toBe(true);
+      expect(statSync(lock).mode & 0o777).toBe(0o600);
+      // Exercise the filesystem Adapter's lock directly: sharedOperations is
+      // deliberately bypassed, proving the production lock itself contends.
+      expect(() => acquireFileMutationLock(lock, { timeoutMs: 0 })).toThrow();
+      await expect(
+        secondReconciler.reconcile({
+          instance: lockingInstance,
+          desired: {
+            version: STATION_INSTANCE_STATE_VERSION,
+            kind: 'stopped',
+          },
+        }),
+      ).resolves.toMatchObject({ kind: 'contended' });
+
+      settleStart();
+      await startSettlement;
+      await vi.runAllTimersAsync();
+      expect(existsSync(lock)).toBe(false);
+      const retryRelease = acquireFileMutationLock(lock, { timeoutMs: 0 });
+      retryRelease();
+      expect(existsSync(lock)).toBe(false);
+    } finally {
+      settleStart();
+      try {
+        await startSettlement;
+        await vi.runAllTimersAsync();
+        await reconciliation?.catch(() => undefined);
+        await Promise.resolve();
+        await vi.runAllTimersAsync();
+      } catch {
+        // Never replace the assertion that entered this teardown path.
+      } finally {
+        vi.useRealTimers();
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
   });
 
   test('recovers a stale production lock and cleans up its owned record', async () => {
