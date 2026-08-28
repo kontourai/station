@@ -2,7 +2,9 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { useState } from 'react';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
+import { SessionInventoryFullFallback } from './SessionInventoryFullFallback';
 
 /**
  * The mobile header's overflow sheet.
@@ -24,10 +26,28 @@ export function ChatDockMobileOverflowSheet({
   returnFocusTarget?: HTMLElement | null;
   onClose: () => void;
 }) {
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const run = (action: () => void) => {
     onClose();
     action();
   };
+
+  if (inventoryOpen && overflow.sessionInventory)
+    return (
+      <SessionInventoryFullFallback
+        scope={{
+          kind: 'whole-session',
+          sessionId: overflow.sessionInventory.sessionId,
+        }}
+        projectId={overflow.sessionInventory.projectId}
+        trigger={returnFocusTarget ?? null}
+        forceFallback
+        onClose={() => {
+          setInventoryOpen(false);
+          onClose();
+        }}
+      />
+    );
 
   return (
     <ResponsiveDialogSurface
@@ -65,17 +85,12 @@ export function ChatDockMobileOverflowSheet({
         >
           Conversation history
         </button>
-        {overflow.onOpenSessionInventory ? (
+        {overflow.sessionInventory ? (
           <button
             type="button"
             role="menuitem"
             className="composer-actions-menu__item"
-            onClick={(event) => {
-              onClose();
-              overflow.onOpenSessionInventory!(
-                returnFocusTarget ?? event.currentTarget,
-              );
-            }}
+            onClick={() => setInventoryOpen(true)}
           >
             Session inventory
           </button>

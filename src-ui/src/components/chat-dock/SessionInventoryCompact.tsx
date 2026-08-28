@@ -123,7 +123,7 @@ export function SessionInventoryCompact({
     >
       <div className="session-inventory-compact__heading">
         <h2>Session inventory</h2>
-        <span>{model.scopeLabel}</span>
+        <bdi>{model.scopeLabel}</bdi>
         <button
           type="button"
           onClick={onClose}

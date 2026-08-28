@@ -1916,7 +1916,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   : null,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
-                onOpenSessionInventory: undefined,
+                sessionInventory:
+                  inventoryExecutionId &&
+                  activeOrchestrationSessionRead === 'present'
+                    ? {
+                        sessionId: inventoryExecutionId,
+                        projectId: inventoryProjectId,
+                      }
+                    : undefined,
                 // Collapsing must clear Maximized (#795) — an independent
                 // `is-maximized` class surviving a collapse leaves a
                 // full-height dock with an emptied body.

@@ -39,9 +39,8 @@ export interface ChatDockMobileOverflowActions {
   openProjectName: string | null;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
-  /** Opens the exact captured Session in the existing full-height fallback. */
-  /** The actual overflow menu button is the only valid phone focus origin. */
-  onOpenSessionInventory?: (trigger: HTMLElement) => void;
+  /** Plain captured identity; the lazy actions sheet owns the full fallback. */
+  sessionInventory?: { sessionId: string; projectId?: string };
   /**
    * Dock-height controls. The header carries one visible expand/collapse
    * toggle (#1052 follow-up — the earlier drag-only direction was reversed on

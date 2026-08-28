@@ -142,8 +142,8 @@ export function ChatDockWorkspaceActions({
   onOpenConversation,
   onNewChat,
 }: Pick<Controls, 'onOpenConversation' | 'onNewChat'>) {
-  const openShortcut = useShortcutDisplay('chat.open');
-  const newShortcut = useShortcutDisplay('chat.new');
+  const openShortcut = useShortcutDisplay('dock.openConversation');
+  const newShortcut = useShortcutDisplay('dock.newChat');
   return (
     <div className="chat-dock__tab-actions">
       <button
@@ -152,7 +152,7 @@ export function ChatDockWorkspaceActions({
         onClick={onOpenConversation}
         title={withShortcutHint(
           'Open Conversation',
-          'chat.open',
+          'dock.openConversation',
           () => openShortcut,
         )}
       >
@@ -163,7 +163,7 @@ export function ChatDockWorkspaceActions({
         type="button"
         className="chat-dock__new"
         onClick={onNewChat}
-        title={withShortcutHint('New Chat', 'chat.new', () => newShortcut)}
+        title={withShortcutHint('New Chat', 'dock.newChat', () => newShortcut)}
       >
         <NewChatGlyph />
         <span className="chat-dock__new-label">New</span>
