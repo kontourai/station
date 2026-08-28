@@ -177,7 +177,7 @@ describe('SessionWorkItemModule', () => {
         authority: personal,
         current: () => true,
       }),
-    ).toEqual({ status: 'unavailable' });
+    ).toEqual({ status: 'corrupt' });
   });
 
   test('fails closed when initial principal, ACL, or lineage callbacks throw', () => {

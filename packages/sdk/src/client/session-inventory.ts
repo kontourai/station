@@ -1,10 +1,10 @@
 import {
+  type AnySessionInventoryGroupPage,
+  type AnySessionInventoryProjection,
   parseSessionInventoryGroupPage,
   parseSessionInventoryProjection,
-  type SessionInventoryGroupId,
-  type SessionInventoryGroupPage,
-  type SessionInventoryProjection,
   type SessionInventoryScope,
+  type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { type ClientRequestOptions, getJson } from './http';
 
@@ -40,7 +40,7 @@ export async function getSessionInventory(
   apiBase: string,
   scope: SessionInventoryScope,
   options?: ClientRequestOptions,
-): Promise<SessionInventoryProjection> {
+): Promise<AnySessionInventoryProjection> {
   const base =
     scope.kind === 'kept-in-task'
       ? `${apiBase}/api/tasks/${encodeURIComponent(scope.taskId)}/sessions/${encodeURIComponent(scope.sessionId)}/inventory`
@@ -59,9 +59,9 @@ export async function getSessionInventory(
 export async function getSessionInventoryGroupPage(
   apiBase: string,
   scope: SessionInventoryScope,
-  groupId: SessionInventoryGroupId,
+  groupId: SessionInventoryV2GroupId,
   options?: ClientRequestOptions & { continuation?: string },
-): Promise<SessionInventoryGroupPage> {
+): Promise<AnySessionInventoryGroupPage> {
   const query = new URLSearchParams(scopeQuery(scope));
   if (options?.continuation) query.set('continuation', options.continuation);
   try {

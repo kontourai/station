@@ -34,6 +34,7 @@ import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { SESSION_INVENTORY_CURRENT_GROUP_IDS } from '@kontourai/station-contracts/session-inventory';
 import { parseStationSessionInventoryMcpInput } from '@kontourai/station-contracts/session-inventory-mcp';
 import {
   type HostedTenantRegistry,
@@ -2135,21 +2136,11 @@ export function createOrchestrationRoutes(
       continuation: c.req.query('continuation'),
     });
     const groupId = param(c, 'groupId');
-    const groupIds = [
-      'inputs',
-      'sources',
-      'execution',
-      'decisions',
-      'outputs',
-      'verification-delivery',
-      'live-now',
-      'kept',
-      'attention',
-      'resources',
-    ];
     if (
       !parsed.success ||
-      !groupIds.includes(groupId) ||
+      !SESSION_INVENTORY_CURRENT_GROUP_IDS.includes(
+        groupId as (typeof SESSION_INVENTORY_CURRENT_GROUP_IDS)[number],
+      ) ||
       deps.isRequestPrincipalCurrent?.(c.req.raw) !== true
     )
       return sessionInventoryUnavailable(c);
@@ -2168,7 +2159,7 @@ export function createOrchestrationRoutes(
     const outcome = await deps.sessionInventory?.page({
       scope,
       groupId:
-        groupId as import('@kontourai/station-contracts/session-inventory').SessionInventoryGroupId,
+        groupId as import('@kontourai/station-contracts/session-inventory').SessionInventoryV2GroupId,
       continuation: parsed.data.continuation,
       authority,
       current: () =>

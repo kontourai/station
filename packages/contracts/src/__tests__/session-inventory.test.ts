@@ -5,14 +5,19 @@ import {
 import { describe, expect, test } from 'vitest';
 import {
   parseSessionInventoryProjection,
-  SESSION_INVENTORY_GROUP_IDS,
   SESSION_INVENTORY_V1,
+  SESSION_INVENTORY_V1_GROUP_IDS,
+  SESSION_INVENTORY_V2,
+  SESSION_INVENTORY_V2_GROUP_IDS,
 } from '../session-inventory.js';
 import {
   buildStationSessionInventoryMcpEnvelope,
   buildStationSessionInventoryMcpGroupPageEnvelope,
+  buildStationSessionInventoryMcpV2Envelope,
   parseStationSessionInventoryMcpEnvelope,
   parseStationSessionInventoryMcpInput,
+  parseStationSessionInventoryMcpV2Envelope,
+  parseStationSessionInventoryMcpV2Input,
 } from '../session-inventory-mcp.js';
 import { createStationAnswerBinding } from '../task-basis.js';
 
@@ -20,7 +25,7 @@ function projection(): any {
   return {
     version: SESSION_INVENTORY_V1,
     scope: { kind: 'whole-session', sessionId: 'session-a' },
-    groups: SESSION_INVENTORY_GROUP_IDS.map((id) => ({
+    groups: SESSION_INVENTORY_V1_GROUP_IDS.map((id) => ({
       id,
       owner: { owner: 'station.inventory', id: 'v1' },
       state: 'empty',
@@ -91,6 +96,20 @@ function currentProjection(): any {
   };
   return value;
 }
+function v2Projection(): any {
+  return {
+    version: SESSION_INVENTORY_V2,
+    scope: { kind: 'whole-session', sessionId: 'session-a' },
+    groups: SESSION_INVENTORY_V2_GROUP_IDS.map((id) => ({
+      id,
+      owner: { owner: 'station.inventory', id: 'v2' },
+      state: 'empty',
+      count: { kind: 'exact', value: 0 },
+      items: [],
+      gaps: [],
+    })),
+  };
+}
 describe('Session inventory v1', () => {
   test('closes the portable MCP input and keeps continuations out of structured content', () => {
     expect(
@@ -130,6 +149,22 @@ describe('Session inventory v1', () => {
         },
       }),
     ).toBeNull();
+    for (const hostile of [
+      new Proxy(
+        {},
+        {
+          getPrototypeOf: () => {
+            throw new Error('prototype');
+          },
+        },
+      ),
+      Object.defineProperty({}, 'version', {
+        get: () => {
+          throw new Error('getter');
+        },
+      }),
+    ])
+      expect(parseStationSessionInventoryMcpEnvelope(hostile)).toBeNull();
   });
   test('accepts the fixed, ordered empty projection', () => {
     expect(parseSessionInventoryProjection(projection())).not.toBeNull();
@@ -276,5 +311,95 @@ describe('Session inventory v1', () => {
     const badGap = currentProjection();
     badGap.groups[1].items[0].contributionGaps = ['https://private.example'];
     expect(parseSessionInventoryProjection(badGap)).toBeNull();
+  });
+});
+
+describe('Session inventory v2', () => {
+  test('requires the dedicated ordered work-items group and admits only its closed row', () => {
+    const value = v2Projection();
+    const group = value.groups.find((item: any) => item.id === 'work-items');
+    group.state = 'available';
+    group.count = { kind: 'exact', value: 1 };
+    group.items = [
+      {
+        kind: 'station-session-work-item',
+        key: 'work-item:association-a',
+        owner: { owner: 'station.session-work-items', id: 'v1' },
+        relations: ['observed-during', 'produced-by'],
+        sessionId: 'session-a',
+        conversationId: 'conversation-a',
+        eventId: 'event-a',
+        turnId: 'turn-a',
+        toolCallId: 'call-a',
+        provider: { id: 'github', host: 'github.com' },
+        workItemRef: 'github:kontourai/station#235',
+        repository: { owner: 'kontourai', name: 'station' },
+        nativeId: '1234567890',
+        associationIds: ['association-a'],
+        observedAt: '2026-08-28T12:00:00.000Z',
+      },
+    ];
+    expect(parseSessionInventoryProjection(value)).not.toBeNull();
+    const valid = structuredClone(value);
+    const wrongGroup = structuredClone(valid);
+    const input = wrongGroup.groups.find((item: any) => item.id === 'inputs');
+    input.state = 'available';
+    input.count = { kind: 'exact', value: 1 };
+    input.items = group.items;
+    group.items = [];
+    group.state = 'empty';
+    group.count = { kind: 'exact', value: 0 };
+    expect(parseSessionInventoryProjection(wrongGroup)).toBeNull();
+    const extra = structuredClone(valid);
+    extra.groups.push(extra.groups[0]);
+    expect(parseSessionInventoryProjection(extra)).toBeNull();
+    const crossSession = structuredClone(valid);
+    crossSession.groups.find(
+      (item: any) => item.id === 'work-items',
+    ).items[0].sessionId = 'other-session';
+    expect(parseSessionInventoryProjection(crossSession)).toBeNull();
+  });
+  test('keeps v1 MCP closed while v2 admits the work-items contract', () => {
+    const value = v2Projection();
+    expect(buildStationSessionInventoryMcpEnvelope(value)).toBeNull();
+    const envelope = buildStationSessionInventoryMcpV2Envelope(value);
+    expect(parseStationSessionInventoryMcpV2Envelope(envelope)).toEqual(
+      envelope,
+    );
+    expect(parseStationSessionInventoryMcpEnvelope(envelope)).toBeNull();
+    expect(
+      parseStationSessionInventoryMcpInput({
+        operation: 'page',
+        scope: value.scope,
+        occurrenceId: 'a'.repeat(24),
+        groupId: 'work-items',
+        continuationToken: 'b'.repeat(16),
+      }),
+    ).toBeNull();
+    expect(
+      parseStationSessionInventoryMcpV2Input({
+        operation: 'page',
+        scope: value.scope,
+        occurrenceId: 'a'.repeat(24),
+        groupId: 'work-items',
+        continuationToken: 'b'.repeat(16),
+      }),
+    ).not.toBeNull();
+    for (const hostile of [
+      new Proxy(
+        {},
+        {
+          getPrototypeOf: () => {
+            throw new Error('prototype');
+          },
+        },
+      ),
+      Object.defineProperty({}, 'version', {
+        get: () => {
+          throw new Error('getter');
+        },
+      }),
+    ])
+      expect(parseStationSessionInventoryMcpV2Envelope(hostile)).toBeNull();
   });
 });

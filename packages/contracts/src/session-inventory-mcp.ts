@@ -1,16 +1,24 @@
 import {
   parseSessionInventoryGroupPage,
   parseSessionInventoryProjection,
+  SESSION_INVENTORY_CURRENT_GROUP_IDS,
   SESSION_INVENTORY_GROUP_IDS,
+  SESSION_INVENTORY_V1,
+  SESSION_INVENTORY_V2,
   type SessionInventoryGroupId,
   type SessionInventoryGroupPage,
   type SessionInventoryProjection,
   type SessionInventoryScope,
+  type SessionInventoryV2GroupId,
+  type SessionInventoryV2GroupPage,
+  type SessionInventoryV2Projection,
 } from './session-inventory.js';
 import { isStationBasisId } from './task-basis.js';
 
 export const STATION_SESSION_INVENTORY_MCP_VERSION =
   'station.session-inventory-mcp/v1' as const;
+export const STATION_SESSION_INVENTORY_MCP_V2_VERSION =
+  'station.session-inventory-mcp/v2' as const;
 export const STATION_SESSION_INVENTORY_MCP_MAX_SERIALIZED_BYTES = 120 * 1024;
 
 export type StationSessionInventoryMcpEnvelope =
@@ -24,6 +32,17 @@ export type StationSessionInventoryMcpEnvelope =
       kind: 'group-page';
       page: SessionInventoryGroupPage;
     };
+export type StationSessionInventoryMcpV2Envelope =
+  | {
+      version: typeof STATION_SESSION_INVENTORY_MCP_V2_VERSION;
+      kind: 'projection';
+      projection: SessionInventoryV2Projection;
+    }
+  | {
+      version: typeof STATION_SESSION_INVENTORY_MCP_V2_VERSION;
+      kind: 'group-page';
+      page: SessionInventoryV2GroupPage;
+    };
 export type StationSessionInventoryMcpInput =
   | { operation: 'open'; scope: SessionInventoryScope }
   | {
@@ -31,6 +50,15 @@ export type StationSessionInventoryMcpInput =
       scope: SessionInventoryScope;
       occurrenceId: string;
       groupId: SessionInventoryGroupId;
+      continuationToken: string;
+    };
+export type StationSessionInventoryMcpV2Input =
+  | { operation: 'open'; scope: SessionInventoryScope }
+  | {
+      operation: 'page';
+      scope: SessionInventoryScope;
+      occurrenceId: string;
+      groupId: SessionInventoryV2GroupId;
       continuationToken: string;
     };
 
@@ -51,10 +79,7 @@ function scope(value: unknown): value is SessionInventoryScope {
         isStationBasisId(item.taskId)))
   );
 }
-
-export function parseStationSessionInventoryMcpInput(
-  value: unknown,
-): StationSessionInventoryMcpInput | null {
+function parseInput<T extends string>(value: unknown, groups: readonly T[]) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (
@@ -62,7 +87,7 @@ export function parseStationSessionInventoryMcpInput(
     Object.keys(item).length === 2 &&
     scope(item.scope)
   )
-    return { operation: 'open', scope: item.scope };
+    return { operation: 'open' as const, scope: item.scope };
   if (
     item.operation === 'page' &&
     Object.keys(item).length === 5 &&
@@ -70,109 +95,226 @@ export function parseStationSessionInventoryMcpInput(
     typeof item.occurrenceId === 'string' &&
     /^[A-Za-z0-9_-]{24,128}$/.test(item.occurrenceId) &&
     typeof item.groupId === 'string' &&
-    SESSION_INVENTORY_GROUP_IDS.includes(
-      item.groupId as SessionInventoryGroupId,
-    ) &&
+    groups.includes(item.groupId as T) &&
     typeof item.continuationToken === 'string' &&
     item.continuationToken.length >= 16 &&
     item.continuationToken.length <= 1024
   )
     return {
-      operation: 'page',
+      operation: 'page' as const,
       scope: item.scope,
       occurrenceId: item.occurrenceId,
-      groupId: item.groupId as SessionInventoryGroupId,
+      groupId: item.groupId as T,
       continuationToken: item.continuationToken,
     };
   return null;
 }
-
-/** Closed model-visible envelope: opaque page continuations belong only in MCP metadata. */
+export function parseStationSessionInventoryMcpInput(
+  value: unknown,
+): StationSessionInventoryMcpInput | null {
+  return parseInput(value, SESSION_INVENTORY_GROUP_IDS);
+}
+export function parseStationSessionInventoryMcpV2Input(
+  value: unknown,
+): StationSessionInventoryMcpV2Input | null {
+  return parseInput(value, SESSION_INVENTORY_CURRENT_GROUP_IDS);
+}
+function plain(value: unknown): value is Record<string, unknown> {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+function projectionEnvelope<
+  T extends SessionInventoryProjection | SessionInventoryV2Projection,
+>(
+  version: string,
+  value: unknown,
+  projection: T | null,
+  expected: T['version'],
+) {
+  if (
+    !plain(value) ||
+    value.version !== version ||
+    value.kind !== 'projection' ||
+    Object.keys(value).length !== 3 ||
+    !projection ||
+    projection.version !== expected ||
+    projection.groups.some((group) => group.continuation !== undefined)
+  )
+    return null;
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength <=
+    STATION_SESSION_INVENTORY_MCP_MAX_SERIALIZED_BYTES
+    ? projection
+    : null;
+}
+function pageEnvelope<
+  T extends SessionInventoryGroupPage | SessionInventoryV2GroupPage,
+>(version: string, value: unknown, page: T | null, expected: T['version']) {
+  if (
+    !plain(value) ||
+    value.version !== version ||
+    value.kind !== 'group-page' ||
+    Object.keys(value).length !== 3 ||
+    !page ||
+    page.version !== expected ||
+    page.group.continuation !== undefined
+  )
+    return null;
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength <=
+    STATION_SESSION_INVENTORY_MCP_MAX_SERIALIZED_BYTES
+    ? page
+    : null;
+}
 export function parseStationSessionInventoryMcpEnvelope(
   value: unknown,
 ): StationSessionInventoryMcpEnvelope | null {
   try {
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      Array.isArray(value) ||
-      Object.getPrototypeOf(value) !== Object.prototype
-    )
-      return null;
-    const record = value as Record<string, unknown>;
-    if (record.version !== STATION_SESSION_INVENTORY_MCP_VERSION) return null;
     const projection =
-      record.kind === 'projection' && Object.keys(record).length === 3
-        ? parseSessionInventoryProjection(record.projection)
+      plain(value) && value.kind === 'projection'
+        ? parseSessionInventoryProjection(value.projection)
         : null;
     const page =
-      record.kind === 'group-page' && Object.keys(record).length === 3
-        ? parseSessionInventoryGroupPage(record.page)
+      plain(value) && value.kind === 'group-page'
+        ? parseSessionInventoryGroupPage(value.page)
         : null;
-    if (
-      (!projection && !page) ||
-      projection?.groups.some((group) => group.continuation !== undefined) ||
-      page?.group.continuation !== undefined
-    )
-      return null;
-    const envelope = projection
+    const parsedProjection = projectionEnvelope(
+      STATION_SESSION_INVENTORY_MCP_VERSION,
+      value,
+      projection as SessionInventoryProjection | null,
+      SESSION_INVENTORY_V1,
+    );
+    if (parsedProjection)
+      return {
+        version: STATION_SESSION_INVENTORY_MCP_VERSION,
+        kind: 'projection',
+        projection: parsedProjection,
+      };
+    const parsedPage = pageEnvelope(
+      STATION_SESSION_INVENTORY_MCP_VERSION,
+      value,
+      page as SessionInventoryGroupPage | null,
+      SESSION_INVENTORY_V1,
+    );
+    return parsedPage
       ? {
           version: STATION_SESSION_INVENTORY_MCP_VERSION,
-          kind: 'projection' as const,
-          projection,
+          kind: 'group-page',
+          page: parsedPage,
         }
-      : {
-          version: STATION_SESSION_INVENTORY_MCP_VERSION,
-          kind: 'group-page' as const,
-          page: page!,
-        };
-    return new TextEncoder().encode(JSON.stringify(envelope)).byteLength <=
-      STATION_SESSION_INVENTORY_MCP_MAX_SERIALIZED_BYTES
-      ? envelope
       : null;
   } catch {
     return null;
   }
 }
-
+export function parseStationSessionInventoryMcpV2Envelope(
+  value: unknown,
+): StationSessionInventoryMcpV2Envelope | null {
+  try {
+    const projection =
+      plain(value) && value.kind === 'projection'
+        ? parseSessionInventoryProjection(value.projection)
+        : null;
+    const page =
+      plain(value) && value.kind === 'group-page'
+        ? parseSessionInventoryGroupPage(value.page)
+        : null;
+    const parsedProjection = projectionEnvelope(
+      STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+      value,
+      projection as SessionInventoryV2Projection | null,
+      SESSION_INVENTORY_V2,
+    );
+    if (parsedProjection)
+      return {
+        version: STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+        kind: 'projection',
+        projection: parsedProjection,
+      };
+    const parsedPage = pageEnvelope(
+      STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+      value,
+      page as SessionInventoryV2GroupPage | null,
+      SESSION_INVENTORY_V2,
+    );
+    return parsedPage
+      ? {
+          version: STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+          kind: 'group-page',
+          page: parsedPage,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+function withoutContinuation<
+  T extends {
+    groups?: readonly { continuation?: string }[];
+    group?: { continuation?: string };
+  },
+>(value: T): T {
+  return value.groups
+    ? ({
+        ...value,
+        groups: value.groups.map(
+          ({ continuation: _continuation, ...group }) => group,
+        ),
+      } as T)
+    : ({
+        ...value,
+        group: (({ continuation: _continuation, ...group }) => group)(
+          value.group!,
+        ),
+      } as T);
+}
 export function buildStationSessionInventoryMcpEnvelope(
   projection: unknown,
 ): StationSessionInventoryMcpEnvelope | null {
   const parsed = parseSessionInventoryProjection(projection);
-  if (!parsed) return null;
-  return parseStationSessionInventoryMcpEnvelope({
-    version: STATION_SESSION_INVENTORY_MCP_VERSION,
-    kind: 'projection',
-    projection: {
-      ...parsed,
-      groups: parsed.groups.map(
-        ({ continuation: _continuation, ...group }) => group,
-      ),
-    },
-  });
+  return parsed?.version === SESSION_INVENTORY_V1
+    ? parseStationSessionInventoryMcpEnvelope({
+        version: STATION_SESSION_INVENTORY_MCP_VERSION,
+        kind: 'projection',
+        projection: withoutContinuation(parsed),
+      })
+    : null;
 }
-
-/** Parses a model-visible single group page; opaque continuations live in `_meta`. */
-export function parseStationSessionInventoryMcpGroupPage(
-  value: unknown,
-): SessionInventoryGroupPage | null {
-  const page = parseSessionInventoryGroupPage(value);
-  return page?.group.continuation === undefined ? page : null;
+export function buildStationSessionInventoryMcpV2Envelope(
+  projection: unknown,
+): StationSessionInventoryMcpV2Envelope | null {
+  const parsed = parseSessionInventoryProjection(projection);
+  return parsed?.version === SESSION_INVENTORY_V2
+    ? parseStationSessionInventoryMcpV2Envelope({
+        version: STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+        kind: 'projection',
+        projection: withoutContinuation(parsed),
+      })
+    : null;
 }
-
 export function buildStationSessionInventoryMcpGroupPageEnvelope(
   page: unknown,
 ): StationSessionInventoryMcpEnvelope | null {
   const parsed = parseSessionInventoryGroupPage(page);
-  if (!parsed) return null;
-  return parseStationSessionInventoryMcpEnvelope({
-    version: STATION_SESSION_INVENTORY_MCP_VERSION,
-    kind: 'group-page',
-    page: {
-      ...parsed,
-      group: (({ continuation: _continuation, ...group }) => group)(
-        parsed.group,
-      ),
-    },
-  });
+  return parsed?.version === SESSION_INVENTORY_V1
+    ? parseStationSessionInventoryMcpEnvelope({
+        version: STATION_SESSION_INVENTORY_MCP_VERSION,
+        kind: 'group-page',
+        page: withoutContinuation(parsed),
+      })
+    : null;
+}
+export function buildStationSessionInventoryMcpV2GroupPageEnvelope(
+  page: unknown,
+): StationSessionInventoryMcpV2Envelope | null {
+  const parsed = parseSessionInventoryGroupPage(page);
+  return parsed?.version === SESSION_INVENTORY_V2
+    ? parseStationSessionInventoryMcpV2Envelope({
+        version: STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+        kind: 'group-page',
+        page: withoutContinuation(parsed),
+      })
+    : null;
 }

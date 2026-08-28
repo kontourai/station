@@ -286,7 +286,7 @@ export type DeclaredOutputCursor = {
 
 /** Store-authenticated cursor for a folded Session-inventory group. */
 export type SessionInventoryCursor = {
-  version: 'station.session-inventory/v1';
+  version: 'station.session-inventory/v1' | 'station.session-inventory/v2';
   sessionId: string;
   authority: string;
   scope: 'whole-session' | 'current-answer' | 'kept-in-task';
@@ -1951,7 +1951,8 @@ export class EventStore {
           ].includes(key),
         ) ||
         keys.length < 8 ||
-        cursor.version !== 'station.session-inventory/v1' ||
+        (cursor.version !== 'station.session-inventory/v1' &&
+          cursor.version !== 'station.session-inventory/v2') ||
         typeof cursor.sessionId !== 'string' ||
         typeof cursor.authority !== 'string' ||
         (cursor.scope !== 'whole-session' &&

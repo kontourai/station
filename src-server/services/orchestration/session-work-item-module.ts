@@ -6,6 +6,7 @@ import { projectSessionWorkItemRead } from './work-item-result-projector.js';
 export type SessionWorkItemReadOutcome =
   | { status: 'found'; projection: SessionWorkItemReadProjection }
   | { status: 'not-found' }
+  | { status: 'corrupt' }
   | { status: 'unavailable' };
 
 /**
@@ -65,7 +66,7 @@ export function createSessionWorkItemModule(input: {
           return { status: 'not-found' };
         return projected.kind === 'available'
           ? { status: 'found', projection: projected.projection }
-          : { status: 'unavailable' };
+          : { status: 'corrupt' };
       } catch {
         // Typed persistence corruption and ordinary durable failure have the
         // same public shape. Neither exposes stored bytes or existence facts.

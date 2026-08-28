@@ -22,8 +22,9 @@ import {
   type TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
 import {
-  SESSION_INVENTORY_GROUP_IDS,
+  SESSION_INVENTORY_CURRENT_GROUP_IDS,
   type SessionInventoryRow,
+  type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { parseStationSessionInventoryMcpInput } from '@kontourai/station-contracts/session-inventory-mcp';
 import {
@@ -623,9 +624,11 @@ export function createTaskRoutes(
     const authority = options.readAuthorityForRequest?.(request);
     const taskId = param(c, 'taskId');
     const sessionId = param(c, 'sessionId');
+    const taskWorkItemRef = service?.readTask(taskId)?.workItemRef;
     const authorized = () =>
       options.isRequestPrincipalCurrent?.(request) !== false &&
       Boolean(service?.readTask(taskId)) &&
+      service?.readTask(taskId)?.workItemRef === taskWorkItemRef &&
       Boolean(authority) &&
       (options.canReadSession?.(sessionId, authority!) ?? false) &&
       Boolean(
@@ -645,6 +648,7 @@ export function createTaskRoutes(
     const outcome = await options.sessionInventory.read({
       scope: { kind: 'kept-in-task', taskId, sessionId },
       keptRows: keepRows,
+      taskWorkItemRef,
       authority,
       current: authorized,
     });
@@ -664,10 +668,12 @@ export function createTaskRoutes(
       const authority = options.readAuthorityForRequest?.(request);
       const taskId = param(c, 'taskId');
       const sessionId = param(c, 'sessionId');
+      const taskWorkItemRef = service?.readTask(taskId)?.workItemRef;
       const groupId = param(c, 'groupId');
       const authorized = () =>
         options.isRequestPrincipalCurrent?.(request) !== false &&
         Boolean(service?.readTask(taskId)) &&
+        service?.readTask(taskId)?.workItemRef === taskWorkItemRef &&
         Boolean(authority) &&
         (options.canReadSession?.(sessionId, authority!) ?? false) &&
         Boolean(
@@ -683,17 +689,18 @@ export function createTaskRoutes(
         !service ||
         !authority ||
         !options.sessionInventory ||
-        !SESSION_INVENTORY_GROUP_IDS.includes(
-          groupId as (typeof SESSION_INVENTORY_GROUP_IDS)[number],
+        !SESSION_INVENTORY_CURRENT_GROUP_IDS.includes(
+          groupId as (typeof SESSION_INVENTORY_CURRENT_GROUP_IDS)[number],
         ) ||
         !authorized()
       )
         return hostedNotFound(c);
       const outcome = await options.sessionInventory.page({
         scope: { kind: 'kept-in-task', taskId, sessionId },
-        groupId: groupId as (typeof SESSION_INVENTORY_GROUP_IDS)[number],
+        groupId: groupId as SessionInventoryV2GroupId,
         continuation: c.req.query('continuation'),
         keptRows: keptRowsForTaskSession(service, taskId, sessionId),
+        taskWorkItemRef,
         authority,
         current: authorized,
       });

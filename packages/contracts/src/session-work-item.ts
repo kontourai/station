@@ -119,7 +119,6 @@ export function parseSessionWorkItemAssociation(
     ];
     if (
       keys.length !== required.length ||
-      !required.every((key) => Object.hasOwn(value, key)) ||
       !required.every((key) => keys.includes(key)) ||
       value.version !== SESSION_WORK_ITEM_ASSOCIATION_V1 ||
       !boundedText(
