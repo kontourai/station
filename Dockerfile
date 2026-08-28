@@ -48,7 +48,7 @@ RUN node scripts/lib/container-release-metadata.mjs \
   --created-at="$STATION_RELEASE_CREATED_AT" \
   --repository="$STATION_IMAGE_REPOSITORY" \
   --station-manifest=.station-release.json >/dev/null
-RUN ./station build --instance=container --base=/tmp/station-build-home --port=3141 --ui-port=3000
+RUN STATION_UI_BUNDLE_BUDGET=observe ./station build --instance=container --base=/tmp/station-build-home --port=3141 --ui-port=3000
 
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
 WORKDIR /app

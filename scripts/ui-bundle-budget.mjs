@@ -191,6 +191,17 @@ export function shouldEnforceUiBundleBudget(env = process.env) {
   return env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE !== '1';
 }
 
+/**
+ * Ceilings are set-to-actual in the canonical verification environment. A
+ * foreign build environment (the container image build: git-less, /app
+ * paths) legitimately drifts a few gzip bytes, and a zero-slack ceiling
+ * cannot arbitrate two measuring environments — observe mode measures and
+ * reports there without failing, leaving enforcement to the canonical lane.
+ */
+export function uiBundleBudgetObserveOnly(env = process.env) {
+  return env.STATION_UI_BUNDLE_BUDGET === 'observe';
+}
+
 if (process.argv[1]?.endsWith('ui-bundle-budget.mjs')) {
   if (!shouldEnforceUiBundleBudget()) {
     console.log(
@@ -209,7 +220,12 @@ if (process.argv[1]?.endsWith('ui-bundle-budget.mjs')) {
         `JS ${measured.entryJsGzipBytes}/${budget.entryJsGzipBytes} gzip bytes; CSS ${measured.entryCssGzipBytes}/${budget.entryCssGzipBytes}.`,
     );
     console.log(`Bundle dependency provenance: ${provenance.contractsPath}`);
-    if (!result.ok) {
+    if (!result.ok && uiBundleBudgetObserveOnly()) {
+      console.log(
+        `OBSERVE: over-ceiling in a foreign build environment (${result.failures.join('; ')}); ` +
+          'ceilings are enforced only in the canonical verification environment.',
+      );
+    } else if (!result.ok) {
       console.error(result.failures.join('\n'));
       // The ceilings track ACTUAL size, so a legitimate feature WILL trip this.
       // Say what to do here, because the alternative is that whoever trips it

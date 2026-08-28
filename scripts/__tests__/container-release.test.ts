@@ -457,7 +457,7 @@ describe('container source contract', () => {
       /^COPY\s+src-desktop\/tauri\.conf\.json\b/.test(line),
     );
     const stationBuildIdx = buildLines.findIndex((line) =>
-      /RUN\s+\.\/station\s+build/.test(line),
+      /RUN\s+(?:\S+=\S+\s+)*\.\/station\s+build/.test(line),
     );
     expect(copyIdx).toBeGreaterThanOrEqual(0);
     expect(stationBuildIdx).toBeGreaterThanOrEqual(0);
