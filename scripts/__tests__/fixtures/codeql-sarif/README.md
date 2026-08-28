@@ -18,3 +18,8 @@ invocation.
 referenced by `ruleId`/`ruleIndex` — adapted from the pinned action's own
 `src/testdata/valid-sarif.sarif`. It pins the policy's backward-compatible
 resolution path.
+
+`codeql-2.26.3-no-level.sarif` is a bounded observed projection, not a captured
+full hosted artifact. It preserves a 2.26.3 driver-rule inventory and omitted
+result level needed to prove SARIF's standard omitted-result-level default
+(`warning`).

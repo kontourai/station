@@ -19,7 +19,7 @@ export const MAX_SARIF_BYTES = 50 * 1024 * 1024;
 export const MAX_RESULT_SUMMARIES = 20;
 export const MAX_RESULT_MESSAGE_LENGTH = 240;
 
-const RESULT_LEVELS = new Set(['error', 'warning', 'note']);
+const RESULT_LEVELS = new Set(['note', 'warning', 'error']);
 
 function issue(path, message) {
   return `${path}: ${message}`;
@@ -54,6 +54,69 @@ function componentRules(component) {
   return Array.isArray(component?.rules) ? component.rules : [];
 }
 
+function componentReference(
+  componentReference,
+  driver,
+  extensions,
+  path,
+  findings,
+) {
+  if (
+    !componentReference ||
+    typeof componentReference !== 'object' ||
+    Array.isArray(componentReference)
+  ) {
+    findings.push(issue(path, 'has an invalid rule.toolComponent reference.'));
+    return undefined;
+  }
+  const hasIndex = componentReference.index !== undefined;
+  const hasName = componentReference.name !== undefined;
+  const hasGuid = componentReference.guid !== undefined;
+  if (!hasIndex && !hasName && !hasGuid) {
+    findings.push(issue(path, 'has an empty rule.toolComponent reference.'));
+    return undefined;
+  }
+  let candidates = [driver, ...extensions];
+  if (hasIndex) {
+    if (
+      !Number.isInteger(componentReference.index) ||
+      componentReference.index < 0 ||
+      componentReference.index >= extensions.length
+    ) {
+      findings.push(
+        issue(path, 'has an invalid rule.toolComponent reference.'),
+      );
+      return undefined;
+    }
+    candidates = [extensions[componentReference.index]];
+  }
+  if (hasName) {
+    if (!nonEmptyString(componentReference.name)) {
+      findings.push(issue(path, 'has an invalid rule.toolComponent name.'));
+      return undefined;
+    }
+    candidates = candidates.filter(
+      (component) => component?.name === componentReference.name,
+    );
+  }
+  if (hasGuid) {
+    if (!nonEmptyString(componentReference.guid)) {
+      findings.push(issue(path, 'has an invalid rule.toolComponent guid.'));
+      return undefined;
+    }
+    candidates = candidates.filter(
+      (component) => component?.guid === componentReference.guid,
+    );
+  }
+  if (candidates.length !== 1) {
+    findings.push(
+      issue(path, 'has an unknown or ambiguous rule.toolComponent reference.'),
+    );
+    return undefined;
+  }
+  return candidates[0];
+}
+
 /**
  * Resolve a result to its reporting rule per SARIF 2.1.0. Current CodeQL puts
  * every rule in `tool.extensions[]` (one component per query pack, the driver's
@@ -70,25 +133,49 @@ function resultRule(result, components, path, findings) {
     findings.push(issue(path, 'has a malformed rule reference.'));
     return undefined;
   }
+  if (
+    hasReference &&
+    reference.id !== undefined &&
+    !nonEmptyString(reference.id)
+  ) {
+    findings.push(issue(path, 'has an invalid rule.id reference.'));
+    return undefined;
+  }
+  if (result.ruleId !== undefined && !nonEmptyString(result.ruleId)) {
+    findings.push(issue(path, 'has an invalid ruleId reference.'));
+    return undefined;
+  }
   let component = driver;
   if (hasReference && reference.toolComponent !== undefined) {
-    const componentIndex = reference.toolComponent?.index;
-    if (
-      !Number.isInteger(componentIndex) ||
-      componentIndex < 0 ||
-      componentIndex >= extensions.length
-    ) {
-      findings.push(
-        issue(path, 'has an invalid rule.toolComponent reference.'),
-      );
-      return undefined;
-    }
-    component = extensions[componentIndex];
+    component = componentReference(
+      reference.toolComponent,
+      driver,
+      extensions,
+      path,
+      findings,
+    );
+    if (!component) return undefined;
   }
-  const ruleIndex = hasReference
-    ? (reference.index ?? result.ruleIndex)
-    : result.ruleIndex;
-  const ruleId = hasReference ? (reference.id ?? result.ruleId) : result.ruleId;
+  if (
+    hasReference &&
+    reference.index !== undefined &&
+    result.ruleIndex !== undefined &&
+    reference.index !== result.ruleIndex
+  ) {
+    findings.push(issue(path, 'rule.index and ruleIndex disagree.'));
+    return undefined;
+  }
+  if (
+    hasReference &&
+    nonEmptyString(reference.id) &&
+    nonEmptyString(result.ruleId) &&
+    reference.id !== result.ruleId
+  ) {
+    findings.push(issue(path, 'rule.id and ruleId disagree.'));
+    return undefined;
+  }
+  const ruleIndex = reference?.index ?? result.ruleIndex;
+  const ruleId = reference?.id ?? result.ruleId;
   const hasRuleIndex = ruleIndex !== undefined && ruleIndex !== null;
   const hasRuleId = nonEmptyString(ruleId);
   if (!hasRuleIndex && !hasRuleId) {
@@ -205,7 +292,10 @@ function validateResult(
     return;
   }
   const rule = resultRule(result, components, path, findings);
-  const level = result.level ?? rule?.defaultConfiguration?.level;
+  // SARIF 2.1 defines an omitted result.level as warning. Explicit none is
+  // narrower than this security policy: result.kind defaults to fail, so none
+  // alone cannot turn a finding into clean evidence.
+  const level = result.level ?? rule?.defaultConfiguration?.level ?? 'warning';
   if (!RESULT_LEVELS.has(level))
     findings.push(
       issue(path, 'must resolve severity level error, warning, or note.'),
@@ -252,6 +342,10 @@ function validateRun(run, index, findings, verdicts, baseline) {
   const extensions = Array.isArray(run.tool?.extensions)
     ? run.tool.extensions
     : [];
+  if (run.tool?.extensions !== undefined && !Array.isArray(run.tool.extensions))
+    findings.push(
+      issue(path, 'tool.extensions must be an array when present.'),
+    );
   if (!driver || !CODEQL_TOOL_NAMES.includes(driver.name))
     findings.push(
       issue(
@@ -277,6 +371,16 @@ function validateRun(run, index, findings, verdicts, baseline) {
         componentIndex === 0
           ? `${path}.tool.driver`
           : `${path}.tool.extensions[${componentIndex - 1}]`;
+      if (!component || typeof component !== 'object') {
+        findings.push(issue(componentPath, 'must be a tool component object.'));
+        continue;
+      }
+      if (component.rules !== undefined && !Array.isArray(component.rules)) {
+        findings.push(
+          issue(componentPath, 'rules must be an array when present.'),
+        );
+        continue;
+      }
       for (const [ruleIndex, rule] of componentRules(component).entries()) {
         if (!nonEmptyString(rule?.id))
           findings.push(

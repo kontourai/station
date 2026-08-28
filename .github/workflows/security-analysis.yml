@@ -50,6 +50,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: base-policy/.nvmrc
+      - name: Isolate base policy outside candidate scan
+        env:
+          BASE_POLICY_DIRECTORY: ${{ runner.temp }}/base-policy
+        run: mv base-policy "$BASE_POLICY_DIRECTORY"
       - name: Check out candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,11 +82,12 @@ jobs:
         env:
           CODEQL_SARIF_DIRECTORY: ${{ runner.temp }}/codeql-sarif
           CODEQL_NORMALIZED_SARIF: ${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif
+          BASE_POLICY_DIRECTORY: ${{ runner.temp }}/base-policy
         run: |
           mapfile -d '' -t SARIF_FILES < <(find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif -print0)
           if [ "${#SARIF_FILES[@]}" -ne 1 ]; then
             echo "Expected exactly one JavaScript CodeQL SARIF file; found ${#SARIF_FILES[@]}." >&2
             exit 1
           fi
-          node base-policy/scripts/codeql-sarif-normalize.mjs --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-          node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF" --baseline=base-policy/scripts/codeql-error-baseline.json
+          node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
+          node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_NORMALIZED_SARIF" --baseline="$BASE_POLICY_DIRECTORY/scripts/codeql-error-baseline.json"

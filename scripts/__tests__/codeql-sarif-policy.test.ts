@@ -159,6 +159,69 @@ describe('CodeQL SARIF policy', () => {
     expect(verdict.blocked[0]).toContain('js/path-injection [error/8.1]');
   });
 
+  test('defaults an omitted SARIF level to warning but rejects explicit none', () => {
+    const document = parseFixture('codeql-2.26.3-no-level.sarif');
+    const omitted = evaluateCodeqlSarif(document);
+    expect(omitted.findings).toEqual([]);
+    expect(omitted.blocked).toEqual([]);
+    expect(omitted.advisories).toEqual([
+      'js/path-injection [warning/8.1] Untrusted input reaches a filesystem path.',
+    ]);
+
+    document.runs[0].results[0].level = 'none';
+    expect(validateCodeqlSarif(document)).toContain(
+      'runs[0].results[0]: must resolve severity level error, warning, or note.',
+    );
+  });
+
+  test('resolves a uniquely named SARIF tool component and rejects inconsistent references', () => {
+    const named = parseFixture('pinned-codeql-finding.sarif');
+    named.runs[0].results = [
+      {
+        ...named.runs[0].results[0],
+        rule: {
+          ...named.runs[0].results[0].rule,
+          toolComponent: { name: 'codeql/javascript-queries' },
+        },
+      },
+    ];
+    expect(evaluateCodeqlSarif(named).findings).toEqual([]);
+
+    const mismatch = parseFixture('pinned-codeql-finding.sarif');
+    mismatch.runs[0].results = [
+      {
+        ...mismatch.runs[0].results[0],
+        ruleId: 'js/insecure-temporary-file',
+      },
+    ];
+    expect(validateCodeqlSarif(mismatch)).toContain(
+      'runs[0].results[0]: rule.id and ruleId disagree.',
+    );
+
+    const componentMismatch = parseFixture('pinned-codeql-finding.sarif');
+    componentMismatch.runs[0].results = [
+      {
+        ...componentMismatch.runs[0].results[0],
+        rule: {
+          ...componentMismatch.runs[0].results[0].rule,
+          toolComponent: {
+            index: 0,
+            name: 'codeql/javascript-all',
+          },
+        },
+      },
+    ];
+    expect(validateCodeqlSarif(componentMismatch)).toContain(
+      'runs[0].results[0]: has an unknown or ambiguous rule.toolComponent reference.',
+    );
+
+    const malformedExtensions = parseFixture('pinned-codeql-clean.sarif');
+    malformedExtensions.runs[0].tool.extensions = { bad: true };
+    expect(validateCodeqlSarif(malformedExtensions)).toContain(
+      'runs[0]: tool.extensions must be an array when present.',
+    );
+  });
+
   test('bounds the blocked-result log when many findings are present', () => {
     const finding = parseFixture('pinned-codeql-finding.sarif');
     finding.runs[0].results = Array.from(

@@ -281,6 +281,7 @@ const SECURITY_BASE_CHECKOUT_REPOSITORY = `\${{ github.repository }}`;
 const SECURITY_BASE_CHECKOUT_REF = `\${{ github.event.pull_request.base.sha || github.sha }}`;
 const SECURITY_BASE_CHECKOUT_PATH = 'base-policy';
 const SECURITY_CANDIDATE_CHECKOUT_PATH = 'candidate';
+const SECURITY_BASE_POLICY_DIRECTORY = `\${{ runner.temp }}/base-policy`;
 const SECURITY_SARIF_OUTPUT = `\${{ runner.temp }}/codeql-sarif`;
 const SECURITY_NORMALIZED_SARIF = `\${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif`;
 const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
@@ -298,13 +299,15 @@ const CODEQL_ANALYZE_ACTION =
 const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
+const SECURITY_ISOLATE_BASE_POLICY_RUN =
+  'mv base-policy "$BASE_POLICY_DIRECTORY"';
 const SECURITY_POLICY_RUN = `mapfile -d '' -t SARIF_FILES < <(find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif -print0)
 if [ "\${#SARIF_FILES[@]}" -ne 1 ]; then
   echo "Expected exactly one JavaScript CodeQL SARIF file; found \${#SARIF_FILES[@]}." >&2
   exit 1
 fi
-node base-policy/scripts/codeql-sarif-normalize.mjs --input="\${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
-node base-policy/scripts/codeql-sarif-policy.mjs --input="$CODEQL_NORMALIZED_SARIF" --baseline=base-policy/scripts/codeql-error-baseline.json`;
+node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="\${SARIF_FILES[0]}" --output="$CODEQL_NORMALIZED_SARIF"
+node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_NORMALIZED_SARIF" --baseline="$BASE_POLICY_DIRECTORY/scripts/codeql-error-baseline.json"`;
 const FORK_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
 const FORK_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
@@ -986,13 +989,14 @@ function hasExactKeys(value, expected) {
 }
 
 function hasExactSecurityAnalysisSteps(job) {
-  const [base, setupNode, candidate, init, analyze, policy] = job?.steps ?? [];
+  const [base, setupNode, isolateBasePolicy, candidate, init, analyze, policy] =
+    job?.steps ?? [];
   return (
     hasExactKeys(job, ['name', 'runs-on', 'timeout-minutes', 'steps']) &&
     job?.name === 'CodeQL JavaScript and TypeScript' &&
     job?.['runs-on'] === 'ubuntu-22.04' &&
     job?.['timeout-minutes'] === SECURITY_ANALYSIS_TIMEOUT_MINUTES &&
-    (job?.steps?.length ?? 0) === 6 &&
+    (job?.steps?.length ?? 0) === 7 &&
     hasExactKeys(base, ['name', 'uses', 'with']) &&
     base?.name === 'Check out base policy' &&
     base?.uses === CHECKOUT_ACTION &&
@@ -1012,6 +1016,12 @@ function hasExactSecurityAnalysisSteps(job) {
     setupNode?.uses === SETUP_NODE_ACTION &&
     hasExactKeys(setupNode?.with, ['node-version-file']) &&
     setupNode.with?.['node-version-file'] === 'base-policy/.nvmrc' &&
+    hasExactKeys(isolateBasePolicy, ['name', 'env', 'run']) &&
+    isolateBasePolicy?.name === 'Isolate base policy outside candidate scan' &&
+    hasExactKeys(isolateBasePolicy?.env, ['BASE_POLICY_DIRECTORY']) &&
+    isolateBasePolicy.env?.BASE_POLICY_DIRECTORY ===
+      SECURITY_BASE_POLICY_DIRECTORY &&
+    isolateBasePolicy.run === SECURITY_ISOLATE_BASE_POLICY_RUN &&
     hasExactKeys(candidate, ['name', 'uses', 'with']) &&
     candidate?.name === 'Check out candidate' &&
     candidate?.uses === CHECKOUT_ACTION &&
@@ -1061,9 +1071,11 @@ function hasExactSecurityAnalysisSteps(job) {
     hasExactKeys(policy?.env, [
       'CODEQL_SARIF_DIRECTORY',
       'CODEQL_NORMALIZED_SARIF',
+      'BASE_POLICY_DIRECTORY',
     ]) &&
     policy.env?.CODEQL_SARIF_DIRECTORY === SECURITY_SARIF_OUTPUT &&
     policy.env?.CODEQL_NORMALIZED_SARIF === SECURITY_NORMALIZED_SARIF &&
+    policy.env?.BASE_POLICY_DIRECTORY === SECURITY_BASE_POLICY_DIRECTORY &&
     policy.run?.trim() === SECURITY_POLICY_RUN
   );
 }
