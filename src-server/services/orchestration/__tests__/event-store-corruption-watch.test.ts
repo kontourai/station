@@ -1,4 +1,10 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readCorruptionMarker } from '@kontourai/station-shared/sqlite-corruption-marker';
@@ -69,6 +75,20 @@ describe('EventStore notices corruption that develops after boot', () => {
     damageSqliteTablePage(
       locateSqliteTablePage(databasePath, 'orchestration_cursor_keys'),
     );
+  }
+
+  /**
+   * The tail, where seeded event rows live. The schema and cursor-key pages
+   * stay intact, so an already-open store reaches a real StatementSync on its
+   * next `listEvents` call. Keep this separate from deterministic startup
+   * corruption: these tests prove the post-boot watch path, not constructor.
+   */
+  function damageRowPages(): void {
+    const bytes = readFileSync(databasePath);
+    const from = Math.floor(bytes.byteLength * 0.6);
+    expect(from).toBeGreaterThan(91 * 4096);
+    bytes.fill(0x5a, from);
+    writeFileSync(databasePath, bytes);
   }
 
   test('damage to cursor-key storage is observed while the store opens', () => {
@@ -153,8 +173,8 @@ describe('EventStore notices corruption that develops after boot', () => {
     seed(4000);
     const store = new EventStore(databasePath);
     expect(readCorruptionMarker(databasePath)).toBeNull();
-    damageCursorKeysPage();
-    expect(() => new EventStore(databasePath)).toThrow();
+    damageRowPages();
+    expect(() => store.listEvents('corruption-thread')).toThrow();
     try {
       store.close?.();
     } catch {
@@ -205,18 +225,18 @@ describe('EventStore notices corruption that develops after boot', () => {
     store.close?.();
   });
 
-  test('damage arriving while a store is open is observed by the next opener', () => {
+  test('damage arriving while the store is open is observed on the next read', () => {
     // The scenario the whole feature exists for, and the one the boot check
-    // cannot see at all: one store opened on a HEALTHY file, and the damage
-    // appears afterwards. A second real opener reaches its cursor-key query
-    // through the watch, which is the actual statement that owns this page.
+    // cannot see at all: the store opened on a HEALTHY file, so no stub is
+    // needed anywhere here, and the damage appears afterwards. The real
+    // StatementSync read is the only way to prove the watch's statement path.
     seed(4000);
     const store = new EventStore(databasePath);
     expect(readCorruptionMarker(databasePath)).toBeNull();
 
-    damageCursorKeysPage();
+    damageRowPages();
 
-    expect(() => new EventStore(databasePath)).toThrow();
+    expect(() => store.listEvents('corruption-thread')).toThrow();
 
     try {
       store.close?.();

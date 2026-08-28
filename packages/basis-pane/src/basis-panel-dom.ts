@@ -1,7 +1,11 @@
+import type { BasisGap } from '@kontourai/surface/basis';
 import type {
   BasisPanelFact,
   BasisPanelViewModel,
 } from '@kontourai/surface/basis/view';
+
+const MAX_WEAK_EDGES = 64;
+const MAX_WEAK_EDGE_SCALAR_LENGTH = 512;
 
 /**
  * The portable app consumes Surface's public, already-decided view model. It
@@ -73,10 +77,7 @@ function appendFacts(
   root.append(list);
 }
 
-function appendGaps(
-  root: HTMLElement,
-  gaps: readonly { code: string; message: string }[],
-): void {
+function appendGaps(root: HTMLElement, gaps: readonly BasisGap[]): void {
   const section = document.createElement('section');
   const heading = document.createElement('h3');
   heading.textContent = 'Gaps';
@@ -85,6 +86,8 @@ function appendGaps(
     for (const gap of gaps) {
       const item = document.createElement('li');
       item.append(textElement('bdi', `${gap.code}: ${gap.message}`));
+      const weakEdges = weakEdgeSummary(gap);
+      if (weakEdges) item.append(textElement('bdi', ` ${weakEdges}`));
       list.append(item);
     }
   } else {
@@ -92,6 +95,28 @@ function appendGaps(
   }
   section.append(heading, list);
   root.append(section);
+}
+
+function weakEdgeSummary(gap: BasisGap): string | null {
+  const metadata = gap.metadata;
+  if (metadata?.source !== 'derivation.weak' || !metadata.weakEdges.length)
+    return null;
+  const edges = metadata.weakEdges.slice(0, MAX_WEAK_EDGES);
+  const text = edges
+    .map(
+      (edge) =>
+        `${boundedWeakEdgeScalar(edge.claimId)} → ${boundedWeakEdgeScalar(edge.inputClaimId)}`,
+    )
+    .join(', ');
+  const noun = edges.length === 1 ? 'edge' : 'edges';
+  const omitted = metadata.weakEdges.length - edges.length;
+  return `Weak ${noun}: ${text}.${omitted ? ` Showing ${edges.length} of ${metadata.weakEdges.length}.` : ''}`;
+}
+
+function boundedWeakEdgeScalar(value: string): string {
+  return value.length <= MAX_WEAK_EDGE_SCALAR_LENGTH
+    ? value
+    : `${value.slice(0, MAX_WEAK_EDGE_SCALAR_LENGTH)}…`;
 }
 
 function appendAssessment(root: HTMLElement, panel: BasisPanelViewModel): void {

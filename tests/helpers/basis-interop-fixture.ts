@@ -28,6 +28,91 @@ export function preserveBasisInteropEnvironment(): () => void {
 /** Non-sensitive, positively parsed owner fixture for real host interoperability. */
 export function basisInteropCollection(): StationTaskBasisCollection {
   const answers = Array.from({ length: 9 }, (_, index) => {
+    const assessment =
+      index === 1
+        ? {
+            owner: { authority: '@kontourai/surface' as const },
+            state: 'not-captured' as const,
+            observedAt,
+          }
+        : {
+            owner: { authority: '@kontourai/surface' as const },
+            state: 'available' as const,
+            observedAt,
+            value: {
+              version: 'surface.answer-assessment/v2' as const,
+              ref: {
+                authority: '@kontourai/surface' as const,
+                schemaVersion: 'surface.answer-assessment/v2' as const,
+                kind: 'answer-assessment' as const,
+                bundleId: 'fixture-bundle',
+                claimId: 'fixture-claim',
+              },
+              found: true,
+              bundle: {
+                id: 'fixture-bundle',
+                schemaVersion: 1,
+                source: 'fixture-producer',
+                generatedAt: observedAt,
+              },
+              claim: {
+                id: 'fixture-claim',
+                subject: {
+                  subjectType: 'answer' as const,
+                  subjectId: `fixture-message-${index}`,
+                },
+                status: 'verified' as const,
+                freshness: { asOf: observedAt, expiresAt: null, stale: false },
+              },
+              policy: null,
+              evidence: {
+                entails: [
+                  {
+                    id: 'entails',
+                    label: 'Entailing fixture',
+                    sourceRef: 'source-entails',
+                    locator: null,
+                    observedAt,
+                    supportStrength: 'entails' as const,
+                    result: 'passed' as const,
+                    blocksClaim: false,
+                  },
+                ],
+                cited: [
+                  {
+                    id: 'cited',
+                    label: 'Cited fixture',
+                    sourceRef: 'source-cited',
+                    locator: null,
+                    observedAt,
+                    supportStrength: 'cited' as const,
+                    result: 'passed' as const,
+                    blocksClaim: false,
+                  },
+                ],
+                counterevidence: [
+                  {
+                    id: 'counter',
+                    label: '<img src=x onerror=alert(1)>',
+                    sourceRef: 'source-counter',
+                    locator: null,
+                    observedAt,
+                    supportStrength: null,
+                    result: 'failed' as const,
+                    blocksClaim: true,
+                  },
+                ],
+                undeclared: [],
+              },
+              derivation: { available: true, directInputs: [] },
+              gaps: [
+                {
+                  code: 'fixture-gap',
+                  message: 'A visible owner-declared fixture gap.',
+                },
+              ],
+            },
+          };
     const projection = composeBasisProjection({
       version: 'surface.basis-projection/v1',
       answer: {
@@ -47,88 +132,12 @@ export function basisInteropCollection(): StationTaskBasisCollection {
           observedAt,
         },
       },
-      assessment: {
-        owner: { authority: '@kontourai/surface' },
-        state: 'available',
-        observedAt,
-        value: {
-          version: 'surface.answer-assessment/v2',
-          ref: {
-            authority: '@kontourai/surface',
-            schemaVersion: 'surface.answer-assessment/v2',
-            kind: 'answer-assessment',
-            bundleId: 'fixture-bundle',
-            claimId: 'fixture-claim',
-          },
-          found: true,
-          bundle: {
-            id: 'fixture-bundle',
-            schemaVersion: 1,
-            source: 'fixture-producer',
-            generatedAt: observedAt,
-          },
-          claim: {
-            id: 'fixture-claim',
-            subject: {
-              subjectType: 'answer',
-              subjectId: `fixture-message-${index}`,
-            },
-            status: 'verified',
-            freshness: { asOf: observedAt, expiresAt: null, stale: false },
-          },
-          policy: null,
-          evidence: {
-            entails: [
-              {
-                id: 'entails',
-                label: 'Entailing fixture',
-                sourceRef: 'source-entails',
-                locator: null,
-                observedAt,
-                supportStrength: 'entails',
-                result: 'passed',
-                blocksClaim: false,
-              },
-            ],
-            cited: [
-              {
-                id: 'cited',
-                label: 'Cited fixture',
-                sourceRef: 'source-cited',
-                locator: null,
-                observedAt,
-                supportStrength: 'cited',
-                result: 'passed',
-                blocksClaim: false,
-              },
-            ],
-            counterevidence: [
-              {
-                id: 'counter',
-                label: '<img src=x onerror=alert(1)>',
-                sourceRef: 'source-counter',
-                locator: null,
-                observedAt,
-                supportStrength: null,
-                result: 'failed',
-                blocksClaim: true,
-              },
-            ],
-            undeclared: [],
-          },
-          derivation: { available: true, directInputs: [] },
-          gaps: [
-            {
-              code: 'fixture-gap',
-              message: 'A visible owner-declared fixture gap.',
-            },
-          ],
-        },
-      },
+      assessment,
       contributions: [],
     });
     const parsed = parseBasisProjection(projection);
-    if (!parsed.ok || parsed.value.standing !== 'assessed-with-gaps')
+    const expectedStanding = index === 1 ? 'unresolved' : 'assessed-with-gaps';
+    if (!parsed.ok || parsed.value.standing !== expectedStanding)
       throw new Error(
         'Interop fixture must be a valid assessed Surface projection',
       );

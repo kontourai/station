@@ -111,6 +111,9 @@ test('Whole Task resource interoperates with an independent official AppBridge h
   test.setTimeout(90_000);
   const collection = basisInteropCollection();
   const expected = buildBasisPanelViewModel(collection.answers[0]!.projection);
+  const secondExpected = buildBasisPanelViewModel(
+    collection.answers[1]!.projection,
+  );
   let ownerReads = 0;
   let enabled = true;
   let pendingOwnerRead: Promise<void> | undefined;
@@ -351,6 +354,31 @@ test('Whole Task resource interoperates with an independent official AppBridge h
           .boundingBox()
       )?.height,
     ).toBeGreaterThanOrEqual(44);
+    const firstAnswer = app.getByRole('button', {
+      name: 'fixture-answer-0',
+      exact: true,
+    });
+    const secondAnswer = app.getByRole('button', {
+      name: 'fixture-answer-1',
+      exact: true,
+    });
+    await secondAnswer.click();
+    await expect(firstAnswer).toHaveAttribute('aria-pressed', 'false');
+    await expect(secondAnswer).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel.getByRole('status')).toContainText(
+      secondExpected.standing.label,
+    );
+    await expect(
+      panel.getByText('No Surface assessment is available.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByText('A visible owner-declared fixture gap.', {
+        exact: false,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      panel.getByRole('heading', { name: 'Evidence', exact: true }),
+    ).toHaveCount(0);
     await nextPage.click();
     await expect(
       app.getByRole('button', { name: /^fixture-answer-8/ }),

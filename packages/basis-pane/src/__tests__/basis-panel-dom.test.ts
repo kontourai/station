@@ -19,6 +19,15 @@ function view(): BasisPanelViewModel {
       {
         code: 'owner-gap',
         message: '<img src=x onerror=alert(1)> remains inert.',
+        metadata: {
+          source: 'derivation.weak',
+          weakEdges: [
+            {
+              claimId: '<img src=claim onerror=alert(1)>',
+              inputClaimId: '<script>input</script>',
+            },
+          ],
+        },
       },
     ],
     contextNotice: 'Context does not establish support.',
@@ -81,7 +90,47 @@ function view(): BasisPanelViewModel {
         ],
       },
     },
-    contextGroups: [],
+    contextGroups: [
+      {
+        id: 'inputs',
+        label: 'Inputs',
+        items: [
+          {
+            ref: {
+              authority: '@kontourai/station',
+              schemaVersion: '1',
+              kind: 'input',
+              sessionId: 'context-session',
+              eventId: 'context-event',
+            },
+            id: 'context-item',
+            label: 'Station input',
+            details: 'Hostile context remains descriptive only.',
+            facts: [{ label: 'Input kind', value: 'prompt' }],
+            gaps: [
+              {
+                code: 'weak-context',
+                message: 'This context does not establish support.',
+                metadata: {
+                  source: 'derivation.weak',
+                  weakEdges: [
+                    {
+                      claimId: 'context-claim',
+                      inputClaimId: 'context-input',
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { id: 'execution', label: 'Execution', items: [] },
+      { id: 'process', label: 'Process', items: [] },
+      { id: 'outcomes', label: 'Outcomes', items: [] },
+      { id: 'sources', label: 'Sources', items: [] },
+      { id: 'live', label: 'Live', items: [] },
+    ],
     relationships: [
       {
         id: 'supports:a:b',
@@ -119,6 +168,13 @@ describe('portable Basis panel DOM renderer', () => {
     expect(root.querySelector('img')).toBeNull();
     expect(root.querySelector('script')).toBeNull();
     expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(root.textContent).toContain(
+      '<img src=claim onerror=alert(1)> → <script>input</script>',
+    );
+    expect(root.textContent).toContain('context-claim → context-input');
+    expect(root.textContent).toContain(
+      'This context does not establish support.',
+    );
     expect(root.querySelector('details[open] summary')?.textContent).toBe(
       'Assessment',
     );
