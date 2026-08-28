@@ -451,7 +451,19 @@ function fingerprintAuthority(authority: SessionReadAuthority) {
     .digest('base64url');
 }
 function fingerprintProjection(value: SessionInventoryProjection) {
-  return createHash('sha256').update(JSON.stringify(value)).digest('base64url');
+  // EventStore mints a fresh opaque cursor on each owner read. It is control
+  // state, not protected projection content, so compare the stable projection
+  // while still retaining the second read's cursor for this occurrence.
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        ...value,
+        groups: value.groups.map(
+          ({ continuation: _continuation, ...group }) => group,
+        ),
+      }),
+    )
+    .digest('base64url');
 }
 function fingerprintPage(value: SessionInventoryGroupPage) {
   return createHash('sha256').update(JSON.stringify(value)).digest('base64url');
