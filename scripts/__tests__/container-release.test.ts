@@ -143,7 +143,6 @@ const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/src-server',
   '/app/src-shared',
   '/app/schemas',
-  '/app/seed',
   '/app/examples',
   '/app/dist-server-container',
   '/app/dist-ui-container',

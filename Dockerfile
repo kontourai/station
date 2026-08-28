@@ -39,7 +39,6 @@ COPY src-server ./src-server
 COPY src-shared ./src-shared
 COPY src-ui ./src-ui
 COPY schemas ./schemas
-COPY seed ./seed
 # Bundled starter registry: examples/registry/default.json is the manifest
 # Station falls back to when no registryUrl is configured.
 COPY examples ./examples
@@ -68,7 +67,6 @@ COPY --from=build --chown=node:node /app/packages ./packages
 COPY --from=build --chown=node:node /app/src-server ./src-server
 COPY --from=build --chown=node:node /app/src-shared ./src-shared
 COPY --from=build --chown=node:node /app/schemas ./schemas
-COPY --from=build --chown=node:node /app/seed ./seed
 COPY --from=build --chown=node:node /app/examples ./examples
 COPY --from=build --chown=node:node /app/dist-server-container ./dist-server-container
 COPY --from=build --chown=node:node /app/dist-ui-container ./dist-ui-container

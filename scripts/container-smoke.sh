@@ -103,7 +103,7 @@ if ! docker build --pull --progress=plain --tag "$STATION_IMAGE" \
   exit 1
 fi
 docker run --rm --entrypoint sh "$STATION_IMAGE" -c '
-  app_paths="/app/packages /app/src-server /app/src-shared /app/scripts /app/schemas /app/seed"
+  app_paths="/app/packages /app/src-server /app/src-shared /app/scripts /app/schemas"
   if find $app_paths -path "*/node_modules/*" -prune -o \( -path "*/__tests__/*" -o -path "*/fixtures/*" -o -name "*.test.*" -o -name "*.spec.*" \) -print | grep -q .; then
     echo "runtime image contains application test or fixture files" >&2
     exit 1
