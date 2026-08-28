@@ -21,6 +21,7 @@ import {
 
 const temporaryRoots: string[] = [];
 const REVIEWED_RESOURCE_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/runtime/__tests__/runtime-service-bootstrap.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'packages/cli/src/__tests__/service.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',

@@ -54,6 +54,9 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // absolute speed is not part of the assertion.
   'src-server/runtime/bootstrap/__tests__/store-integrity-verification.event-loop.test.ts',
   'src-server/services/orchestration/__tests__/attached-session-follow-service.test.ts',
+  // Runs the real Play upload wrapper through SIGTERM escalation and asserts
+  // exact owned-PID cleanup; overlap would weaken the ownership boundary.
+  'scripts/__tests__/play-upload-retry.test.ts',
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
