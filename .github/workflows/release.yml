@@ -74,6 +74,14 @@ jobs:
             echo "created_at=$created_at"
           } >> "$GITHUB_OUTPUT"
 
+  # Every desktop job below (macOS/Windows/Linux) writes its tag-bound
+  # updater overlay via `native-release-config.mjs --updater-public-key-file`,
+  # which supplies the signing pubkey ONLY — no endpoint. The desktop
+  # updater runtime (#575) registers `tauri-plugin-updater` only when both a
+  # pubkey AND a non-empty endpoints list are present, so every stable and
+  # beta build shipped from this workflow carries the plugin unregistered:
+  # self-update is inert on those channels until this workflow's overlay
+  # also supplies an endpoint. Nightly already ships both (nightly.yml).
   desktop-macos:
     needs: preflight
     strategy:
