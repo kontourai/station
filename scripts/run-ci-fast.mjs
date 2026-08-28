@@ -25,9 +25,9 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // pair is what needs the room. Measured on a dev host under load ~20:
 // `build:connect` 7s, `typecheck-aggregate` 82s for all 13 lanes (it runs
 // them with bounded concurrency, so it is CHEAPER than the 72s three of
-// those lanes cost run sequentially). 150s leaves ~4.5min of the seven-minute
-// budget for affected-test selection, which observed runs use ~1-2min locally
-// and now retains measured fleet headroom.
+// those lanes cost run sequentially). 150s leaves ~9.5min of the twelve-minute
+// budget for affected-test selection, including the observed 385-test hosted
+// selection that exhausted the previous seven-minute budget.
 // If a real runner disagrees, the scoped fallback is `typecheck:server-tests`
 // alone (27s, and the only lane of the thirteen that needs no build) — that
 // covers where both of #4273's motivating breaks actually landed.
