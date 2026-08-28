@@ -230,7 +230,10 @@ test('Whole Task resource interoperates with an independent official AppBridge h
     if (!content || !('text' in content) || typeof content.text !== 'string')
       throw new Error('Real MCP resource did not contain text');
     const html = content.text;
-    expect(Buffer.byteLength(html)).toBeLessThanOrEqual(500 * 1024);
+    // The production refusal remains 500 KiB. Keep a meaningful payload
+    // margin here so a restored full Surface custom-element bundle cannot
+    // silently consume the whole limit again.
+    expect(Buffer.byteLength(html)).toBeLessThanOrEqual(480 * 1024);
     expect(content._meta).toMatchObject({
       ui: { csp: { connectDomains: [], resourceDomains: [] } },
     });
@@ -318,7 +321,8 @@ test('Whole Task resource interoperates with an independent official AppBridge h
         exact: true,
       }),
     ).toBeVisible();
-    const panel = app.locator('surface-trust-panel');
+    expect(app.locator('surface-trust-panel')).toHaveCount(0);
+    const panel = app.locator('section[aria-label="Basis"]');
     await expect(panel.getByRole('status')).toContainText(
       expected.standing.label,
     );

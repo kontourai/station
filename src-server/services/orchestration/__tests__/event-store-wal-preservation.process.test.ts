@@ -5,12 +5,16 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { EventStore, EventStoreIntegrityError } from '../event-store.js';
+import {
+  damageSqliteTablePage,
+  locateSqliteTablePage,
+  type SqliteTablePage,
+} from './helpers/sqlite-page-corruption.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   orchestrationEventsPersisted: { add: vi.fn() },
@@ -58,6 +62,7 @@ process.exit(0);
 describe('a failed corrupt-store boot preserves the hot WAL', () => {
   let dir: string;
   let databasePath: string;
+  let cursorKeysPage: SqliteTablePage;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'event-store-wal-preserve-'));
@@ -78,7 +83,16 @@ describe('a failed corrupt-store boot preserves the hot WAL', () => {
       });
     }
     store.close?.();
-    execFileSync(process.execPath, ['-e', HOT_WRITE_SCRIPT, databasePath]);
+    // Resolve exact geometry while healthy, then close that inspector before
+    // the child creates a hot WAL. The test must not open SQLite again between
+    // that write and damaging the main file, or it changes WAL ownership.
+    cursorKeysPage = locateSqliteTablePage(
+      databasePath,
+      'orchestration_cursor_keys',
+    );
+    execFileSync(process.execPath, ['-e', HOT_WRITE_SCRIPT, databasePath], {
+      windowsHide: true,
+    });
   });
 
   afterEach(() => {
@@ -91,15 +105,11 @@ describe('a failed corrupt-store boot preserves the hot WAL', () => {
     const walBefore = readFileSync(walPath);
     expect(walBefore.byteLength).toBeGreaterThan(100_000);
 
-    // Damage mid-file pages (the schema tables' data btrees) so the header
-    // and sqlite_schema still open, the migration's IF NOT EXISTS statements
-    // no-op without writing, and the constructor's own ensure/backfill reads
-    // are what hit the damage. The child's hot frames cover only the events
-    // btree tail and page 1, so the damaged pages are not masked by the WAL.
-    const bytes = readFileSync(databasePath);
-    expect(bytes.byteLength).toBeGreaterThan(64 * 1024);
-    bytes.fill(0x5a, 8192, 8192 + 32 * 1024);
-    writeFileSync(databasePath, bytes);
+    // The child only wrote event pages. The cursor-key root page is therefore
+    // still in main, and damaging it makes the constructor's own cursor-key
+    // read fail without masking it from the hot WAL. No SQLite connection is
+    // opened after the child exits and before this direct main-file write.
+    damageSqliteTablePage(cursorKeysPage);
 
     expect(() => new EventStore(databasePath)).toThrow(
       EventStoreIntegrityError,

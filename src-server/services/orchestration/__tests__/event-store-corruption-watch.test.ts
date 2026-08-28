@@ -1,15 +1,13 @@
-import {
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readCorruptionMarker } from '@kontourai/station-shared/sqlite-corruption-marker';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { EventStore, EventStoreIntegrityError } from '../event-store.js';
+import {
+  damageSqliteTablePage,
+  locateSqliteTablePage,
+} from './helpers/sqlite-page-corruption.js';
 
 const { corruptionObserved } = vi.hoisted(() => ({
   corruptionObserved: { add: vi.fn() },
@@ -64,36 +62,18 @@ describe('EventStore notices corruption that develops after boot', () => {
     store.close?.();
   }
 
-  /**
-   * Pages 3-10: the schema tables and their autoindexes
-   * (`orchestration_event_store_backfills`, `orchestration_request_state`,
-   * and friends). The header stays intact so the file still opens. This is
-   * reached by the constructor's own ensure/backfill sequence.
-   */
-  function damageSchemaPages(): void {
-    const bytes = readFileSync(databasePath);
-    expect(bytes.byteLength).toBeGreaterThan(64 * 1024);
-    bytes.fill(0x5a, 8192, Math.min(bytes.byteLength, 8192 + 32 * 1024));
-    writeFileSync(databasePath, bytes);
+  function damageCursorKeysPage(): void {
+    // Capture the root page through a healthy, closed inspector. Unlike the
+    // former byte range, this remains the table constructor/read path uses
+    // when SQLite's page allocation changes across supported builds.
+    damageSqliteTablePage(
+      locateSqliteTablePage(databasePath, 'orchestration_cursor_keys'),
+    );
   }
 
-  /**
-   * The tail, where the seeded ROWS live. The schema pages stay intact, so
-   * the store opens cleanly and the failure has to come from a real
-   * `StatementSync` — which is the only thing that exercises the statement
-   * half of the watch's proxy.
-   */
-  function damageRowPages(): void {
-    const bytes = readFileSync(databasePath);
-    const from = Math.floor(bytes.byteLength * 0.6);
-    expect(from).toBeGreaterThan(91 * 4096);
-    bytes.fill(0x5a, from);
-    writeFileSync(databasePath, bytes);
-  }
-
-  test('damage to the schema pages is observed while the store opens', () => {
+  test('damage to cursor-key storage is observed while the store opens', () => {
     seed(400);
-    damageSchemaPages();
+    damageCursorKeysPage();
     expect(readCorruptionMarker(databasePath)).toBeNull();
 
     // No boot check stands in front of this any more (station#3219 removed
@@ -173,8 +153,8 @@ describe('EventStore notices corruption that develops after boot', () => {
     seed(4000);
     const store = new EventStore(databasePath);
     expect(readCorruptionMarker(databasePath)).toBeNull();
-    damageRowPages();
-    expect(() => store.listEvents('corruption-thread')).toThrow();
+    damageCursorKeysPage();
+    expect(() => new EventStore(databasePath)).toThrow();
     try {
       store.close?.();
     } catch {
@@ -225,19 +205,18 @@ describe('EventStore notices corruption that develops after boot', () => {
     store.close?.();
   });
 
-  test('damage arriving while the store is open is observed on the next read', () => {
+  test('damage arriving while a store is open is observed by the next opener', () => {
     // The scenario the whole feature exists for, and the one the boot check
-    // cannot see at all: the store opened on a HEALTHY file, so no stub is
-    // needed anywhere here, and the damage appears afterwards. It also forces
-    // the failure through a real `StatementSync`, which is the only thing
-    // that exercises the statement half of the watch's proxy.
+    // cannot see at all: one store opened on a HEALTHY file, and the damage
+    // appears afterwards. A second real opener reaches its cursor-key query
+    // through the watch, which is the actual statement that owns this page.
     seed(4000);
     const store = new EventStore(databasePath);
     expect(readCorruptionMarker(databasePath)).toBeNull();
 
-    damageRowPages();
+    damageCursorKeysPage();
 
-    expect(() => store.listEvents('corruption-thread')).toThrow();
+    expect(() => new EventStore(databasePath)).toThrow();
 
     try {
       store.close?.();

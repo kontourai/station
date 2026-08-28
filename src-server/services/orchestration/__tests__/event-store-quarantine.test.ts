@@ -5,7 +5,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -18,6 +17,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getOrchestrationDatabasePath } from '../../../domain/migrations/003-orchestration-events.js';
 import { getChatTurnDedupStore } from '../../../routes/chat/chat-turn-dedup.js';
 import { EventStore } from '../event-store.js';
+import {
+  damageSqliteTablePage,
+  locateSqliteTablePage,
+} from './helpers/sqlite-page-corruption.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   orchestrationEventsPersisted: { add: vi.fn() },
@@ -76,10 +79,13 @@ describe('a store recorded as corrupt is replaced on the next start', () => {
 
   test('the marker a failed boot leaves is what the next boot acts on', () => {
     seed(400);
+    // The root page is resolved while healthy and the inspector is closed
+    // before damage. This makes the constructor's cursor-key read, rather
+    // than an allocator-dependent byte range, the corruption trigger.
+    damageSqliteTablePage(
+      locateSqliteTablePage(databasePath, 'orchestration_cursor_keys'),
+    );
     const bytes = readFileSync(databasePath);
-    expect(bytes.byteLength).toBeGreaterThan(64 * 1024);
-    bytes.fill(0x5a, 8192, Math.min(bytes.byteLength, 8192 + 32 * 1024));
-    writeFileSync(databasePath, bytes);
 
     // The status quo this exists to end: the store is unopenable, and it is
     // unopenable on every subsequent start too.
