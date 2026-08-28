@@ -9,6 +9,14 @@ import {
   mcpAppHostAvailableDisplayModes,
   mediateMcpAppDisplayMode,
 } from '@kontourai/station-contracts/mcp-app-display-mode';
+import {
+  deriveSessionWorkItemGithubUrl,
+  SESSION_INVENTORY_CURRENT_GROUP_IDS,
+} from '@kontourai/station-contracts/session-inventory';
+import {
+  parseStationSessionInventoryMcpV2Envelope,
+  parseStationSessionInventoryMcpV2Input,
+} from '@kontourai/station-contracts/session-inventory-mcp';
 import type {
   MCPToolUIPermissions,
   MCPToolUIResolutionStatus,
@@ -37,7 +45,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import {
@@ -45,6 +56,7 @@ import {
   apiRequest,
   unwrapApiData,
 } from '../../lib/apiClient';
+import { nativePlatformPromise } from '../../platform/native';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import './MCPToolUIFrame.css';
@@ -74,6 +86,91 @@ interface MCPToolUIResolution {
 
 type MCPToolUIFrameStatus = MCPToolUIResolution['status'] | 'loading';
 type FallbackComponent = ReactNode | (() => ReactNode);
+
+/**
+ * The open-link boundary is intentionally reconstructed from the current
+ * structured result, never from an App request or a provider-shaped field.
+ */
+export type SessionInventoryV2OpenLinkCapability = {
+  occurrenceId: string;
+  scopeKey: string;
+  urls: ReadonlySet<string>;
+};
+
+export function sessionInventoryV2OpenLinkCapability(
+  result: unknown,
+  input: unknown,
+): SessionInventoryV2OpenLinkCapability | null {
+  const negotiated = parseStationSessionInventoryMcpV2Input(input);
+  const envelope = parseStationSessionInventoryMcpV2Envelope(
+    (result as { structuredContent?: unknown } | null)?.structuredContent,
+  );
+  if (
+    !negotiated ||
+    !envelope ||
+    JSON.stringify(negotiated.scope) !==
+      JSON.stringify(
+        envelope.kind === 'projection'
+          ? envelope.projection.scope
+          : envelope.page.scope,
+      )
+  )
+    return null;
+  if (
+    (negotiated.operation === 'open' && envelope.kind !== 'projection') ||
+    (negotiated.operation === 'page' &&
+      (envelope.kind !== 'group-page' ||
+        envelope.page.group.id !== negotiated.groupId))
+  )
+    return null;
+  const capability = (result as { _meta?: Record<string, unknown> } | null)
+    ?._meta?.['station.session-inventory-app/v2'];
+  const capabilityRecord =
+    capability && typeof capability === 'object' && !Array.isArray(capability)
+      ? (capability as Record<string, unknown>)
+      : null;
+  const continuations = capabilityRecord?.continuations;
+  if (
+    !capabilityRecord ||
+    !/^[A-Za-z0-9_-]{24,128}$/.test(capabilityRecord.occurrenceId as string) ||
+    !Array.isArray(continuations) ||
+    continuations.length > SESSION_INVENTORY_CURRENT_GROUP_IDS.length ||
+    !continuations.every(
+      (entry) =>
+        !!entry &&
+        typeof entry === 'object' &&
+        !Array.isArray(entry) &&
+        SESSION_INVENTORY_CURRENT_GROUP_IDS.includes(
+          (entry as Record<string, unknown>).groupId as never,
+        ) &&
+        /^[A-Za-z0-9_-]{24,128}$/.test(
+          (entry as Record<string, unknown>).continuationToken as string,
+        ),
+    )
+  )
+    return null;
+  if (
+    negotiated.operation === 'page' &&
+    capabilityRecord.occurrenceId !== negotiated.occurrenceId
+  )
+    return null;
+  const groups =
+    envelope.kind === 'projection'
+      ? envelope.projection.groups
+      : [envelope.page.group];
+  const urls = new Set<string>();
+  for (const group of groups)
+    for (const row of group.items)
+      if (row.kind === 'station-session-work-item') {
+        const url = deriveSessionWorkItemGithubUrl(row);
+        if (url) urls.add(url);
+      }
+  return {
+    occurrenceId: capabilityRecord.occurrenceId as string,
+    scopeKey: JSON.stringify(negotiated.scope),
+    urls,
+  };
+}
 
 export interface MCPToolUIFrameProps {
   component: MCPToolUILayoutComponentRef;
@@ -112,6 +209,20 @@ export interface MCPToolUIFrameProps {
     toolName: 'get_task_basis';
     taskId: string;
   };
+  /**
+   * Semantic host-owned external navigation. Absence means denied; Apps never
+   * receive browser opener authority directly.
+   */
+  openExternalLink?: (url: string) => Promise<boolean>;
+}
+
+async function semanticHostExternalLink(url: string): Promise<boolean> {
+  const native = await nativePlatformPromise;
+  if (native.platform === 'tauri') return native.openExternalLink(url);
+  // Top-level navigation is the web platform's semantic external navigation;
+  // it retains mobile browser gesture and history semantics without popups.
+  window.location.assign(url);
+  return true;
 }
 
 const STATUS_COPY: Record<
@@ -171,10 +282,12 @@ export function MCPToolUIFrame({
   onDisplayModeDecision,
   apiBase,
   basisReadSession,
+  openExternalLink = semanticHostExternalLink,
 }: MCPToolUIFrameProps) {
   const apiContext = useApiBase();
   const config = useConfig();
   const platform = usePlatformProfile();
+  const requestAuthority = useHostRequestAuthorityScope();
   const nativeIframeBlocked = platform.isTauri;
   // MCP-UI host renders by default; operators opt out with `mcpUiHost: false`.
   const hostEnabled = config?.mcpUiHost !== false;
@@ -282,6 +395,8 @@ export function MCPToolUIFrame({
         fallbackComponent={fallbackComponent}
         fallbackComponentName={fallbackComponentName}
         basisReadSession={basisReadSession}
+        requestAuthority={requestAuthority}
+        openExternalLink={openExternalLink}
       />
     );
   }
@@ -317,6 +432,8 @@ export function MCPToolUIFrame({
         fallbackComponent={fallbackComponent}
         fallbackComponentName={fallbackComponentName}
         basisReadSession={basisReadSession}
+        requestAuthority={requestAuthority}
+        openExternalLink={openExternalLink}
       />
     );
   }
@@ -459,6 +576,8 @@ function MCPToolUISandbox({
   fallbackComponent,
   fallbackComponentName,
   basisReadSession,
+  requestAuthority,
+  openExternalLink,
 }: {
   component: MCPToolUILayoutComponentRef;
   refParts: MCPToolRefParts;
@@ -478,6 +597,8 @@ function MCPToolUISandbox({
   fallbackComponent?: FallbackComponent;
   fallbackComponentName?: string;
   basisReadSession?: MCPToolUIFrameProps['basisReadSession'];
+  requestAuthority?: ReturnType<typeof useHostRequestAuthorityScope>;
+  openExternalLink: NonNullable<MCPToolUIFrameProps['openExternalLink']>;
 }) {
   const { theme } = useDeviceSettings();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -576,6 +697,14 @@ function MCPToolUISandbox({
         : (JSON.parse(initialArgumentsKey) as Record<string, unknown>),
     [initialArgumentsKey],
   );
+  // Only the independently versioned Station inventory App has an exact,
+  // result-derived external-link handler. Every other MCP App sees no
+  // openLinks capability at all.
+  const sessionInventoryV2OpenLinks =
+    serverId === 'station-control' &&
+    toolName === 'get_session_inventory' &&
+    resourceUri === 'ui://station/basis/session-inventory/v2' &&
+    !!parseStationSessionInventoryMcpV2Input(capturedInitialArguments);
 
   const srcDoc = useMemo(() => {
     const text = resource.data?.text;
@@ -621,7 +750,67 @@ function MCPToolUISandbox({
     // capability completed by a previous frame after it was torn down.
     let basisOccurrenceId: string | null = null;
     let basisContinuationToken: string | null = null;
-    const isCurrentInitialSubject = () => !disposed && lifecycle === 'active';
+    // This capture is bound to the exact rendered occurrence. A later
+    // connection/principal rotation cannot spend it.
+    const resultAuthority = requestAuthority;
+    let openLinkCapability: SessionInventoryV2OpenLinkCapability | null = null;
+    let initialOpenLinkWitness: Pick<
+      SessionInventoryV2OpenLinkCapability,
+      'occurrenceId' | 'scopeKey'
+    > | null = null;
+    const isCurrentInitialSubject = () => {
+      const currentIdentity = paneIdentityRef.current
+        ? `${paneIdentityRef.current.descriptorId}:${paneIdentityRef.current.instanceId}:${paneIdentityRef.current.stateKey}`
+        : '';
+      return (
+        !disposed &&
+        lifecycle === 'active' &&
+        currentIdentity === expectedIdentityKey
+      );
+    };
+    const installOpenLinkCapability = (
+      result: unknown,
+      toolInput: unknown,
+      append: boolean,
+    ) => {
+      const next = sessionInventoryV2OpenLinkCapability(result, toolInput);
+      if (!next || !resultAuthority?.isCurrent()) {
+        openLinkCapability = null;
+        return;
+      }
+      if (!append)
+        initialOpenLinkWitness = {
+          occurrenceId: next.occurrenceId,
+          scopeKey: next.scopeKey,
+        };
+      if (
+        append &&
+        (!initialOpenLinkWitness ||
+          initialOpenLinkWitness.occurrenceId !== next.occurrenceId ||
+          initialOpenLinkWitness.scopeKey !== next.scopeKey)
+      ) {
+        openLinkCapability = null;
+        return;
+      }
+      if (
+        append &&
+        openLinkCapability?.occurrenceId === next.occurrenceId &&
+        openLinkCapability.scopeKey === next.scopeKey
+      ) {
+        openLinkCapability = {
+          ...next,
+          urls: new Set([...openLinkCapability.urls, ...next.urls]),
+        };
+        return;
+      }
+      if (append && openLinkCapability) {
+        openLinkCapability = null;
+        return;
+      }
+      // An initial result replaces. A page from another occurrence/scope is
+      // never allowed to inherit links from the prior result.
+      openLinkCapability = next;
+    };
     const wire = async () => {
       const win = iframe.contentWindow;
       if (!win || disposed) return;
@@ -631,7 +820,9 @@ function MCPToolUISandbox({
           null,
           { name: 'Station', version: '1.0.0' },
           {
-            openLinks: {},
+            ...(sessionInventoryV2OpenLinks && resultAuthority
+              ? { openLinks: {} }
+              : {}),
             logging: {},
             serverResources: {},
             // Only advertise tool-call proxying when the policy permits it, so a
@@ -681,6 +872,12 @@ function MCPToolUISandbox({
                 )
           )
             .then((result) => {
+              if (sessionInventoryV2OpenLinks)
+                installOpenLinkCapability(
+                  result,
+                  capturedInitialArguments,
+                  false,
+                );
               if (basisReadSession) {
                 const capability = readBasisReadCapability(result);
                 if (!capability) {
@@ -722,6 +919,23 @@ function MCPToolUISandbox({
               });
             });
         };
+        bridge.onrequestteardown = () => {
+          // An App-initiated teardown is terminal for this exact occurrence.
+          // Do not let a late page response recreate the same capability.
+          lifecycle = 'tearing-down';
+          openLinkCapability = null;
+          initialOpenLinkWitness = null;
+          if (basisReadSession && basisOccurrenceId) {
+            void proxyBasisDispose(
+              baseUrl,
+              basisReadSession,
+              basisOccurrenceId,
+            ).catch(() => {});
+            basisOccurrenceId = null;
+            basisContinuationToken = null;
+          }
+          void bridge?.teardownResource?.({}).catch(() => {});
+        };
         bridge.onrequestdisplaymode = async ({ mode }) => {
           const appAvailableModes = bridge?.getAppCapabilities()
             ?.availableDisplayModes ?? ['inline'];
@@ -757,6 +971,36 @@ function MCPToolUISandbox({
           });
           return { mode: currentDisplayModeRef.current };
         };
+        if (sessionInventoryV2OpenLinks && resultAuthority) {
+          bridge.onopenlink = async ({ url }) => {
+            // Active lifecycle + unchanged pane identity are the host's
+            // current principal/occurrence witness. No stale/replaced frame
+            // inherits its predecessor's URLs.
+            if (
+              !isCurrentInitialSubject() ||
+              !resultAuthority.isCurrent() ||
+              !openLinkCapability?.urls.has(url)
+            )
+              return { isError: true };
+            try {
+              const parsed = new URL(url);
+              if (
+                parsed.protocol !== 'https:' ||
+                parsed.hostname !== 'github.com' ||
+                parsed.port ||
+                parsed.username ||
+                parsed.password ||
+                parsed.search ||
+                parsed.hash ||
+                !/^\/[^/]+\/[^/]+\/issues\/[1-9]\d*$/.test(parsed.pathname)
+              )
+                return { isError: true };
+              return (await openExternalLink(url)) ? {} : { isError: true };
+            } catch {
+              return { isError: true };
+            }
+          };
+        }
         bridge.onsizechange = (params: { height?: number }) => {
           if (typeof params.height === 'number') {
             setHeight(clampHeight(params.height));
@@ -835,6 +1079,11 @@ function MCPToolUISandbox({
                 params.arguments ?? {},
                 component.approvalPolicy,
               );
+          if (sessionInventoryV2OpenLinks && !basisCall) {
+            // A page result is a new result boundary. A failed/malformed
+            // result clears rather than preserving a prior page's capability.
+            installOpenLinkCapability(result, params.arguments, true);
+          }
           if (basisCall) {
             const capability = readBasisReadCapability(result);
             if (!isCurrentInitialSubject() && capability) {
@@ -890,6 +1139,8 @@ function MCPToolUISandbox({
       }
       basisContinuationToken = null;
       basisOccurrenceId = null;
+      openLinkCapability = null;
+      initialOpenLinkWitness = null;
       if (bridgeRef.current === bridge) bridgeRef.current = null;
       // teardownResource sends a `ui/resource-teardown` request the View may
       // never answer once we close the transport; swallow its rejection so it
@@ -917,6 +1168,9 @@ function MCPToolUISandbox({
     paneIdentityKey,
     currentAllowedHostModes,
     basisReadSession,
+    sessionInventoryV2OpenLinks,
+    requestAuthority,
+    openExternalLink,
   ]);
 
   // Host commands may maximize/restore without a View request. Notify the

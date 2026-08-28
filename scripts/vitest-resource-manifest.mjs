@@ -550,6 +550,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium via `@playwright/test` to hit-test connections-flow controls
   // with and without an active banner.
   'src-ui/src/__tests__/ConnectionsSectionFrame.banner-hittest.test.tsx',
+  // station#235: launches real Chromium against the actual compact Session
+  // inventory markup and cascade-resolved CSS to measure its 390px heading
+  // geometry and keyboard order. Browser launch ownership keeps it out of
+  // the ordinary four-worker corpus.
+  'src-ui/src/components/chat-dock/__tests__/sessionInventoryCompactHost.test.ts',
+  // station#235: exercises the actual Connected Session inventory markup in
+  // real Chromium so the derived work-item anchor's tab order and native
+  // Enter activation are observable rather than inferred from React props.
+  'src-ui/src/workspace-panes/__tests__/ConnectedSessionInventory.test.tsx',
   // Same shape
   // again — launches a real Chromium via `@playwright/test` to measure real
   // cascade-resolved row heights (the loading skeleton row vs. the real item

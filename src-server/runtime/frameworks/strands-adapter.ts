@@ -24,9 +24,11 @@ import {
   currentScheduledPrincipal,
   currentScheduledRunId,
 } from '../agents/scheduled-principal-context.js';
+import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
+import { getLoadedMCPToolProvenance } from '../tools/mcp-tool-names.js';
 import type {
   AgentBundle,
   AgentCreationConfig,
@@ -134,9 +136,21 @@ class StrandsAgentWrapper implements IAgent {
     /** Forwarded by the scheduler Adapter to Strands' cancellation seam. */
     signal?: AbortSignal;
   }) {
+    const correlation = currentAuthorizedTurnCorrelation();
+    const exactSession =
+      correlation && correlation.sessionId === options?.conversationId
+        ? correlation
+        : undefined;
     const ctx: InvocationContext = {
       agentSlug: this._invocationCtx.agentSlug,
       conversationId: options?.conversationId,
+      ...(exactSession
+        ? {
+            sessionId: exactSession.sessionId,
+            turnId: exactSession.turnId,
+            principalId: exactSession.accountId,
+          }
+        : {}),
       userId: options?.userId,
       traceId: currentScheduledRunId() ?? this._invocationCtx.traceId,
       delegation: options?.delegation,
@@ -381,6 +395,11 @@ export class StrandsFramework {
       logger: opts.logger,
       resolvedModel,
       getLastStreamUsage: () => wrapper._lastStreamUsage,
+      findMCPToolProvenance: (runtimeName) =>
+        tools
+          .filter((tool) => tool.name === runtimeName)
+          .map(getLoadedMCPToolProvenance)
+          .find((provenance) => provenance !== undefined),
     });
 
     return {

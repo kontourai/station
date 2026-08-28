@@ -1,5 +1,5 @@
 import type { SessionInventoryLiveItem } from '@kontourai/station-basis-pane/session-inventory-view';
-import type { SessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
+import type { AnySessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
@@ -80,9 +80,9 @@ export function useSessionInventoryLive(
 
 /** Presentation overlay only: no rows, persistence, or cache payload mutation. */
 export function overlaySessionInventoryLive(
-  projection: SessionInventoryProjection,
+  projection: AnySessionInventoryProjection,
   live: SessionInventoryLiveOverlay,
-): SessionInventoryProjection {
+): AnySessionInventoryProjection {
   const count = live.running.length + live.pendingApprovalIds.length;
   if (!count) return projection;
   return {
@@ -96,7 +96,7 @@ export function overlaySessionInventoryLive(
           }
         : group,
     ),
-  } as SessionInventoryProjection;
+  } as AnySessionInventoryProjection;
 }
 export function sessionInventoryLiveItems(
   live: SessionInventoryLiveOverlay,

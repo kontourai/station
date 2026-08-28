@@ -4,6 +4,7 @@ import {
   BeforeToolCallEvent,
   Agent as StrandsAgent,
 } from '@strands-agents/sdk';
+import type { MCPToolLoaderProvenance } from '../../services/orchestration/mcp-tool-provenance.js';
 import { stationDenial } from '../agents/denial-message.js';
 import type {
   IAgentHooks,
@@ -119,6 +120,9 @@ export function wireStrandsAgentHooks(options: {
   logger: any;
   resolvedModel: string;
   getLastStreamUsage: () => TokenUsage | null | undefined;
+  findMCPToolProvenance?: (
+    runtimeName: string,
+  ) => MCPToolLoaderProvenance | undefined;
 }): void {
   const {
     strandsAgent,
@@ -129,6 +133,7 @@ export function wireStrandsAgentHooks(options: {
     logger,
     resolvedModel,
     getLastStreamUsage,
+    findMCPToolProvenance,
   } = options;
 
   let toolCallCount = 0;
@@ -138,15 +143,31 @@ export function wireStrandsAgentHooks(options: {
   if (hooks?.afterToolCall) {
     strandsAgent.addHook(AfterToolCallEvent, (event) => {
       toolCallCount++;
+      const provenance = findMCPToolProvenance?.(event.toolUse.name);
       hooks.afterToolCall!(
         {
           toolName: event.toolUse.name,
           toolCallId: event.toolUse.toolUseId,
           toolArgs: event.toolUse.input,
+          ...(provenance
+            ? {
+                mcp: Object.freeze({
+                  provenance,
+                  trustedArguments: event.toolUse.input,
+                }),
+              }
+            : {}),
         },
         {
           output: event.result?.content,
           error: event.error,
+          ...(provenance
+            ? {
+                mcp: Object.freeze({
+                  trustedContent: event.result?.content,
+                }),
+              }
+            : {}),
         },
         resolveStrandsInvocationContext(
           (event as { invocationState?: Record<string, unknown> })

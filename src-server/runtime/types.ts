@@ -25,6 +25,7 @@ import type {
 } from '@kontourai/station-contracts/tool';
 import type { FleetCandidateResolution } from '../services/inference/fleet-candidate-service.js';
 import type { EventStore } from '../services/orchestration/event-store.js';
+import type { MCPToolLoaderProvenance } from '../services/orchestration/mcp-tool-provenance.js';
 import type { Logger } from '../utils/logger.js';
 import type { UnsealedFleetRoutingEnvelope } from './conversation/fleet-routing-envelope.js';
 
@@ -169,6 +170,18 @@ export interface ToolCallContext {
   toolCallId: string;
   toolArgs: any;
   toolDescription?: string;
+  /** Server-only loader authority; never inferred from a model-visible name. */
+  mcp?: Readonly<{
+    provenance: MCPToolLoaderProvenance;
+    trustedArguments: unknown;
+  }>;
+}
+
+export interface ToolCallResult {
+  output?: any;
+  error?: Error;
+  /** Unprojected MCP result content, kept separate from model output. */
+  mcp?: Readonly<{ trustedContent: unknown }>;
 }
 
 /**
@@ -190,6 +203,10 @@ export type UnattendedPrincipal =
 export interface InvocationContext {
   agentSlug: string;
   conversationId?: string;
+  /** Exact Session/turn/principal exist only on an authorized orchestration relay. */
+  sessionId?: string;
+  turnId?: string;
+  principalId?: string;
   userId?: string;
   traceId?: string;
   delegation?: AgentDelegationContext;
@@ -276,7 +293,7 @@ export interface IAgentHooks {
    */
   afterToolCall?(
     tool: ToolCallContext,
-    result: { output?: any; error?: Error },
+    result: ToolCallResult,
     invocation: InvocationContext,
   ): void;
 

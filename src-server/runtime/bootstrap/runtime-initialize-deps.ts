@@ -23,6 +23,7 @@ import type { FeedbackService } from '../../services/feedback/feedback-service.j
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
+import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -104,6 +105,7 @@ export interface RuntimeInitializationContext {
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: RuntimeIntegrationMetadata;
   toolNameMapping: ToolNameMapping;
+  mcpToolProvenanceGeneration: MCPToolProvenanceGeneration;
   /** archive#1834: hook-construction inputs for the default agent's tool gate. */
   agentFixedTokens?: Map<
     string,
@@ -185,6 +187,7 @@ export function createRuntimeInitializationDeps(
     mcpConnectionStatus: context.mcpConnectionStatus,
     integrationMetadata: context.integrationMetadata,
     toolNameMapping: context.toolNameMapping,
+    mcpToolProvenanceGeneration: context.mcpToolProvenanceGeneration,
     toolNameReverseMapping: context.toolNameReverseMapping,
     agentFixedTokens: context.agentFixedTokens,
     agentHooksMap: context.agentHooksMap,

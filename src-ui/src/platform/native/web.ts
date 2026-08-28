@@ -218,6 +218,12 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
+  async openExternalLink(_url: string): Promise<boolean> {
+    // Web navigation is performed by the semantic host composition, not this
+    // platform-blind adapter.
+    return false;
+  }
+
   async discoverLocalBrowserPreviewTarget(
     _url: string,
   ): Promise<NativeBrowserPreviewGrantResult> {

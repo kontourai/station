@@ -1,7 +1,7 @@
 import { buildSessionInventoryViewModel } from '@kontourai/station-basis-pane/session-inventory-view';
 import type {
-  SessionInventoryGroupId,
   SessionInventoryScope,
+  SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
 import { useEffect, useMemo } from 'react';
@@ -18,8 +18,9 @@ import {
   useSessionInventoryLive,
 } from './useSessionInventoryLive';
 
-const PREVIEW_GROUPS = new Set<SessionInventoryGroupId>([
+const PREVIEW_GROUPS = new Set<SessionInventoryV2GroupId>([
   'inputs',
+  'work-items',
   'execution',
   'outputs',
   'live-now',

@@ -1,8 +1,13 @@
 /** @vitest-environment jsdom */
 
-import type { SessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
+import {
+  type AnySessionInventoryProjection,
+  SESSION_INVENTORY_V1_GROUP_IDS,
+  SESSION_INVENTORY_V2_GROUP_IDS,
+  type SessionInventoryProjection,
+} from '@kontourai/station-contracts/session-inventory';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { SessionInventory } from '../SessionInventory';
 import { renderSessionInventoryDom } from '../session-inventory-dom';
 import { buildSessionInventoryViewModel } from '../session-inventory-view';
@@ -162,16 +167,20 @@ describe('Session inventory view model', () => {
   test('keeps available owner gaps visible and derives an Attention cue', () => {
     const withGap = {
       ...projection,
+      version: 'station.session-inventory/v2' as const,
       groups: projection.groups.map((group) =>
         group.id === 'outputs'
           ? { ...group, gaps: [{ kind: 'unavailable' as const }] }
           : group,
       ),
     };
-    const model = buildSessionInventoryViewModel(withGap, {
-      scope: withGap.scope,
-      groupId: 'attention',
-    });
+    const model = buildSessionInventoryViewModel(
+      withGap as AnySessionInventoryProjection,
+      {
+        scope: withGap.scope,
+        groupId: 'attention',
+      },
+    );
     expect(model.groups.find((group) => group.id === 'outputs')?.gaps).toEqual([
       'This owner is unavailable.',
     ]);
@@ -183,6 +192,7 @@ describe('Session inventory view model', () => {
   test('derives Attention from every typed owner gap independently of selection', () => {
     const withAllGaps = {
       ...projection,
+      version: 'station.session-inventory/v2' as const,
       groups: projection.groups.map((group) =>
         group.id === 'inputs'
           ? { ...group, gaps: [{ kind: 'not-captured' as const }] }
@@ -191,10 +201,13 @@ describe('Session inventory view model', () => {
             : group,
       ),
     };
-    const model = buildSessionInventoryViewModel(withAllGaps, {
-      scope: withAllGaps.scope,
-      groupId: 'outputs',
-    });
+    const model = buildSessionInventoryViewModel(
+      withAllGaps as AnySessionInventoryProjection,
+      {
+        scope: withAllGaps.scope,
+        groupId: 'outputs',
+      },
+    );
     expect(
       model.groups.find((group) => group.id === 'attention')?.gaps,
     ).toEqual(
@@ -203,6 +216,166 @@ describe('Session inventory view model', () => {
         'This owner does not provide this projection version.',
       ]),
     );
+  });
+
+  test('keeps v1 at its frozen empty groups without synthetic work items or Attention', () => {
+    const empty = {
+      version: 'station.session-inventory/v1' as const,
+      scope: projection.scope,
+      groups: SESSION_INVENTORY_V1_GROUP_IDS.map((id) => ({
+        id,
+        owner: { owner: 'station.inventory', id: 'v1' },
+        state: 'empty' as const,
+        count: { kind: 'exact' as const, value: 0 },
+        items: [],
+        gaps: [],
+      })),
+    } as SessionInventoryProjection;
+    const model = buildSessionInventoryViewModel(empty, {
+      scope: empty.scope,
+      groupId: 'attention',
+    });
+    expect(model.groups.map((group) => group.id)).toEqual(
+      SESSION_INVENTORY_V1_GROUP_IDS,
+    );
+    expect(model.groups.every((group) => group.count === '0')).toBe(true);
+    expect(
+      model.groups.find((group) => group.id === 'work-items'),
+    ).toBeUndefined();
+    expect(
+      model.groups.find((group) => group.id === 'attention'),
+    ).toMatchObject({
+      gaps: [],
+      stateCopy: 'No attention were recorded for this scope.',
+    });
+  });
+
+  test('presents v2 work items from exact structured identity with current and kept context', () => {
+    const workItem = {
+      kind: 'station-session-work-item' as const,
+      key: 'work-item:association-235',
+      owner: { owner: 'station.session-work-items', id: 'v1' },
+      relations: ['observed-during', 'produced-by'] as const,
+      sessionId: 'session',
+      conversationId: 'conversation',
+      eventId: 'event',
+      turnId: 'turn',
+      toolCallId: 'call',
+      provider: { id: 'github' as const, host: 'github.com' as const },
+      workItemRef: 'github:kontourai/station#235' as const,
+      repository: { owner: 'kontourai', name: 'station' },
+      nativeId: '1234567890',
+      associationIds: ['association-235'],
+      observedAt: '2026-08-28T12:00:00.000Z',
+    };
+    const v2 = {
+      version: 'station.session-inventory/v2' as const,
+      scope: {
+        kind: 'current-answer' as const,
+        sessionId: 'session',
+        turnId: 'turn',
+      },
+      basis: {} as never,
+      basisBinding: {} as never,
+      groups: SESSION_INVENTORY_V2_GROUP_IDS.map((id) =>
+        id === 'work-items'
+          ? {
+              id,
+              owner: { owner: 'station.session-work-items', id: 'v1' },
+              state: 'available' as const,
+              count: { kind: 'exact' as const, value: 1 },
+              gaps: [{ kind: 'not-captured' as const }],
+              items: [workItem],
+            }
+          : {
+              id,
+              owner: { owner: 'station.inventory', id: 'v2' },
+              state: 'empty' as const,
+              count: { kind: 'exact' as const, value: 0 },
+              gaps: [],
+              items: [],
+            },
+      ),
+    } as AnySessionInventoryProjection;
+    const model = buildSessionInventoryViewModel(v2, {
+      scope: v2.scope,
+      groupId: 'work-items',
+      itemKey: workItem.key,
+    });
+    const group = model.groups.find(
+      (candidate) => candidate.id === 'work-items',
+    );
+    expect(group?.label).toBe('Work items');
+    expect(group?.count).toBe('1');
+    expect(group?.items[0]).toMatchObject({
+      label: 'kontourai/station#235',
+      classification: 'current',
+      actions: ['open-work-item'],
+    });
+    expect(group?.gaps).toContain('Not captured by this owner.');
+    expect(
+      model.groups.find((candidate) => candidate.id === 'attention')?.stateCopy,
+    ).toBe('Some owner context needs attention.');
+    const root = document.createElement('section');
+    const onAction = vi.fn();
+    renderSessionInventoryDom(root, model, onAction);
+    const open = Array.from(root.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Open work item',
+    )!;
+    open.click();
+    expect(onAction).toHaveBeenCalledWith(
+      'open-work-item',
+      'https://github.com/kontourai/station/issues/235',
+    );
+    expect(root.querySelector('a')).toBeNull();
+
+    const kept = buildSessionInventoryViewModel(
+      {
+        ...v2,
+        scope: { kind: 'kept-in-task', sessionId: 'session', taskId: 'task' },
+        groups: v2.groups.map((group) =>
+          group.id === 'work-items'
+            ? {
+                ...group,
+                items: [
+                  {
+                    ...workItem,
+                    relations: [
+                      'observed-during',
+                      'produced-by',
+                      'kept-in-task',
+                    ],
+                  },
+                ],
+              }
+            : group,
+        ),
+      } as AnySessionInventoryProjection,
+      {
+        scope: { kind: 'kept-in-task', sessionId: 'session', taskId: 'task' },
+        groupId: 'work-items',
+      },
+    );
+    expect(
+      kept.groups.find((group) => group.id === 'work-items')?.items[0]
+        ?.classification,
+    ).toBe('kept');
+
+    const denied = buildSessionInventoryViewModel(
+      {
+        ...v2,
+        groups: v2.groups.map((group) =>
+          group.id === 'work-items'
+            ? { ...group, items: [{ ...workItem, nativeId: '0' }] }
+            : group,
+        ),
+      } as AnySessionInventoryProjection,
+      { scope: v2.scope, groupId: 'work-items' },
+    );
+    expect(
+      denied.groups.find((group) => group.id === 'work-items')?.items[0]
+        ?.actions,
+    ).toEqual([]);
   });
 
   test('uses occurrence-local headings and focuses only its repaired pane', () => {

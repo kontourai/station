@@ -40,6 +40,10 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  parseSessionWorkItemAssociation,
+  type SessionWorkItemAssociation,
+} from '@kontourai/station-contracts/session-work-item';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import {
@@ -79,6 +83,7 @@ import {
   CONVERSATION_CONTEXT_BOUNDARY_MIGRATION,
   ensureConversationContextBoundaryColumns,
 } from '../../domain/migrations/012-conversation-context-boundaries.js';
+import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -196,6 +201,12 @@ import {
   type SessionTurnBoundaryCoordinator,
   type SessionTurnBoundaryRecord,
 } from './session-turn-boundary.js';
+import {
+  createSessionWorkItemAdmissionRegistry,
+  type SessionWorkItemAdmissionClaim,
+  type SessionWorkItemAdmissionRegistry,
+} from './session-work-item-admission.js';
+import type { SessionWorkItemCandidate } from './session-work-item-candidate.js';
 import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evidence-persistence.js';
 import {
   MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
@@ -212,6 +223,10 @@ import {
   type VoiceTurnRuns,
   type VoiceTurnRunsReader,
 } from './voice-turn-runs.js';
+import {
+  SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
+  SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
+} from './work-item-result-projector.js';
 
 const require = createRequire(import.meta.url);
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
@@ -237,6 +252,7 @@ const MAX_BASIS_ATTACHMENT_NAME_BYTES = CHAT_ATTACHMENT_MAX_NAME_LENGTH * 4;
 const MAX_BASIS_ATTACHMENT_MIME_BYTES = 128;
 const MAX_BASIS_STATUS_BYTES = 16;
 const MAX_BASIS_INPUT_KIND_BYTES = 16;
+const MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES = 8 * 1024;
 
 /** Descriptor-only row for the Session Outputs owner. No event payload crosses it. */
 export interface DeclaredOutputDescriptorRow {
@@ -270,7 +286,7 @@ export type DeclaredOutputCursor = {
 
 /** Store-authenticated cursor for a folded Session-inventory group. */
 export type SessionInventoryCursor = {
-  version: 'station.session-inventory/v1';
+  version: 'station.session-inventory/v1' | 'station.session-inventory/v2';
   sessionId: string;
   authority: string;
   scope: 'whole-session' | 'current-answer' | 'kept-in-task';
@@ -1394,6 +1410,24 @@ export class SessionOwnershipConflictError extends Error {
   }
 }
 
+/** A malformed immutable work-item row is never projected to a caller. */
+export class SessionWorkItemObservationCorruptionError extends Error {
+  constructor() {
+    super('Session work-item observations are corrupt.');
+    this.name = 'SessionWorkItemObservationCorruptionError';
+  }
+}
+
+type SessionWorkItemTerminalAdmission =
+  | {
+      kind: 'association';
+      claim: SessionWorkItemAdmissionClaim;
+      association: SessionWorkItemAssociation;
+    }
+  | { kind: 'closed'; claim: SessionWorkItemAdmissionClaim };
+
+type SessionWorkItemAssociationMetadataRow = Record<string, unknown>;
+
 export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
@@ -1420,6 +1454,9 @@ export class EventStore {
   private readonly nativeInvocationRunReaderAdapter: NativeInvocationRunReader;
   private readonly voiceTurnRuns: VoiceTurnRuns;
   private readonly sessionTurnBoundaries: SessionTurnBoundaryAuthority;
+  /** Process-local candidates; durable association truth remains SQLite-owned. */
+  private readonly sessionWorkItemAdmissions: SessionWorkItemAdmissionRegistry =
+    createSessionWorkItemAdmissionRegistry();
   /**
    * archive#4080: the dead-owner `accepted`/`indeterminate` findings
    * from this process's OWN boot-time `initializeSessionTurnBoundaries()`
@@ -1453,6 +1490,10 @@ export class EventStore {
     private readonly nativeInvocationStartupFault?: () => void,
     /** Private fault seam for voice terminal post-write readback proof. */
     private readonly voiceTurnTransitionFault?: () => void,
+    /** Private fault seam proving work-item terminal settlement shares the event savepoint. */
+    private readonly sessionWorkItemAdmissionFault?: () => void,
+    /** Private fault seam proving no admission is taken before SAVEPOINT opens. */
+    private readonly sessionWorkItemSavepointOpenFault?: () => void,
   ) {
     this.databasePath = dbPath;
     this.turnDedupMaxEntries = turnDedupMaxEntries;
@@ -1575,6 +1616,7 @@ export class EventStore {
       ensureConversationHandoffMessageDigestColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
+      this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
       this.db.exec(OPERATIONAL_EVENT_OUTBOX_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
       this.db.exec(REVISION_EVIDENCE_RECEIPTS_MIGRATION);
@@ -1909,7 +1951,8 @@ export class EventStore {
           ].includes(key),
         ) ||
         keys.length < 8 ||
-        cursor.version !== 'station.session-inventory/v1' ||
+        (cursor.version !== 'station.session-inventory/v1' &&
+          cursor.version !== 'station.session-inventory/v2') ||
         typeof cursor.sessionId !== 'string' ||
         typeof cursor.authority !== 'string' ||
         (cursor.scope !== 'whole-session' &&
@@ -2546,13 +2589,22 @@ export class EventStore {
     // therefore leave bytes on disk that no binding references. They are
     // unreachable (the route authorizes through bindings, and there are none)
     // and bounded by retention, so they are wasted space rather than exposure.
-    this.db.exec('SAVEPOINT append_event_history');
+    let workItemAdmission: SessionWorkItemTerminalAdmission | undefined;
+    // An opening failure is intentionally outside the try: no candidate has
+    // been taken yet, so there is no process-local claim to settle.
+    this.openAppendEventSavepoint();
     let nextSequence: number;
     try {
+      // Persisted event time is the sole replay authority. A new terminal gets
+      // exactly one host observation time, shared by its event and association.
+      const observedAt =
+        this.readPersistedEventObservedAt(event.eventId) ??
+        new Date().toISOString();
+      workItemAdmission = this.takeSessionWorkItemAdmission(event, observedAt);
       nextSequence = this.nextSequence(event.threadId);
       const insert = this.db
         .prepare(
-          `${declaredOutputs.length ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
+          `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
           (id, provider, thread_id, turn_id, method, request_id, session_state, payload, created_at, observed_at, sequence, global_sequence)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
@@ -2566,7 +2618,7 @@ export class EventStore {
           event.sessionState ?? null,
           serializedPayload,
           event.createdAt,
-          new Date().toISOString(),
+          observedAt,
           nextSequence,
           this.nextGlobalSequence(),
         ) as { changes: number };
@@ -2576,7 +2628,7 @@ export class EventStore {
         // never gets to redeem it.
         const existing = this.db
           .prepare(
-            `SELECT sequence, provider, thread_id, turn_id, method, payload, created_at
+            `SELECT sequence, provider, thread_id, turn_id, method, payload, created_at, observed_at
              FROM orchestration_events WHERE id = ?`,
           )
           .get(event.eventId) as
@@ -2588,6 +2640,7 @@ export class EventStore {
               method?: string;
               payload?: string;
               created_at?: string;
+              observed_at?: string | null;
             }
           | undefined;
         const uses = this.db.prepare(
@@ -2610,6 +2663,9 @@ export class EventStore {
         const expectedDeclarations = [...declaredOutputs]
           .map((admission) => admission.declaration)
           .sort((a, b) => a.declarationId.localeCompare(b.declarationId));
+        const storedAssociation = this.readStoredSessionWorkItemAssociation(
+          event.eventId,
+        );
         if (
           !existing ||
           existing.provider !== event.provider ||
@@ -2636,13 +2692,20 @@ export class EventStore {
               stored.label !== (expected.label ?? null) ||
               stored.descriptor !== JSON.stringify(expected.descriptor)
             );
-          })
+          }) ||
+          !this.matchesWorkItemReplay(
+            event,
+            workItemAdmission,
+            storedAssociation,
+            existing?.observed_at,
+          )
         ) {
           throw new Error(
             'Declared output admission replay does not match its original terminal event.',
           );
         }
         this.db.exec('RELEASE SAVEPOINT append_event_history');
+        this.commitSessionWorkItemAdmission(workItemAdmission);
         return Number(existing.sequence);
       }
       this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
@@ -2651,11 +2714,24 @@ export class EventStore {
       this.projectRequestState(event, requestId, nextSequence);
       this.projectSessionProjectionFacts(event);
       this.recordDeclaredOutputs(event, declaredOutputs);
+      if (workItemAdmission) this.sessionWorkItemAdmissionFault?.();
+      if (workItemAdmission?.kind === 'association')
+        this.recordSessionWorkItemAssociation(
+          event,
+          workItemAdmission.association,
+        );
       this.db.exec('RELEASE SAVEPOINT append_event_history');
+      this.commitSessionWorkItemAdmission(workItemAdmission);
     } catch (error) {
-      this.db.exec(
-        'ROLLBACK TO SAVEPOINT append_event_history; RELEASE SAVEPOINT append_event_history',
-      );
+      try {
+        this.db.exec(
+          'ROLLBACK TO SAVEPOINT append_event_history; RELEASE SAVEPOINT append_event_history',
+        );
+      } finally {
+        // A SQLite rollback error cannot strand a claim; its candidate must be
+        // retryable unless the savepoint release above already committed it.
+        this.rollbackSessionWorkItemAdmission(workItemAdmission);
+      }
       throw error;
     }
     // archive#3433: deliberately OUTSIDE the transaction's error boundary
@@ -2671,6 +2747,294 @@ export class EventStore {
       { provider: event.provider, method: event.method },
     );
     return nextSequence;
+  }
+
+  /** Stages a reviewed, pre-terminal candidate without exposing the registry. */
+  stageSessionWorkItemCandidate(input: {
+    candidate: SessionWorkItemCandidate;
+    current: () => boolean;
+  }) {
+    return this.sessionWorkItemAdmissions.stage(input);
+  }
+
+  private openAppendEventSavepoint(): void {
+    this.sessionWorkItemSavepointOpenFault?.();
+    this.db.exec('SAVEPOINT append_event_history');
+  }
+
+  private readPersistedEventObservedAt(eventId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT observed_at, typeof(observed_at) AS observed_at_type
+           FROM orchestration_events WHERE id = ?`,
+      )
+      .get(eventId) as
+      | { observed_at?: unknown; observed_at_type?: unknown }
+      | undefined;
+    if (!row) return undefined;
+    if (
+      row.observed_at_type !== 'text' ||
+      typeof row.observed_at !== 'string' ||
+      row.observed_at.length === 0
+    )
+      throw new SessionWorkItemObservationCorruptionError();
+    return row.observed_at;
+  }
+
+  /** Descriptor-only internal read; callers must project its closed contract. */
+  listSessionWorkItemObservations(input: {
+    sessionId: string;
+    conversationId: string;
+  }): readonly unknown[] {
+    const rows = this.db
+      .prepare(
+        `SELECT rowid AS row_id, association_id, session_id, conversation_id,
+                event_id, turn_id, tool_call_id, observed_at,
+                typeof(association_json) AS association_json_type,
+                LENGTH(CAST(association_json AS BLOB)) AS association_json_bytes
+          FROM orchestration_session_work_item_associations
+          WHERE session_id = ? AND conversation_id = ?
+          ORDER BY observed_at ASC, association_id ASC
+          LIMIT ?`,
+      )
+      .all(
+        input.sessionId,
+        input.conversationId,
+        SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS + 1,
+      ) as SessionWorkItemAssociationMetadataRow[];
+    try {
+      let totalBytes = 0;
+      for (const row of rows) {
+        this.assertSessionWorkItemAssociationMetadata(row);
+        totalBytes += row.association_json_bytes as number;
+        if (totalBytes > SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES)
+          throw new SessionWorkItemObservationCorruptionError();
+      }
+      return rows.map((row) => this.readSessionWorkItemAssociationContent(row));
+    } catch (error) {
+      if (error instanceof SessionWorkItemObservationCorruptionError)
+        throw error;
+      throw new SessionWorkItemObservationCorruptionError();
+    }
+  }
+
+  private takeSessionWorkItemAdmission(
+    event: CanonicalRuntimeEvent,
+    observedAt: string,
+  ): SessionWorkItemTerminalAdmission | undefined {
+    if (event.method !== 'tool.completed' || !event.turnId || !event.toolCallId)
+      return undefined;
+    const conversationId = this.conversationSessionLineage.sessionForExecution(
+      event.threadId,
+    )?.conversationId;
+    if (!conversationId) return undefined;
+    const taken = this.sessionWorkItemAdmissions.take({
+      eventId: event.eventId,
+      threadId: event.threadId,
+      conversationId,
+      turnId: event.turnId,
+      toolCallId: event.toolCallId,
+      method: event.method,
+      status: event.status,
+      observedAt,
+    });
+    if (taken.kind === 'taken')
+      return {
+        kind: 'association',
+        claim: taken.claim,
+        association: taken.association,
+      };
+    return taken.kind === 'closed'
+      ? { kind: 'closed', claim: taken.claim }
+      : undefined;
+  }
+
+  private commitSessionWorkItemAdmission(
+    admission: SessionWorkItemTerminalAdmission | undefined,
+  ): void {
+    if (!admission) return;
+    // This can only reject if EventStore itself double-settles a private claim.
+    // Do not throw after RELEASE: persistence is already authoritative.
+    this.sessionWorkItemAdmissions.commit(admission.claim);
+  }
+
+  private rollbackSessionWorkItemAdmission(
+    admission: SessionWorkItemTerminalAdmission | undefined,
+  ): void {
+    if (!admission) return;
+    this.sessionWorkItemAdmissions.rollback(admission.claim);
+  }
+
+  private recordSessionWorkItemAssociation(
+    event: CanonicalRuntimeEvent,
+    association: SessionWorkItemAssociation,
+  ): void {
+    if (
+      event.method !== 'tool.completed' ||
+      association.sessionId !== event.threadId ||
+      association.eventId !== event.eventId ||
+      association.turnId !== event.turnId ||
+      association.toolCallId !== event.toolCallId
+    )
+      throw new Error('Invalid Session work-item admission.');
+    this.db
+      .prepare(
+        `INSERT INTO orchestration_session_work_item_associations
+         (association_id, session_id, conversation_id, event_id, turn_id, tool_call_id, observed_at, association_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        association.associationId,
+        association.sessionId,
+        association.conversationId,
+        association.eventId,
+        association.turnId,
+        association.toolCallId,
+        association.observedAt,
+        JSON.stringify(association),
+      );
+  }
+
+  private readStoredSessionWorkItemAssociation(
+    eventId: string,
+  ): SessionWorkItemAssociation | undefined {
+    const rows = this.db
+      .prepare(
+        `SELECT rowid AS row_id, association_id, session_id, conversation_id,
+                event_id, turn_id, tool_call_id, observed_at,
+                typeof(association_json) AS association_json_type,
+                LENGTH(CAST(association_json AS BLOB)) AS association_json_bytes
+           FROM orchestration_session_work_item_associations
+          WHERE event_id = ?
+          ORDER BY association_id ASC
+          LIMIT 2`,
+      )
+      .all(eventId) as Array<Record<string, unknown>>;
+    if (rows.length === 0) return undefined;
+    let totalBytes = 0;
+    for (const row of rows) {
+      this.assertSessionWorkItemAssociationMetadata(row);
+      totalBytes += row.association_json_bytes as number;
+      if (totalBytes > SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES)
+        throw new SessionWorkItemObservationCorruptionError();
+    }
+    if (rows.length !== 1)
+      throw new SessionWorkItemObservationCorruptionError();
+    try {
+      return this.readSessionWorkItemAssociationContent(rows[0]!);
+    } catch (error) {
+      if (error instanceof SessionWorkItemObservationCorruptionError)
+        throw error;
+      throw new SessionWorkItemObservationCorruptionError();
+    }
+  }
+
+  private matchesWorkItemReplay(
+    event: CanonicalRuntimeEvent,
+    admission: SessionWorkItemTerminalAdmission | undefined,
+    stored: SessionWorkItemAssociation | undefined,
+    eventObservedAt: unknown,
+  ): boolean {
+    if (stored) {
+      if (
+        event.method !== 'tool.completed' ||
+        stored.sessionId !== event.threadId ||
+        stored.eventId !== event.eventId ||
+        stored.turnId !== event.turnId ||
+        stored.toolCallId !== event.toolCallId ||
+        stored.observedAt !== eventObservedAt
+      )
+        return false;
+    }
+    if (admission?.kind === 'association')
+      return JSON.stringify(admission.association) === JSON.stringify(stored);
+    return admission?.kind !== 'closed' || !stored;
+  }
+
+  /**
+   * Second pass after metadata admission. CASE guarantees an oversized value
+   * reaches the adapter as NULL, and repeated metadata closes the mutation
+   * window between the two reads.
+   */
+  private readSessionWorkItemAssociationContent(
+    metadata: SessionWorkItemAssociationMetadataRow,
+  ): SessionWorkItemAssociation {
+    this.assertSessionWorkItemAssociationMetadata(metadata);
+    const row = this.db
+      .prepare(
+        `SELECT rowid AS row_id, association_id, session_id, conversation_id,
+                event_id, turn_id, tool_call_id, observed_at,
+                typeof(association_json) AS association_json_type,
+                LENGTH(CAST(association_json AS BLOB)) AS association_json_bytes,
+                CASE
+                  WHEN typeof(association_json) = 'text'
+                   AND LENGTH(CAST(association_json AS BLOB)) BETWEEN 1 AND ?
+                  THEN association_json
+                  ELSE NULL
+                END AS association_json
+           FROM orchestration_session_work_item_associations
+          WHERE rowid = ?`,
+      )
+      .get(MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES, metadata.row_id) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) throw new SessionWorkItemObservationCorruptionError();
+    this.assertSessionWorkItemAssociationMetadata(row);
+    if (
+      typeof row.association_json !== 'string' ||
+      row.row_id !== metadata.row_id ||
+      row.association_id !== metadata.association_id ||
+      row.session_id !== metadata.session_id ||
+      row.conversation_id !== metadata.conversation_id ||
+      row.event_id !== metadata.event_id ||
+      row.turn_id !== metadata.turn_id ||
+      row.tool_call_id !== metadata.tool_call_id ||
+      row.observed_at !== metadata.observed_at ||
+      row.association_json_type !== metadata.association_json_type ||
+      row.association_json_bytes !== metadata.association_json_bytes
+    )
+      throw new SessionWorkItemObservationCorruptionError();
+    const parsed = parseSessionWorkItemAssociation(
+      JSON.parse(row.association_json) as unknown,
+    );
+    if (
+      !parsed ||
+      parsed.associationId !== row.association_id ||
+      parsed.sessionId !== row.session_id ||
+      parsed.conversationId !== row.conversation_id ||
+      parsed.eventId !== row.event_id ||
+      parsed.turnId !== row.turn_id ||
+      parsed.toolCallId !== row.tool_call_id ||
+      parsed.observedAt !== row.observed_at
+    )
+      throw new SessionWorkItemObservationCorruptionError();
+    return parsed;
+  }
+
+  private assertSessionWorkItemAssociationMetadata(
+    row: Record<string, unknown>,
+  ): asserts row is Record<string, string | number> {
+    if (
+      !Number.isSafeInteger(row.row_id) ||
+      (row.row_id as number) < 1 ||
+      row.association_json_type !== 'text' ||
+      !Number.isSafeInteger(row.association_json_bytes) ||
+      (row.association_json_bytes as number) < 1 ||
+      (row.association_json_bytes as number) >
+        MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES
+    )
+      throw new SessionWorkItemObservationCorruptionError();
+    for (const key of [
+      'association_id',
+      'session_id',
+      'conversation_id',
+      'event_id',
+      'turn_id',
+      'tool_call_id',
+      'observed_at',
+    ])
+      if (typeof row[key] !== 'string')
+        throw new SessionWorkItemObservationCorruptionError();
   }
 
   /** Called inside appendEvent's savepoint after the terminal row exists. */

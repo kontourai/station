@@ -56,9 +56,9 @@ dirs = "6"
 # Shared application API; platform-specific native stores are selected below.
 keyring-core = "=1.0.0"
 tauri-plugin-dialog = "=2.7.2"
+tauri-plugin-opener = "=2.5.4"
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
-tauri-plugin-opener = "=2.5.4"
 # Self-update (#575). Desktop-only, matching this plugin's own supported
 # platforms (Windows, Linux, macOS). Registration is conditional at runtime
 # on the build carrying a usable `plugins.updater` config — see

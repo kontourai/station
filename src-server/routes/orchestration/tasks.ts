@@ -22,10 +22,14 @@ import {
   type TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
 import {
-  SESSION_INVENTORY_GROUP_IDS,
+  SESSION_INVENTORY_CURRENT_GROUP_IDS,
   type SessionInventoryRow,
+  type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
-import { parseStationSessionInventoryMcpInput } from '@kontourai/station-contracts/session-inventory-mcp';
+import {
+  parseStationSessionInventoryMcpNegotiatedInput,
+  STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+} from '@kontourai/station-contracts/session-inventory-mcp';
 import {
   parseStationBasisProjection,
   parseStationTaskBasisCollection,
@@ -623,9 +627,11 @@ export function createTaskRoutes(
     const authority = options.readAuthorityForRequest?.(request);
     const taskId = param(c, 'taskId');
     const sessionId = param(c, 'sessionId');
+    const taskWorkItemRef = service?.readTask(taskId)?.workItemRef;
     const authorized = () =>
       options.isRequestPrincipalCurrent?.(request) !== false &&
       Boolean(service?.readTask(taskId)) &&
+      service?.readTask(taskId)?.workItemRef === taskWorkItemRef &&
       Boolean(authority) &&
       (options.canReadSession?.(sessionId, authority!) ?? false) &&
       Boolean(
@@ -645,6 +651,7 @@ export function createTaskRoutes(
     const outcome = await options.sessionInventory.read({
       scope: { kind: 'kept-in-task', taskId, sessionId },
       keptRows: keepRows,
+      taskWorkItemRef,
       authority,
       current: authorized,
     });
@@ -664,10 +671,12 @@ export function createTaskRoutes(
       const authority = options.readAuthorityForRequest?.(request);
       const taskId = param(c, 'taskId');
       const sessionId = param(c, 'sessionId');
+      const taskWorkItemRef = service?.readTask(taskId)?.workItemRef;
       const groupId = param(c, 'groupId');
       const authorized = () =>
         options.isRequestPrincipalCurrent?.(request) !== false &&
         Boolean(service?.readTask(taskId)) &&
+        service?.readTask(taskId)?.workItemRef === taskWorkItemRef &&
         Boolean(authority) &&
         (options.canReadSession?.(sessionId, authority!) ?? false) &&
         Boolean(
@@ -683,17 +692,18 @@ export function createTaskRoutes(
         !service ||
         !authority ||
         !options.sessionInventory ||
-        !SESSION_INVENTORY_GROUP_IDS.includes(
-          groupId as (typeof SESSION_INVENTORY_GROUP_IDS)[number],
+        !SESSION_INVENTORY_CURRENT_GROUP_IDS.includes(
+          groupId as (typeof SESSION_INVENTORY_CURRENT_GROUP_IDS)[number],
         ) ||
         !authorized()
       )
         return hostedNotFound(c);
       const outcome = await options.sessionInventory.page({
         scope: { kind: 'kept-in-task', taskId, sessionId },
-        groupId: groupId as (typeof SESSION_INVENTORY_GROUP_IDS)[number],
+        groupId: groupId as SessionInventoryV2GroupId,
         continuation: c.req.query('continuation'),
         keptRows: keptRowsForTaskSession(service, taskId, sessionId),
+        taskWorkItemRef,
         authority,
         current: authorized,
       });
@@ -714,7 +724,10 @@ export function createTaskRoutes(
     const callerBinding = options.callerBindingForRequest?.(request);
     let occurrenceId: string | undefined;
     try {
-      const parsed = parseStationSessionInventoryMcpInput(await c.req.json());
+      const negotiated = parseStationSessionInventoryMcpNegotiatedInput(
+        await c.req.json(),
+      );
+      const parsed = negotiated?.input;
       const service = serviceForRequest(request);
       const authorized = () =>
         options.isRequestPrincipalCurrent?.(request) !== false &&
@@ -748,6 +761,7 @@ export function createTaskRoutes(
       const outcome =
         parsed.operation === 'open'
           ? await options.sessionInventoryAppRead.open({
+              version: negotiated!.version,
               scope: parsed.scope,
               routeFamily: 'task',
               callerBinding,
@@ -755,6 +769,7 @@ export function createTaskRoutes(
               request,
             })
           : await options.sessionInventoryAppRead.page({
+              version: negotiated!.version,
               scope: parsed.scope,
               routeFamily: 'task',
               occurrenceId: parsed.occurrenceId,
@@ -786,7 +801,9 @@ export function createTaskRoutes(
         success: true,
         data: outcome.data,
         meta: {
-          'station.session-inventory-app/v1': {
+          [negotiated!.version === STATION_SESSION_INVENTORY_MCP_V2_VERSION
+            ? 'station.session-inventory-app/v2'
+            : 'station.session-inventory-app/v1']: {
             occurrenceId,
             continuations: outcome.continuations,
           },

@@ -836,6 +836,15 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
 
+  async openExternalLink(url: string): Promise<boolean> {
+    try {
+      await this.bridge.invoke<unknown>('open_external_link', { url });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async discoverLocalBrowserPreviewTarget(
     url: string,
   ): Promise<NativeBrowserPreviewGrantResult> {

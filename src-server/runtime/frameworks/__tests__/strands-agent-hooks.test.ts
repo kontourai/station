@@ -4,6 +4,7 @@ import {
   BeforeToolCallEvent,
 } from '@strands-agents/sdk';
 import { describe, expect, test, vi } from 'vitest';
+import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import { createStagedPreToolPolicyEvaluator } from '../../agents/pre-tool-policy.js';
 import type { ToolCallDenial } from '../../types.js';
 import {
@@ -75,6 +76,49 @@ describe('wireStrandsAgentHooks', () => {
         conversationId: 'conv-1',
         userId: 'user-1',
       },
+    );
+  });
+
+  test('forwards exact loader provenance and raw arguments/result content without publishing it', () => {
+    const registry = createHooksRegistry();
+    const generation = createMCPToolProvenanceGeneration();
+    const provenance = generation.mint({
+      serverId: 'github',
+      originalToolName: 'create_issue',
+      runtimeName: 'github_createIssue',
+      integrationId: 'github',
+    });
+    const afterToolCall = vi.fn();
+    wireStrandsAgentHooks({
+      strandsAgent: { addHook: registry.addHook } as any,
+      hooks: { afterToolCall },
+      deniedToolCalls: new Map(),
+      invocationCtx: { agentSlug: 'agent-a' },
+      memoryAdapter: { getMessages: vi.fn(), addMessage: vi.fn() } as any,
+      logger: { info: vi.fn(), error: vi.fn() },
+      resolvedModel: 'anthropic.test',
+      getLastStreamUsage: () => null,
+      findMCPToolProvenance: (runtimeName) =>
+        runtimeName === 'github_createIssue' ? provenance : undefined,
+    });
+    const args = { owner: 'kontourai', repo: 'station', title: 'Issue' };
+    const content = [{ type: 'text', text: '{"id":"1"}' }];
+
+    registry.callbacks.get(AfterToolCallEvent)({
+      toolUse: {
+        name: 'github_createIssue',
+        toolUseId: 'tool-provenance',
+        input: args,
+      },
+      result: { content },
+    });
+
+    const [context, result] = afterToolCall.mock.calls[0];
+    expect(context.mcp?.provenance).toBe(provenance);
+    expect(context.mcp?.trustedArguments).toBe(args);
+    expect(result.mcp?.trustedContent).toBe(content);
+    expect(JSON.stringify({ context, result })).not.toContain(
+      'mcp-tool-loader-provenance',
     );
   });
 

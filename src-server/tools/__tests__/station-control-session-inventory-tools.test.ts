@@ -37,6 +37,26 @@ const capability = {
     { groupId: 'inputs', continuationToken: 'continuation_'.padEnd(32, 'b') },
   ],
 };
+const v2Envelope = {
+  version: 'station.session-inventory-mcp/v2',
+  kind: 'projection',
+  projection: {
+    ...envelope.projection,
+    version: 'station.session-inventory/v2',
+    groups: [
+      ...envelope.projection.groups.slice(0, 2),
+      {
+        id: 'work-items',
+        owner: { owner: 'station.session-work-items', id: 'v1' },
+        state: 'empty',
+        count: { kind: 'exact', value: 0 },
+        items: [],
+        gaps: [],
+      },
+      ...envelope.projection.groups.slice(2),
+    ],
+  },
+};
 
 function json(value: unknown) {
   return new Response(JSON.stringify(value), {
@@ -72,6 +92,11 @@ describe('station-control Session inventory MCP App', () => {
       'ui://station/basis/session-inventory/v1',
       expect.objectContaining({ mimeType: 'text/html;profile=mcp-app' }),
     );
+    expect(resource).toHaveBeenCalledWith(
+      'station-session-inventory-v2',
+      'ui://station/basis/session-inventory/v2',
+      expect.objectContaining({ mimeType: 'text/html;profile=mcp-app' }),
+    );
     expect(appTool.mock.calls[0]?.slice(0, 4)).toMatchObject([
       'get_session_inventory',
       expect.any(String),
@@ -79,7 +104,7 @@ describe('station-control Session inventory MCP App', () => {
       {
         _meta: {
           ui: {
-            resourceUri: 'ui://station/basis/session-inventory/v1',
+            resourceUri: 'ui://station/basis/session-inventory/v2',
             visibility: ['model', 'app'],
           },
         },
@@ -141,6 +166,31 @@ describe('station-control Session inventory MCP App', () => {
       operation: 'page',
       occurrenceId: capability.occurrenceId,
       groupId: 'inputs',
+    });
+  });
+
+  test('negotiates v2 only with its explicit discriminator while preserving v1 omission', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({
+        success: true,
+        data: v2Envelope,
+        meta: { 'station.session-inventory-app/v2': capability },
+      }),
+    );
+    const { callback } = await registered();
+    const result = await callback({
+      version: 'station.session-inventory-mcp/v2',
+      operation: 'open',
+      scope: { kind: 'whole-session', sessionId: 'session-a' },
+    });
+    expect(result.structuredContent).toEqual(v2Envelope);
+    expect(result._meta).toEqual({
+      'station.session-inventory-app/v2': capability,
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      version: 'station.session-inventory-mcp/v2',
+      operation: 'open',
+      scope: { kind: 'whole-session', sessionId: 'session-a' },
     });
   });
 

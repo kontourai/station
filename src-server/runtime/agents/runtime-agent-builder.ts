@@ -8,6 +8,7 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import type { SkillService } from '../../services/agents/skill-service.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
@@ -15,6 +16,7 @@ import type {
   DispatchEvidenceSource,
   IAgentFramework,
 } from '../types.js';
+import type { WorkItemCapture } from '../work-item-capture.js';
 import { type AgentHooksDeps, createAgentHooks } from './agent-hooks.js';
 
 interface RuntimeAgentBuilderContext {
@@ -48,6 +50,7 @@ interface RuntimeAgentBuilderContext {
     }
   >;
   toolNameReverseMapping: Map<string, string>;
+  mcpToolProvenanceGeneration: MCPToolProvenanceGeneration;
   memoryAdapters: Map<string, FileMemoryAdapter>;
   agentFixedTokens: Map<
     string,
@@ -65,6 +68,7 @@ interface RuntimeAgentBuilderContext {
   replaceTemplateVariables: (text: string, agentName?: string) => string;
   /** Optional for hook-only/test callers; production bootstrap supplies it. */
   resolveUnattendedGrant?: AgentHooksDeps['resolveUnattendedGrant'];
+  workItemCapture?: WorkItemCapture;
 }
 
 export type RuntimeAgentPreparationState = Pick<
@@ -78,6 +82,7 @@ export type RuntimeAgentPreparationState = Pick<
   | 'mcpConfigs'
   | 'mcpConnectionStatus'
   | 'memoryAdapters'
+  | 'mcpToolProvenanceGeneration'
   | 'toolNameMapping'
   | 'toolNameReverseMapping'
 >;
@@ -142,6 +147,7 @@ export async function prepareRuntimeAgentInstance(
           ) === true
       : undefined,
     toolNameMapping: preparationState.toolNameMapping,
+    workItemCapture: context.workItemCapture,
     logger: context.logger,
   });
 
@@ -168,6 +174,7 @@ export async function prepareRuntimeAgentInstance(
       integrationMetadata: preparationState.integrationMetadata,
       toolNameMapping: preparationState.toolNameMapping,
       toolNameReverseMapping: preparationState.toolNameReverseMapping,
+      mcpToolProvenanceGeneration: preparationState.mcpToolProvenanceGeneration,
       approvalRegistry: context.approvalRegistry,
       agentFixedTokens: preparationState.agentFixedTokens,
       memoryAdapters: preparationState.memoryAdapters,

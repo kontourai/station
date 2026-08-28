@@ -20,9 +20,12 @@ vi.mock('../../../services/evidence/platform-mutation-gate.js', () => ({
 
 const {
   createRuntimeOAuthProvider,
-  loadAgentTools,
+  loadAgentTools: loadAgentToolsImplementation,
   releaseAllNativeStationControlConnections,
 } = await import('../mcp-manager.js');
+const { createMCPToolProvenanceGeneration } = await import(
+  '../../../services/orchestration/mcp-tool-provenance.js'
+);
 const { withTenantExecutionContext } = await import(
   '../../bootstrap/runtime-tenant-context.js'
 );
@@ -32,6 +35,38 @@ const { builtinStationControlServerPath } = await import(
 const { isTrustedNativeStationControlTool } = await import(
   '../../tools/tool-provenance.js'
 );
+
+/** Tests name their provenance issuer explicitly rather than using production fallback. */
+type LoadAgentToolsFixtureArgs = [
+  Parameters<typeof loadAgentToolsImplementation>[0],
+  Parameters<typeof loadAgentToolsImplementation>[1],
+  Parameters<typeof loadAgentToolsImplementation>[2],
+  Parameters<typeof loadAgentToolsImplementation>[3],
+  Parameters<typeof loadAgentToolsImplementation>[4],
+  Parameters<typeof loadAgentToolsImplementation>[5],
+  Parameters<typeof loadAgentToolsImplementation>[6],
+  Parameters<typeof loadAgentToolsImplementation>[7],
+  Parameters<typeof loadAgentToolsImplementation>[8],
+  Parameters<typeof loadAgentToolsImplementation>[9]?,
+  Parameters<typeof loadAgentToolsImplementation>[11]?,
+];
+
+function loadAgentTools(...args: LoadAgentToolsFixtureArgs) {
+  return loadAgentToolsImplementation(
+    args[0],
+    args[1],
+    args[2],
+    args[3],
+    args[4],
+    args[5],
+    args[6],
+    args[7],
+    args[8],
+    args[9],
+    createMCPToolProvenanceGeneration(),
+    args[10],
+  );
+}
 
 describe('Station-owned MCP manager', () => {
   beforeEach(() => {

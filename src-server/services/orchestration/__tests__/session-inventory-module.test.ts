@@ -6,6 +6,7 @@ import {
   createSessionInventoryModule,
   withTaskKeptRows,
 } from '../session-inventory-module.js';
+import type { SessionWorkItemModule } from '../session-work-item-module.js';
 
 const authority = sessionReadAuthorityFromRequest(
   'owner',
@@ -54,7 +55,195 @@ function exactFound(answer = currentAnswer()) {
     projection: composeAuthorizedSessionAnswerBasis(answer as never),
   };
 }
+function workItem(overrides: Record<string, unknown> = {}) {
+  return {
+    version: 'station.session-work-item/v1' as const,
+    associationId: 'association-a',
+    sessionId: 'session-a',
+    conversationId: 'conversation-a',
+    eventId: 'event-a',
+    turnId: 'turn-a',
+    toolCallId: 'call-a',
+    relation: 'created' as const,
+    provider: { id: 'github' as const, host: 'github.com' as const },
+    workItemRef: 'github:kontourai/station#235' as const,
+    repository: { owner: 'kontourai', name: 'station' },
+    nativeId: '1234567890',
+    observedAt: '2026-08-28T12:00:00.000Z',
+    ...overrides,
+  };
+}
 describe('SessionInventoryModule', () => {
+  test('projects one deduplicated exact-session work item with only trusted facts', async () => {
+    const observation = workItem();
+    const module = createSessionInventoryModule({
+      sessionOutputs: {
+        list: vi.fn().mockResolvedValue({
+          status: 'found',
+          page: { version: 'session-outputs/v1', items: [], partial: false },
+        }),
+      } as never,
+      canReadSession: () => true,
+      conversationForSession: () => ({ conversationId: 'conversation-a' }),
+      sessionWorkItems: {
+        read: () => ({
+          status: 'found',
+          projection: {
+            version: 'station.session-work-item/v1',
+            observations: [
+              observation,
+              { ...observation, associationId: 'association-b' },
+            ],
+            items: [
+              {
+                sessionId: 'session-a',
+                conversationId: 'conversation-a',
+                workItemRef: observation.workItemRef,
+                provider: observation.provider,
+                repository: observation.repository,
+                nativeId: observation.nativeId,
+                associationIds: ['association-a', 'association-b'],
+                observedAt: observation.observedAt,
+              },
+            ],
+          },
+        }),
+      } as never,
+    });
+    const result = await module.read({
+      scope: { kind: 'whole-session', sessionId: 'session-a' },
+      authority,
+      current: () => true,
+    });
+    expect(result.status).toBe('found');
+    if (result.status !== 'found') throw new Error('expected projection');
+    const group = result.projection.groups.find(
+      (item) => item.id === 'work-items',
+    );
+    expect(group).toMatchObject({
+      state: 'available',
+      count: { kind: 'exact', value: 1 },
+    });
+    expect(group?.items[0]).toMatchObject({
+      associationIds: ['association-a', 'association-b'],
+      eventId: 'event-a',
+    });
+    expect(JSON.stringify(group)).not.toContain('http');
+    expect(parseSessionInventoryProjection(result.projection)).toEqual(
+      result.projection,
+    );
+  });
+  test('keeps work-item owner gaps typed and task association exact', async () => {
+    const outputs = {
+      list: vi.fn().mockResolvedValue({
+        status: 'found',
+        page: { version: 'session-outputs/v1', items: [], partial: false },
+      }),
+    } as never;
+    for (const [status, state] of [
+      ['not-found', 'restricted'],
+      ['unavailable', 'unavailable'],
+      ['corrupt', 'corrupt'],
+    ] as const) {
+      const module = createSessionInventoryModule({
+        sessionOutputs: outputs,
+        canReadSession: () => true,
+        conversationForSession: () => ({ conversationId: 'conversation-a' }),
+        sessionWorkItems: { read: () => ({ status }) } as never,
+      });
+      const result = await module.read({
+        scope: { kind: 'whole-session', sessionId: 'session-a' },
+        authority,
+        current: () => true,
+      });
+      expect(result).toMatchObject({
+        status: 'found',
+        projection: {
+          groups: expect.arrayContaining([
+            expect.objectContaining({ id: 'work-items', state }),
+          ]),
+        },
+      });
+    }
+    const observation = workItem();
+    const module = createSessionInventoryModule({
+      sessionOutputs: outputs,
+      canReadSession: () => true,
+      conversationForSession: (sessionId) =>
+        sessionId === 'session-a'
+          ? { conversationId: 'conversation-a' }
+          : undefined,
+      sessionWorkItems: {
+        read: ({
+          sessionId,
+          conversationId,
+        }: Parameters<SessionWorkItemModule['read']>[0]) =>
+          sessionId === 'session-a' && conversationId === 'conversation-a'
+            ? {
+                status: 'found',
+                projection: {
+                  version: 'station.session-work-item/v1',
+                  observations: [observation],
+                  items: [
+                    {
+                      sessionId: 'session-a',
+                      conversationId: 'conversation-a',
+                      workItemRef: observation.workItemRef,
+                      provider: observation.provider,
+                      repository: observation.repository,
+                      nativeId: observation.nativeId,
+                      associationIds: ['association-a'],
+                      observedAt: observation.observedAt,
+                    },
+                  ],
+                },
+              }
+            : { status: 'not-found' },
+      } as never,
+    });
+    const exact = await module.read({
+      scope: { kind: 'kept-in-task', sessionId: 'session-a', taskId: 'task-a' },
+      taskWorkItemRef: 'github:kontourai/station#235',
+      authority,
+      current: () => true,
+    });
+    const unrelated = await module.read({
+      scope: { kind: 'kept-in-task', sessionId: 'session-a', taskId: 'task-a' },
+      taskWorkItemRef: 'github:kontourai/station#236',
+      authority,
+      current: () => true,
+    });
+    const exactRow =
+      exact.status === 'found'
+        ? exact.projection.groups.find((group) => group.id === 'work-items')
+            ?.items[0]
+        : undefined;
+    const unrelatedRow =
+      unrelated.status === 'found'
+        ? unrelated.projection.groups.find((group) => group.id === 'work-items')
+            ?.items[0]
+        : undefined;
+    expect(exactRow).toMatchObject({
+      relations: ['observed-during', 'produced-by', 'kept-in-task'],
+    });
+    expect(unrelatedRow).toMatchObject({
+      relations: ['observed-during', 'produced-by'],
+    });
+    await expect(
+      module.read({
+        scope: { kind: 'whole-session', sessionId: 'session-child' },
+        authority,
+        current: () => true,
+      }),
+    ).resolves.toMatchObject({
+      status: 'found',
+      projection: {
+        groups: expect.arrayContaining([
+          expect.objectContaining({ id: 'work-items', state: 'not-captured' }),
+        ]),
+      },
+    });
+  });
   test('keeps same-turn declared output out of current answer and never reads bodies', async () => {
     const list = vi.fn().mockResolvedValue({
       status: 'found',
