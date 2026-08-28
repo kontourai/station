@@ -368,6 +368,9 @@
       "@anthropic-ai/sdk": "$@anthropic-ai/sdk",
       "@opentelemetry/exporter-trace-otlp-http": "$@opentelemetry/exporter-trace-otlp-http",
       "@opentelemetry/exporter-metrics-otlp-http": "$@opentelemetry/exporter-metrics-otlp-http"
+    },
+    "@ai-sdk/provider-utils": {
+      "undici": "^6.28.0"
     }
   },
   "devDependencies": {
