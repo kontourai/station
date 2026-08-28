@@ -1917,7 +1917,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
                 sessionInventory:
-                  inventoryChatStoreId &&
                   inventoryExecutionId &&
                   activeOrchestrationSessionRead === 'present'
                     ? {
