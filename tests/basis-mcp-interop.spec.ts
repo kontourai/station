@@ -324,7 +324,7 @@ test('Whole Task resource interoperates with an independent official AppBridge h
         exact: true,
       }),
     ).toBeVisible();
-    expect(app.locator('surface-trust-panel')).toHaveCount(0);
+    await expect(app.locator('surface-trust-panel')).toHaveCount(0);
     const panel = app.locator('section[aria-label="Basis"]');
     await expect(panel.getByRole('status')).toContainText(
       expected.standing.label,

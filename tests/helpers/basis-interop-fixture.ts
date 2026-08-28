@@ -136,7 +136,8 @@ export function basisInteropCollection(): StationTaskBasisCollection {
       contributions: [],
     });
     const parsed = parseBasisProjection(projection);
-    const expectedStanding = index === 1 ? 'unresolved' : 'assessed-with-gaps';
+    const expectedStanding =
+      index === 1 ? 'execution-only' : 'assessed-with-gaps';
     if (!parsed.ok || parsed.value.standing !== expectedStanding)
       throw new Error(
         'Interop fixture must be a valid assessed Surface projection',
