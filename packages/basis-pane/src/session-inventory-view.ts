@@ -2,9 +2,7 @@ import {
   type AnySessionInventoryGroupPage,
   type AnySessionInventoryProjection,
   deriveSessionWorkItemGithubUrl,
-  SESSION_INVENTORY_CURRENT_GROUP_IDS,
   SESSION_INVENTORY_V1,
-  SESSION_INVENTORY_V1_GROUP_IDS,
   type SessionInventoryGroupPage,
   type SessionInventoryGroupState,
   type SessionInventoryProjection,
@@ -133,14 +131,11 @@ const labels: Readonly<Record<SessionInventoryV2GroupId, string>> = {
 };
 
 function scopeLabel(scope: SessionInventoryScope): string {
-  switch (scope.kind) {
-    case 'current-answer':
-      return 'Current answer';
-    case 'whole-session':
-      return 'Whole Session';
-    case 'kept-in-task':
-      return `Kept in Task “${scope.taskId}”`;
-  }
+  return scope.kind === 'current-answer'
+    ? 'Current answer'
+    : scope.kind === 'kept-in-task'
+      ? `Kept in Task “${scope.taskId}”`
+      : 'Whole Session';
 }
 
 function sameScope(
@@ -151,57 +146,32 @@ function sameScope(
     left.kind === right.kind &&
     left.sessionId === right.sessionId &&
     (left.kind !== 'current-answer' ||
-      (right.kind === 'current-answer' && left.turnId === right.turnId)) &&
+      left.turnId === (right as typeof left).turnId) &&
     (left.kind !== 'kept-in-task' ||
-      (right.kind === 'kept-in-task' && left.taskId === right.taskId))
+      left.taskId === (right as typeof left).taskId)
   );
 }
+
+const gapCopies = {
+  'not-captured': 'Not captured by this owner.',
+  restricted: 'This owner is restricted.',
+  unavailable: 'This owner is unavailable.',
+  'unsupported-version': 'This owner does not provide this projection version.',
+  corrupt: 'This owner returned an invalid projection.',
+} as const;
 
 function stateCopy(
   group: { state: SessionInventoryGroupState; items: readonly unknown[] },
   label: string,
 ): string {
-  switch (group.state) {
-    case 'available':
-      return group.items.length
-        ? ''
-        : `No ${label.toLocaleLowerCase()} are available.`;
-    case 'empty':
-      return `No ${label.toLocaleLowerCase()} were recorded for this scope.`;
-    case 'not-captured':
-      return 'Not captured by this owner.';
-    case 'restricted':
-      return 'This owner is restricted.';
-    case 'unavailable':
-      return 'This owner is unavailable.';
-    case 'unsupported-version':
-      return 'This owner does not provide this projection version.';
-    case 'corrupt':
-      return 'This owner returned an invalid projection.';
-  }
+  if (group.state === 'available')
+    return group.items.length
+      ? ''
+      : `No ${label.toLocaleLowerCase()} are available.`;
+  if (group.state === 'empty')
+    return `No ${label.toLocaleLowerCase()} were recorded for this scope.`;
+  return gapCopies[group.state];
 }
-function gapCopy(
-  kind:
-    | 'not-captured'
-    | 'restricted'
-    | 'unavailable'
-    | 'unsupported-version'
-    | 'corrupt',
-): string {
-  switch (kind) {
-    case 'not-captured':
-      return 'Not captured by this owner.';
-    case 'restricted':
-      return 'This owner is restricted.';
-    case 'unavailable':
-      return 'This owner is unavailable.';
-    case 'unsupported-version':
-      return 'This owner does not provide this projection version.';
-    case 'corrupt':
-      return 'This owner returned an invalid projection.';
-  }
-}
-
 function itemLabel(row: SessionInventoryV2Row): string {
   switch (row.kind) {
     case 'thread-authored-input':
@@ -236,33 +206,19 @@ function itemLabel(row: SessionInventoryV2Row): string {
     case 'gate-evaluation':
       return `Gate evaluation ${row.verdict}`;
     case 'task-kept-answer':
-      return 'Kept answer';
     case 'task-kept-input':
-      return 'Kept input';
     case 'task-kept-result':
-      return 'Kept result';
+    case 'task-kept-output':
+      return `Kept ${row.kind.slice(10)}`;
     case 'task-kept-gate':
       return 'Kept gate evaluation';
-    case 'task-kept-output':
-      return 'Kept output';
     case 'task-kept-pull-request':
       return 'Kept pull request';
     case 'station-resource-summary':
       return 'Resource summary';
     case 'station-session-work-item':
-      return `${row.repository.owner}/${row.repository.name}#${row.workItemRef.slice(row.workItemRef.lastIndexOf('#') + 1)}`;
+      return row.workItemRef.slice(7);
   }
-}
-
-function actions(
-  row: SessionInventoryV2Row,
-): readonly SessionInventoryAction[] {
-  if (row.kind === 'station-session-work-item')
-    return deriveSessionWorkItemGithubUrl(row) ? ['open-work-item'] : [];
-  if (row.kind !== 'station-session-output') return [];
-  return row.output.descriptor.kind === 'workspace-file'
-    ? ['inspect-output', 'keep-file']
-    : ['inspect-output', 'keep-pr'];
 }
 
 function toItem(
@@ -279,7 +235,15 @@ function toItem(
       groupId === 'kept' || row.relations.includes('kept-in-task')
         ? 'kept'
         : 'current',
-    actions: actions(row),
+    actions:
+      row.kind === 'station-session-work-item' &&
+      deriveSessionWorkItemGithubUrl(row)
+        ? ['open-work-item']
+        : row.kind === 'station-session-output'
+          ? row.output.descriptor.kind === 'workspace-file'
+            ? ['inspect-output', 'keep-file']
+            : ['inspect-output', 'keep-pr']
+          : [],
     row,
   };
 }
@@ -296,10 +260,10 @@ export function buildSessionInventoryViewModel(
   liveItems: readonly SessionInventoryLiveItem[] = [],
 ): SessionInventoryViewModel {
   const byId = new Map(projection.groups.map((group) => [group.id, group]));
-  const groupIds =
-    projection.version === SESSION_INVENTORY_V1
-      ? SESSION_INVENTORY_V1_GROUP_IDS
-      : SESSION_INVENTORY_CURRENT_GROUP_IDS;
+  const isV1 = projection.version === SESSION_INVENTORY_V1;
+  const groupIds = (Object.keys(labels) as SessionInventoryV2GroupId[]).filter(
+    (id) => !isV1 || id !== 'work-items',
+  );
   const groups = groupIds.map((id) => {
     const group = byId.get(id) ?? {
       id,
@@ -308,6 +272,7 @@ export function buildSessionInventoryViewModel(
       items: [],
       gaps: [{ kind: 'not-captured' as const }],
     };
+    const copy = stateCopy(group, labels[id]);
     const items =
       id === 'live-now' && liveItems.length
         ? liveItems.map((live) => ({
@@ -331,10 +296,10 @@ export function buildSessionInventoryViewModel(
               : `${group.count.value}+`
             : null,
       state: id === 'live-now' && liveItems.length ? 'available' : group.state,
-      stateCopy: stateCopy(group, labels[id]),
+      stateCopy: copy,
       gaps: group.gaps
-        .map((gap) => gapCopy(gap.kind))
-        .filter((gap) => gap !== stateCopy(group, labels[id])),
+        .map((gap) => gapCopies[gap.kind])
+        .filter((gap) => gap !== copy),
       items,
       ...(group.continuation ? { continuation: group.continuation } : {}),
       selected: false,
@@ -348,7 +313,7 @@ export function buildSessionInventoryViewModel(
     : undefined;
   const repairedSelection =
     !sameScope(selection.scope, projection.scope) ||
-    Boolean(selection.itemKey && !item) ||
+    (!!selection.itemKey && !item) ||
     selection.groupId !== requested.id;
   const repaired: SessionInventorySelection = {
     scope: projection.scope,
@@ -365,21 +330,20 @@ export function buildSessionInventoryViewModel(
         .flatMap((group) => group.gaps),
     ),
   ];
-  const withAttention =
-    projection.version === SESSION_INVENTORY_V1
-      ? groups
-      : groups.map((group) =>
-          group.id === 'attention' && ownerGaps.length
-            ? {
-                ...group,
-                gaps: [
-                  ...group.gaps,
-                  ...ownerGaps.filter((gap) => !group.gaps.includes(gap)),
-                ],
-                stateCopy: 'Some owner context needs attention.',
-              }
-            : group,
-        );
+  const withAttention = isV1
+    ? groups
+    : groups.map((group) =>
+        group.id === 'attention' && ownerGaps.length
+          ? {
+              ...group,
+              gaps: [
+                ...group.gaps,
+                ...ownerGaps.filter((gap) => !group.gaps.includes(gap)),
+              ],
+              stateCopy: 'Some owner context needs attention.',
+            }
+          : group,
+      );
   return {
     density,
     scope: projection.scope,
