@@ -276,6 +276,7 @@ describe('primary CI workflow governance', () => {
       'X64',
       'fast-feedback',
     ]);
+    expect(fastChecks?.['timeout-minutes']).toBe(45);
     expect(fastChecks?.concurrency).toEqual({
       group:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
