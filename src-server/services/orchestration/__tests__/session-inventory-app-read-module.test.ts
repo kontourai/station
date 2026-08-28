@@ -405,4 +405,58 @@ describe('SessionInventoryAppReadModule', () => {
       }),
     ).resolves.toEqual({ status: 'unavailable' });
   });
+  test('rejects semantic projection drift and bounded caller rates', async () => {
+    let reads = 0;
+    const drift = make({
+      read: async () => ({
+        status: 'found' as const,
+        projection: reads++
+          ? {
+              ...validProjection('second'),
+              groups: validProjection('second').groups.map((group) =>
+                group.id === 'inputs'
+                  ? { ...group, items: [pageRow('changed')] }
+                  : group,
+              ),
+            }
+          : validProjection('first'),
+      }),
+      page: async () => ({ status: 'unavailable' as const }),
+      authorize: () => true,
+      isEnabled: () => true,
+    });
+    await expect(
+      drift.open({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    const rate = make({
+      read: async () => ({ status: 'found' as const, projection }),
+      page: async () => ({ status: 'unavailable' as const }),
+      authorize: () => true,
+      isEnabled: () => true,
+      limits: { readsPerWindow: 1 },
+    });
+    expect(
+      (
+        await rate.open({
+          scope: projection.scope,
+          routeFamily: 'orchestration',
+          callerBinding: caller,
+          authority: authority(),
+        })
+      ).status,
+    ).toBe('available');
+    await expect(
+      rate.open({
+        scope: projection.scope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+  });
 });
