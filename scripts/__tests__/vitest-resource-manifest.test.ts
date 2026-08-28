@@ -137,9 +137,12 @@ describe('Vitest resource manifest', () => {
   }, 70_000);
 
   it('classifies runtime bootstrap exactly once as process heavy', () => {
-    const file = 'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts';
+    const file =
+      'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts';
     const groups = discoverVitestResourceGroups();
-    expect(groups.processHeavy.filter((entry) => entry === file)).toEqual([file]);
+    expect(groups.processHeavy.filter((entry) => entry === file)).toEqual([
+      file,
+    ]);
     expect(groups.ordinary).not.toContain(file);
     expect(groups.processExclusive).not.toContain(file);
     expect(groups.sharedOutput).not.toContain(file);
@@ -148,7 +151,9 @@ describe('Vitest resource manifest', () => {
   it('classifies Play-upload ownership exactly once as process exclusive', () => {
     const file = 'scripts/__tests__/play-upload-retry.test.ts';
     const groups = discoverVitestResourceGroups();
-    expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([file]);
+    expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
+      file,
+    ]);
     expect(groups.ordinary).not.toContain(file);
     expect(groups.processHeavy).not.toContain(file);
     expect(groups.sharedOutput).not.toContain(file);
