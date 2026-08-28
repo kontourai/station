@@ -27,13 +27,30 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
+| 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
-| 2026-08-28T16:25:26Z | stable-npm | 0.5.1 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
-| 2026-08-28T16:25:23Z | stable-npm | 0.1.2 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
-| 2026-08-28T16:25:20Z | stable-npm | 0.3.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
-| 2026-08-28T16:25:12Z | stable-npm | 0.1.3 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
-| 2026-08-28T16:25:07Z | stable-npm | 1.0.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-28T16:30:48Z · stable-npm · 0.7.0
+
+- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
+- Artifact: npm:@kontourai/station-shared@0.7.0 (dist-tag latest)
+- Note: Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change.
+
+### Changelog
+
+> slice carried by the same run's station-contracts row (same sha, same publish)
+
+## 2026-08-28T16:30:48Z · stable-npm · 0.7.0
+
+- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
+- Artifact: npm:@kontourai/station-sdk@0.7.0 (dist-tag latest)
+- Note: Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change.
+
+### Changelog
+
+> slice carried by the same run's station-contracts row (same sha, same publish)
 
 ## 2026-08-28T16:25:30Z · stable-npm · 0.7.0
 
@@ -43,51 +60,6 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 ### Changelog
 
 > Changelog slice omitted: this ship is a same-sha companion of stable-npm 0.5.1 (recorded at b4fe42e) — no commits exist between same-sha ships, so the slice would repeat that entry's.
-
-## 2026-08-28T16:25:26Z · stable-npm · 0.5.1
-
-- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
-- Artifact: npm:@kontourai/station-connect@0.5.1 (dist-tag latest)
-
-### Changelog
-
-> Changelog slice omitted: this ship is a same-sha companion of stable-npm 0.1.2 (recorded at b4fe42e) — no commits exist between same-sha ships, so the slice would repeat that entry's.
-
-## 2026-08-28T16:25:23Z · stable-npm · 0.1.2
-
-- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
-- Artifact: npm:@kontourai/station-board-pane@0.1.2 (dist-tag latest)
-
-### Changelog
-
-> Changelog slice omitted: this ship is a same-sha companion of stable-npm 0.3.0 (recorded at b4fe42e) — no commits exist between same-sha ships, so the slice would repeat that entry's.
-
-## 2026-08-28T16:25:20Z · stable-npm · 0.3.0
-
-- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
-- Artifact: npm:@kontourai/station-basis-pane@0.3.0 (dist-tag latest)
-
-### Changelog
-
-> Changelog slice omitted: this ship is a same-sha companion of stable-npm 0.1.3 (recorded at b4fe42e) — no commits exist between same-sha ships, so the slice would repeat that entry's.
-
-## 2026-08-28T16:25:12Z · stable-npm · 0.1.3
-
-- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
-- Artifact: npm:@kontourai/station-fieldwork-review@0.1.3 (dist-tag latest)
-
-### Changelog
-
-> Changelog slice omitted: this ship is a same-sha companion of stable-npm 1.0.0 (recorded at b4fe42e) — no commits exist between same-sha ships, so the slice would repeat that entry's.
-
-## 2026-08-28T16:25:07Z · stable-npm · 1.0.0
-
-- Ship SHA: `b4fe42e5cc089fc95f8f513d549d78b82f198d96`
-- Artifact: npm:@kontourai/station-builder-delivery-viewer@1.0.0 (dist-tag latest)
-
-### Changelog
-
-> First recorded entry for this channel; no previous ship SHA exists in the ledger, so no changelog slice was derived.
 
 ## 2026-08-27T10:54:02Z · nightly-android · 0.1.2-nightly.2430
 
