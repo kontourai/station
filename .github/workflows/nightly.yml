@@ -999,40 +999,38 @@ jobs:
             --platform darwin-aarch64 \
             --signature-file release-assets/station-nightly-desktop-macos-aarch64.app.tar.gz.sig \
             --url "https://github.com/${{ github.repository }}/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz" \
+            --release-tag nightly-desktop \
             --notes "Station Nightly desktop build ${{ steps.identity.outputs.version }} (${{ steps.decide.outputs.head_sha }})" \
             --output release-assets/latest.json
-
-      - name: Advance the rolling desktop nightly tag
-        # Only after a successful notarized build: this tag suppresses
-        # tomorrow's build, so moving it on a failed run would skip a day.
-        if: steps.decide.outputs.build == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git tag -f nightly-desktop "${{ steps.decide.outputs.head_sha }}"
-          git push -f --no-verify \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}" \
-            refs/tags/nightly-desktop
 
       # Rolling GitHub prerelease: one persistent tag/release, republished on
       # every ship. `gh release upload --clobber` deletes an existing
       # same-named asset before re-uploading it, so a job dying between that
       # delete and its re-upload leaves exactly that one asset 404 until the
-      # next successful nightly repairs it — a failed/refused update attempt
-      # for anyone mid-download, never a corrupted install, because Tauri
-      # verifies the Ed25519 signature before applying anything it
-      # downloads. Uploading latest.json LAST bounds the other direction: a
-      # client that already cached today's manifest is never pointed at an
-      # asset this run has started replacing but not finished.
+      # next successful nightly repairs it — a failed download for anyone
+      # mid-fetch, never a corrupted install, once an updater runtime exists
+      # to fetch and verify it (none ships in this app yet — see the job
+      # header). latest.json is its OWN invocation, after the binaries'
+      # upload invocation completes — never merged into one command, which
+      # would let `gh` upload it concurrently with the binaries it
+      # describes. That bounds the other direction: a client reading an
+      # already-cached manifest is never pointed at an asset this run has
+      # started replacing but not finished. A DRAFT release fails loud below
+      # rather than uploading into it: every download URL under a draft 404s
+      # for anyone but the repo, so a draft nightly-desktop would silently
+      # break every installed app's update check.
       - name: Publish the rolling desktop nightly prerelease
         if: steps.decide.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          if gh release view nightly-desktop --repo "${{ github.repository }}" --json isDraft --jq .isDraft 2>/dev/null | grep -qx true; then
+            echo "::error::nightly-desktop is a draft release; refusing to upload into it (every download URL under a draft 404s for installed apps)." >&2
+            exit 1
+          fi
           if ! gh release view nightly-desktop --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release create nightly-desktop --repo "${{ github.repository }}" --prerelease \
-              --target "${{ steps.decide.outputs.head_sha }}" \
               --title 'Station Nightly (desktop)' \
               --notes 'Rolling nightly desktop build; assets are replaced on every ship.'
           fi
@@ -1043,6 +1041,21 @@ jobs:
           gh release upload nightly-desktop --repo "${{ github.repository }}" --clobber release-assets/latest.json
           gh release edit nightly-desktop --repo "${{ github.repository }}" \
             --notes "Rolling nightly desktop build. Latest: ${{ steps.identity.outputs.version }} at ${{ steps.decide.outputs.head_sha }}, published $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+
+      - name: Advance the rolling desktop nightly tag
+        # AFTER the publish step, mirroring the Android job's own ordering:
+        # this tag is what suppresses tomorrow's build, and desktop has no
+        # manual rebuild input, so moving it before a publish that then
+        # fails would assert a ship that never happened and could only be
+        # recovered by hand-deleting the tag.
+        if: steps.decide.outputs.build == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -f nightly-desktop "${{ steps.decide.outputs.head_sha }}"
+          git push -f --no-verify \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}" \
+            refs/tags/nightly-desktop
 
       # Publish-first-then-ledger (station#4572): runs only after the publish
       # step above succeeded; its own failure reddens the job without
