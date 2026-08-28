@@ -25,7 +25,7 @@ jobs:
     name: Exact full-diff classification
     # Keep candidate feedback off the starved heavy listener; non-PR jobs use
     # this full-diff result.
-    if: ${{ github.event_name != 'pull_request_target' }}
+    if: ${{ github.event_name != 'pull_request_target' && inputs.fast_only != true }}
     # station#1931: this MUST NOT be provider-hosted. Every other job in this
     # workflow `needs:` it, so while provider-hosted jobs cannot start (org
     # billing, 2026-08-01) a zero-step failure here SKIPS the entire
