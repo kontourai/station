@@ -22,6 +22,7 @@ src-desktop/*
 scripts/*
 !scripts/station-cli.ts
 !scripts/source-bootstrap.ts
+!scripts/station-cli-implementation.ts
 !scripts/node-runtime-contract.mjs
 !scripts/dependency-lifecycle.mjs
 !scripts/ui-bundle-budget.mjs
