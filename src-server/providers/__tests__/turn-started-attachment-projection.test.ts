@@ -16,6 +16,31 @@ function adapterSource(name: string): string {
   return readFileSync(join(adaptersDir, name), 'utf8');
 }
 
+const PROJECT_EVENT = 'eventStore.projectLiveEvent(event)';
+const PERSIST_PROJECTED_EVENT =
+  'eventStore?.appendEvent(projectedEvent, declaredOutputs)';
+const LIVE_EVENT_BUS = 'eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT';
+
+function assertProjectedEventOrder(source: string) {
+  const projected = source.indexOf(PROJECT_EVENT);
+  const persisted = source.indexOf(PERSIST_PROJECTED_EVENT);
+  const published = source.indexOf(LIVE_EVENT_BUS);
+  const emittedProjectedEvent = source.indexOf(
+    'event: projectedEvent',
+    published,
+  );
+
+  if (projected < 0) throw new Error('missing event projection');
+  if (persisted < 0)
+    throw new Error('missing projected persistence with declared outputs');
+  if (published < 0 || emittedProjectedEvent < published)
+    throw new Error('missing projected live event bus emission');
+  if (!(projected < persisted && persisted < published))
+    throw new Error(
+      'projection, persistence, and publication are out of order',
+    );
+}
+
 /**
  * The provider inventory is deliberately source-derived. A new adapter that
  * emits a canonical turn start must join this list explicitly; otherwise its
@@ -60,14 +85,47 @@ describe('turn.started attachment projection inventory (station#4134)', () => {
 
   test('projects before persistence and the live event bus for every provider event', () => {
     const source = readFileSync(orchestrationServicePath, 'utf8');
-    const projected = source.indexOf('eventStore.projectLiveEvent(event)');
-    const persisted = source.indexOf('eventStore?.appendEvent(projectedEvent)');
-    const published = source.indexOf(
-      'eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT',
-    );
+    expect(() => assertProjectedEventOrder(source)).not.toThrow();
+  });
 
-    expect(projected).toBeGreaterThan(-1);
-    expect(persisted).toBeGreaterThan(projected);
-    expect(published).toBeGreaterThan(persisted);
+  test.each([
+    [
+      'persistence before projection',
+      (source: string) =>
+        source
+          .replace(PROJECT_EVENT, 'projectLiveEvent(event)')
+          .replace(
+            PERSIST_PROJECTED_EVENT,
+            `${PERSIST_PROJECTED_EVENT};\n    ${PROJECT_EVENT}`,
+          ),
+    ],
+    [
+      'unprojected persistence event',
+      (source: string) =>
+        source.replace(
+          PERSIST_PROJECTED_EVENT,
+          'eventStore?.appendEvent(event, declaredOutputs)',
+        ),
+    ],
+    [
+      'persistence without declared outputs',
+      (source: string) =>
+        source.replace(
+          PERSIST_PROJECTED_EVENT,
+          'eventStore?.appendEvent(projectedEvent)',
+        ),
+    ],
+    [
+      'unprojected live event',
+      (source: string) => {
+        const published = source.indexOf(LIVE_EVENT_BUS);
+        return `${source.slice(0, published)}${source
+          .slice(published)
+          .replace('event: projectedEvent', 'event: event')}`;
+      },
+    ],
+  ])('rejects %s', (_name, mutate) => {
+    const source = readFileSync(orchestrationServicePath, 'utf8');
+    expect(() => assertProjectedEventOrder(mutate(source))).toThrow();
   });
 });
