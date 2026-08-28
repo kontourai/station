@@ -436,6 +436,59 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegression).toContain('run: npm run test:connected-agents');
   });
 
+  it('validates pull-request titles from exact base policy before either candidate checkout', () => {
+    const ci = workflow('ci.yml');
+    const trigger = ci.slice(
+      ci.indexOf('  pull_request_target:'),
+      ci.indexOf('  workflow_dispatch:'),
+    );
+    expect(trigger).toContain('types: [opened, synchronize, reopened, edited]');
+
+    const fastChecks = ci.slice(
+      ci.indexOf('  fast-checks:'),
+      ci.indexOf('  fork-smoke:'),
+    );
+    const forkSmoke = ci.slice(
+      ci.indexOf('  fork-smoke:'),
+      ci.indexOf('  full-regression:'),
+    );
+    for (const [job, candidateRepository, conditional] of [
+      [
+        fastChecks,
+        `repository: \${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`,
+        `if: \${{ github.event_name == 'pull_request_target' }}`,
+      ],
+      [
+        forkSmoke,
+        `repository: \${{ github.event.pull_request.head.repo.full_name }}`,
+        undefined,
+      ],
+    ] as const) {
+      const baseCheckout = job.indexOf(
+        'name: Check out base policy for pull-request title gate',
+      );
+      const titleGate = job.indexOf(
+        'name: Validate base-controlled pull-request title',
+      );
+      const candidateCheckout = job.indexOf(candidateRepository);
+      expect(baseCheckout).toBeGreaterThan(-1);
+      expect(titleGate).toBeGreaterThan(baseCheckout);
+      expect(candidateCheckout).toBeGreaterThan(titleGate);
+      expect(job).toContain(`repository: \${{ github.repository }}`);
+      expect(job).toContain(`ref: \${{ github.event.pull_request.base.sha }}`);
+      expect(job).toContain(
+        `PULL_REQUEST_TITLE: \${{ github.event.pull_request.title }}`,
+      );
+      expect(job).toContain(
+        `PULL_REQUEST_NUMBER: \${{ github.event.pull_request.number }}`,
+      );
+      expect(job).toContain(
+        'node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"',
+      );
+      if (conditional) expect(job).toContain(conditional);
+    }
+  });
+
   it('keeps coordinated lane receipts and failure artifacts downloadable', () => {
     for (const name of [
       'ci.yml',
