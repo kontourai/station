@@ -115,6 +115,112 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
   });
 
+  test('pins every newly audited Task, Session, and Flow leaf to its exact scope decision', () => {
+    for (const [method, path, scope, origin, prefix, inherited] of [
+      [
+        'POST',
+        '/api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep',
+        'orchestration:operate',
+        'family',
+        '/api/tasks',
+        true,
+      ],
+      [
+        'GET',
+        '/api/tasks/:taskId/gate-evaluation-references',
+        'orchestration:read',
+        'family',
+        '/api/tasks',
+        true,
+      ],
+      [
+        'GET',
+        '/api/orchestration/sessions/:threadId/outputs',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect',
+        'orchestration:read',
+        'explicit',
+        '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect',
+        false,
+      ],
+      [
+        'GET',
+        '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'PUT',
+        '/api/orchestration/sessions/:threadId/turns/:turnId/narrative',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'DELETE',
+        '/api/orchestration/sessions/:threadId/turns/:turnId/narrative',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'PUT',
+        '/api/orchestration/sessions/:threadId/turns/:turnId/assessment',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'DELETE',
+        '/api/orchestration/sessions/:threadId/turns/:turnId/assessment',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'GET',
+        '/api/orchestration/sessions/:threadId/turns/:turnId/assessment/target',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'GET',
+        '/api/projects/:slug/flow/runs/:runId/gates/:gateId/evaluations/:evaluationId',
+        'orchestration:read',
+        'family',
+        '/api/projects',
+        true,
+      ],
+    ] as const) {
+      expect(requiredPairingScope(method, path)).toBe(scope);
+      expect(matchPairingScopeRule(method, path)).toMatchObject({
+        origin,
+        prefix,
+        scope,
+      });
+      expect(isLeafScopeDeclared(method, path)).toBe(true);
+      expect(
+        PAIRING_SCOPE_FAMILY_INHERITED_LEAVES.some(
+          (leaf) => leaf.method === method && leaf.path === path,
+        ),
+      ).toBe(inherited);
+    }
+  });
+
   test('keeps protected MCP App leaves at their existing family operate tier', () => {
     for (const [method, path, prefix] of [
       [

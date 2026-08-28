@@ -311,6 +311,17 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // Inspection reads a single already-addressed session output. It is a POST
+  // only to keep the opaque event identifier out of URL logs, not because it
+  // mutates owner state, so it deliberately overrides the orchestration POST
+  // family to the read tier.
+  {
+    id: '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect:read',
+    method: 'POST',
+    prefix: '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.
@@ -1582,8 +1593,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // protected Session/event tuple and has no greater sensitivity than the
     // Task read family it is mounted under.
     { method: 'GET', path: '/api/tasks/:taskId/tool-result-references' },
+    { method: 'GET', path: '/api/tasks/:taskId/gate-evaluation-references' },
     { method: 'POST', path: '/api/tasks/:taskId/outputs' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep',
+    },
     // A Task Basis App open/revoke creates or invalidates a caller-bound
     // occurrence token. It never widens the Task's data scope, but both are
     // mutations and deliberately retain the task family's operate tier.
@@ -1599,6 +1615,38 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no atom graph, so the normal task operate tier is the intended scope.
     { method: 'POST', path: '/api/tasks/:taskId/room/edit-plan' },
     { method: 'POST', path: '/api/tasks/:taskId/room/batches' },
+    // Session output and narrative projections remain bound to the paired
+    // caller's own Session. Their GET leaves inherit read; narrative and
+    // assessment replacement/removal are owner mutations and inherit operate.
+    { method: 'GET', path: '/api/orchestration/sessions/:threadId/outputs' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
+    },
+    {
+      method: 'PUT',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative',
+    },
+    {
+      method: 'PUT',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/assessment',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/assessment',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/assessment/target',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/flow/runs/:runId/gates/:gateId/evaluations/:evaluationId',
+    },
     // prettier-ignore
     { method: 'GET', path: '/acp/connections' },
     { method: 'POST', path: '/acp/connections' },
