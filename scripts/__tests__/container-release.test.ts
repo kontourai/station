@@ -137,16 +137,12 @@ const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/package-lock.json',
   '/app/station',
   '/app/.station-release.json',
-  '/app/scripts/station-cli.ts',
-  '/app/scripts/source-bootstrap.ts',
-  '/app/scripts/station-cli-implementation.ts',
-  '/app/scripts/lib/verification-host-pressure.mjs',
-  '/app/config/plugin-scaffold-dependencies.json',
-  '/app/scripts/node-runtime-contract.mjs',
   '/app/packages',
   '/app/src-server',
   '/app/src-shared',
   '/app/schemas',
+  '/app/scripts',
+  '/app/config',
   '/app/examples',
   '/app/dist-server-container',
   '/app/dist-ui-container',
@@ -512,7 +508,13 @@ describe('container source contract', () => {
       'scripts/lib/dependency-lifecycle-policy.mjs',
     ])
       expect(dockerContextIncludes(ignore, path)).toBe(true);
-    expect(dockerContextIncludes(ignore, 'config/unrelated.json')).toBe(false);
+    // Post-flip policy: tracked config/ and scripts/ ship wholesale (the
+    // repo is public; per-file curation cost five consecutive build breaks).
+    // The discriminating exclusions are the test and dogfood trees.
+    expect(dockerContextIncludes(ignore, 'config/unrelated.json')).toBe(true);
+    expect(
+      dockerContextIncludes(ignore, 'scripts/__tests__/unrelated.test.ts'),
+    ).toBe(false);
   });
 });
 

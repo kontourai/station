@@ -18,26 +18,16 @@
 src-desktop/*
 !src-desktop/tauri.conf.json
 
+# The repository is public: scripts/ and config/ are shipped wholesale
+# (tests excluded) instead of a per-file allowlist. The allowlist's curation
+# rationale predates the public flip, and its maintenance cost was five
+# consecutive container-build failures as the CLI's import closure grew
+# past it one file at a time (2026-08-27 shakedown).
 !scripts/
-scripts/*
-!scripts/station-cli.ts
-!scripts/source-bootstrap.ts
-!scripts/station-cli-implementation.ts
-!scripts/node-runtime-contract.mjs
-!scripts/dependency-lifecycle.mjs
-!scripts/ui-bundle-budget.mjs
-!scripts/ui-bundle-budget.json
-!scripts/lib/
-scripts/lib/*
-!scripts/lib/server-build-config.mjs
-!scripts/lib/verification-host-pressure.mjs
-!scripts/lib/container-release-metadata.mjs
-!scripts/lib/dependency-lifecycle-policy.mjs
+scripts/__tests__/
+scripts/dogfood/
 
 !config/
-config/*
-!config/dependency-lifecycle-allowlist.json
-!config/plugin-scaffold-dependencies.json
 !patches/
 !patches/**
 
