@@ -139,6 +139,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
           security list-keychains -d user -s "$keychain"
       - name: Build an unsigned macOS staging candidate
+        working-directory: src-desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
