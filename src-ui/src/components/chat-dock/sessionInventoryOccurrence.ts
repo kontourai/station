@@ -22,7 +22,13 @@ export function openSessionInventoryOccurrence(launch: SessionInventoryLaunch) {
       );
   if (matches.length !== 1) return false;
   const [hostId, registration] = matches[0]!;
-  if (!registration || registration.authorityKey !== launch.authorityKey)
+  if (
+    !registration ||
+    registration.authorityKey !== launch.authorityKey ||
+    registration.chatStoreId !== launch.activeSessionId ||
+    (!launch.requestedScope &&
+      registration.executionId !== launch.executionSessionId)
+  )
     return false;
   occurrences.set(hostId, { ...launch, hostId });
   notify(hostId);
