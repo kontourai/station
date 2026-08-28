@@ -475,15 +475,16 @@ describe('StationInstanceReconciler Interface', () => {
     const lockingInstance = { ...instance, instanceId: 'locking-instance' };
     const root = mkdtempSync(join(tmpdir(), 'station-instance-reconcile-'));
     const lock = join(root, 'station-test.reconcile');
+    let settleStart!: () => void;
+    const startSettlement = new Promise<void>((resolve) => {
+      settleStart = resolve;
+    });
+    let reconciliation: Promise<unknown> | undefined;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     try {
       let enterStart!: () => void;
       const startEntered = new Promise<void>((resolve) => {
         enterStart = resolve;
-      });
-      let settleStart!: () => void;
-      const startSettlement = new Promise<void>((resolve) => {
-        settleStart = resolve;
       });
       const adapter = platform([observed()]);
       adapter.acquireInstanceLock = vi.fn((_ref, options) =>
@@ -500,6 +501,7 @@ describe('StationInstanceReconciler Interface', () => {
         desired: { version: STATION_INSTANCE_STATE_VERSION, kind: 'running' },
         deadlineMs: 100,
       });
+      reconciliation = pending;
       await startEntered;
       expect(adapter.start).toHaveBeenCalledOnce();
 
@@ -532,8 +534,19 @@ describe('StationInstanceReconciler Interface', () => {
       retryRelease();
       expect(existsSync(lock)).toBe(false);
     } finally {
-      vi.useRealTimers();
-      rmSync(root, { recursive: true, force: true });
+      settleStart();
+      try {
+        await startSettlement;
+        await vi.runAllTimersAsync();
+        await reconciliation?.catch(() => undefined);
+        await Promise.resolve();
+        await vi.runAllTimersAsync();
+      } catch {
+        // Never replace the assertion that entered this teardown path.
+      } finally {
+        vi.useRealTimers();
+        rmSync(root, { recursive: true, force: true });
+      }
     }
   });
 
