@@ -120,6 +120,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
+      [process.execPath, ['scripts/check-basis-mcp-apps.mjs']],
       ['npm', ['run', 'verification:policy:gate']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
@@ -236,6 +237,7 @@ describe('bounded ci:fast runner', () => {
       FAST_FEEDBACK_TIMEOUT_MS - 86_415,
       FAST_FEEDBACK_TIMEOUT_MS - 98_760,
       FAST_FEEDBACK_TIMEOUT_MS - 111_105,
+      FAST_FEEDBACK_TIMEOUT_MS - 123_450,
     ]);
   });
 
