@@ -15,6 +15,7 @@ import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
+import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
 
 /**
  * The small registration surface shared by Station's built-in control tools.
@@ -132,5 +133,6 @@ export function createStationControlMcpServer(): McpServer {
   registerOperationsTools(registry);
   registerPlatformTools(registry);
   registerBasisTools(registry);
+  registerSessionInventoryTools(registry);
   return server;
 }

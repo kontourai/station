@@ -1993,6 +1993,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/inventory/groups/:groupId',
     },
+    // Session inventory App open/page/revoke mints and invalidates a
+    // caller-bound occurrence. It preserves the same Session ACL at the
+    // route seam, while POST/DELETE deliberately retain this family's operate
+    // tier rather than treating a capability lifecycle as a cached GET.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/inventory/app-read',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/sessions/:threadId/inventory/app-read',
+    },
     // Exact terminal tool output is a bounded, reauthorized orchestration
     // read. Its handler denies hosted fallback and strips owner metadata.
     {
@@ -2278,6 +2290,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/tasks/:taskId/sessions/:sessionId/inventory/groups/:groupId',
+    },
+    // Task-qualified inventory App occurrences are similarly bounded
+    // capability lifecycle writes; the exact Task/Session relation is still
+    // rechecked by the route and owner module for every read.
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/sessions/:sessionId/inventory/app-read',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/tasks/:taskId/sessions/:sessionId/inventory/app-read',
     },
     // Reopens one authorized exact authored input; same Task-read tier as
     // answer candidates, with source-session authorization at the route.

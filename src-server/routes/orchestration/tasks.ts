@@ -25,6 +25,7 @@ import {
   SESSION_INVENTORY_GROUP_IDS,
   type SessionInventoryRow,
 } from '@kontourai/station-contracts/session-inventory';
+import { parseStationSessionInventoryMcpInput } from '@kontourai/station-contracts/session-inventory-mcp';
 import {
   parseStationBasisProjection,
   parseStationTaskBasisCollection,
@@ -48,6 +49,7 @@ import {
   TaskAnswerSupportModule,
   TaskAnswerSupportUnavailableError,
 } from '../../services/evidence/task-answer-support-module.js';
+import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import type {
   SessionAssistantTurnQueryOutcome,
@@ -109,7 +111,7 @@ const REMOVED_TASK_STATUS_VALUES: Record<string, TaskStatus> = {
 };
 
 /** The Task owns this exact-provenance kept rowset; Session only pages it. */
-function keptRowsForTaskSession(
+export function keptRowsForTaskSession(
   service: TaskGraphService,
   taskId: string,
   sessionId: string,
@@ -336,6 +338,7 @@ export function createTaskRoutes(
     ) => boolean;
     /** Authorized session projection; Task route owns the Task/Project witness. */
     sessionInventory?: SessionInventoryModule;
+    sessionInventoryAppRead?: SessionInventoryAppReadModule;
     readAuthorityForRequest?: (request: Request) => SessionReadAuthority;
     /**
      * The orchestration-owned exact answer resolver. It is injected at the
@@ -411,6 +414,7 @@ export function createTaskRoutes(
       authority: SessionReadAuthority,
     ) => boolean;
     sessionInventory?: SessionInventoryModule;
+    sessionInventoryAppRead?: SessionInventoryAppReadModule;
     readAuthorityForRequest?: (request: Request) => SessionReadAuthority;
     readAssistantTurn?: (input: {
       sessionId: string;
@@ -697,6 +701,141 @@ export function createTaskRoutes(
       return c.json({ success: true, data: outcome.page });
     },
   );
+
+  // The Task route owns the exact Task/Session witness. The app occurrence
+  // receives no Task rows or EventStore cursor from its caller; runtime
+  // composition re-derives them on every owner read.
+  app.post('/:taskId/sessions/:sessionId/inventory/app-read', async (c) => {
+    noStore(c);
+    const request = c.req.raw;
+    const taskId = param(c, 'taskId');
+    const sessionId = param(c, 'sessionId');
+    const authority = options.readAuthorityForRequest?.(request);
+    const callerBinding = options.callerBindingForRequest?.(request);
+    let occurrenceId: string | undefined;
+    try {
+      const parsed = parseStationSessionInventoryMcpInput(await c.req.json());
+      const service = serviceForRequest(request);
+      const authorized = () =>
+        options.isRequestPrincipalCurrent?.(request) !== false &&
+        Boolean(service?.readTask(taskId)) &&
+        Boolean(authority) &&
+        (options.canReadSession?.(sessionId, authority!) ?? false) &&
+        Boolean(
+          service
+            ?.readSessionRelations(sessionId)
+            .links.some(
+              (link) =>
+                (link.sourceType === 'task' && link.sourceId === taskId) ||
+                (link.targetType === 'task' && link.targetId === taskId),
+            ),
+        );
+      if (
+        !parsed ||
+        !service ||
+        !authority ||
+        !callerBinding ||
+        !options.sessionInventoryAppRead ||
+        parsed.scope.kind !== 'kept-in-task' ||
+        parsed.scope.taskId !== taskId ||
+        parsed.scope.sessionId !== sessionId ||
+        !authorized()
+      )
+        return c.json(
+          { success: false, error: 'Session inventory unavailable' },
+          503,
+        );
+      const outcome =
+        parsed.operation === 'open'
+          ? await options.sessionInventoryAppRead.open({
+              scope: parsed.scope,
+              routeFamily: 'task',
+              callerBinding,
+              authority,
+              request,
+            })
+          : await options.sessionInventoryAppRead.page({
+              scope: parsed.scope,
+              routeFamily: 'task',
+              occurrenceId: parsed.occurrenceId,
+              groupId: parsed.groupId,
+              continuationToken: parsed.continuationToken,
+              callerBinding,
+              authority,
+              request,
+            });
+      if (outcome.status !== 'available')
+        return c.json(
+          { success: false, error: 'Session inventory unavailable' },
+          503,
+        );
+      occurrenceId = outcome.occurrenceId;
+      if (!authorized()) {
+        options.sessionInventoryAppRead.revoke({
+          scope: parsed.scope,
+          routeFamily: 'task',
+          callerBinding,
+          occurrenceId,
+        });
+        return c.json(
+          { success: false, error: 'Session inventory unavailable' },
+          503,
+        );
+      }
+      return c.json({
+        success: true,
+        data: outcome.data,
+        meta: {
+          'station.session-inventory-app/v1': {
+            occurrenceId,
+            continuations: outcome.continuations,
+          },
+        },
+      });
+    } catch {
+      if (occurrenceId && callerBinding) {
+        try {
+          options.sessionInventoryAppRead?.revoke({
+            routeFamily: 'task',
+            callerBinding,
+            occurrenceId,
+          });
+        } catch {
+          // Response remains opaque if occurrence teardown fails.
+        }
+      }
+      return c.json(
+        { success: false, error: 'Session inventory unavailable' },
+        503,
+      );
+    }
+  });
+  app.delete('/:taskId/sessions/:sessionId/inventory/app-read', async (c) => {
+    noStore(c);
+    const callerBinding = options.callerBindingForRequest?.(c.req.raw);
+    try {
+      const body = z
+        .object({ occurrenceId: z.string().regex(/^[A-Za-z0-9_-]{24,128}$/) })
+        .strict()
+        .safeParse(await c.req.json());
+      if (!body.success || !callerBinding || !options.sessionInventoryAppRead)
+        return c.json(
+          { success: false, error: 'Session inventory unavailable' },
+          503,
+        );
+      options.sessionInventoryAppRead.revoke({
+        routeFamily: 'task',
+        callerBinding,
+        occurrenceId: body.data.occurrenceId,
+      });
+      return c.json({ success: true });
+    } catch {
+      return c.json(
+        { success: false, error: 'Session inventory unavailable' },
+        503,
+      );
+    }
+  });
 
   app.post('/:taskId/references', validate(taskReferenceSchema), async (c) => {
     const input = getBody(c);

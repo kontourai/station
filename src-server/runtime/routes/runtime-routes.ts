@@ -155,7 +155,10 @@ import { createOrchestrationRoutes } from '../../routes/orchestration/orchestrat
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
-import { createTaskRoutes } from '../../routes/orchestration/tasks.js';
+import {
+  createTaskRoutes,
+  keptRowsForTaskSession,
+} from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
@@ -303,6 +306,7 @@ import type { OrchestrationStreamPresence } from '../../services/orchestration/o
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../services/orchestration/project-task-room-revision-evidence-bridge.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { RunService } from '../../services/orchestration/run-service.js';
+import { createSessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -1752,6 +1756,92 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
+  const sessionInventoryAppRead = createSessionInventoryAppReadModule({
+    read: async ({ scope, authority, request: _request, current }) => {
+      const outcome = await sessionInventory.read({
+        scope,
+        ...(scope.kind === 'kept-in-task'
+          ? {
+              keptRows: keptRowsForTaskSession(
+                context.taskGraphService,
+                scope.taskId,
+                scope.sessionId,
+              ),
+            }
+          : {}),
+        authority,
+        current,
+      });
+      return outcome.status === 'found'
+        ? { status: 'found' as const, projection: outcome.projection }
+        : outcome;
+    },
+    page: async ({
+      scope,
+      groupId,
+      continuation,
+      authority,
+      request: _request,
+      current,
+    }) => {
+      const outcome = await sessionInventory.page({
+        scope,
+        groupId,
+        continuation,
+        ...(scope.kind === 'kept-in-task'
+          ? {
+              keptRows: keptRowsForTaskSession(
+                context.taskGraphService,
+                scope.taskId,
+                scope.sessionId,
+              ),
+            }
+          : {}),
+        authority,
+        current,
+      });
+      return outcome.status === 'found'
+        ? { status: 'found' as const, page: outcome.page }
+        : outcome;
+    },
+    authorize: ({ scope, routeFamily, authority, request }) => {
+      if (
+        !request ||
+        !isRequestPrincipalCurrent(request) ||
+        !context.orchestrationService.canUserReadSession(
+          scope.sessionId,
+          authority,
+        )
+      )
+        return false;
+      if (routeFamily === 'orchestration') return scope.kind !== 'kept-in-task';
+      if (scope.kind !== 'kept-in-task') return false;
+      if (!context.taskGraphService.readTask(scope.taskId)) return false;
+      return context.taskGraphService
+        .readSessionRelations(scope.sessionId)
+        .links.some(
+          (link) =>
+            (link.sourceType === 'task' && link.sourceId === scope.taskId) ||
+            (link.targetType === 'task' && link.targetId === scope.taskId),
+        );
+    },
+    isEnabled: async () => {
+      const integration = await context.configLoader.loadIntegration(
+        STATION_BASIS_MCP_SERVER_ID,
+      );
+      const disabled = new Set(integration.disabledTools ?? []);
+      return (
+        !isMcpUiRenderRevoked(
+          context.configLoader.getProjectHomeDir(),
+          STATION_BASIS_MCP_SERVER_ID,
+        ) &&
+        integration.enabled !== false &&
+        !disabled.has('get_session_inventory') &&
+        !disabled.has('station-control/get_session_inventory') &&
+        !disabled.has('station-control_get_session_inventory')
+      );
+    },
+  });
   const taskBasisMcpInitialRead = createTaskBasisMcpInitialRead({
     taskBasis,
     taskGraph: context.taskGraphService,
@@ -1879,6 +1969,7 @@ export function configureRuntimeRoutes(
         taskToolResultReferences.read(input),
       readTaskBasis: (request) => taskBasis.read(request),
       taskBasisAppRead,
+      sessionInventoryAppRead,
       callerBindingForRequest: taskBasisCallerBinding,
       isRequestPrincipalCurrent,
       answerNarrativeBindingModule,
@@ -2303,6 +2394,8 @@ export function configureRuntimeRoutes(
       reviewedSourceBasisResolver,
       exactAnswerBasis,
       sessionInventory,
+      sessionInventoryAppRead,
+      callerBindingForRequest: taskBasisCallerBinding,
       listThreadCheckpoints: (threadId) =>
         listThreadRecordsWithObjectStatus(
           checkpointIndexStore,

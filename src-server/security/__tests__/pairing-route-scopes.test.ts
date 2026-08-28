@@ -124,6 +124,26 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
       ],
       ['POST', '/api/tasks/:taskId/basis/app-read', '/api/tasks'],
       ['DELETE', '/api/tasks/:taskId/basis/app-read', '/api/tasks'],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/inventory/app-read',
+        '/api/orchestration',
+      ],
+      [
+        'DELETE',
+        '/api/orchestration/sessions/:threadId/inventory/app-read',
+        '/api/orchestration',
+      ],
+      [
+        'POST',
+        '/api/tasks/:taskId/sessions/:sessionId/inventory/app-read',
+        '/api/tasks',
+      ],
+      [
+        'DELETE',
+        '/api/tasks/:taskId/sessions/:sessionId/inventory/app-read',
+        '/api/tasks',
+      ],
     ] as const) {
       expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({
         method,

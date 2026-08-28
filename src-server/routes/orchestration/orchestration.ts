@@ -34,6 +34,7 @@ import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { parseStationSessionInventoryMcpInput } from '@kontourai/station-contracts/session-inventory-mcp';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -86,6 +87,7 @@ import {
   OrchestrationStreamPresence,
   orchestrationStreamPresenceSubjectFromAuthority,
 } from '../../services/orchestration/orchestration-stream-presence.js';
+import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
@@ -899,6 +901,9 @@ export function createOrchestrationRoutes(
     /** Shared runtime-composed exact Basis and Session inventory owners. */
     exactAnswerBasis?: ExactAnswerBasisModule;
     sessionInventory?: SessionInventoryModule;
+    /** Bounded caller-bound MCP App occurrences for session inventory. */
+    sessionInventoryAppRead?: SessionInventoryAppReadModule;
+    callerBindingForRequest?: (request: Request) => string | undefined;
     /**
      * Immutable deployment registry supplied by runtime wiring. Its presence,
      * rather than any request field, selects hosted authorization semantics.
@@ -2019,6 +2024,108 @@ export function createOrchestrationRoutes(
     )
       return sessionInventoryUnavailable(c);
     return c.json({ success: true, data: outcome.projection });
+  });
+  // App reads mint an opaque occurrence before any owner I/O.  This separate
+  // POST family intentionally has no GET cache semantics and never accepts a
+  // caller-supplied EventStore cursor.
+  app.post('/sessions/:threadId/inventory/app-read', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    let occurrenceId: string | undefined;
+    const request = c.req.raw;
+    const sessionId = param(c, 'threadId');
+    const authority = readAuthorityFor(c);
+    const callerBinding = deps.callerBindingForRequest?.(request);
+    try {
+      const parsed = parseStationSessionInventoryMcpInput(await c.req.json());
+      if (
+        !parsed ||
+        !callerBinding ||
+        !deps.sessionInventoryAppRead ||
+        parsed.scope.sessionId !== sessionId ||
+        parsed.scope.kind === 'kept-in-task'
+      )
+        return sessionInventoryUnavailable(c, 503);
+      const outcome =
+        parsed.operation === 'open'
+          ? await deps.sessionInventoryAppRead.open({
+              scope: parsed.scope,
+              routeFamily: 'orchestration',
+              callerBinding,
+              authority,
+              request,
+            })
+          : await deps.sessionInventoryAppRead.page({
+              scope: parsed.scope,
+              routeFamily: 'orchestration',
+              occurrenceId: parsed.occurrenceId,
+              groupId: parsed.groupId,
+              continuationToken: parsed.continuationToken,
+              callerBinding,
+              authority,
+              request,
+            });
+      if (outcome.status !== 'available')
+        return sessionInventoryUnavailable(c, 503);
+      occurrenceId = outcome.occurrenceId;
+      if (
+        deps.isRequestPrincipalCurrent?.(request) !== true ||
+        !orchestrationService.canUserReadSession(sessionId, authority)
+      ) {
+        deps.sessionInventoryAppRead.revoke({
+          scope: parsed.scope,
+          routeFamily: 'orchestration',
+          callerBinding,
+          occurrenceId,
+        });
+        return sessionInventoryUnavailable(c, 503);
+      }
+      return c.json({
+        success: true,
+        data: outcome.data,
+        meta: {
+          'station.session-inventory-app/v1': {
+            occurrenceId,
+            continuations: outcome.continuations,
+          },
+        },
+      });
+    } catch {
+      if (occurrenceId && callerBinding) {
+        try {
+          deps.sessionInventoryAppRead?.revoke({
+            routeFamily: 'orchestration',
+            callerBinding,
+            occurrenceId,
+          });
+        } catch {
+          // Preserve an opaque outward failure if best-effort teardown fails.
+        }
+      }
+      return sessionInventoryUnavailable(c, 503);
+    }
+  });
+  app.delete('/sessions/:threadId/inventory/app-read', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const callerBinding = deps.callerBindingForRequest?.(c.req.raw);
+    try {
+      const body = z
+        .object({ occurrenceId: z.string().regex(/^[A-Za-z0-9_-]{24,128}$/) })
+        .strict()
+        .safeParse(await c.req.json());
+      if (!body.success || !callerBinding || !deps.sessionInventoryAppRead)
+        return sessionInventoryUnavailable(c, 503);
+      // A revoke cannot reveal whether the occurrence existed. Route-family
+      // and caller bindings still prevent a direct Session route from
+      // consuming a kept-in-task occurrence.
+      deps.sessionInventoryAppRead.revoke({
+        routeFamily: 'orchestration',
+        callerBinding,
+        occurrenceId: body.data.occurrenceId,
+      });
+      return c.json({ success: true });
+    } catch {
+      return sessionInventoryUnavailable(c, 503);
+    }
   });
   app.get('/sessions/:threadId/inventory/groups/:groupId', async (c) => {
     c.header('Cache-Control', 'private, no-store');

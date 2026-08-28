@@ -1,0 +1,85 @@
+import type { SessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { describe, expect, test, vi } from 'vitest';
+import { createSessionInventoryAppReadModule } from '../session-inventory-app-read-module.js';
+
+const authority = () =>
+  sessionReadAuthorityFromRequest('fixture-user', undefined, undefined);
+const caller = 'caller_'.padEnd(32, 'a');
+const projection = {
+  version: 'station.session-inventory/v1',
+  scope: { kind: 'whole-session', sessionId: 'fixture-session' },
+  groups: [
+    'inputs',
+    'sources',
+    'execution',
+    'decisions',
+    'outputs',
+    'verification-delivery',
+    'live-now',
+    'kept',
+    'attention',
+    'resources',
+  ].map((id) => ({
+    id,
+    owner: { owner: 'fixture', id: 'v1' },
+    state: 'empty',
+    count: { kind: 'exact', value: 0 },
+    items: [],
+    gaps: [],
+  })),
+} as unknown as SessionInventoryProjection;
+
+describe('SessionInventoryAppReadModule', () => {
+  test('reserves before owner I/O and binds a completed occurrence to exact scope, caller, authority, and route family', async () => {
+    const read = vi.fn(async () => ({ status: 'found' as const, projection }));
+    const module = createSessionInventoryAppReadModule({
+      read,
+      page: vi.fn(),
+      authorize: () => true,
+      isEnabled: () => true,
+    });
+    const opened = await module.open({
+      scope: projection.scope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    expect(opened.status).toBe('available');
+    expect(read).toHaveBeenCalledTimes(2);
+    if (opened.status !== 'available') return;
+    await expect(
+      module.page({
+        scope: projection.scope,
+        routeFamily: 'task',
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: 'token_'.padEnd(24, 'b'),
+        callerBinding: caller,
+        authority: authority(),
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  test('terminates a reserved occurrence when authorization drifts across owner reads', async () => {
+    let current = true;
+    const module = createSessionInventoryAppReadModule({
+      read: vi.fn(async () => {
+        current = false;
+        return { status: 'found' as const, projection };
+      }),
+      page: vi.fn(),
+      authorize: () => current,
+      isEnabled: () => true,
+    });
+    await expect(
+      module.open({
+        scope: projection.scope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+  });
+});
