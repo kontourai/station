@@ -9,6 +9,10 @@ import {
   SESSION_INVENTORY_V1,
 } from '../session-inventory.js';
 import { createStationAnswerBinding } from '../task-basis.js';
+import {
+  buildStationSessionInventoryMcpEnvelope,
+  parseStationSessionInventoryMcpInput,
+} from '../session-inventory-mcp.js';
 
 function projection(): any {
   return {
@@ -86,6 +90,27 @@ function currentProjection(): any {
   return value;
 }
 describe('Session inventory v1', () => {
+  test('closes the portable MCP input and keeps continuations out of structured content', () => {
+    expect(
+      parseStationSessionInventoryMcpInput({
+        operation: 'open',
+        scope: { kind: 'whole-session', sessionId: 'session-a' },
+      }),
+    ).not.toBeNull();
+    expect(
+      parseStationSessionInventoryMcpInput({
+        operation: 'page',
+        scope: { kind: 'whole-session', sessionId: 'session-a' },
+        occurrenceId: 'a'.repeat(24),
+        groupId: 'inputs',
+        continuationToken: 'b'.repeat(16),
+      }),
+    ).not.toBeNull();
+    const value = projection();
+    expect(
+      buildStationSessionInventoryMcpEnvelope(value)?.projection.groups[0],
+    ).not.toHaveProperty('continuation');
+  });
   test('accepts the fixed, ordered empty projection', () => {
     expect(parseSessionInventoryProjection(projection())).not.toBeNull();
   });

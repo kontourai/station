@@ -108,6 +108,7 @@
     "./system-status": "./src/system-status.ts",
     "./task-basis": "./src/task-basis.ts",
     "./task-basis-mcp": "./src/task-basis-mcp.ts",
+    "./session-inventory-mcp": "./src/session-inventory-mcp.ts",
     "./answer-assessment": "./src/answer-assessment.ts",
     "./answer-narrative-binding": "./src/answer-narrative-binding.ts",
     "./workspace-pane": "./src/workspace-pane.ts",

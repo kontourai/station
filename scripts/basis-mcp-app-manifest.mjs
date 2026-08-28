@@ -9,4 +9,9 @@ export const BASIS_MCP_APP_MANIFEST = Object.freeze([
     entry: 'packages/basis-pane/src/task-basis-mcp-app.browser.ts',
     output: 'packages/basis-pane/src/task-basis-mcp-app.generated.ts',
   }),
+  Object.freeze({
+    id: 'session-inventory',
+    entry: 'packages/basis-pane/src/session-inventory-mcp-app.browser.ts',
+    output: 'packages/basis-pane/src/session-inventory-mcp-app.generated.ts',
+  }),
 ]);
