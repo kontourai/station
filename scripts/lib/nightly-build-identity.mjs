@@ -261,6 +261,7 @@ export function allocateNightlyVersionCode({
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { assertProductVersion } from '../product-version.mjs';
+import { updaterPluginConfig } from './native-release-config.mjs';
 
 /**
  * SemVer-valid marketing version. The prerelease segment carries the same day
@@ -312,9 +313,92 @@ export function createNightlyConfig({
   };
 }
 
+/**
+ * Tauri config overlay for the desktop nightly leg: the same
+ * `nightlyVersion()`/`nightlyIdentifier()` identity as the Android build (so
+ * both artifacts shipped from one day carry the same version string), plus
+ * the updater plugin overlay that points a NIGHTLY-channel app at its own
+ * rolling-prerelease manifest. There is no Android-style version-code
+ * reservation here: Tauri's updater orders releases by the SemVer `version`
+ * string, not a numeric build index, so this needs no monotonic allocation.
+ *
+ * The parameter object is declared rather than left to inference, for the
+ * same TS2345 reason documented on `allocateNightlyVersionCode` above: an
+ * inferred shape makes `updaterEndpoint` non-optional and rejects a caller
+ * that omits it.
+ *
+ * @param {{
+ *   packageVersion: string,
+ *   productionIdentifier: string,
+ *   date: Date,
+ *   updaterPublicKey: string,
+ *   updaterEndpoint?: string,
+ * }} input
+ */
+export function createNightlyDesktopConfig({
+  packageVersion,
+  productionIdentifier,
+  date,
+  updaterPublicKey,
+  updaterEndpoint,
+}) {
+  const { createUpdaterArtifacts, plugins } = updaterPluginConfig(
+    updaterPublicKey,
+    updaterEndpoint,
+  );
+  return {
+    productName: NIGHTLY_PRODUCT_NAME,
+    version: nightlyVersion(packageVersion, date),
+    identifier: nightlyIdentifier(productionIdentifier),
+    bundle: { createUpdaterArtifacts },
+    plugins,
+  };
+}
+
 function option(name, args) {
   const index = args.indexOf(`--${name}`);
   return index === -1 ? undefined : args[index + 1];
+}
+
+/** Writes one ephemeral desktop Nightly overlay from the stable checked-in
+ * authority and the caller-supplied updater material. */
+export function writeNightlyDesktopConfig({
+  packageJsonPath,
+  tauriConfigPath,
+  date,
+  updaterPublicKey,
+  updaterEndpoint,
+  outputPath,
+  githubOutput = undefined,
+}) {
+  const packageVersion = JSON.parse(
+    readFileSync(packageJsonPath, 'utf8'),
+  ).version;
+  const productionIdentifier = JSON.parse(
+    readFileSync(tauriConfigPath, 'utf8'),
+  ).identifier;
+  const config = createNightlyDesktopConfig({
+    packageVersion,
+    productionIdentifier,
+    date: new Date(date),
+    updaterPublicKey,
+    updaterEndpoint,
+  });
+  writeFileSync(outputPath, `${JSON.stringify(config, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  if (githubOutput) {
+    writeFileSync(
+      githubOutput,
+      `${[
+        `version=${config.version}`,
+        `identifier=${config.identifier}`,
+        `product_name=${config.productName}`,
+      ].join('\n')}\n`,
+      { flag: 'a' },
+    );
+  }
+  return config;
 }
 
 /** Writes one ephemeral Nightly overlay from the stable checked-in authority. */
@@ -362,28 +446,55 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const packageJsonPath = option('package-json', args);
   const tauriConfigPath = option('tauri-config', args);
   const date = option('date', args);
-  const build = option('build', args);
   const outputPath = option('output', args);
-  if (
-    !packageJsonPath ||
-    !tauriConfigPath ||
-    !date ||
-    build === undefined ||
-    !outputPath
-  ) {
-    throw new Error(
-      'Usage: nightly-build-identity.mjs --package-json <path> --tauri-config <path> --date <ISO-8601> --build <index> --output <path> [--github-output <path>]',
+  if (args.includes('--desktop')) {
+    const updaterPublicKeyFile = option('updater-public-key-file', args);
+    if (
+      !packageJsonPath ||
+      !tauriConfigPath ||
+      !date ||
+      !outputPath ||
+      !updaterPublicKeyFile
+    ) {
+      throw new Error(
+        'Usage: nightly-build-identity.mjs --desktop --package-json <path> --tauri-config <path> --date <ISO-8601> --output <path> --updater-public-key-file <path> [--updater-endpoint <url>] [--github-output <path>]',
+      );
+    }
+    const config = writeNightlyDesktopConfig({
+      packageJsonPath,
+      tauriConfigPath,
+      date,
+      updaterPublicKey: readFileSync(updaterPublicKeyFile, 'utf8'),
+      updaterEndpoint: option('updater-endpoint', args),
+      outputPath,
+      githubOutput: option('github-output', args),
+    });
+    console.log(
+      `Nightly desktop identity ${config.version} (${config.identifier})`,
+    );
+  } else {
+    const build = option('build', args);
+    if (
+      !packageJsonPath ||
+      !tauriConfigPath ||
+      !date ||
+      build === undefined ||
+      !outputPath
+    ) {
+      throw new Error(
+        'Usage: nightly-build-identity.mjs --package-json <path> --tauri-config <path> --date <ISO-8601> --build <index> --output <path> [--github-output <path>]',
+      );
+    }
+    const config = writeNightlyConfig({
+      packageJsonPath,
+      tauriConfigPath,
+      date,
+      build,
+      outputPath,
+      githubOutput: option('github-output', args),
+    });
+    console.log(
+      `Nightly identity ${config.version} (${config.identifier}, Android ${config.bundle.android.versionCode})`,
     );
   }
-  const config = writeNightlyConfig({
-    packageJsonPath,
-    tauriConfigPath,
-    date,
-    build,
-    outputPath,
-    githubOutput: option('github-output', args),
-  });
-  console.log(
-    `Nightly identity ${config.version} (${config.identifier}, Android ${config.bundle.android.versionCode})`,
-  );
 }

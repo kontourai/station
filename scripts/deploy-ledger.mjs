@@ -44,6 +44,7 @@ import {
 export const DEPLOY_LEDGER_CHANNELS = Object.freeze([
   'nightly-android',
   'nightly-npm',
+  'nightly-desktop',
   'stable-desktop',
   'stable-npm',
 ]);
@@ -326,7 +327,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
 function usage() {
   return [
     'usage: node scripts/deploy-ledger.mjs \\',
-    '         --channel <nightly-android|nightly-npm|stable-desktop|stable-npm> \\',
+    '         --channel <nightly-android|nightly-npm|nightly-desktop|stable-desktop|stable-npm> \\',
     '         --version <version> --sha <40-hex> --gate-result <sentence> \\',
     '         --github-repo owner/name [--timestamp <ISO-UTC>] [--workflow-run-url <https-url>]',
     '         [--artifact <descriptor>]... [--note <caveat>]... \\',

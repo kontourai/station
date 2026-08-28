@@ -14,6 +14,7 @@ import {
   allocateNightlyVersionCode,
   classifyNightlyArtifactArchive,
   createNightlyConfig,
+  createNightlyDesktopConfig,
   MAX_ANDROID_VERSION_CODE,
   NIGHTLY_PUBLISHED_VERSION_CODE_FLOOR,
   NIGHTLY_VERSION_CODE_TAG_PREFIX,
@@ -24,6 +25,7 @@ import {
   parseNightlyRebuildIndex,
   parseNightlyVersionCodeReservations,
   writeNightlyConfig,
+  writeNightlyDesktopConfig,
 } from '../lib/nightly-build-identity.mjs';
 
 /**
@@ -375,6 +377,98 @@ describe('the tauri config overlay', () => {
   });
 });
 
+describe('the desktop tauri config overlay (station#575)', () => {
+  it('carries the same day-numbered version as the Android identity, plus the updater plugin', () => {
+    const config = createNightlyDesktopConfig({
+      packageVersion: '0.1.0',
+      productionIdentifier: 'io.kontourai.station',
+      date: new Date('2026-08-09T09:00:00Z'),
+      updaterPublicKey: 'trusted-public-key',
+      updaterEndpoint:
+        'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
+    });
+    expect(config).toEqual({
+      productName: 'Station Nightly',
+      version: '0.1.0-nightly.2412',
+      identifier: 'io.kontourai.station.nightly',
+      bundle: { createUpdaterArtifacts: 'v1Compatible' },
+      plugins: {
+        updater: {
+          pubkey: 'trusted-public-key',
+          endpoints: [
+            'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
+          ],
+        },
+      },
+    });
+    // Same day number the Android overlay above would derive for this date.
+    expect(config.version).toBe(
+      createNightlyConfig({
+        packageVersion: '0.1.0',
+        productionIdentifier: 'io.kontourai.station',
+        date: new Date('2026-08-09T09:00:00Z'),
+      }).version,
+    );
+  });
+
+  it('has no Android-style version-code allocation', () => {
+    const config = createNightlyDesktopConfig({
+      packageVersion: '0.1.0',
+      productionIdentifier: 'io.kontourai.station',
+      date: new Date('2026-08-09T09:00:00Z'),
+      updaterPublicKey: 'trusted-public-key',
+    });
+    expect(config).not.toHaveProperty('bundle.android');
+    expect(config.plugins.updater).not.toHaveProperty('endpoints');
+  });
+
+  it('fails closed on a missing or empty updater public key', () => {
+    expect(() =>
+      createNightlyDesktopConfig({
+        packageVersion: '0.1.0',
+        productionIdentifier: 'io.kontourai.station',
+        date: new Date('2026-08-09T09:00:00Z'),
+        updaterPublicKey: '   ',
+      }),
+    ).toThrow('updater public key must be non-empty');
+  });
+
+  it('fails closed on a non-https updater endpoint', () => {
+    expect(() =>
+      createNightlyDesktopConfig({
+        packageVersion: '0.1.0',
+        productionIdentifier: 'io.kontourai.station',
+        date: new Date('2026-08-09T09:00:00Z'),
+        updaterPublicKey: 'trusted-public-key',
+        updaterEndpoint: 'http://example.com/latest.json',
+      }),
+    ).toThrow('updater endpoint must be a non-empty https URL');
+  });
+
+  it('writes an ephemeral desktop overlay from the stable checked-in authority', () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'station-nightly-desktop-identity-'),
+    );
+    const output = join(directory, 'tauri.nightly-desktop.conf.json');
+    const config = writeNightlyDesktopConfig({
+      packageJsonPath: resolve(import.meta.dirname, '../../package.json'),
+      tauriConfigPath: resolve(
+        import.meta.dirname,
+        '../../src-desktop/tauri.conf.json',
+      ),
+      date: '2026-08-09T00:00:00Z',
+      updaterPublicKey: 'trusted-public-key',
+      updaterEndpoint:
+        'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
+      outputPath: output,
+    });
+    expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
+    expect(readdirSync(directory)).toEqual(['tauri.nightly-desktop.conf.json']);
+    expect(config.version).toBe('0.1.2-nightly.2412');
+    expect(config.identifier).toBe('io.kontourai.station.nightly');
+  });
+});
+
 /**
  * The workflow cannot run until the fleet allow-list and store credentials
  * land, so these pin the properties that would otherwise be discovered only
@@ -672,5 +766,103 @@ describe('the nightly workflow keeps its promises', () => {
     );
     expect(artifact).toBeGreaterThanOrEqual(0);
     expect(playUpload).toBeGreaterThan(artifact);
+  });
+});
+
+describe('the desktop nightly job keeps the same promises (station#575)', () => {
+  const workflow = readFileSync(
+    resolve(import.meta.dirname, '../../.github/workflows/nightly.yml'),
+    'utf8',
+  );
+  const jobStart = workflow.indexOf('\n  nightly-desktop:');
+  const desktopJob = workflow.slice(jobStart);
+
+  it('exists as its own job, gated identically to the Android job', () => {
+    expect(jobStart).toBeGreaterThan(0);
+    expect(desktopJob.slice(0, desktopJob.indexOf('runs-on:'))).toContain(
+      'needs: [test-gate]',
+    );
+  });
+
+  it('publishes only on a literal success result from the test gate', () => {
+    // Same literal line as the Android job's pin above, and the same
+    // conjunct-order reasoning: scripts/actionlint-gate.mjs's
+    // skipsAutomaticPullRequest accepts only this exact prefix ladder.
+    const ifLiteral =
+      'if: $' +
+      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}";
+    const lines = desktopJob.split('\n').map((line) => line.trim());
+    expect(lines).toContain(ifLiteral);
+  });
+
+  it('builds at the pinned decide-step SHA, never an implicit checkout default', () => {
+    const checkout = desktopJob.slice(0, desktopJob.indexOf('Decide whether'));
+    expect(checkout).toContain('ref: $' + '{{ github.sha }}');
+    const decide = desktopJob.slice(
+      desktopJob.indexOf('Decide whether'),
+      desktopJob.indexOf('Build an unsigned macOS nightly staging candidate'),
+    );
+    expect(decide).toContain('id: decide');
+    expect(decide).toContain('head_sha=$(git rev-parse HEAD)');
+    expect(decide).toContain('echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"');
+    expect(decide).toContain('refs/tags/nightly-desktop^{commit}');
+    const build = desktopJob.slice(
+      desktopJob.indexOf('Build an unsigned macOS nightly staging candidate'),
+      desktopJob.indexOf('Seal, notarize'),
+    );
+    expect(build).toContain(
+      'STATION_BUILD_VERSION: $' + '{{ steps.identity.outputs.version }}',
+    );
+    const notarize = desktopJob.slice(
+      desktopJob.indexOf('Seal, notarize'),
+      desktopJob.indexOf('Assemble the signed updater manifest'),
+    );
+    expect(notarize).toContain('--release-tag nightly-desktop');
+    expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+  });
+
+  it('does not depend on the Android job succeeding, and allocates no Android version code', () => {
+    const needsLine = desktopJob
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('needs:'));
+    // Exactly [test-gate]: a broader needs edge (e.g. adding `nightly`) would
+    // make the Android build a silent precondition for the desktop ship,
+    // which the header comment above explicitly disclaims.
+    expect(needsLine).toBe('needs: [test-gate]');
+    expect(desktopJob).not.toContain('allocate-nightly-version-code.mjs');
+  });
+
+  it('publishes a rolling prerelease and uploads latest.json last, after the binary assets', () => {
+    const publish = desktopJob.slice(
+      desktopJob.indexOf('Publish the rolling desktop nightly prerelease'),
+      desktopJob.indexOf('Record the nightly desktop ship'),
+    );
+    expect(publish).toContain('--prerelease');
+    expect(publish).toContain('--clobber');
+    const dmgUpload = publish.indexOf(
+      'station-nightly-desktop-macos-aarch64.dmg',
+    );
+    const manifestUpload = publish.lastIndexOf('release-assets/latest.json');
+    expect(dmgUpload).toBeGreaterThanOrEqual(0);
+    expect(manifestUpload).toBeGreaterThan(dmgUpload);
+  });
+
+  it('records the desktop ship in the deploy ledger after publish, at the decided SHA', () => {
+    const publish = desktopJob.indexOf(
+      'Publish the rolling desktop nightly prerelease',
+    );
+    const ledger = desktopJob.indexOf('Record the nightly desktop ship');
+    expect(ledger).toBeGreaterThan(publish);
+    const ledgerStep = desktopJob.slice(
+      ledger,
+      desktopJob.indexOf('Retain this run'),
+    );
+    expect(ledgerStep).toContain('--channel nightly-desktop');
+    expect(ledgerStep).toContain(
+      'DEPLOY_LEDGER_SHA: $' + '{{ steps.decide.outputs.head_sha }}',
+    );
+    expect(ledgerStep).not.toMatch(/git rev-parse/);
+    expect(ledgerStep).not.toContain('continue-on-error');
   });
 });
