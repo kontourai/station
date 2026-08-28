@@ -103,6 +103,16 @@ export function validateEntry(entry) {
       `version contains characters no real version has (allowed: alphanumeric . + ~ -): ${JSON.stringify(entry.version)}. A value carrying quotes, braces, or brackets is a parse artifact — publish-packages.yml's published-packages output is a JSON array and must be parsed with scripts/lib/parse-published-packages.mjs, never text-split.`,
     );
   }
+  if (entry.package !== undefined) {
+    if (
+      typeof entry.package !== 'string' ||
+      !/^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(entry.package)
+    ) {
+      errors.push(
+        `package must be an npm package name when present: ${String(entry.package)}`,
+      );
+    }
+  }
   if (typeof entry.sha !== 'string' || !SHA_PATTERN.test(entry.sha)) {
     errors.push(
       `sha must be 40 lowercase hex characters: ${String(entry.sha)}`,
@@ -159,7 +169,13 @@ export function assertValidEntry(entry) {
  * depends on a step outcome), so keying on them let a re-run with fewer
  * artifacts double-record the same ship. */
 export function entryIdentityKey(entry) {
-  return [entry.channel, entry.sha, entry.version].join('|');
+  // `package` joins the identity for npm-channel entries: one changesets
+  // publish ships MANY packages from one sha, and their semvers can
+  // coincide (three 0.7.0s in one run) — without the name, the second row
+  // reads as a re-record of the first.
+  return [entry.channel, entry.sha, entry.version, entry.package ?? ''].join(
+    '|',
+  );
 }
 
 export function appendEntry(entries, entry) {
@@ -331,7 +347,7 @@ function usage() {
     'usage: node scripts/deploy-ledger.mjs \\',
     '         --channel <nightly-android|nightly-npm|nightly-desktop|stable-desktop|stable-npm> \\',
     '         --version <version> --sha <40-hex> --gate-result <sentence> \\',
-    '         --github-repo owner/name [--timestamp <ISO-UTC>] [--workflow-run-url <https-url>]',
+    '         --github-repo owner/name [--timestamp <ISO-UTC>] [--workflow-run-url <https-url>] [--package <npm-name>]',
     '         [--artifact <descriptor>]... [--note <caveat>]... \\',
     '         [--repo-root <path>] [--ledger-json <path>] [--ledger-md <path>]',
     '',
@@ -424,6 +440,9 @@ export function main(argv) {
     timestampUtc,
     channel,
     version: flags.get('--version'),
+    ...(flags.get('--package') !== undefined
+      ? { package: flags.get('--package') }
+      : {}),
     sha,
     workflowRunUrl: flags.get('--workflow-run-url') ?? null,
     artifacts: repeated.get('--artifact') ?? [],
