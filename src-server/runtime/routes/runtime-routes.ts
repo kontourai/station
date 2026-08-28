@@ -309,6 +309,7 @@ import { RunService } from '../../services/orchestration/run-service.js';
 import { createSessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
+import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
@@ -1303,6 +1304,13 @@ export function configureRuntimeRoutes(
         current,
       }),
   });
+  const sessionWorkItems = context.orchestrationEventStore
+    ? createSessionWorkItemModule({
+        eventStore: context.orchestrationEventStore,
+        canReadSession: (sessionId, authority) =>
+          context.orchestrationService.canUserReadSession(sessionId, authority),
+      })
+    : undefined;
   // The inventory is runtime-composed with the same exact-answer module used
   // by direct Basis reads; OrchestrationService remains free of Surface owners.
   const sessionInventory = createSessionInventoryModule({
@@ -1337,6 +1345,9 @@ export function configureRuntimeRoutes(
       '',
     readCursor: (cursor) =>
       context.orchestrationEventStore?.readSessionInventoryCursor(cursor),
+    sessionWorkItems,
+    conversationForSession: (sessionId) =>
+      context.orchestrationEventStore?.conversationForSession(sessionId),
   });
   context.app.route(
     '',
@@ -1767,13 +1778,15 @@ export function configureRuntimeRoutes(
                 scope.taskId,
                 scope.sessionId,
               ),
+              taskWorkItemRef: context.taskGraphService.readTask(scope.taskId)
+                ?.workItemRef,
             }
           : {}),
         authority,
         current,
       });
       return outcome.status === 'found'
-        ? { status: 'found' as const, projection: outcome.projection }
+        ? { status: 'unavailable' as const }
         : outcome;
     },
     page: async ({
@@ -1795,13 +1808,15 @@ export function configureRuntimeRoutes(
                 scope.taskId,
                 scope.sessionId,
               ),
+              taskWorkItemRef: context.taskGraphService.readTask(scope.taskId)
+                ?.workItemRef,
             }
           : {}),
         authority,
         current,
       });
       return outcome.status === 'found'
-        ? { status: 'found' as const, page: outcome.page }
+        ? { status: 'unavailable' as const }
         : outcome;
     },
     authorize: ({ scope, routeFamily, authority, request }) => {

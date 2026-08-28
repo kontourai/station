@@ -36,6 +36,9 @@ const { configureRuntimeRoutes } = await import(
   '../../../runtime/routes/runtime-routes.js'
 );
 const { loadAgentTools } = await import('../../../runtime/mcp/mcp-manager.js');
+const { createMCPToolProvenanceGeneration } = await import(
+  '../../orchestration/mcp-tool-provenance.js'
+);
 const { requiredExternalSurfaceCapability } = await import(
   '../../../security/pairing-route-scopes.js'
 );
@@ -458,6 +461,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       info: vi.fn(),
       error: vi.fn(),
     };
+    const mcpToolProvenanceGeneration = createMCPToolProvenanceGeneration();
     const tools = await loadAgentTools(
       'runtime-agent',
       { tools: { mcpServers: ['oauth-proof'], available: ['*'] } } as never,
@@ -469,6 +473,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       new Map(),
       runtimeLogger,
       43141,
+      mcpToolProvenanceGeneration,
     );
 
     expect(fixture.protectedRequestAuthorizations).toContain(
@@ -495,6 +500,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       new Map(),
       runtimeLogger,
       43141,
+      mcpToolProvenanceGeneration,
     );
 
     expect(fixture.endpointBRequestAuthorizations).not.toContain(

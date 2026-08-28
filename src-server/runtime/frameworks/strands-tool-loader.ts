@@ -2,15 +2,12 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { FunctionTool, McpClient } from '@strands-agents/sdk';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
+import { createMCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import {
   captureToolServerOperationFailure,
   requireToolServerResult,
 } from '../../services/plugins/tool-server-oauth.js';
 import { establishMcpSecretChild } from '../../services/secrets/mcp-secret-child-env.js';
-import {
-  normalizeToolName,
-  parseToolName,
-} from '../../utils/tool-name-normalizer.js';
 import {
   currentTenantExecutionContext,
   isHostedTenantExecutionRequired,
@@ -20,6 +17,10 @@ import {
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { runWithCurrentNativeOutputCall } from '../native-output-turn-grant.js';
+import {
+  copyLoadedMCPToolProvenance,
+  normalizeLoadedMCPTools,
+} from '../tools/mcp-tool-names.js';
 import { markTrustedNativeStationControlTool } from '../tools/tool-provenance.js';
 import { createBuiltinVendedTool } from '../tools/vended-tool-compat.js';
 import type { ITool, ToolCallDenial } from '../types.js';
@@ -180,6 +181,7 @@ type StrandsToolLoadOptions = Pick<
   | 'integrationMetadata'
   | 'toolNameMapping'
   | 'toolNameReverseMapping'
+  | 'mcpToolProvenanceGeneration'
   | 'integrationSecretResolver'
   | 'logger'
 >;
@@ -273,6 +275,8 @@ export async function loadStrandsTools(options: {
 
   const allTools: ITool[] = [];
   const agentClientIds: string[] = [];
+  const provenanceGeneration =
+    opts.mcpToolProvenanceGeneration ?? createMCPToolProvenanceGeneration();
 
   for (const toolId of spec.tools.mcpServers) {
     try {
@@ -353,19 +357,24 @@ export async function loadStrandsTools(options: {
 
       const serverTools: ITool[] = [];
       for (const tool of mcpTools) {
-        const normalized = normalizeToolName(tool.toolSpec.name);
-        if (normalized !== tool.toolSpec.name) {
-          const parsed = parseToolName(tool.toolSpec.name);
-          opts.toolNameMapping.set(normalized, {
-            original: tool.toolSpec.name,
-            normalized,
-            server: parsed.server,
-            tool: parsed.tool,
-          });
-          opts.toolNameReverseMapping.set(tool.toolSpec.name, normalized);
-        }
+        const [loadedIdentity] = normalizeLoadedMCPTools(
+          slug,
+          [{ name: tool.toolSpec.name }] as any,
+          opts.toolNameMapping,
+          opts.toolNameReverseMapping,
+          provenanceGeneration,
+          toolId,
+          () => ({
+            // Strands' client owns this loaded-tool list; the configured
+            // integration is its exact client identity at this boundary.
+            serverId: toolId,
+            originalToolName: tool.toolSpec.name,
+          }),
+          opts.logger,
+        );
+        const normalized = loadedIdentity!.name;
 
-        const stationTool = {
+        const stationTool = copyLoadedMCPToolProvenance(loadedIdentity, {
           name: normalized,
           description: tool.toolSpec.description,
           parameters: tool.toolSpec.inputSchema,
@@ -387,7 +396,7 @@ export async function loadStrandsTools(options: {
                   opts.logger,
                 );
           },
-        } as ITool;
+        } as ITool);
         serverTools.push(
           isNativeStationControl
             ? markTrustedNativeStationControlTool(stationTool)

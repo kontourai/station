@@ -22,6 +22,7 @@ import {
   mcpUiHostAppearance,
   mcpUiHostGeometry,
   mcpUiToolCallDecision,
+  sessionInventoryV2OpenLinkCapability,
 } from '../components/mcp-ui/MCPToolUIFrame';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
@@ -32,9 +33,11 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3141' }),
+  useHostRequestAuthorityScope: () => mockRequestAuthority,
 }));
 
 let mockNativeShell = false;
+let mockRequestAuthority: { isCurrent: () => boolean } | undefined;
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isTauri: mockNativeShell }),
 }));
@@ -52,6 +55,7 @@ afterEach(() => {
   fetchMock.mockReset();
   mockConfig = null;
   mockNativeShell = false;
+  mockRequestAuthority = undefined;
   deviceSettingsStore.set('theme', 'dark');
   document.documentElement.removeAttribute('data-theme');
   document.querySelector('[data-mcp-host-theme-test]')?.remove();
@@ -106,6 +110,327 @@ describe('MCPToolUIFrame', () => {
         },
       },
     });
+  });
+  test('derives Station v2 open-link authority only from a matching current result', () => {
+    const groups = [
+      'inputs',
+      'sources',
+      'work-items',
+      'execution',
+      'decisions',
+      'outputs',
+      'verification-delivery',
+      'live-now',
+      'kept',
+      'attention',
+      'resources',
+    ].map((id) => ({
+      id,
+      owner: {
+        owner:
+          id === 'work-items'
+            ? 'station.session-work-items'
+            : 'station.inventory',
+        id: 'v1',
+      },
+      state: id === 'work-items' ? 'available' : 'empty',
+      count: { kind: 'exact', value: id === 'work-items' ? 1 : 0 },
+      gaps: [],
+      items:
+        id === 'work-items'
+          ? [
+              {
+                kind: 'station-session-work-item',
+                key: 'work-item:association-235',
+                owner: { owner: 'station.session-work-items', id: 'v1' },
+                relations: ['observed-during', 'produced-by'],
+                sessionId: 'session',
+                conversationId: 'conversation',
+                eventId: 'event',
+                turnId: 'turn',
+                toolCallId: 'call',
+                provider: { id: 'github', host: 'github.com' },
+                workItemRef: 'github:kontourai/station#235',
+                repository: { owner: 'kontourai', name: 'station' },
+                nativeId: '1234567890',
+                associationIds: ['association-235'],
+                observedAt: '2026-08-28T12:00:00.000Z',
+              },
+            ]
+          : [],
+    }));
+    const result = {
+      _meta: {
+        'station.session-inventory-app/v2': {
+          occurrenceId: 'occurrence_'.padEnd(32, 'a'),
+          continuations: [],
+        },
+      },
+      structuredContent: {
+        version: 'station.session-inventory-mcp/v2',
+        kind: 'projection',
+        projection: {
+          version: 'station.session-inventory/v2',
+          scope: { kind: 'whole-session', sessionId: 'session' },
+          groups,
+        },
+      },
+    };
+    const input = {
+      version: 'station.session-inventory-mcp/v2',
+      operation: 'open',
+      scope: { kind: 'whole-session', sessionId: 'session' },
+    };
+    const capability = sessionInventoryV2OpenLinkCapability(result, input);
+    expect(capability?.urls).toEqual(
+      new Set(['https://github.com/kontourai/station/issues/235']),
+    );
+    expect(
+      sessionInventoryV2OpenLinkCapability(result, {
+        ...input,
+        scope: { kind: 'whole-session', sessionId: 'other' },
+      }),
+    ).toBeNull();
+  });
+  test('mediates only current v2 work-item links through the production AppBridge handler', async () => {
+    mockConfig = { mcpUiHost: true };
+    let current = true;
+    mockRequestAuthority = { isCurrent: () => current };
+    const openExternalLink = vi.fn().mockResolvedValue(true);
+    const scope = { kind: 'whole-session', sessionId: 'session-v2' };
+    const occurrence = 'occurrence_v2'.padEnd(32, 'a');
+    const url235 = 'https://github.com/kontourai/station/issues/235';
+    const url236 = 'https://github.com/kontourai/station/issues/236';
+    const projection = (
+      number: 235 | 236,
+      kind: 'projection' | 'group-page',
+    ) => {
+      const row = {
+        kind: 'station-session-work-item',
+        key: `work-item:association-${number}`,
+        owner: { owner: 'station.session-work-items', id: 'v1' },
+        relations: ['observed-during', 'produced-by'],
+        sessionId: scope.sessionId,
+        conversationId: 'conversation-v2',
+        eventId: `event-${number}`,
+        turnId: 'turn-v2',
+        toolCallId: `call-${number}`,
+        provider: { id: 'github', host: 'github.com' },
+        workItemRef: `github:kontourai/station#${number}`,
+        repository: { owner: 'kontourai', name: 'station' },
+        nativeId: String(number),
+        associationIds: [`association-${number}`],
+        observedAt: '2026-08-28T12:00:00.000Z',
+      };
+      const group = {
+        id: 'work-items',
+        owner: row.owner,
+        state: 'available',
+        count: { kind: 'exact', value: 1 },
+        items: [row],
+        gaps: [],
+      };
+      return kind === 'projection'
+        ? {
+            version: 'station.session-inventory-mcp/v2',
+            kind,
+            projection: {
+              version: 'station.session-inventory/v2',
+              scope,
+              groups: [
+                'inputs',
+                'sources',
+                'work-items',
+                'execution',
+                'decisions',
+                'outputs',
+                'verification-delivery',
+                'live-now',
+                'kept',
+                'attention',
+                'resources',
+              ].map((id) =>
+                id === 'work-items'
+                  ? group
+                  : {
+                      id,
+                      owner: { owner: 'station.inventory', id: 'v1' },
+                      state: 'empty',
+                      count: { kind: 'exact', value: 0 },
+                      items: [],
+                      gaps: [],
+                    },
+              ),
+            },
+          }
+        : {
+            version: 'station.session-inventory-mcp/v2',
+            kind,
+            page: { version: 'station.session-inventory/v2', scope, group },
+          };
+    };
+    const result = (
+      number: 235 | 236,
+      kind: 'projection' | 'group-page',
+      occurrenceId = occurrence,
+    ) => ({
+      content: [],
+      structuredContent: projection(number, kind),
+      _meta: {
+        'station.session-inventory-app/v2': { occurrenceId, continuations: [] },
+      },
+    });
+    let pageResult: unknown = result(236, 'group-page');
+    fetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/resource'))
+        return Promise.resolve(
+          response({
+            uri: 'ui://station/basis/session-inventory/v2',
+            mimeType: 'text/html;profile=mcp-app',
+            text: '<main>v2</main>',
+          }),
+        );
+      if (url.endsWith('/initial-result'))
+        return Promise.resolve(response(result(235, 'projection')));
+      if (url.endsWith('/ui/call'))
+        return Promise.resolve(response(pageResult));
+      return Promise.resolve(
+        response({
+          status: 'success',
+          ref: 'station-control/get_session_inventory',
+          serverId: 'station-control',
+          toolName: 'get_session_inventory',
+          resourceUri: 'ui://station/basis/session-inventory/v2',
+        }),
+      );
+    });
+    const frame = renderFrame({
+      ref: 'station-control/get_session_inventory',
+      approvalPolicy: 'require',
+      initialArguments: {
+        version: 'station.session-inventory-mcp/v2',
+        operation: 'open',
+        scope,
+      },
+      openExternalLink,
+    });
+    const iframe = (await screen.findByTitle(
+      'MCP tool UI: station-control/get_session_inventory',
+    )) as HTMLIFrameElement;
+    const target = iframe.contentWindow!;
+    const sent = vi.spyOn(target, 'postMessage');
+    const send = (data: unknown) =>
+      window.dispatchEvent(
+        new MessageEvent('message', { data, source: target }),
+      );
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'ui/initialize',
+      params: {
+        appInfo: { name: 'Inventory', version: '2' },
+        appCapabilities: {},
+        protocolVersion: '2026-01-26',
+      },
+    });
+    send({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
+    await waitFor(() =>
+      expect(sent).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'ui/notifications/tool-result' }),
+        '*',
+      ),
+    );
+    const requestOpen = async (id: number, url: string) => {
+      sent.mockClear();
+      send({ jsonrpc: '2.0', id, method: 'ui/open-link', params: { url } });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(expect.objectContaining({ id }), '*'),
+      );
+      return sent.mock.calls.find(
+        ([message]) => (message as { id?: number }).id === id,
+      )?.[0] as { result?: { isError?: boolean } };
+    };
+    const requestPage = async (id: number) => {
+      sent.mockClear();
+      send({
+        jsonrpc: '2.0',
+        id,
+        method: 'tools/call',
+        params: {
+          name: 'get_session_inventory',
+          arguments: {
+            version: 'station.session-inventory-mcp/v2',
+            operation: 'page',
+            scope,
+            occurrenceId: occurrence,
+            groupId: 'work-items',
+            continuationToken: 'token'.padEnd(24, 'a'),
+          },
+        },
+      });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(expect.objectContaining({ id }), '*'),
+      );
+    };
+    await expect(requestOpen(2, url235)).resolves.toMatchObject({ result: {} });
+    expect(openExternalLink).toHaveBeenLastCalledWith(url235);
+    for (const hostile of [
+      'https://attacker.example/kontourai/station/issues/235',
+      'https://github.com/kontourai/station/issues/235?attacker=1',
+      'https://github.com/kontourai/station/issues/0235',
+    ])
+      await expect(requestOpen(3, hostile)).resolves.toMatchObject({
+        result: { isError: true },
+      });
+    expect(openExternalLink).toHaveBeenCalledTimes(1);
+    await requestPage(4);
+    await expect(requestOpen(5, url236)).resolves.toMatchObject({ result: {} });
+    expect(openExternalLink).toHaveBeenLastCalledWith(url236);
+    current = false;
+    await expect(requestOpen(6, url235)).resolves.toMatchObject({
+      result: { isError: true },
+    });
+    expect(openExternalLink).toHaveBeenCalledTimes(2);
+    current = true;
+    pageResult = result(
+      236,
+      'group-page',
+      'replacement_occurrence'.padEnd(32, 'b'),
+    );
+    await requestPage(7);
+    await expect(requestOpen(8, url236)).resolves.toMatchObject({
+      result: { isError: true },
+    });
+    pageResult = result(236, 'group-page');
+    await requestPage(9);
+    await expect(requestOpen(10, url236)).resolves.toMatchObject({
+      result: {},
+    });
+    pageResult = { ...result(236, 'group-page'), _meta: {} };
+    await requestPage(11);
+    await expect(requestOpen(12, url236)).resolves.toMatchObject({
+      result: { isError: true },
+    });
+    pageResult = {
+      ...result(236, 'group-page'),
+      _meta: {
+        'station.session-inventory-app/v2': {
+          occurrenceId: 'malformed',
+          continuations: [],
+        },
+      },
+    };
+    await requestPage(13);
+    await expect(requestOpen(14, url236)).resolves.toMatchObject({
+      result: { isError: true },
+    });
+    send({ jsonrpc: '2.0', method: 'ui/notifications/request-teardown' });
+    pageResult = result(236, 'group-page');
+    await requestPage(15);
+    await expect(requestOpen(16, url236)).resolves.toMatchObject({
+      result: { isError: true },
+    });
+    frame.unmount();
   });
   test('never resolves or mounts a scripted MCP iframe inside a native shell', () => {
     mockNativeShell = true;
@@ -1612,6 +1937,7 @@ function renderFrame({
   onDisplayModeDecision,
   initialArguments,
   basisReadSession,
+  openExternalLink,
   includeThemeToggle = false,
 }: {
   ref: string;
@@ -1634,6 +1960,7 @@ function renderFrame({
     toolName: 'get_task_basis';
     taskId: string;
   };
+  openExternalLink?: (url: string) => Promise<boolean>;
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -1671,6 +1998,7 @@ function renderFrame({
         hostAvailableDisplayModes={availableModes}
         onRequestDisplayMode={requestMode ?? undefined}
         onDisplayModeDecision={onDisplayModeDecision}
+        openExternalLink={openExternalLink}
         basisReadSession={
           basisTaskId && basisReadSession
             ? { ...basisReadSession, taskId: basisTaskId }

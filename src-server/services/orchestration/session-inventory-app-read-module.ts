@@ -1,16 +1,25 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  SESSION_INVENTORY_GROUP_IDS,
-  type SessionInventoryGroupId,
-  type SessionInventoryGroupPage,
-  type SessionInventoryProjection,
+  type AnySessionInventoryGroupPage,
+  type AnySessionInventoryProjection,
+  SESSION_INVENTORY_V1,
+  SESSION_INVENTORY_V1_GROUP_IDS,
   type SessionInventoryScope,
+  type SessionInventoryV2GroupId,
+  type SessionInventoryV2GroupPage,
+  type SessionInventoryV2Projection,
 } from '@kontourai/station-contracts/session-inventory';
 import {
   buildStationSessionInventoryMcpEnvelope,
   buildStationSessionInventoryMcpGroupPageEnvelope,
+  buildStationSessionInventoryMcpV2Envelope,
+  buildStationSessionInventoryMcpV2GroupPageEnvelope,
   parseStationSessionInventoryMcpEnvelope,
+  parseStationSessionInventoryMcpV2Envelope,
+  STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+  STATION_SESSION_INVENTORY_MCP_VERSION,
   type StationSessionInventoryMcpEnvelope,
+  type StationSessionInventoryMcpV2Envelope,
 } from '@kontourai/station-contracts/session-inventory-mcp';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 
@@ -25,14 +34,16 @@ const MAX_CALLER_READS_PER_WINDOW = 64;
 
 export type SessionInventoryAppRouteFamily = 'orchestration' | 'task';
 export type SessionInventoryAppContinuation = {
-  groupId: SessionInventoryGroupId;
+  groupId: SessionInventoryV2GroupId;
   continuationToken: string;
 };
 export type SessionInventoryAppReadOutcome =
   | {
       status: 'available';
       occurrenceId: string;
-      data: StationSessionInventoryMcpEnvelope;
+      data:
+        | StationSessionInventoryMcpEnvelope
+        | StationSessionInventoryMcpV2Envelope;
       continuations: readonly SessionInventoryAppContinuation[];
     }
   | { status: 'unavailable' };
@@ -44,7 +55,7 @@ export interface SessionInventoryAppReadModule {
   page(
     input: SessionInventoryAppReadInput & {
       occurrenceId: string;
-      groupId: SessionInventoryGroupId;
+      groupId: SessionInventoryV2GroupId;
       continuationToken: string;
     },
   ): Promise<SessionInventoryAppReadOutcome>;
@@ -57,6 +68,10 @@ export interface SessionInventoryAppReadModule {
 }
 
 export type SessionInventoryAppReadInput = {
+  /** Omitted only for internal legacy callers; public MCP input is explicit. */
+  version?:
+    | typeof STATION_SESSION_INVENTORY_MCP_VERSION
+    | typeof STATION_SESSION_INVENTORY_MCP_V2_VERSION;
   scope: SessionInventoryScope;
   routeFamily: SessionInventoryAppRouteFamily;
   callerBinding: string;
@@ -65,6 +80,7 @@ export type SessionInventoryAppReadInput = {
 };
 
 type State = {
+  version: NonNullable<SessionInventoryAppReadInput['version']>;
   scope: SessionInventoryScope;
   scopeKey: string;
   routeFamily: SessionInventoryAppRouteFamily;
@@ -76,10 +92,48 @@ type State = {
   inFlight: boolean;
   revoked: boolean;
   continuations: Map<
-    SessionInventoryGroupId,
+    SessionInventoryV2GroupId,
     { token: string; cursor: string }
   >;
 };
+
+/** v1 callers never observe v2's added owner group or v2 version marker. */
+function asV1(
+  projection: AnySessionInventoryProjection,
+): import('@kontourai/station-contracts/session-inventory').SessionInventoryProjection {
+  return {
+    ...projection,
+    version: SESSION_INVENTORY_V1,
+    groups: projection.groups
+      .filter((group) =>
+        SESSION_INVENTORY_V1_GROUP_IDS.includes(group.id as any),
+      )
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (row) => row.kind !== 'station-session-work-item',
+        ),
+      })) as any,
+  };
+}
+function asV1Page(
+  page: AnySessionInventoryGroupPage,
+):
+  | import('@kontourai/station-contracts/session-inventory').SessionInventoryGroupPage
+  | null {
+  if (!SESSION_INVENTORY_V1_GROUP_IDS.includes(page.group.id as any))
+    return null;
+  return {
+    ...page,
+    version: SESSION_INVENTORY_V1,
+    group: {
+      ...page.group,
+      items: page.group.items.filter(
+        (row) => row.kind !== 'station-session-work-item',
+      ),
+    } as any,
+  };
+}
 
 /**
  * One bounded app-read occurrence. It stores only opaque continuation control
@@ -92,18 +146,18 @@ export function createSessionInventoryAppReadModule(input: {
     request?: Request;
     current: () => boolean;
   }): Promise<
-    | { status: 'found'; projection: SessionInventoryProjection }
+    | { status: 'found'; projection: AnySessionInventoryProjection }
     | { status: 'not-found' | 'unavailable' }
   >;
   page(input: {
     scope: SessionInventoryScope;
-    groupId: SessionInventoryGroupId;
+    groupId: SessionInventoryV2GroupId;
     continuation: string;
     authority: SessionReadAuthority;
     request?: Request;
     current: () => boolean;
   }): Promise<
-    | { status: 'found'; page: SessionInventoryGroupPage }
+    | { status: 'found'; page: AnySessionInventoryGroupPage }
     | { status: 'not-found' | 'unavailable' }
   >;
   /** Replays the route family's exact principal, ACL, and Task witnesses. */
@@ -182,7 +236,7 @@ export function createSessionInventoryAppReadModule(input: {
     }));
   const captureContinuations = (
     state: State,
-    groups: readonly { id: SessionInventoryGroupId; continuation?: string }[],
+    groups: readonly { id: SessionInventoryV2GroupId; continuation?: string }[],
   ) => {
     state.continuations.clear();
     for (const group of groups)
@@ -241,14 +295,23 @@ export function createSessionInventoryAppReadModule(input: {
         terminate(state);
         return unavailable();
       }
-      const envelope = buildStationSessionInventoryMcpEnvelope(
-        second.projection,
-      );
-      if (!envelope || !parseStationSessionInventoryMcpEnvelope(envelope)) {
+      const v1 = state.version === STATION_SESSION_INVENTORY_MCP_VERSION;
+      const projected = v1 ? asV1(second.projection) : second.projection;
+      const envelope = v1
+        ? buildStationSessionInventoryMcpEnvelope(projected)
+        : buildStationSessionInventoryMcpV2Envelope(
+            projected as SessionInventoryV2Projection,
+          );
+      if (
+        !envelope ||
+        !(v1
+          ? parseStationSessionInventoryMcpEnvelope(envelope)
+          : parseStationSessionInventoryMcpV2Envelope(envelope))
+      ) {
         terminate(state);
         return unavailable();
       }
-      captureContinuations(state, second.projection.groups);
+      captureContinuations(state, projected.groups);
       state.pages += 1;
       state.expiresAt = now() + SESSION_INVENTORY_APP_READ_TTL_MS;
       return {
@@ -268,7 +331,7 @@ export function createSessionInventoryAppReadModule(input: {
     state: State,
     authority: SessionReadAuthority,
     request: Request | undefined,
-    groupId: SessionInventoryGroupId,
+    groupId: SessionInventoryV2GroupId,
     continuationToken: string,
   ): Promise<SessionInventoryAppReadOutcome> => {
     const continuation = state.continuations.get(groupId);
@@ -322,10 +385,18 @@ export function createSessionInventoryAppReadModule(input: {
         return unavailable();
       }
       const page = second.page;
-      const envelope = buildStationSessionInventoryMcpGroupPageEnvelope(page);
+      const v1 = state.version === STATION_SESSION_INVENTORY_MCP_VERSION;
+      const v1Page = v1 ? asV1Page(page) : null;
+      const envelope = v1
+        ? v1Page && buildStationSessionInventoryMcpGroupPageEnvelope(v1Page)
+        : buildStationSessionInventoryMcpV2GroupPageEnvelope(
+            page as SessionInventoryV2GroupPage,
+          );
       if (
         !envelope ||
-        !parseStationSessionInventoryMcpEnvelope(envelope) ||
+        !(v1
+          ? parseStationSessionInventoryMcpEnvelope(envelope)
+          : parseStationSessionInventoryMcpV2Envelope(envelope)) ||
         JSON.stringify(page.scope) !== state.scopeKey ||
         page.group.id !== groupId
       ) {
@@ -355,7 +426,14 @@ export function createSessionInventoryAppReadModule(input: {
     }
   };
   return {
-    async open({ scope, routeFamily, callerBinding, authority, request }) {
+    async open({
+      version,
+      scope,
+      routeFamily,
+      callerBinding,
+      authority,
+      request,
+    }) {
       purge();
       if (
         !validScope(scope) ||
@@ -368,6 +446,7 @@ export function createSessionInventoryAppReadModule(input: {
       )
         return unavailable();
       const state: State = {
+        version: version ?? STATION_SESSION_INVENTORY_MCP_VERSION,
         scope,
         scopeKey: JSON.stringify(scope),
         routeFamily,
@@ -400,7 +479,23 @@ export function createSessionInventoryAppReadModule(input: {
         !validBinding(callerBinding) ||
         !validToken(occurrenceId) ||
         !validToken(continuationToken) ||
-        !SESSION_INVENTORY_GROUP_IDS.includes(groupId) ||
+        !(
+          state?.version === STATION_SESSION_INVENTORY_MCP_VERSION
+            ? (SESSION_INVENTORY_V1_GROUP_IDS as readonly string[])
+            : [
+                'inputs',
+                'sources',
+                'work-items',
+                'execution',
+                'decisions',
+                'outputs',
+                'verification-delivery',
+                'live-now',
+                'kept',
+                'attention',
+                'resources',
+              ]
+        ).includes(groupId) ||
         !takeRate(callerBinding) ||
         !state ||
         state.revoked ||
@@ -450,7 +545,7 @@ function fingerprintAuthority(authority: SessionReadAuthority) {
     .update(JSON.stringify(authority))
     .digest('base64url');
 }
-function fingerprintProjection(value: SessionInventoryProjection) {
+function fingerprintProjection(value: AnySessionInventoryProjection) {
   // EventStore mints a fresh opaque cursor on each owner read. It is control
   // state, not protected projection content, so compare the stable projection
   // while still retaining the second read's cursor for this occurrence.
@@ -465,7 +560,7 @@ function fingerprintProjection(value: SessionInventoryProjection) {
     )
     .digest('base64url');
 }
-function fingerprintPage(value: SessionInventoryGroupPage) {
+function fingerprintPage(value: AnySessionInventoryGroupPage) {
   // Like projection cursors, a nonterminal group page receives a fresh opaque
   // EventStore continuation per owner read. Compare only the stable page.
   const { continuation: _continuation, ...group } = value.group;

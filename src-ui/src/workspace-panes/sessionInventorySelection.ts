@@ -1,12 +1,12 @@
 import type {
-  SessionInventoryGroupId,
   SessionInventoryScope,
+  SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useSyncExternalStore } from 'react';
 
 export type SessionInventorySelection = {
   scope: SessionInventoryScope;
-  groupId: SessionInventoryGroupId;
+  groupId: SessionInventoryV2GroupId;
   itemKey?: string;
 };
 export type SessionInventorySelectionKey = {

@@ -1,6 +1,6 @@
 import type {
-  SessionInventoryGroupId,
   SessionInventoryScope,
+  SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
@@ -39,7 +39,7 @@ export const sessionInventoryQueries = {
   }),
   page: (
     scope: SessionInventoryScope,
-    groupId: SessionInventoryGroupId,
+    groupId: SessionInventoryV2GroupId,
     continuation: string | undefined,
     requestScope?: ApiRequestScope,
   ) => ({
@@ -151,7 +151,7 @@ export function useSessionInventoryQuery(
 }
 export function useSessionInventoryGroupPage(
   scope: SessionInventoryScope,
-  groupId: SessionInventoryGroupId,
+  groupId: SessionInventoryV2GroupId,
   continuation?: string,
   config?: ProtectedConfig<
     Awaited<ReturnType<typeof getSessionInventoryGroupPage>>

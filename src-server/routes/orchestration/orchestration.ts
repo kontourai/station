@@ -34,7 +34,11 @@ import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
-import { parseStationSessionInventoryMcpInput } from '@kontourai/station-contracts/session-inventory-mcp';
+import { SESSION_INVENTORY_CURRENT_GROUP_IDS } from '@kontourai/station-contracts/session-inventory';
+import {
+  parseStationSessionInventoryMcpNegotiatedInput,
+  STATION_SESSION_INVENTORY_MCP_V2_VERSION,
+} from '@kontourai/station-contracts/session-inventory-mcp';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -2036,7 +2040,10 @@ export function createOrchestrationRoutes(
     const authority = readAuthorityFor(c);
     const callerBinding = deps.callerBindingForRequest?.(request);
     try {
-      const parsed = parseStationSessionInventoryMcpInput(await c.req.json());
+      const negotiated = parseStationSessionInventoryMcpNegotiatedInput(
+        await c.req.json(),
+      );
+      const parsed = negotiated?.input;
       if (
         !parsed ||
         !callerBinding ||
@@ -2048,6 +2055,7 @@ export function createOrchestrationRoutes(
       const outcome =
         parsed.operation === 'open'
           ? await deps.sessionInventoryAppRead.open({
+              version: negotiated!.version,
               scope: parsed.scope,
               routeFamily: 'orchestration',
               callerBinding,
@@ -2055,6 +2063,7 @@ export function createOrchestrationRoutes(
               request,
             })
           : await deps.sessionInventoryAppRead.page({
+              version: negotiated!.version,
               scope: parsed.scope,
               routeFamily: 'orchestration',
               occurrenceId: parsed.occurrenceId,
@@ -2083,7 +2092,9 @@ export function createOrchestrationRoutes(
         success: true,
         data: outcome.data,
         meta: {
-          'station.session-inventory-app/v1': {
+          [negotiated!.version === STATION_SESSION_INVENTORY_MCP_V2_VERSION
+            ? 'station.session-inventory-app/v2'
+            : 'station.session-inventory-app/v1']: {
             occurrenceId,
             continuations: outcome.continuations,
           },
@@ -2135,21 +2146,11 @@ export function createOrchestrationRoutes(
       continuation: c.req.query('continuation'),
     });
     const groupId = param(c, 'groupId');
-    const groupIds = [
-      'inputs',
-      'sources',
-      'execution',
-      'decisions',
-      'outputs',
-      'verification-delivery',
-      'live-now',
-      'kept',
-      'attention',
-      'resources',
-    ];
     if (
       !parsed.success ||
-      !groupIds.includes(groupId) ||
+      !SESSION_INVENTORY_CURRENT_GROUP_IDS.includes(
+        groupId as (typeof SESSION_INVENTORY_CURRENT_GROUP_IDS)[number],
+      ) ||
       deps.isRequestPrincipalCurrent?.(c.req.raw) !== true
     )
       return sessionInventoryUnavailable(c);
@@ -2168,7 +2169,7 @@ export function createOrchestrationRoutes(
     const outcome = await deps.sessionInventory?.page({
       scope,
       groupId:
-        groupId as import('@kontourai/station-contracts/session-inventory').SessionInventoryGroupId,
+        groupId as import('@kontourai/station-contracts/session-inventory').SessionInventoryV2GroupId,
       continuation: parsed.data.continuation,
       authority,
       current: () =>

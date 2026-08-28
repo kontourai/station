@@ -76,6 +76,7 @@ import {
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import {
   type InterruptedTurnMemoryAdapter,
   OrchestrationService,
@@ -123,6 +124,10 @@ import {
 } from '../plugins/runtime-provider-resolution.js';
 import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
 import type { IAgentFramework } from '../types.js';
+import {
+  createEventStoreWorkItemPrincipalLiveness,
+  WorkItemCapture,
+} from '../work-item-capture.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
 import {
   scheduleRuntimeDailyReload,
@@ -207,6 +212,7 @@ export interface InitializeRuntimeDeps {
   >;
   toolNameMapping: Map<string, unknown>;
   toolNameReverseMapping: Map<string, string>;
+  mcpToolProvenanceGeneration: MCPToolProvenanceGeneration;
   /** archive#1834: hook-construction inputs for the default agent's tool gate. */
   agentFixedTokens?: Map<
     string,
@@ -818,7 +824,7 @@ export async function initializeRuntime(
             listProviderConnections: () =>
               storageAdapter.listProviderConnections(),
           }),
-        loadAgentTools: async (slug, spec) =>
+        loadAgentTools: async (slug, spec, provenanceGeneration) =>
           MCPManager.loadAgentTools(
             slug,
             spec,
@@ -830,6 +836,7 @@ export async function initializeRuntime(
             toolNameReverseMapping,
             logger,
             port,
+            provenanceGeneration!,
             deps.integrationSecretResolver,
           ),
         guardTools: deps.guardDefaultAgentTools,
@@ -838,8 +845,13 @@ export async function initializeRuntime(
         memoryAdapters: memoryAdapters as any,
         agentMetadataMap: agentMetadataMap as any,
         toolNameMapping: toolNameMapping as any,
+        mcpToolProvenanceGeneration: deps.mcpToolProvenanceGeneration,
         agentFixedTokens: deps.agentFixedTokens,
         agentHooksMap: deps.agentHooksMap as any,
+        workItemCapture: new WorkItemCapture(
+          orchestrationEventStore,
+          createEventStoreWorkItemPrincipalLiveness(orchestrationEventStore),
+        ),
         resolveUnattendedGrant: deps.resolveUnattendedGrant,
         // archive#1834 review round 2: the same guardian composition
         // runtime-agent-builder gives every persisted agent.

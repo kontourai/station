@@ -36,6 +36,7 @@ import type {
   TokenUsage,
   ToolCallContext,
 } from '../types.js';
+import type { WorkItemCapture } from '../work-item-capture.js';
 import { stationDenial } from './denial-message.js';
 import { createStagedPreToolPolicyEvaluator } from './pre-tool-policy.js';
 
@@ -79,6 +80,7 @@ export interface AgentHooksDeps {
     invocation: InvocationContext,
   ) => Promise<boolean>;
   toolNameMapping: Map<string, MCPToolNameMappingEntry>;
+  workItemCapture?: WorkItemCapture;
   logger: any;
 }
 
@@ -173,6 +175,16 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       deps.logger.debug('[Hook] Tool executed', {
         toolName: tool.toolName,
         agentSlug: invocation.agentSlug,
+      });
+
+      deps.workItemCapture?.capture({
+        tool,
+        result,
+        invocation,
+        current: () =>
+          deps.isCurrentRuntimeGeneration?.(hooks) === true &&
+          typeof invocation.principalId === 'string' &&
+          invocation.principalId.length > 0,
       });
 
       if (

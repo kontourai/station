@@ -1,5 +1,11 @@
-import { SESSION_INVENTORY_GROUP_IDS } from '@kontourai/station-contracts/session-inventory';
-import { parseStationSessionInventoryMcpEnvelope } from '@kontourai/station-contracts/session-inventory-mcp';
+import {
+  SESSION_INVENTORY_CURRENT_GROUP_IDS,
+  SESSION_INVENTORY_GROUP_IDS,
+} from '@kontourai/station-contracts/session-inventory';
+import {
+  parseStationSessionInventoryMcpEnvelope,
+  parseStationSessionInventoryMcpV2Envelope,
+} from '@kontourai/station-contracts/session-inventory-mcp';
 import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import {
   App,
@@ -15,7 +21,10 @@ import {
 
 const root = document.querySelector<HTMLElement>('#session-inventory-app');
 let app: App | null = null;
-let current: ReturnType<typeof parseStationSessionInventoryMcpEnvelope> = null;
+type Envelope =
+  | NonNullable<ReturnType<typeof parseStationSessionInventoryMcpEnvelope>>
+  | NonNullable<ReturnType<typeof parseStationSessionInventoryMcpV2Envelope>>;
+let current: Envelope | null = null;
 let density: 'compact' | 'full' = 'compact';
 let groupId: any = 'inputs';
 let capability: {
@@ -23,7 +32,7 @@ let capability: {
   continuations: Map<string, string>;
 } | null = null;
 
-function readCapability(value: unknown) {
+function readCapability(value: unknown, v2: boolean) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (
@@ -38,7 +47,9 @@ function readCapability(value: unknown) {
     const item = entry as Record<string, unknown>;
     if (
       typeof item.groupId !== 'string' ||
-      !SESSION_INVENTORY_GROUP_IDS.includes(item.groupId as any) ||
+      !(
+        v2 ? SESSION_INVENTORY_CURRENT_GROUP_IDS : SESSION_INVENTORY_GROUP_IDS
+      ).includes(item.groupId as any) ||
       typeof item.continuationToken !== 'string' ||
       item.continuationToken.length < 16 ||
       item.continuationToken.length > 1024 ||
@@ -50,10 +61,17 @@ function readCapability(value: unknown) {
   return { occurrenceId: record.occurrenceId, continuations };
 }
 
+function parseEnvelope(value: unknown): Envelope | null {
+  return (
+    parseStationSessionInventoryMcpV2Envelope(value) ??
+    parseStationSessionInventoryMcpEnvelope(value)
+  );
+}
+
 function render() {
   if (!root) return;
   root.replaceChildren();
-  if (!current || current.kind !== 'projection')
+  if (current?.kind !== 'projection')
     return root.append('Session inventory is unavailable.');
   const model = buildSessionInventoryViewModel(
     current.projection,
@@ -64,7 +82,11 @@ function render() {
     density,
   );
   const inventory = document.createElement('section');
-  renderSessionInventoryDom(inventory, model);
+  renderSessionInventoryDom(inventory, model, (_action, url) => {
+    // AppBridge owns navigation. There is no anchor, provider URL, or network
+    // escape in this portable resource.
+    void app?.openLink({ url });
+  });
   root.append(inventory);
   const controls = document.createElement('section');
   controls.setAttribute('aria-label', 'Inventory controls');
@@ -104,6 +126,9 @@ function render() {
         const result = await app.callServerTool({
           name: 'get_session_inventory',
           arguments: {
+            ...(current.version === 'station.session-inventory-mcp/v2'
+              ? { version: 'station.session-inventory-mcp/v2' }
+              : {}),
             operation: 'page',
             scope: current.projection.scope,
             occurrenceId: capability.occurrenceId,
@@ -111,15 +136,18 @@ function render() {
             continuationToken: token,
           },
         });
-        const envelope = parseStationSessionInventoryMcpEnvelope(
+        const envelope = parseEnvelope(
           (result as { structuredContent?: unknown }).structuredContent,
         );
         const next = readCapability(
           (result as { _meta?: Record<string, unknown> })._meta?.[
-            'station.session-inventory-app/v1'
+            current.version === 'station.session-inventory-mcp/v2'
+              ? 'station.session-inventory-app/v2'
+              : 'station.session-inventory-app/v1'
           ],
+          current.version === 'station.session-inventory-mcp/v2',
         );
-        if (!envelope || envelope.kind !== 'group-page' || !next)
+        if (envelope?.kind !== 'group-page' || !next)
           throw new Error('unavailable');
         const merged = mergeSessionInventoryGroupPages(
           current.projection,
@@ -131,7 +159,7 @@ function render() {
           version: current.version,
           kind: 'projection',
           projection: merged,
-        };
+        } as Envelope;
         capability = next;
         render();
         root
@@ -172,13 +200,17 @@ void (async () => {
   );
   app.onhostcontextchanged = appearance;
   app.ontoolresult = (result) => {
-    const envelope = parseStationSessionInventoryMcpEnvelope(
+    const envelope = parseEnvelope(
       (result as { structuredContent?: unknown }).structuredContent,
     );
+    const v2 = envelope?.version === 'station.session-inventory-mcp/v2';
     const nextCapability = readCapability(
       (result as { _meta?: Record<string, unknown> })._meta?.[
-        'station.session-inventory-app/v1'
+        v2
+          ? 'station.session-inventory-app/v2'
+          : 'station.session-inventory-app/v1'
       ],
+      v2,
     );
     // The envelope and its occurrence capability are one authorization unit.
     // Do not leave a read-only projection visible if host metadata is absent

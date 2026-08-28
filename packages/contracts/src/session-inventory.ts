@@ -1,5 +1,12 @@
 import type { SessionOutputItem } from './session-outputs.js';
 import {
+  deriveGithubWorkItemUrl,
+  type GithubWorkItemRepository,
+  parseSessionWorkItemAssociation,
+  SESSION_WORK_ITEM_ASSOCIATION_V1,
+  type SessionWorkItemAssociation,
+} from './session-work-item.js';
+import {
   parseStationAnswerBinding,
   parseStationBasisProjection,
   type StationAnswerBinding,
@@ -8,12 +15,16 @@ import {
 
 /** Closed, metadata-only Session inventory transport. */
 export const SESSION_INVENTORY_V1 = 'station.session-inventory/v1' as const;
+export const SESSION_INVENTORY_V2 = 'station.session-inventory/v2' as const;
+/** The version emitted by Station's routes and consumed by current SDK/UI code. */
+export const SESSION_INVENTORY_VERSION = SESSION_INVENTORY_V2;
 export const SESSION_INVENTORY_PREVIEW_MAX_ITEMS = 20;
 export const SESSION_INVENTORY_PREVIEW_MAX_PER_GROUP = 2;
 export const SESSION_INVENTORY_PAGE_MAX_ITEMS = 20;
 export const SESSION_INVENTORY_MAX_SERIALIZED_BYTES = 128 * 1024;
 
-export const SESSION_INVENTORY_GROUP_IDS = [
+/** Frozen v1 order. Never append a group here: v1 stays independently parseable. */
+export const SESSION_INVENTORY_V1_GROUP_IDS = [
   'inputs',
   'sources',
   'execution',
@@ -25,8 +36,35 @@ export const SESSION_INVENTORY_GROUP_IDS = [
   'attention',
   'resources',
 ] as const;
+/** v2 adds a dedicated owner group without changing the v1 wire shape. */
+export const SESSION_INVENTORY_V2_GROUP_IDS = [
+  'inputs',
+  'sources',
+  'work-items',
+  'execution',
+  'decisions',
+  'outputs',
+  'verification-delivery',
+  'live-now',
+  'kept',
+  'attention',
+  'resources',
+] as const;
+/** Legacy v1 alias. It is frozen with the original ten-group wire contract. */
+export const SESSION_INVENTORY_GROUP_IDS = SESSION_INVENTORY_V1_GROUP_IDS;
+/** Current v2 route/SDK alias. Legacy UI remains on the v1 alias until its lane. */
+export const SESSION_INVENTORY_CURRENT_GROUP_IDS =
+  SESSION_INVENTORY_V2_GROUP_IDS;
+/** Legacy v1/UI id union. Current routes use `SessionInventoryV2GroupId`. */
 export type SessionInventoryGroupId =
-  (typeof SESSION_INVENTORY_GROUP_IDS)[number];
+  (typeof SESSION_INVENTORY_V1_GROUP_IDS)[number];
+export type SessionInventoryV1GroupId =
+  (typeof SESSION_INVENTORY_V1_GROUP_IDS)[number];
+export type SessionInventoryV2GroupId =
+  (typeof SESSION_INVENTORY_V2_GROUP_IDS)[number];
+export type SessionInventoryVersion =
+  | typeof SESSION_INVENTORY_V1
+  | typeof SESSION_INVENTORY_V2;
 export type SessionInventoryScope =
   | { kind: 'current-answer'; sessionId: string; turnId: string }
   | { kind: 'whole-session'; sessionId: string }
@@ -185,6 +223,25 @@ export type StationResourceSummaryRow = RowBase<'station-resource-summary'> & {
   model?: string;
   engine?: string;
 };
+/**
+ * v2's trusted, metadata-only presentation of one deduplicated created work
+ * item. `associationIds` preserves every durable observation identity; the
+ * tuple is the deterministic first observation used for this row's identity.
+ */
+export type StationSessionWorkItemRow = RowBase<'station-session-work-item'> & {
+  sessionId: string;
+  conversationId: string;
+  eventId: string;
+  turnId: string;
+  toolCallId: string;
+  provider: { id: 'github'; host: 'github.com' };
+  workItemRef: SessionWorkItemAssociation['workItemRef'];
+  repository: GithubWorkItemRepository;
+  nativeId: string;
+  associationIds: readonly string[];
+  observedAt: string;
+};
+/** Stable v1 row union; legacy renderers intentionally continue to see only this. */
 export type SessionInventoryRow =
   | ThreadAuthoredInputRow
   | SurfaceAnswerContributionRow
@@ -199,8 +256,11 @@ export type SessionInventoryRow =
   | GateEvaluationRow
   | TaskKeptRow
   | StationResourceSummaryRow;
+export type SessionInventoryV2Row =
+  | SessionInventoryRow
+  | StationSessionWorkItemRow;
 export type SessionInventoryGroup = {
-  id: SessionInventoryGroupId;
+  id: SessionInventoryV1GroupId;
   owner: OwnerRef;
   state: SessionInventoryGroupState;
   count?: SessionInventoryCount;
@@ -208,6 +268,16 @@ export type SessionInventoryGroup = {
   continuation?: string;
   gaps: readonly SessionInventoryGap[];
 };
+export type SessionInventoryV2Group = Omit<
+  SessionInventoryGroup,
+  'id' | 'items'
+> & {
+  id: SessionInventoryV2GroupId;
+  items: readonly SessionInventoryV2Row[];
+};
+export type AnySessionInventoryGroup =
+  | SessionInventoryGroup
+  | SessionInventoryV2Group;
 type SessionInventoryProjectionBase = {
   version: typeof SESSION_INVENTORY_V1;
   scope: SessionInventoryScope;
@@ -226,6 +296,25 @@ export type SessionInventoryProjection =
       basis?: never;
       basisBinding?: never;
     });
+type SessionInventoryV2ProjectionBase = {
+  version: typeof SESSION_INVENTORY_V2;
+  scope: SessionInventoryScope;
+  groups: readonly SessionInventoryV2Group[];
+};
+export type SessionInventoryV2Projection =
+  | (SessionInventoryV2ProjectionBase & {
+      scope: Extract<SessionInventoryScope, { kind: 'current-answer' }>;
+      basis: StationBasisProjection;
+      basisBinding: StationAnswerBinding;
+    })
+  | (SessionInventoryV2ProjectionBase & {
+      scope: Exclude<SessionInventoryScope, { kind: 'current-answer' }>;
+      basis?: never;
+      basisBinding?: never;
+    });
+export type AnySessionInventoryProjection =
+  | SessionInventoryProjection
+  | SessionInventoryV2Projection;
 type SessionInventoryGroupPageBase = {
   version: typeof SESSION_INVENTORY_V1;
   scope: SessionInventoryScope;
@@ -242,6 +331,63 @@ export type SessionInventoryGroupPage =
       basis?: never;
       basisBinding?: never;
     });
+type SessionInventoryV2GroupPageBase = {
+  version: typeof SESSION_INVENTORY_V2;
+  scope: SessionInventoryScope;
+  group: SessionInventoryV2Group;
+};
+export type SessionInventoryV2GroupPage =
+  | (SessionInventoryV2GroupPageBase & {
+      scope: Extract<SessionInventoryScope, { kind: 'current-answer' }>;
+      basis: StationBasisProjection;
+      basisBinding: StationAnswerBinding;
+    })
+  | (SessionInventoryV2GroupPageBase & {
+      scope: Exclude<SessionInventoryScope, { kind: 'current-answer' }>;
+      basis?: never;
+      basisBinding?: never;
+    });
+export type AnySessionInventoryGroupPage =
+  | SessionInventoryGroupPage
+  | SessionInventoryV2GroupPage;
+
+/**
+ * Derives a GitHub issue link only after the complete v2 row passes the same
+ * closed locator checks as the transport. This is portable presentation
+ * policy, not a server-side navigation decision.
+ */
+export function deriveSessionWorkItemGithubUrl(
+  value: unknown,
+): `https://github.com/${string}/${string}/issues/${number}` | null {
+  try {
+    if (!row(value) || value.kind !== 'station-session-work-item') return null;
+    if (
+      value.owner.owner !== 'station.session-work-items' ||
+      value.owner.id !== 'v1' ||
+      value.key !== `work-item:${value.associationIds[0]}` ||
+      !value.relations.includes('observed-during') ||
+      !value.relations.includes('produced-by')
+    )
+      return null;
+    return deriveGithubWorkItemUrl({
+      version: SESSION_WORK_ITEM_ASSOCIATION_V1,
+      associationId: value.associationIds[0],
+      sessionId: value.sessionId,
+      conversationId: value.conversationId,
+      eventId: value.eventId,
+      turnId: value.turnId,
+      toolCallId: value.toolCallId,
+      relation: 'created',
+      provider: value.provider,
+      workItemRef: value.workItemRef,
+      repository: value.repository,
+      nativeId: value.nativeId,
+      observedAt: value.observedAt,
+    });
+  } catch {
+    return null;
+  }
+}
 
 const encoder = new TextEncoder();
 const statesWithoutFields = new Set<SessionInventoryGroupState>([
@@ -251,10 +397,11 @@ const statesWithoutFields = new Set<SessionInventoryGroupState>([
   'corrupt',
 ]);
 const rowKindsForGroup: Readonly<
-  Record<SessionInventoryGroupId, readonly SessionInventoryRow['kind'][]>
+  Record<SessionInventoryV2GroupId, readonly SessionInventoryV2Row['kind'][]>
 > = {
   inputs: ['thread-authored-input'],
   sources: ['surface-answer-contribution'],
+  'work-items': ['station-session-work-item'],
   execution: [
     'flow-agents-narrative',
     'thread-tool-result',
@@ -281,7 +428,7 @@ const rowKindsForGroup: Readonly<
   resources: ['station-resource-summary'],
 };
 const allowed: Readonly<
-  Record<SessionInventoryRow['kind'], readonly SessionInventoryRelation[]>
+  Record<SessionInventoryV2Row['kind'], readonly SessionInventoryRelation[]>
 > = {
   // A Thread owner may explicitly bind an authored input to its current
   // answer. This is stronger than merely observing the input in a turn, and
@@ -319,6 +466,11 @@ const allowed: Readonly<
   'task-kept-output': ['kept-in-task'],
   'task-kept-pull-request': ['kept-in-task'],
   'station-resource-summary': ['observed-during'],
+  'station-session-work-item': [
+    'observed-during',
+    'produced-by',
+    'kept-in-task',
+  ],
 };
 function plain(value: unknown): value is Record<string, unknown> {
   return (
@@ -357,7 +509,7 @@ function scope(value: unknown): value is SessionInventoryScope {
   );
 }
 function relationRow(value: unknown): value is {
-  kind: SessionInventoryRow['kind'];
+  kind: SessionInventoryV2Row['kind'];
   key: string;
   owner: OwnerRef;
   relations: readonly SessionInventoryRelation[];
@@ -374,7 +526,7 @@ function relationRow(value: unknown): value is {
         typeof relation === 'string' &&
         (
           allowed[
-            value.kind as SessionInventoryRow['kind']
+            value.kind as SessionInventoryV2Row['kind']
           ] as readonly string[]
         ).includes(relation),
     )
@@ -596,11 +748,39 @@ function rowDetails(value: Record<string, unknown>): boolean {
           (key) => value[key] === undefined || string(value[key], 512),
         )
       );
+    case 'station-session-work-item': {
+      if (
+        !Array.isArray(value.associationIds) ||
+        value.associationIds.length < 1 ||
+        value.associationIds.length > 20 ||
+        new Set(value.associationIds).size !== value.associationIds.length ||
+        !value.associationIds.every((id) => string(id, 256))
+      )
+        return false;
+      // Reuse the independently closed association parser for the selected
+      // provenance tuple. The remaining association ids are opaque durable
+      // identities, not a place to carry result text or provider payloads.
+      return !!parseSessionWorkItemAssociation({
+        version: SESSION_WORK_ITEM_ASSOCIATION_V1,
+        associationId: value.associationIds[0],
+        sessionId: value.sessionId,
+        conversationId: value.conversationId,
+        eventId: value.eventId,
+        turnId: value.turnId,
+        toolCallId: value.toolCallId,
+        relation: 'created',
+        provider: value.provider,
+        workItemRef: value.workItemRef,
+        repository: value.repository,
+        nativeId: value.nativeId,
+        observedAt: value.observedAt,
+      });
+    }
     default:
       return false;
   }
 }
-function row(value: unknown): value is SessionInventoryRow {
+function row(value: unknown): value is SessionInventoryV2Row {
   if (!relationRow(value)) return false;
   // The server produces typed rows. This parser additionally refuses foreign kinds,
   // forbidden relations, body-bearing fields, and cross-session Output references.
@@ -611,7 +791,7 @@ function row(value: unknown): value is SessionInventoryRow {
   )
     return false;
   const required: Readonly<
-    Record<SessionInventoryRow['kind'], readonly string[]>
+    Record<SessionInventoryV2Row['kind'], readonly string[]>
   > = {
     'thread-authored-input': [
       'sessionId',
@@ -660,9 +840,22 @@ function row(value: unknown): value is SessionInventoryRow {
     'task-kept-output': ['taskId', 'provenanceSessionId', 'referenceId'],
     'task-kept-pull-request': ['taskId', 'provenanceSessionId', 'referenceId'],
     'station-resource-summary': ['sessionId'],
+    'station-session-work-item': [
+      'sessionId',
+      'conversationId',
+      'eventId',
+      'turnId',
+      'toolCallId',
+      'provider',
+      'workItemRef',
+      'repository',
+      'nativeId',
+      'associationIds',
+      'observedAt',
+    ],
   };
   const optional: Readonly<
-    Record<SessionInventoryRow['kind'], readonly string[]>
+    Record<SessionInventoryV2Row['kind'], readonly string[]>
   > = {
     'thread-authored-input': [],
     'surface-answer-contribution': [],
@@ -690,6 +883,7 @@ function row(value: unknown): value is SessionInventoryRow {
       'model',
       'engine',
     ],
+    'station-session-work-item': [],
   };
   return (
     required[value.kind].every((key) => key in value) &&
@@ -759,13 +953,12 @@ function group(
   value: unknown,
   projectionScope: SessionInventoryScope,
   page: boolean,
+  groupIds: readonly SessionInventoryV2GroupId[],
   basisBinding?: StationAnswerBinding,
-): value is SessionInventoryGroup {
+): value is AnySessionInventoryGroup {
   if (
     !plain(value) ||
-    !SESSION_INVENTORY_GROUP_IDS.includes(
-      value.id as SessionInventoryGroupId,
-    ) ||
+    !groupIds.includes(value.id as SessionInventoryV2GroupId) ||
     !owner(value.owner) ||
     typeof value.state !== 'string' ||
     ![
@@ -837,8 +1030,8 @@ function group(
     value.state === 'available' &&
     (value.items.length === 0 ||
       !value.items.every((item) =>
-        rowKindsForGroup[value.id as SessionInventoryGroupId].includes(
-          (item as SessionInventoryRow).kind,
+        rowKindsForGroup[value.id as SessionInventoryV2GroupId].includes(
+          (item as SessionInventoryV2Row).kind,
         ),
       ))
   )
@@ -903,6 +1096,33 @@ function group(
       )
         return false;
     }
+    if (itemRecord.kind === 'station-session-work-item') {
+      if (
+        !plain(itemRecord.owner) ||
+        itemRecord.owner.owner !== 'station.session-work-items' ||
+        itemRecord.owner.id !== 'v1' ||
+        !Array.isArray(itemRecord.associationIds) ||
+        itemRecord.key !== `work-item:${itemRecord.associationIds[0]}` ||
+        itemRecord.sessionId !== projectionScope.sessionId ||
+        !Array.isArray(itemRecord.relations) ||
+        !itemRecord.relations.includes('observed-during') ||
+        !itemRecord.relations.includes('produced-by') ||
+        itemRecord.relations.some(
+          (relation) =>
+            relation !== 'observed-during' &&
+            relation !== 'produced-by' &&
+            relation !== 'kept-in-task',
+        )
+      )
+        return false;
+      // A Task relation is meaningful only when the Task route supplied the
+      // exact work-item association; ordinary Session scopes cannot claim it.
+      if (
+        itemRecord.relations.includes('kept-in-task') &&
+        projectionScope.kind !== 'kept-in-task'
+      )
+        return false;
+    }
     if (itemRecord.kind !== 'station-session-output') return true;
     const output = itemRecord.output;
     return (
@@ -914,7 +1134,7 @@ function group(
 }
 export function parseSessionInventoryProjection(
   value: unknown,
-): SessionInventoryProjection | null {
+): AnySessionInventoryProjection | null {
   try {
     if (
       !plain(value) ||
@@ -922,7 +1142,8 @@ export function parseSessionInventoryProjection(
       !Object.keys(value).every((key) =>
         ['version', 'scope', 'groups', 'basis', 'basisBinding'].includes(key),
       ) ||
-      value.version !== SESSION_INVENTORY_V1 ||
+      (value.version !== SESSION_INVENTORY_V1 &&
+        value.version !== SESSION_INVENTORY_V2) ||
       !scope(value.scope) ||
       !Array.isArray(value.groups)
     )
@@ -937,22 +1158,36 @@ export function parseSessionInventoryProjection(
       (parsedScope.kind === 'current-answer' && !basisBinding) ||
       (parsedScope.kind !== 'current-answer' &&
         (value.basis !== undefined || value.basisBinding !== undefined)) ||
-      value.groups.length !== SESSION_INVENTORY_GROUP_IDS.length ||
+      value.groups.length !==
+        (value.version === SESSION_INVENTORY_V1
+          ? SESSION_INVENTORY_V1_GROUP_IDS.length
+          : SESSION_INVENTORY_V2_GROUP_IDS.length) ||
       value.groups.some(
         (item, index) =>
-          !group(item, parsedScope, false, basisBinding ?? undefined) ||
-          (item as SessionInventoryGroup).id !==
-            SESSION_INVENTORY_GROUP_IDS[index],
+          !group(
+            item,
+            parsedScope,
+            false,
+            value.version === SESSION_INVENTORY_V1
+              ? SESSION_INVENTORY_V1_GROUP_IDS
+              : SESSION_INVENTORY_V2_GROUP_IDS,
+            basisBinding ?? undefined,
+          ) ||
+          (item as AnySessionInventoryGroup).id !==
+            (value.version === SESSION_INVENTORY_V1
+              ? SESSION_INVENTORY_V1_GROUP_IDS
+              : SESSION_INVENTORY_V2_GROUP_IDS)[index],
       ) ||
       value.groups.reduce(
-        (n, item) => n + ((item as SessionInventoryGroup).items?.length ?? 0),
+        (n, item) =>
+          n + ((item as AnySessionInventoryGroup).items?.length ?? 0),
         0,
       ) > SESSION_INVENTORY_PREVIEW_MAX_ITEMS
     )
       return null;
     return encoder.encode(JSON.stringify(value)).byteLength <=
       SESSION_INVENTORY_MAX_SERIALIZED_BYTES
-      ? (value as SessionInventoryProjection)
+      ? (value as AnySessionInventoryProjection)
       : null;
   } catch {
     return null;
@@ -960,7 +1195,7 @@ export function parseSessionInventoryProjection(
 }
 export function parseSessionInventoryGroupPage(
   value: unknown,
-): SessionInventoryGroupPage | null {
+): AnySessionInventoryGroupPage | null {
   try {
     if (
       !plain(value) ||
@@ -968,7 +1203,8 @@ export function parseSessionInventoryGroupPage(
         ['version', 'scope', 'group', 'basis', 'basisBinding'].includes(key),
       ) ||
       !['version', 'scope', 'group'].every((key) => key in value) ||
-      value.version !== SESSION_INVENTORY_V1 ||
+      (value.version !== SESSION_INVENTORY_V1 &&
+        value.version !== SESSION_INVENTORY_V2) ||
       !scope(value.scope)
     )
       return null;
@@ -981,12 +1217,20 @@ export function parseSessionInventoryGroupPage(
       (value.scope.kind === 'current-answer' && !basisBinding) ||
       (value.scope.kind !== 'current-answer' &&
         (value.basis !== undefined || value.basisBinding !== undefined)) ||
-      !group(value.group, value.scope, true, basisBinding ?? undefined)
+      !group(
+        value.group,
+        value.scope,
+        true,
+        value.version === SESSION_INVENTORY_V1
+          ? SESSION_INVENTORY_V1_GROUP_IDS
+          : SESSION_INVENTORY_V2_GROUP_IDS,
+        basisBinding ?? undefined,
+      )
     )
       return null;
     return encoder.encode(JSON.stringify(value)).byteLength <=
       SESSION_INVENTORY_MAX_SERIALIZED_BYTES
-      ? (value as SessionInventoryGroupPage)
+      ? (value as AnySessionInventoryGroupPage)
       : null;
   } catch {
     return null;

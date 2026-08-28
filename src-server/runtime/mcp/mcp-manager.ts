@@ -15,6 +15,7 @@ import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Tool } from '@voltagent/core';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
+import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { toolServerOAuthRedirectUrl } from '../../services/plugins/mcp-service.js';
 import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import {
@@ -258,6 +259,7 @@ async function createMCPTools(
   >,
   toolNameMapping: Map<string, MCPToolNameMappingEntry>,
   toolNameReverseMapping: Map<string, string>,
+  provenanceGeneration: MCPToolProvenanceGeneration,
   logger: any,
   configLoader: ConfigLoader,
   serverPort: number,
@@ -354,7 +356,7 @@ async function createMCPTools(
   // MCP Apps tools may be app-only. They remain in the raw connection catalog
   // for the host bridge, but never enter an agent/model tool catalog.
   const isNativeStationControl = isBuiltinStationControl(toolId, toolDef);
-  const tools = mcpConfig.tools
+  const loadedTools = mcpConfig.tools
     .filter((tool) => isMCPAppsToolVisibleTo(tool, 'model'))
     .map((tool) =>
       toStationMCPTool(
@@ -385,13 +387,31 @@ async function createMCPTools(
           : undefined,
       ),
     );
+  const loaderIdentities = new Map(
+    loadedTools.map((loaded, index) => {
+      const source = mcpConfig.tools.filter((tool) =>
+        isMCPAppsToolVisibleTo(tool, 'model'),
+      )[index]!;
+      return [
+        loaded,
+        { serverId: source.serverId, originalToolName: source.originalName },
+      ] as const;
+    }),
+  );
 
   // Normalize tool names for Nova compatibility and store mapping with parsed data
   const normalizedTools = normalizeLoadedMCPTools(
     agentSlug,
-    tools,
+    loadedTools,
     toolNameMapping,
     toolNameReverseMapping,
+    provenanceGeneration,
+    toolId,
+    (tool) => {
+      const identity = loaderIdentities.get(tool);
+      if (!identity) throw new Error('Missing reviewed MCP loader identity.');
+      return identity;
+    },
     logger,
   );
 
@@ -445,6 +465,7 @@ export async function loadAgentTools(
   toolNameReverseMapping: Map<string, string>,
   logger: any,
   serverPort: number = DEFAULT_SERVER_PORT,
+  provenanceGeneration: MCPToolProvenanceGeneration,
   integrationSecretResolver?: IntegrationSecretResolver,
 ): Promise<Tool<any>[]> {
   const tools: Tool<any>[] = [];
@@ -474,6 +495,7 @@ export async function loadAgentTools(
           integrationMetadata,
           toolNameMapping,
           toolNameReverseMapping,
+          provenanceGeneration,
           logger,
           configLoader,
           serverPort,

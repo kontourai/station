@@ -326,6 +326,8 @@ export interface NativePlatformAdapter {
    * browser. The host, not the webview, owns this boundary.
    */
   openLocalBrowserPreview(url: string): Promise<NativeCommandResult<void>>;
+  /** Opens one host-validated external URL outside the WebView. */
+  openExternalLink(url: string): Promise<boolean>;
   /**
    * Resolves and probes one loopback target from the native service boundary,
    * then returns the only one-time grant that a desktop preview can consume.

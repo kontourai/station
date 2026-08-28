@@ -22,8 +22,13 @@
   align-content: start;
 }
 .session-inventory__index button,
-.session-inventory__items button {
+.session-inventory__items button,
+.session-inventory__items a {
   min-height: 44px;
+}
+.session-inventory__items a {
+  display: inline-flex;
+  align-items: center;
 }
 .session-inventory__index button {
   display: flex;

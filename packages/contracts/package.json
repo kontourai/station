@@ -99,6 +99,7 @@
     "./session-output-declaration": "./src/session-output-declaration.ts",
     "./session-outputs": "./src/session-outputs.ts",
     "./session-inventory": "./src/session-inventory.ts",
+    "./session-work-item": "./src/session-work-item.ts",
     "./settings-registry": "./src/settings-registry.ts",
     "./secret-binding": "./src/secret-binding.ts",
     "./skill-command": "./src/skill-command.ts",

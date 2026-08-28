@@ -1,8 +1,28 @@
 .session-inventory-compact {
   min-width: 0;
   max-width: 100%;
-  overflow: auto;
   isolation: isolate;
+}
+.session-inventory-compact__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.session-inventory-compact__heading h2,
+.session-inventory-compact__heading bdi {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.session-inventory-compact__heading h2 {
+  flex: 1 1 10rem;
+}
+.session-inventory-compact__heading bdi {
+  flex: 1 1 12rem;
+}
+.session-inventory-compact__heading button {
+  flex: 0 0 auto;
+  align-self: start;
 }
 .session-inventory-compact--aside {
   flex: 0 1 22rem;
@@ -32,6 +52,16 @@
 }
 .session-inventory-compact__groups button[aria-pressed="true"] {
   outline: 2px solid var(--accent-primary, #2563eb);
+}
+.session-inventory-compact__groups button {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+}
+.session-inventory-compact__groups button span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .session-inventory-compact__previews {
   padding-inline-start: 1.25rem;

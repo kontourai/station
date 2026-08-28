@@ -1,9 +1,11 @@
+import { deriveSessionWorkItemGithubUrl } from '@kontourai/station-contracts/session-inventory';
 import type { SessionInventoryViewModel } from './session-inventory-view';
 
 /** Inert portable rendering of an already-derived inventory view model. */
 export function renderSessionInventoryDom(
   root: HTMLElement,
   model: SessionInventoryViewModel,
+  onAction?: (action: 'open-work-item', url: string) => void,
 ): void {
   root.replaceChildren();
   const heading = document.createElement('h1');
@@ -40,6 +42,21 @@ export function renderSessionInventoryDom(
         item.classification === 'kept' ? 'Kept context' : 'Current context'
       }`;
       row.append(text);
+      if (item.actions.includes('open-work-item') && item.row && onAction) {
+        // This is deliberately a button, never a provider-origin link. The
+        // caller receives only the canonical locator derived from the closed
+        // structured row and asks its host to mediate the actual navigation.
+        const url = deriveSessionWorkItemGithubUrl(item.row);
+        if (url) {
+          const action = document.createElement('button');
+          action.type = 'button';
+          action.textContent = 'Open work item';
+          action.addEventListener('click', () =>
+            onAction('open-work-item', url),
+          );
+          row.append(action);
+        }
+      }
       list.append(row);
     }
     section.append(title, state, gaps, list);
