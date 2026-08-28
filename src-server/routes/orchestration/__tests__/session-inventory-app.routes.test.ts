@@ -159,4 +159,79 @@ describe('Session inventory App read routes', () => {
     });
     expect(denied.status).toBe(503);
   });
+
+  test('Task app read revokes an available deferred occurrence when its relation drifts before publication', async () => {
+    let relation = true;
+    let release!: () => void;
+    const module = {
+      open: vi.fn(
+        () =>
+          new Promise<typeof appResult>((resolve) => {
+            release = () => resolve(appResult);
+          }),
+      ),
+      page: vi.fn(),
+      revoke: vi.fn(),
+    };
+    const graph = {
+      readTask: () => ({ id: 'task-a' }),
+      readSessionRelations: () => ({
+        links: relation
+          ? [
+              {
+                sourceType: 'task',
+                sourceId: 'task-a',
+                targetType: 'session',
+                targetId: 'session-a',
+              },
+            ]
+          : [],
+      }),
+    };
+    const app = createTaskRoutes(graph as any, {
+      taskDispatcher: { dispatch: async () => ({}) } as any,
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest('fixture-user', undefined, undefined),
+      canReadSession: () => true,
+      isRequestPrincipalCurrent: () => true,
+      callerBindingForRequest: () => 'caller_'.padEnd(32, 'c'),
+      sessionInventoryAppRead: module as any,
+    });
+    const response = app.request(
+      '/task-a/sessions/session-a/inventory/app-read',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body({
+          operation: 'open',
+          scope: {
+            kind: 'kept-in-task',
+            taskId: 'task-a',
+            sessionId: 'session-a',
+          },
+        }),
+      },
+    );
+    await vi.waitFor(() => expect(module.open).toHaveBeenCalledOnce());
+    relation = false;
+    release();
+    const resolved = await response;
+    expect(resolved.status).toBe(503);
+    expect(await resolved.json()).toEqual({
+      success: false,
+      error: 'Session inventory unavailable',
+    });
+    expect(module.revoke).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routeFamily: 'task',
+        callerBinding: 'caller_'.padEnd(32, 'c'),
+        occurrenceId,
+        scope: {
+          kind: 'kept-in-task',
+          taskId: 'task-a',
+          sessionId: 'session-a',
+        },
+      }),
+    );
+  });
 });
