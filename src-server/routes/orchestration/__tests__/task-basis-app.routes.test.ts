@@ -146,7 +146,7 @@ describe('Task Basis App owner API publication boundary', () => {
             : f.substituteResult,
       );
       await expectUnavailable(await f.request('{}'));
-      expect(f.read).toHaveBeenCalledOnce();
+      expect(f.read).toHaveBeenCalledTimes(2);
       expect(f.revoke).toHaveBeenCalledOnce();
     },
   );
@@ -201,7 +201,7 @@ describe('Task Basis App owner API publication boundary', () => {
     expect(revoked.status).toBe(200);
     expect(revoked.headers.get('cache-control')).toContain('no-store');
     await expectUnavailable(await f.request(JSON.stringify(meta)));
-    expect(f.read).toHaveBeenCalledTimes(2);
+    expect(f.read).toHaveBeenCalledTimes(4);
   });
 
   test.each(['credential', 'session', 'link', 'scope'] as const)(
@@ -218,7 +218,7 @@ describe('Task Basis App owner API publication boundary', () => {
               : f.replaceScope,
       );
       await expectUnavailable(await f.request('{}'));
-      expect(f.read).toHaveBeenCalledOnce();
+      expect(f.read).toHaveBeenCalledTimes(2);
       expect(f.revoke).toHaveBeenCalledWith(
         'fixture-task',
         'caller_'.padEnd(32, 'a'),

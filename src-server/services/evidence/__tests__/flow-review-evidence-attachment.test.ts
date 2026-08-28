@@ -63,10 +63,11 @@ describe('FlowReviewEvidenceAttachment', () => {
           requested_kind: 'station.review-findings',
           status: 'unknown',
           producer: 'station.review-orchestration',
-          authority_trace: receiptId,
+          original_path: `.station/review-evidence/receipts/${receiptId}.json`,
         }),
       ]),
     );
+    expect(run.manifest.evidence[0]).not.toHaveProperty('authority_trace');
     expect(run.state.status).not.toBe('completed');
   });
 });

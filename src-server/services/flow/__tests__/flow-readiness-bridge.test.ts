@@ -210,6 +210,22 @@ function writeStaticEvidence(cwd: string): string {
   return 'static-bundle.json';
 }
 
+async function advanceToReadinessGate(
+  flowRunService: InstanceType<typeof FlowRunService>,
+  cwd: string,
+) {
+  await flowRunService.attachEvidence(cwd, 'r1', {
+    gate: 'implement-gate',
+    file: writeStaticEvidence(cwd),
+    kind: 'trust.bundle',
+  });
+  const outcome = await flowRunService.evaluate(cwd, 'r1');
+  expect(outcome.outcomes[0]).toMatchObject({
+    gate_id: 'implement-gate',
+    status: 'pass',
+  });
+}
+
 describe('FlowReadinessBridge.attachReadinessEvidence', () => {
   test('attaches the record as a trusted governance.merge-readiness claim and the gate passes', async () => {
     const cwd = createWorkspace();
@@ -217,6 +233,7 @@ describe('FlowReadinessBridge.attachReadinessEvidence', () => {
       stdout: cliStdout(),
     });
     await flowRunService.startRun(cwd, { definition: 'delivery', runId: 'r1' });
+    await advanceToReadinessGate(flowRunService, cwd);
 
     const result = await bridge.attachReadinessEvidence(cwd, 'r1');
 
@@ -241,20 +258,13 @@ describe('FlowReadinessBridge.attachReadinessEvidence', () => {
     });
     expect(result.snapshot.overall).toBe('ready');
 
-    // Drive the run to completion: implement-gate first, then readiness-gate.
-    await flowRunService.attachEvidence(cwd, 'r1', {
-      gate: 'implement-gate',
-      file: writeStaticEvidence(cwd),
-      kind: 'trust.bundle',
-    });
-    const first = await flowRunService.evaluate(cwd, 'r1');
-    expect(first.outcomes[0].status).toBe('pass');
-    const second = await flowRunService.evaluate(cwd, 'r1');
-    expect(second.outcomes[0]).toMatchObject({
+    // The readiness gate is now reached through Flow's own evaluation API.
+    const outcome = await flowRunService.evaluate(cwd, 'r1');
+    expect(outcome.outcomes[0]).toMatchObject({
       gate_id: 'readiness-gate',
       status: 'pass',
     });
-    expect(second.state.status).toBe('completed');
+    expect(outcome.state.status).toBe('completed');
   });
 
   test('honors an explicit gate option', async () => {
@@ -276,6 +286,7 @@ describe('FlowReadinessBridge.attachReadinessEvidence', () => {
     const cwd = createWorkspace();
     const { bridge, flowRunService } = createBridge({ stdout: cliStdout() });
     await flowRunService.startRun(cwd, { definition: 'delivery', runId: 'r1' });
+    await advanceToReadinessGate(flowRunService, cwd);
 
     const first = await bridge.attachReadinessEvidence(cwd, 'r1');
     const second = await bridge.attachReadinessEvidence(cwd, 'r1');
@@ -302,6 +313,7 @@ describe('FlowReadinessBridge.attachReadinessEvidence', () => {
       exitCode: 1,
     });
     await flowRunService.startRun(cwd, { definition: 'delivery', runId: 'r1' });
+    await advanceToReadinessGate(flowRunService, cwd);
 
     const result = await bridge.attachReadinessEvidence(cwd, 'r1');
     expect(result.attached).toBe(true);
