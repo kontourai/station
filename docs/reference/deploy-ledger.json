@@ -1,5 +1,29 @@
 [
   {
+    "timestampUtc": "2026-08-28T16:25:07Z",
+    "channel": "stable-npm",
+    "version": "1.0.0",
+    "sha": "b4fe42e5cc089fc95f8f513d549d78b82f198d96",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33188020921",
+    "artifacts": [
+      "npm:@kontourai/station-builder-delivery-viewer@1.0.0 (dist-tag latest)"
+    ],
+    "gateResult": "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96)",
+    "notes": null,
+    "changelog": {
+      "previousSha": null,
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": "First recorded entry for this channel; no previous ship SHA exists in the ledger, so no changelog slice was derived.",
+      "commitCount": 0
+    }
+  },
+  {
     "timestampUtc": "2026-08-27T10:54:02Z",
     "channel": "nightly-android",
     "version": "0.1.2-nightly.2430",
@@ -12,7 +36,7 @@
     "gateResult": "no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z)",
     "notes": [
       "PRE-RESET SHIP (2026-08-28 history reset): the sha and tags reference the archived pre-reset history (kontourai/station-archive) and do not exist in this repository's single-root history; the run URL has been repointed to the archive, where the run records live. The ship itself (Play internal, versionCode 243000) is real and unaffected.",
-      "Seeded from observable history (station#4572): version 0.1.2-nightly.2430 = day 2430 build 0 = versionCode 243000; the immutable reservation tag refs/tags/nightly-version-code/243000 and the rolling refs/tags/nightly both point at the recorded sha; nightly run 33064078473 (created 2026-08-27T10:40:51Z) concluded success with its nightly job completing 2026-08-27T10:54:02Z \u2014 used verbatim as timestampUtc; the publish moment inside the job is not separately observable.",
+      "Seeded from observable history (station#4572): version 0.1.2-nightly.2430 = day 2430 build 0 = versionCode 243000; the immutable reservation tag refs/tags/nightly-version-code/243000 and the rolling refs/tags/nightly both point at the recorded sha; nightly run 33064078473 (created 2026-08-27T10:40:51Z) concluded success with its nightly job completing 2026-08-27T10:54:02Z — used verbatim as timestampUtc; the publish moment inside the job is not separately observable.",
       "Owner's brief dated this ship 2026-08-26 (local time); UTC day 2430 is 2026-08-27, which is what the version and run timestamps record."
     ],
     "changelog": {
