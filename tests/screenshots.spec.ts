@@ -10,7 +10,7 @@ import { expect, type Page, type Route, test } from '@playwright/test';
  * clicking through it. Every declared surface must render; failures remain
  * visible as broken tiles in the gallery and also fail the test.
  *
- * Targeted capture (station#4464): set `STATION_E2E_SCREENS` to a
+ * Targeted capture (archive#4464): set `STATION_E2E_SCREENS` to a
  * comma-separated list of `SCREENS[].name` values to capture only that
  * subset. Through the runner, this ONLY works as
  * `npm run test:e2e:screenshot -- --screens=home,agents` — `run-e2e-suite.mjs`
@@ -62,8 +62,8 @@ const MOBILE = { width: 390, height: 844 } as const;
  * of whatever else is rendered underneath, including a screen mid-capture.
  * Any screen whose path is `/` (or that drives interactions while sitting on
  * `/`) should assert this overlay is absent immediately before its shot, so a
- * transient redirect can never be captured as the wrong tile (#192 iteration
- * 3 fix — see the verifier's AC6 finding for the reproduction).
+ * transient redirect can never be captured as the wrong tile (archive#192 —
+ * see that issue for the reproduction).
  */
 function newProjectOverlay(page: Page) {
   return page.locator('.new-project-modal__overlay');
@@ -80,7 +80,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * Hides always-visible chrome/widget regions whose content is genuinely
  * environment/timing-dependent rather than a property of the page under
  * test, so re-capturing the identical build never perturbs the gallery
- * pixel-for-pixel (station#4464 arbiter review — the first two of these,
+ * pixel-for-pixel (archive#4464 — the first two of these,
  * present on every route, were the dominant source of "changed" false
  * positives across the whole gallery):
  *
@@ -141,8 +141,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * label text ("Connected" / "Reconnecting" / "No Station" / …), so hiding
  * it that way still let its live state silently shift every sibling to its
  * right by a few pixels, exactly the class of noise this function exists
- * to eliminate (caught by this feature's own two-consecutive-runs
- * acceptance check). `display: none` removes it from flow instead, which
+  * to eliminate (a two-consecutive-runs
+  * acceptance check catches it). `display: none` removes it from flow instead, which
  * collapses to the same zero width on every capture regardless of what
  * text would have been inside — deterministic. The build-stamp label's
  * text is fixed per build (no live state to vary its width), so
@@ -294,10 +294,10 @@ async function assertReducedMotion(
  * pre-fetch "0" badge states ahead of the universal 1200ms settle wait,
  * which has no signal (no `.skeleton`) that a badge query is still in
  * flight. Two consecutive captures of an identical build then disagreed by
- * up to ~1,650 pixels on the hub screens (station#4464 follow-up
- * measurement, then a post-merge acceptance re-run that caught the same
- * shape on `connections` once more via the Computers count — which this
- * function had not yet armed) — not rendering jitter, a genuine
+ * up to ~1,650 pixels on the hub screens (archive#4464 — the same
+ * shape was caught again later on `connections` once more via the
+ * Computers count, which this function had not yet armed) — not
+ * rendering jitter, a genuine
  * pre-settle/settled content race. Arm the wait BEFORE navigation
  * (Playwright's own idiom elsewhere in this repo, e.g.
  * tests/agents-editor-roundtrip.spec.ts): arming it after `page.goto` could
@@ -460,13 +460,13 @@ async function seedScheduleScreenshotApi(page: Page) {
 
 /**
  * `sessions-filtered-empty`'s per-screen override of
- * `**\/api/orchestration/sessions/read-model` (station#4501 — see that
+ * `**\/api/orchestration/sessions/read-model` (archive#4501 — see that
  * screen's own doc comment). Named, not inline: `page.unroute(url)` called
  * with no handler argument removes EVERY route registered for that URL
- * pattern, not just the caller's own — caught live, it also tore out the
+ * pattern, not just the caller's own — tearing out the
  * main test body's GLOBAL empty-array mock for the same endpoint
- * (registered once, before the loop), so every screen captured after this
- * one fell through to the real (offline-during-E2E) dev server, which 500s
+ * (registered once, before the loop) sends every screen captured after this
+ * one to the real (offline-during-E2E) dev server, which 500s
  * on it. Passing this same function reference to both `page.route` and the
  * later `page.unroute` removes only this handler, leaving the global one
  * intact for every other screen.
@@ -531,13 +531,13 @@ const ONBOARDING_SETUP_RESET_MARKER = 'e2e-onboarding-setup-reset';
  * post-navigation settle wait has no signal that THIS query is still in
  * flight (no `.skeleton` guards it), so a shot can fire before
  * `/api/system/status` has answered and `shouldRenderSetupLauncher` has had
- * a chance to flip — measured live, intermittently, in this arc's own
- * two-consecutive-runs check. Returns a fresh `{ beforeGoto, waitSettled,
+ * a chance to flip — measured live, intermittently, in consecutive-run
+ * checks. Returns a fresh `{ beforeGoto, waitSettled,
  * cleanup }` triple, the same arm-before-navigate shape
  * `connectionsHubBadgeSettleHooks` uses, so the wait is armed before the
  * response it is racing can occur.
  *
- * Fix round (review MED-1): both registrations used to leak past this one
+ * Both registrations below must not leak past this one
  * screen for the rest of the page-long-lived run —
  *  - the `**\/api/system/status` route, exactly `withRoute`'s documented
  *    leak class (see its own doc comment above): fixed the same way, by
@@ -645,7 +645,7 @@ function onboardingSetupBannerSettleHooks(): {
 }
 
 /**
- * station#4521: a deterministic NOT-RUNNABLE agent — Station's own engine,
+ * archive#4521: a deterministic NOT-RUNNABLE agent — Station's own engine,
  * no LLM provider connection at all — for the three gallery screens that
  * stage the readiness notice, its popover, and the mobile save footer. The
  * defect class this fixes (the header's "wall of yellow text", a notice
@@ -662,7 +662,7 @@ function notRunnableGalleryAgent(): Record<string, unknown> {
     slug: GALLERY_NOT_RUNNABLE_AGENT_SLUG,
     name: 'Support Agent',
     prompt: 'You are a support agent that helps customers.',
-    // station#4521 LOW-2: `execution` OMITTED, not an empty-string object —
+    // archive#4521: `execution` OMITTED, not an empty-string object —
     // the real wire shape for a Station agent that was never bound to a
     // connection (enriched-agents.ts's `execution: spec.execution`, and an
     // unconfigured spec's `execution` is `undefined`).
@@ -748,16 +748,16 @@ async function cleanupNotRunnableAgentApi(page: Page): Promise<void> {
 }
 
 /**
- * station#4525 review addendum: the FIRST call in every screen below that
+ * archive#4525: the FIRST call in every screen below that
  * touches dock-project state. `page.addInitScript` registrations ACCUMULATE
  * across every `beforeGoto` in this same, page-long-lived gallery run, and
  * localStorage/sessionStorage themselves persist across `page.goto()` on
  * one page — a later screen does not reliably start from a clean slate
- * (caught live: pre-seeding the persisted project binding directly via
- * `page.addInitScript` worked in isolation but reliably raced the app's own
+ * (pre-seeding the persisted project binding directly via
+ * `page.addInitScript` works in isolation but reliably races the app's own
  * project-confirmation effect immediately after a PRIOR screen's seed —
  * hence these screens drive the binding through the real picker
- * interaction instead; and a seeded chat session bled into the following
+ * interaction instead; and a seeded chat session can bleed into the following
  * screen's Home sidebar). Clearing first, on every one of these screens, is
  * what makes each one self-contained regardless of gallery run order.
  */
@@ -769,7 +769,7 @@ function clearDockGalleryStorage(page: Page) {
 }
 
 /**
- * station#4525 review addendum: seeds one persisted "open chat" — the exact
+ * archive#4525: seeds one persisted "open chat" — the exact
  * sessionStorage shape `src-ui/src/contexts/active-chats-store.ts` reads on
  * construction (`PersistedActiveChat[]`) — so the dock has a real ACTIVE
  * SESSION to derive its facts row from. Paired with `?chat=<conversationId>`
@@ -784,11 +784,11 @@ function seedActiveChatSession(
      * only skips deleting an entry it cannot durably verify when
      * `conversationId === sessionId` AND `provider` is set (and not
      * `'bedrock'`) — otherwise it tries to durably confirm the entry via
-     * `fetchAgentConversationPage(agentSlug, …)` against the REAL backend
-     * (a fixture `agentSlug` matches nothing there) and PRUNES it within
-     * the first render pass. Caught live: the seeded chat vanished from
-     * sessionStorage before the shot, and the mismatch state never
-     * rendered at all.
+      * `fetchAgentConversationPage(agentSlug, …)` against the REAL backend
+      * (a fixture `agentSlug` matches nothing there) and PRUNES it within
+      * the first render pass — the seeded chat then vanishes from
+      * sessionStorage before the shot, and the mismatch state never
+      * renders at all.
      */
     conversationId: string;
     agentSlug: string;
@@ -829,8 +829,8 @@ function seedActiveChatSession(
  * Every screen below that registers a route MUST call the returned cleanup
  * in `afterGoto`'s `finally`, or its fixture — a project list, a durable
  * session — leaks into every screen captured after it for the rest of the
- * run (caught live: a stray "Demo Project" survived three screens later
- * and changed Home's guidance-card content under an unrelated screen name).
+ * run (a stray "Demo Project" can survive three screens later
+ * and change Home's guidance-card content under an unrelated screen name).
  */
 async function withRoute(
   page: Page,
@@ -988,14 +988,14 @@ function overlayDockProjectMismatchHooks(): Pick<
         // session's title asynchronously (a live query racing the seeded
         // sessionStorage title) — waiting for its settled text here, before
         // anything else, is what makes the eventual shot deterministic
-        // (caught live: the row's transient intermediate text produced a
+        // (the row's transient intermediate text otherwise produces a
         // real, reproducible ~1939-pixel diff between two otherwise
         // byte-identical captures).
         await expect(
           page.locator('.chat-dock-inbox__item').first(),
         ).toContainText('Mismatch demo chat', { timeout: 10_000 });
         // The active session (project-b) renders first with no binding
-        // bound yet — badge reads "No project" (station#4525: the badge no
+        // bound yet — badge reads "No project" (archive#4525: the badge no
         // longer follows the active session at all). Binding to Project A
         // through the real picker interaction is what produces the
         // mismatch, exactly as a user reaching this state would.
@@ -1009,8 +1009,8 @@ function overlayDockProjectMismatchHooks(): Pick<
         await expect(
           page.getByRole('dialog', { name: 'Switch project' }),
         ).toBeHidden({ timeout: 10_000 });
-        // The badge now names the BOUND project (review MED-1's design
-        // ruling: it never follows the active session) — while the facts
+        // The badge now names the BOUND project (by design it never
+        // follows the active session) — while the facts
         // row leads with the session's own, muted, differing project name.
         // Scoped to the badge's own class: the project sidebar (seeded
         // from the same `/api/projects` mock) also renders a same-named
@@ -1073,7 +1073,7 @@ interface Screen {
   waitFor?: string;
   /**
    * Optional hook run before `page.goto` (e.g. `page.route` mocks to force a
-   * zero-data / empty-state render — see #192's converged empty-state
+   * zero-data / empty-state render — see archive#192's converged empty-state
    * screens below).
    */
   beforeGoto?: (page: Page) => Promise<void>;
@@ -1161,7 +1161,7 @@ const SCREENS: Screen[] = [
     title: 'Schedule',
     path: '/schedule',
     viewport: DESKTOP,
-    // station#4464: without this, ScheduleView hits the live (unmocked)
+    // archive#4464: without this, ScheduleView hits the live (unmocked)
     // scheduler/system endpoints on a freshly booted temp-home server —
     // real content whose exact bytes vary run to run.
     beforeGoto: seedScheduleScreenshotApi,
@@ -1204,7 +1204,7 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
   },
   {
-    // station#4521: the readiness notice + its remedy, on an EXISTING
+    // archive#4521: the readiness notice + its remedy, on an EXISTING
     // (not `isCreating`) agent — the state `agent-editor` above cannot
     // reach at all (its `titleAccessory`, and the notRunnable banner, both
     // gate on `!isCreating`). Proves: a short "Not set up" chip beside the
@@ -1232,7 +1232,7 @@ const SCREENS: Screen[] = [
     viewport: MOBILE,
   },
   {
-    // station#4521 item 4: on a touch/narrow surface DetailHeader's own
+    // archive#4521 item 4: on a touch/narrow surface DetailHeader's own
     // sticky footer (`.detail-header__mobile-footer`, `position: fixed`) is
     // the editor's ONE save affordance now — proves it, and only it, is
     // present: the header row's own copy no longer mounts here (gated on
@@ -1259,7 +1259,7 @@ const SCREENS: Screen[] = [
     title: 'Mobile — Settings overview',
     path: '/settings?view=overview',
     viewport: MOBILE,
-    // station#4461: NOT `.settings.page` — SettingsView's root is
+    // archive#4461: NOT `.settings.page` — SettingsView's root is
     // `<div className="settings">`, with no `page` class, and that root also
     // wraps the pre-config skeleton/error branch (SettingsView.tsx:538), so
     // waiting on `.settings` would accept a half-rendered page as a pass.
@@ -1272,7 +1272,7 @@ const SCREENS: Screen[] = [
     title: 'Activity — filtered empty',
     path: '/activity',
     viewport: DESKTOP,
-    // station#4501 ("the honest FilteredEmpty derivation"): `SplitPaneLayout`
+    // archive#4501 ("the honest FilteredEmpty derivation"): `SplitPaneLayout`
     // gained `collectionEmpty` so a typed search over a collection that was
     // ALREADY empty renders the plain `Empty` state, never `FilteredEmpty` —
     // deliberately (SplitPaneLayout.tsx:962-967's own comment: "a typed query
@@ -1285,7 +1285,7 @@ const SCREENS: Screen[] = [
     // the raw collection is non-empty and the typed search matches none of
     // it — the suite's own global read-model mock (an empty array, a
     // truthful default for a fresh temp-home) can no longer reach it after
-    // #4501. Override it here with a few real-shaped sessions so
+    // archive#4501. Override it here with a few real-shaped sessions so
     // `collectionEmpty` is false and "missing-session" filters an actual
     // collection down to zero.
     beforeGoto: async (page) => {
@@ -1299,7 +1299,7 @@ const SCREENS: Screen[] = [
         await page.getByPlaceholder('Search sessions…').fill('missing-session');
         // The margin here covers the read-model fetch's own latency (>6s
         // wall-clock has been observed under host load — that signal is
-        // station#4466, not something this timeout fixes); a repeat-500
+        // archive#4466, not something this timeout fixes); a repeat-500
         // still fails loudly via the error branch rather than at this
         // timeout.
         await expect(
@@ -1330,7 +1330,7 @@ const SCREENS: Screen[] = [
       }
     },
   },
-  // #192 converged empty-state screens — both should render the shared
+  // archive#192 converged empty-state screens — both should render the shared
   // Console Kit `Empty` visual (dashed-border card), not bespoke markup.
   {
     name: 'agents-empty',
@@ -1412,13 +1412,13 @@ const SCREENS: Screen[] = [
 
       // Final stability assertion right before the shot: the palette's own
       // "no matches" Empty state must be visible AND the New Project overlay
-      // must be absent. This is the exact race the verifier caught (a
+      // must be absent. This is the site of a known race (a
       // transient /projects/new flip captured as this tile instead of the
       // command palette) — fail loudly here (recorded as a broken tile, not
       // a silently wrong capture) rather than let it slide.
       await expect(page.getByText('No matching commands')).toBeVisible();
       await expect(overlay).toHaveCount(0);
-      // station#4464: `settingsCatalogLoadState === 'loading'` renders its
+      // archive#4464: `settingsCatalogLoadState === 'loading'` renders its
       // OWN `SkeletonBlock` above the results list independently of
       // `ranked.length === 0` — "No matching commands" and a loading
       // skeleton for deferred settings commands can both be on screen at
@@ -1434,12 +1434,12 @@ const SCREENS: Screen[] = [
     path: '/agents',
     viewport: DESKTOP,
     reducedMotion: true,
-    // station#4461: NOT `.page` — that class was retired with the per-view
+    // archive#4461: NOT `.page` — that class was retired with the per-view
     // page wrapper; `.route-transition` (AppViewContent.tsx:223) is the
     // element that animates route entrances now. Honest scope: the tokens.css
     // global reduce rule collapses ALL animation/transition durations, so
     // this assertion derives "the global collapse applied to a genuinely
-    // animated element", not a per-element reduce override — see #4467 for
+    // animated element", not a per-element reduce override — see archive#4467 for
     // upgrading these probes to getAnimations().
     afterGoto: (page) => assertReducedMotion(page, '.route-transition'),
   },
@@ -1463,12 +1463,12 @@ const SCREENS: Screen[] = [
         });
       });
     },
-    // station#4461: NOT `.station-spinner` — that class is gone entirely.
+    // archive#4461: NOT `.station-spinner` — that class is gone entirely.
     // `ScheduleView` now renders its loading state via the shared
     // `SkeletonBlock` (ScheduleView.tsx:204-205), whose blocks carry
     // `@kontourai/ui`'s animated `.skeleton` class. Same honest scope as the
     // navigation screen above: this derives the global reduce collapse on an
-    // animated element, not the ui package's own reduce override (#4467).
+    // animated element, not the ui package's own reduce override (archive#4467).
     afterGoto: (page) => assertReducedMotion(page, '.skeleton'),
   },
   {
@@ -1480,13 +1480,13 @@ const SCREENS: Screen[] = [
     beforeGoto: seedScheduleScreenshotApi,
     afterGoto: async (page) => {
       await page.getByRole('button', { name: 'Add job', exact: true }).click();
-      // station#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
+      // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
       // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
       // backdrop as `.station-dialog__overlay` (Dialog.tsx:118, index.css:699).
       // `.schedule__modal` survives unchanged: it's still passed through as
       // `panelClassName` onto the dialog panel
       // (components/scheduler/JobFormModal.tsx:274). Same honest scope as the
-      // other motion screens: these derive the global reduce collapse (#4467).
+      // other motion screens: these derive the global reduce collapse (archive#4467).
       await assertReducedMotion(page, '.station-dialog__overlay');
       await assertReducedMotion(page, '.schedule__modal');
     },
@@ -1529,7 +1529,7 @@ const SCREENS: Screen[] = [
       await assertReducedMotion(page, '.chat-dock');
     },
   },
-  // station#4469 — overlay screen family: modals, menus, banners, and
+  // archive#4469 — overlay screen family: modals, menus, banners, and
   // sheets stacked above the base page. Each is driven open via a stable,
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
@@ -1541,7 +1541,7 @@ const SCREENS: Screen[] = [
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
       // DockOccupantPicker's trigger names the current occupant
-      // ("Docked pane: Chat") — station#4484 made DockShell own the chrome
+      // ("Docked pane: Chat") — archive#4484 made DockShell own the chrome
       // for every occupant, so this is present whenever the dock is open
       // and not placed fullscreen (`?dock=open` is neither).
       const trigger = page.getByRole('button', { name: /^Docked pane:/ });
@@ -1607,7 +1607,7 @@ const SCREENS: Screen[] = [
     },
   },
   {
-    // station#4521 item 3: the "Agent actions" (Duplicate/Delete) popover,
+    // archive#4521 item 3: the "Agent actions" (Duplicate/Delete) popover,
     // opened from its real "More actions" trigger in the agent editor's
     // sticky header — proves it renders anchored beneath the trigger, not
     // floating mid-screen (the orphaned-popover regression: `anchorRef`
@@ -1640,8 +1640,8 @@ const SCREENS: Screen[] = [
     // Deliberately not '/' or '/agents': home's `StarterInspectionCards` /
     // `StarterScheduledCheckCard` widgets, and Agents' "Engines on this
     // machine" list (real host CLI detection — order/count varies between
-    // separate server boots, caught live via two-consecutive-run captures
-    // disagreeing well below the banner itself, which matched byte-for-byte
+    // separate server boots; two consecutive captures can disagree
+    // well below the banner itself, which matches byte-for-byte
     // both times), are real, live-queried content this screen has no
     // reason to depend on. The banner itself is chrome-wide (mounted
     // regardless of route); Settings is config-driven, not
@@ -1652,7 +1652,7 @@ const SCREENS: Screen[] = [
     viewport: MOBILE,
     waitFor: '.settings__search',
     beforeGoto: async (page) => {
-      // station#4470's identity-mismatch banner — reachable purely through
+      // archive#4470's identity-mismatch banner — reachable purely through
       // the public handshake `probeServerConnection` reads
       // (`serverHealth.ts`), with no dependency on any real paired
       // connection: `typeof handshake.environmentId !== 'string'` alone
@@ -1704,7 +1704,7 @@ const SCREENS: Screen[] = [
       try {
         const banner = page.locator('.banner-host__item').first();
         await expect(banner).toBeVisible({ timeout: 15_000 });
-        // #4470's expanded surface: reveal the disclosure detail so the
+        // archive#4470's expanded surface: reveal the disclosure detail so the
         // banner's full content (message, detail, and the "Pair
         // again"/"Remove" actions) is captured, not just the collapsed
         // one-line summary.
@@ -1720,9 +1720,9 @@ const SCREENS: Screen[] = [
         // handshake mocked to force identity-mismatch, so unregister it
         // here or every screen captured after this one in the run inherits
         // a phantom "isn't the one this device paired with" banner as
-        // chrome (caught live: it bled into overlay-add-job-modal,
-        // overlay-confirm-dialog, overlay-mobile-sheet, and overlay-toast
-        // before this fix). `finally` so a failed assertion above still
+        // chrome (it otherwise bleeds into overlay-add-job-modal,
+        // overlay-confirm-dialog, overlay-mobile-sheet, and overlay-toast).
+        // `finally` so a failed assertion above still
         // cleans up rather than poisoning every later screen too.
         await page.unroute('**/.well-known/station/v1');
       }
@@ -1808,7 +1808,7 @@ const SCREENS: Screen[] = [
     viewport: MOBILE,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // station#793: always rendered (bound project or not — "No project"
+      // archive#793: always rendered (bound project or not — "No project"
       // is a valid, always-reachable switcher state), so this needs no
       // project/session seeding to be deterministic.
       const trigger = page.getByRole('button', { name: /^Switch project/ });
@@ -1819,12 +1819,11 @@ const SCREENS: Screen[] = [
       ).toBeVisible({ timeout: 10_000 });
     },
   },
-  // station#4525 review addendum: no screen in the gallery staged a BOUND
+  // archive#4525: no screen in the gallery otherwise stages a BOUND
   // dock project, a session/badge mismatch, or a POPULATED project-switcher
-  // row (`overlay-mobile-sheet` above is deliberately empty-state) — a
-  // targeted diff against this arc's fix reported zero pixel change on
-  // every existing dock-adjacent screen for exactly that reason. These
-  // three make the fixed states visible in the build gallery.
+  // row (`overlay-mobile-sheet` above is deliberately empty-state), so
+  // those states would be invisible in the build gallery. These
+  // three make them visible.
   {
     name: 'overlay-dock-project-bound',
     title: 'Overlay — Chat dock with a bound project',
@@ -1834,7 +1833,7 @@ const SCREENS: Screen[] = [
       [{ slug: 'demo-project', name: 'Demo Project' }],
       async (page) => {
         await assertNoStrayProjectModal(page);
-        // Drives the REAL picker interaction (station#4524's "Switch to
+        // Drives the REAL picker interaction (archive#4524's "Switch to
         // <project>" row) rather than pre-seeding the persisted binding
         // directly — localStorage/sessionStorage seeded via
         // `page.addInitScript` proved unreliable across this gallery's
@@ -1883,7 +1882,7 @@ const SCREENS: Screen[] = [
       [{ slug: 'demo-project', name: 'Demo Project' }],
       async (page) => {
         await assertNoStrayProjectModal(page);
-        // station#4524: the row's action is "Switch to <project>" (rebinds
+        // archive#4524: the row's action is "Switch to <project>" (rebinds
         // the dock, no chat creation) — not the retired "Continue in
         // <project>" (which always opened the New Chat modal).
         const trigger = page.getByRole('button', { name: 'No project' });
@@ -1964,19 +1963,18 @@ const SCREENS: Screen[] = [
       await expect(toast.getByRole('button', { name: 'View' })).toBeVisible();
     },
   },
-  // station#4521 already added `agent-editor-not-runnable` and
+  // archive#4521 already adds `agent-editor-not-runnable` and
   // `overlay-agent-actions-menu` (above, near `agent-editor`) against a
   // more accurate fixture (a Station-native agent with no LLM provider
-  // connection, matching that issue's real defect) than this arc's own
-  // first attempt (a broken external engine connection) — dropped here
-  // rather than duplicated; see `notRunnableGalleryAgent` above.
-  // Mobile viewport family (station#4464-class coverage gap, this arc): the
+  // connection, matching that issue's real defect) — not duplicated
+  // here; see `notRunnableGalleryAgent` above.
+  // Mobile viewport family (archive#4464-class coverage gap): the
   // primary surfaces at the phone viewport the owner actually dogfoods on —
   // recent owner-reported defects lived at this viewport, and the gallery
   // was desktop-only.
-  // Review MED-4 (fix round): this arc's own first attempt at a plain
-  // "mobile — chat dock" screen (`mobile-chat-dock`, `/?dock=open`, MOBILE
-  // viewport, no `reducedMotion`) rendered pixel-identical
+  // Note: a plain "mobile — chat dock" screen (`mobile-chat-dock`,
+  // `/?dock=open`, MOBILE
+  // viewport, no `reducedMotion`) renders pixel-identical
   // (same decoded-RGBA sha256) to the existing `motion-reduced-mobile-chat`
   // below — the capture loop's `animations: 'disabled'` freezes every shot
   // at its end state regardless of a screen's own `reducedMotion` flag, so
@@ -2021,8 +2019,7 @@ const SCREENS: Screen[] = [
       title: 'Mobile — Onboarding setup banner',
       // The `ONBOARDING_SETUP_RESET_MARKER` query param is this screen's own
       // self-gate for its storage-clearing init script — see
-      // `onboardingSetupBannerSettleHooks`'s doc comment (review MED-1 fix
-      // round). Not read by the app's router (`getLegacyPathRedirect` has no
+      // `onboardingSetupBannerSettleHooks`'s doc comment. Not read by the app's router (`getLegacyPathRedirect` has no
       // case for `/`, same as the existing `?dock=open` precedent above).
       path: `/?${ONBOARDING_SETUP_RESET_MARKER}=1`,
       viewport: MOBILE,
@@ -2033,10 +2030,10 @@ const SCREENS: Screen[] = [
           await assertNoStrayProjectModal(page);
           const launcher = page.getByTestId('setup-launcher');
           await expect(launcher).toBeVisible({ timeout: 15_000 });
-          // See this screen's `volatile: true` baseline entry (station#4464
-          // arbiter's own hand-curated-exception mechanism) for why this
+          // See this screen's `volatile: true` baseline entry (archive#4464's
+          // own hand-curated-exception mechanism) for why this
           // screen's determinism story ends here rather than in a settle
-          // guard: this arc tried and DISPROVED three hypotheses (a live
+          // guard: three hypotheses were tried and DISPROVED (a live
           // `/api/system/status` race — closed by `waitSettled` above; a
           // CSS `animation` on the card — it has none, `onboarding-fade-up`
           // belongs to the unrelated `.onboarding-loading__content`
@@ -2048,10 +2045,10 @@ const SCREENS: Screen[] = [
           // even this project's deterministic-rendering Chromium flags
           // (`--disable-lcd-text`/`--font-render-hinting=none`/
           // `--disable-partial-raster`/`--disable-skia-runtime-opts` —
-          // playwright.config.ts). A later fix round (review MED-3)
-          // independently RE-CONFIRMED this: 9 standalone/mixed-order
-          // captures of this one screen (this MED-1 leak fix already
-          // applied, so route/init-script order is not the variable)
+          // playwright.config.ts). This was independently RE-CONFIRMED: 9
+          // standalone/mixed-order
+          // captures of this one screen (route/init-script order ruled
+          // out as the variable)
           // landed on two distinct stable sha256 values (6 of 9 vs 3 of
           // 9), with no correlation found to run order, preceding screen,
           // or anything else under this suite's control — so the
@@ -2060,7 +2057,7 @@ const SCREENS: Screen[] = [
           // See `withRoute`'s doc comment: the status route registered in
           // `beforeGoto` must be unregistered here or the "unconfigured"
           // fixture leaks into every screen captured after this one for
-          // the rest of the run (review MED-1 fix round).
+          // the rest of the run.
           await cleanup();
         }
       },
@@ -2177,7 +2174,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   const capturedAt = new Date().toISOString();
   const shots: Shot[] = [];
 
-  // station#4464: freeze the host's live CPU/resource-posture reading.
+  // archive#4464: freeze the host's live CPU/resource-posture reading.
   // `ResourcePostureBannerSource` polls `GET /api/system/resource-posture`
   // every 15s and renders a real, chrome-wide "host is busy/at capacity"
   // banner (App.tsx's lazy boundary — present on every route) whenever THIS
@@ -2206,7 +2203,7 @@ test('build gallery — capture key screens', async ({ page }) => {
       },
     }),
   );
-  // station#4464: `ProjectSidebar` (chrome-wide) calls
+  // archive#4464: `ProjectSidebar` (chrome-wide) calls
   // `useOrchestrationSessionsQuery` unconditionally for its own "open
   // chats" derivation, and `SessionsView`/`sidebar` both render a
   // `.skeleton` list until it resolves. On a freshly booted `--temp-home`
@@ -2219,7 +2216,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   await page.route('**/api/orchestration/sessions/read-model', (route) =>
     route.fulfill({ json: { success: true, data: [] } }),
   );
-  // station#4464: `ActionOperationsSection` (Activity page's right pane)
+  // archive#4464: `ActionOperationsSection` (Activity page's right pane)
   // renders "Connecting to operation status…" while `useActionOperationsQuery`
   // is loading and only settles to "Nothing has run yet" once that live
   // poll resolves — the same live-query race as the sessions list above,
@@ -2232,7 +2229,7 @@ test('build gallery — capture key screens', async ({ page }) => {
       },
     }),
   );
-  // station#4464: the Connections hub's "Engines" tab badge
+  // archive#4464: the Connections hub's "Engines" tab badge
   // (connection-section-signals.ts) is the one count in that tab row that
   // isn't already deterministically 0/empty on a fresh temp-home — CLI/agent
   // engine detection resolves asynchronously, and the badge visibly hadn't
@@ -2242,7 +2239,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   await page.route('**/api/connections/agents', (route) =>
     route.fulfill({ json: { success: true, data: [] } }),
   );
-  // station#4464-class fix (determinism verification, this arc):
+  // archive#4464-class determinism guard:
   // `CoreUpdateLaunchCheck` (App.tsx, mounted chrome-wide via `LazyBoundary`
   // on every route) fires `useCoreUpdateStatusQuery` on first render, which
   // hits `GET /api/system/core-update` — a server route
@@ -2253,8 +2250,8 @@ test('build gallery — capture key screens', async ({ page }) => {
   // the real remote between two runs, racing the universal settle wait like
   // every other unmocked global query this suite already guards against
   // (resource-posture, sessions read-model, action-operations,
-  // connections/agents above). Measured live (this arc's Phase 0
-  // determinism check): unmocked, it flipped a chrome-wide "Station update
+  // connections/agents above). Measured unmocked, it flips a chrome-wide
+  // "Station update
   // available" banner on/off across two consecutive runs of the IDENTICAL
   // build, reflowing everything below it and disagreeing on up to ~34% of
   // pixels on 12 of 37 screens (agent-editor, agents, command-palette-empty,
@@ -2303,7 +2300,7 @@ test('build gallery — capture key screens', async ({ page }) => {
         }
         // Let async panels settle so the shot reflects loaded data.
         await page.waitForTimeout(1200);
-        // station#4464: a web-font swap (FOUT/FOIT) landing mid-shot is a
+        // archive#4464: a web-font swap (FOUT/FOIT) landing mid-shot is a
         // well-known source of exactly the kind of tiny, isolated
         // text/border-edge pixel noise this feature's own
         // two-consecutive-runs acceptance check was still catching after
@@ -2320,7 +2317,7 @@ test('build gallery — capture key screens', async ({ page }) => {
         await page.screenshot({
           path: join(GALLERY_DIR, file),
           fullPage: true,
-          // station#4464: freeze CSS animations/transitions at their end state
+          // archive#4464: freeze CSS animations/transitions at their end state
           // instead of racing them — `reducedMotion` above only sets the OS
           // media-query preference, it does not itself stop an in-flight
           // transition from being mid-frame at capture time.

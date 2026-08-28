@@ -25,12 +25,12 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
   'station.coding.treeSnap', // Ephemeral coding-tree selection state.
   'station.dockFirstRunSeen', // One-time affordance marker.
-  // station#3122's `station.home.variant` used to sit here. It was written by
-  // one deletable module and read by nothing else, exactly so that retiring
-  // the variant experiment would take no DEVICE_SETTINGS_REGISTRY entry with
-  // it — and that is what happened: Home is one surface again and the key is
-  // gone from the source, so it is gone from here too rather than left as an
-  // allowance for a writer that no longer exists.
+// archive#3122's `station.home.variant` used to sit here. It was written by
+// one deletable module and read by nothing else, exactly so that retiring
+// the variant experiment would take no DEVICE_SETTINGS_REGISTRY entry with
+// it — and that is what happened: Home is one surface again and the key is
+// gone from the source, so it is gone from here too rather than left as an
+// allowance for a writer that no longer exists.
   'station.newChat.lastModelByBinding', // Derived per-agent last-choice memory.
   'station-starter-work-operations-v1', // Exact Starter Work retry-operation evidence.
   'station-layout-tabs', // Per-layout navigation memory.
@@ -39,7 +39,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
 ] as const;
 
-// Known accepted limitation (review round 2, accepted-with-rationale): this is
+// Known accepted limitation ( 2, accepted-with-rationale): this is
 // a syntax gate against ACCIDENTAL drift, not adversarial evasion — an aliased
 // receiver (`const s = window.localStorage; s.setItem(...)`) escapes it. The
 // allowlisted modules therefore export only semantic-id helpers that derive

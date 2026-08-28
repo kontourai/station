@@ -1,5 +1,5 @@
 /**
- * station#1224 (offline slice 2) — flush trigger.
+ * archive#1224 (offline) — flush trigger.
  *
  * Mounted exactly once (in `App.tsx`, alongside the sibling
  * `useQueryCacheReconnectSync` this mirrors) so only one drain pass ever
@@ -56,16 +56,16 @@ export function useOutboundQueueFlush(apiBase: string): void {
               },
             },
           );
-          // The replay call is given an outbound capability, so its Interface
-          // returns an explicit transport fact. Keep this narrow conversion at
-          // the composition Seam; the Module never infers invocation from a
-          // boolean.
+// The replay call is given an outbound capability, so its Interface
+// returns an explicit transport fact. Keep this narrow conversion at
+// the composition Seam; the Module never infers invocation from a
+// boolean.
           if (result && typeof result === 'object' && 'kind' in result) {
             return result;
           }
-          // A boolean success is only available to direct callers. A replay
-          // lacking the typed provider receipt cannot be accepted because a
-          // later terminal event would have no exact correlation.
+// A boolean success is only available to direct callers. A replay
+// lacking the typed provider receipt cannot be accepted because a
+// later terminal event would have no exact correlation.
           return {
             kind: 'not-invoked' as const,
             reason: 'The send gate did not invoke the provider.',
@@ -141,9 +141,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
 
   const hasFlushedOnMountRef = useRef(false);
   useEffect(() => {
-    // A queue populated by a prior session (survived a restart) with the
-    // connection already confirmed reachable by the time this mounts has no
-    // offline→online transition to catch above — try once on mount too.
+// A queue populated by a prior session (survived a restart) with the
+// connection already confirmed reachable by the time this mounts has no
+// offline→online transition to catch above — try once on mount too.
     if (!hasFlushedOnMountRef.current && status === 'connected') {
       hasFlushedOnMountRef.current = true;
       triggerFlush();

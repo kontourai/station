@@ -44,9 +44,9 @@ export function groupDelegatedSessionRuns(
     const childProject = child.delegation?.projectSlug ?? child.projectSlug;
     const candidateProject =
       candidate.delegation?.projectSlug ?? candidate.projectSlug;
-    // Delta-review D1: absence is NOT corroboration — undefined === undefined
-    // must never join two scope-less legacy summaries. At least one scope
-    // dimension has to be POSITIVELY present (and equal) on both sides.
+ // absence is NOT corroboration — undefined === undefined
+// must never join two scope-less legacy summaries. At least one scope
+// dimension has to be POSITIVELY present (and equal) on both sides.
     const corroborated =
       (childProject !== undefined && candidateProject !== undefined) ||
       (child.delegation?.environmentId !== undefined &&
@@ -64,14 +64,14 @@ export function groupDelegatedSessionRuns(
   const parentOf = (session: OrchestrationSessionSummary) => {
     const parentTaskId = session.delegation?.parentTaskId;
     if (!parentTaskId) return undefined;
-    // station-control-delegation passes a direct parent's thread id verbatim.
-    // That concrete session identity wins over any unrelated task-id owner.
+// station-control-delegation passes a direct parent's thread id verbatim.
+// That concrete session identity wins over any unrelated task-id owner.
     const directParent = byThreadId.get(parentTaskId);
     if (directParent) return directParent;
     const taskIdOwnersForParent = taskIdOwners.get(parentTaskId);
-    // A task id lacks the uniqueness guarantee of a thread id. Claim lineage
-    // only for one scoped match; a collision or missing scope agreement stays
-    // flat rather than attaching work to the wrong run.
+// A task id lacks the uniqueness guarantee of a thread id. Claim lineage
+// only for one scoped match; a collision or missing scope agreement stays
+// flat rather than attaching work to the wrong run.
     if (
       taskIdOwnersForParent?.length === 1 &&
       hasSameTaskScope(session, taskIdOwnersForParent[0])
@@ -88,12 +88,12 @@ export function groupDelegatedSessionRuns(
       seen.add(current.threadId);
       if (!current.delegation?.parentTaskId) return current;
       const parent = parentOf(current);
-      // A delegated session whose parent is not in this filtered projection
-      // cannot honestly become a run parent. Its descendants are flat too.
+// A delegated session whose parent is not in this filtered projection
+// cannot honestly become a run parent. Its descendants are flat too.
       if (!parent) return undefined;
       current = parent;
     }
-    // A malformed cycle has no honest root.
+// A malformed cycle has no honest root.
     return undefined;
   };
 
@@ -118,9 +118,9 @@ export function groupDelegatedSessionRuns(
       presentation.push({ kind: 'session', session });
       continue;
     }
-    // Keep the parent at the run's visual position even if a higher-priority
-    // child lane happened to appear first in the input. The group itself is
-    // the presentation unit now; a child must not pull its parent below it.
+// Keep the parent at the run's visual position even if a higher-priority
+// child lane happened to appear first in the input. The group itself is
+// the presentation unit now; a child must not pull its parent below it.
     if (session !== root) continue;
     presentation.push({
       kind: 'run',

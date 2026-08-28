@@ -9,7 +9,7 @@ import {
   orchestrationCommandSchema,
 } from '../orchestration.js';
 
-// station#2807 H2: the composer does NOT post to /api/agents/:slug/chat —
+// archive#2807 H2: the composer does NOT post to /api/agents/:slug/chat —
 // it posts to /api/orchestration/chat. Before this pin, that route's text
 // bounds were hardcoded literals: raising CHAT_INPUT_MAX_CHARS would have
 // left the composer enabling Send at sizes this seam still refused with a
@@ -62,7 +62,7 @@ describe('orchestration turn-text bounds derive from CHAT_INPUT_MAX_CHARS (stati
     ).toThrow();
   });
 
-  // station#2831: steerTurn.input carries a composer draft verbatim (the
+  // archive#2831: steerTurn.input carries a composer draft verbatim (the
   // queued-message steer path sends the same string the composer's courtesy
   // check gates), so it derives from the same constant — the 100_000 literal
   // that lived here refused at half the composer's limit.
@@ -84,7 +84,7 @@ describe('orchestration turn-text bounds derive from CHAT_INPUT_MAX_CHARS (stati
   });
 });
 
-// station#2831: the behavioral pins above can only see fields someone
+// archive#2831: the behavioral pins above can only see fields someone
 // remembered to name — the original pin enumerated three schemas while a
 // fourth (steerTurn.input) hardcoded half the constant. This structural
 // walker inverts the posture: it walks EVERY string field reachable in the

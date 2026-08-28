@@ -90,8 +90,8 @@ const passthroughGuard = (callback: () => void) => callback();
 
 /**
  * `SettingsView.tsx`'s real shape: `useUnsavedGuard(dirty)`'s `guard` passed
- * straight into `KnowledgeStoreSection` — station#settings-revamp slice 5
- * review finding HIGH 1.
+ * straight into `KnowledgeStoreSection` — archive#settings-revamp
+ * 1.
  */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
@@ -263,7 +263,7 @@ describe('KnowledgeStoreSection', () => {
     });
   });
 
-  // station#settings-revamp slice 5 review finding HIGH 1.
+ // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the "Open Knowledge infrastructure" cross-link', () => {
     test('navigates to /connections/knowledge when the page is not dirty', () => {
       navigateMock.mockClear();

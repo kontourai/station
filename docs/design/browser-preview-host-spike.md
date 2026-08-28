@@ -1,4 +1,4 @@
-# Browser-preview host spike (Station #1376)
+# Browser-preview host spike (Station archive#1376)
 
 **Decision:** retain a stable, separate Tauri `WebviewWindow` as the bounded
 desktop Browser Preview host. The follow-up implementation mints a fresh,
@@ -86,7 +86,7 @@ permissions, CPU/memory, binary size, signing, or packaging.
 | ------------------- | ----------------------- | ------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------ |
 | macOS arm64         | compile + unit-tested policy | compile-only experiment                  | unit-tested command; package `NOT_VERIFIED` | signed-package interaction, navigation callback, store, and resource receipts |
 | Windows             | compile + unit-tested policy | `NOT_VERIFIED`                           | unit-tested command; package `NOT_VERIFIED` | packaged WebView2 run and documented creation-deadlock handling |
-| Linux X11 / Wayland | compile + unit-tested policy | unavailable on Wayland while #15656 is open | unit-tested command; package `NOT_VERIFIED` | packaged runtime, focus, resize, and bounds evidence |
+| Linux X11 / Wayland | compile + unit-tested policy | unavailable on Wayland while archive#15656 is open | unit-tested command; package `NOT_VERIFIED` | packaged runtime, focus, resize, and bounds evidence |
 | Web/PWA             | unavailable              | unsupported                                | unavailable                  | explicit external-open behavior remains `NOT_VERIFIED` in a browser host |
 | Android / iOS       | unavailable              | unsupported                                | unavailable                  | independent mobile renderer/action decision; no multiwebview claim |
 
@@ -101,11 +101,11 @@ permissions, CPU/memory, binary size, signing, or packaging.
 
 ## Upstream evidence
 
-- [Tauri #15682](https://github.com/tauri-apps/tauri/issues/15682) remains open
+- [Tauri archive#15682](https://github.com/tauri-apps/tauri/issues/15682) remains open
   (child webview covers main webview content; checked 2026-08-08).
-- [Tauri #15656](https://github.com/tauri-apps/tauri/issues/15656) remains open
+- [Tauri archive#15656](https://github.com/tauri-apps/tauri/issues/15656) remains open
   (Wayland child-webview bounds; checked 2026-08-08).
-- [Tauri #11794](https://github.com/tauri-apps/tauri/issues/11794) remains open
+- [Tauri archive#11794](https://github.com/tauri-apps/tauri/issues/11794) remains open
   (mobile `add_child`; checked 2026-08-08).
 - [Electron WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)
   is the current API reference for a separately approved Electron host.

@@ -6,14 +6,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
 
-// station#3091 / #3117: the rendered end of the carrying seam. `ToolCallData`
+// archive#3091 / archive#3117: the rendered end of the carrying seam. `ToolCallData`
 // here is exactly the flat `tool-invocation` shape the LIVE orchestration
 // path produces (`handleToolCompletedEvent`, src-ui/src/hooks/orchestration/
 // streamHandlers.ts) and the durable rehydration projection reconstructs
 // (`runtime-event-projection.ts`) — these props are not a fabricated
 // shortcut, they mirror what actually reaches this component both live and
 // after a reload. (Previously cited ToolLifecycleHandler.test.ts, which
-// tested a handler with no production caller — see station#3117.)
+// tested a handler with no production caller — see archive#3117.)
 
 describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => {
   test('renders a distinct, labelled "Blocked by Station" badge naming the reason', () => {
@@ -34,9 +34,9 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     const badge = screen.getByText('Blocked by Station');
     expect(badge).toBeTruthy();
     expect(badge.className).toContain('tool-call__status-badge--warning');
-    // The reason is surfaced in the expandable error details section, the
-    // same mechanism every tool error already uses. The collapsed row itself
-    // is the disclosure button (station#2652 redesign).
+// The reason is surfaced in the expandable error details section, the
+// same mechanism every tool error already uses. The collapsed row itself
+// is the disclosure button (archive#2652 redesign).
     fireEvent.click(document.querySelector('button.tool-call__line')!);
     expect(screen.getByText(reason)).toBeTruthy();
   });
@@ -70,8 +70,8 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     const userBadge = screen.getByText('User denied');
     expect(screen.queryByText('Blocked by Station')).toBe(null);
 
-    // Different label text and different modifier class — not the same
-    // rendering with different words.
+// Different label text and different modifier class — not the same
+// rendering with different words.
     expect(userBadge.className).not.toBe(policyBadge.className);
     expect(userBadge.className).toContain('tool-call__status-badge--error');
   });
@@ -94,8 +94,8 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     );
   });
 
-  // Negative control: a call with genuinely unknown approval state (no
-  // approvalStatus at all — the ordinary, ungated case) renders no badge.
+// Negative control: a call with genuinely unknown approval state (no
+// approvalStatus at all — the ordinary, ungated case) renders no badge.
   test('a call with no approvalStatus renders no approval badge', () => {
     render(
       <ToolCallDisplay
@@ -114,13 +114,13 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     expect(screen.queryByText('Auto-approved')).toBe(null);
   });
 
-  // station#3113: an ordinary (non-policy) failed tool call — `error` set,
-  // no `approvalStatus` at all. Negative control for the marker AND the
-  // positive assertion for #3113's "renders as failed" AC: a visible
-  // "Failed" flag WITHOUT expanding (station#2652 redesign — a reader must
-  // never have to open a row to learn the call went wrong), no success
-  // claim, and no policy-denied badge (an ordinary failure must never read
-  // as a policy verdict it never received).
+// archive#3113: an ordinary (non-policy) failed tool call — `error` set,
+// no `approvalStatus` at all. Negative control for the marker AND the
+ // positive assertion for archive#3113's "renders as failed" AC: a visible
+// "Failed" flag WITHOUT expanding (archive#2652 redesign — a reader must
+// never have to open a row to learn the call went wrong), no success
+// claim, and no policy-denied badge (an ordinary failure must never read
+// as a policy verdict it never received).
   test('an ordinary failed tool call (error set, no approvalStatus) shows a collapsed Failed flag and no policy badge', () => {
     render(
       <ToolCallDisplay
@@ -136,7 +136,7 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     expect(screen.queryByText('Blocked by Station')).toBe(null);
     const failedFlag = screen.getByText('Failed');
     expect(failedFlag.className).toContain('tool-call__status-badge--error');
-    // Visible in the COLLAPSED row: no details panel is open.
+// Visible in the COLLAPSED row: no details panel is open.
     expect(document.querySelector('.tool-call__details')).toBe(null);
     expect(screen.queryByText('Success')).toBe(null);
   });
@@ -159,7 +159,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
 
     const row = screen.getByRole('button', { name: 'Ran npm run build:ui' });
     expect(row.getAttribute('aria-expanded')).toBe('false');
-    // Success claims nothing collapsed — no badge, no raw internal state.
+// Success claims nothing collapsed — no badge, no raw internal state.
     expect(screen.queryByText('completed')).toBe(null);
     expect(screen.queryByText('Success')).toBe(null);
     expect(document.querySelector('.tool-call__pulse')).toBe(null);
@@ -184,9 +184,9 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(footer?.textContent).toBe('✓ Success');
   });
 
-  // station#3690 review: this used `read_file`, whose past tense and bare
-  // infinitive are both "Read" — so it could not tell a truthful label from an
-  // overclaiming one. `shell_exec` discriminates ("Ran" vs "Run").
+ // archive#3690: this used `read_file`, whose past tense and bare
+// infinitive are both "Read" — so it could not tell a truthful label from an
+// overclaiming one. `shell_exec` discriminates ("Ran" vs "Run").
   test('an unresolved call (started, no terminal event) claims neither completion nor a terminal status', () => {
     render(
       <ToolCallDisplay
@@ -200,26 +200,26 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
       />,
     );
 
-    // The transcript saw this call START and never saw it end. "Ran npm test"
-    // would assert a completion nothing observed.
+// The transcript saw this call START and never saw it end. "Ran npm test"
+// would assert a completion nothing observed.
     const row = screen.getByRole('button', { name: /npm test/ });
     expect(document.querySelector('.tool-call__label')?.textContent).toBe(
       'Run npm test',
     );
-    // …and it is not left looking like a settled success either: the row says
-    // what is actually true about it.
+// …and it is not left looking like a settled success either: the row says
+// what is actually true about it.
     expect(screen.getByText('No result recorded')).toBeTruthy();
 
     fireEvent.click(row);
-    // No terminal outcome was observed, so no status footer is invented.
+// No terminal outcome was observed, so no status footer is invented.
     expect(document.querySelector('.tool-call__status-footer')).toBe(null);
     expect(screen.queryByText('Success')).toBe(null);
     expect(screen.queryByText('Failed')).toBe(null);
   });
 
-  // The two claims the old `done` fallback made, each using `write_file` so
-  // past tense and infinitive differ — a denial must never borrow the
-  // completed verb.
+// The two claims the old `done` fallback made, each using `write_file` so
+// past tense and infinitive differ — a denial must never borrow the
+// completed verb.
   test('a user-denied call never claims the work happened', () => {
     render(
       <ToolCallDisplay
@@ -239,7 +239,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
       'Edit config.json',
     );
     expect(screen.getByText('User denied')).toBeTruthy();
-    // The badge is the outcome; the verb must not contradict it.
+// The badge is the outcome; the verb must not contradict it.
     expect(screen.queryByText('Edited config.json')).toBe(null);
   });
 
@@ -316,7 +316,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
       />,
     );
 
-    // Bare infinitive — past tense would claim work that has not happened.
+// Bare infinitive — past tense would claim work that has not happened.
     expect(screen.getByText('Edit approved.txt')).toBeTruthy();
     expect(screen.queryByText('Edited approved.txt')).toBe(null);
     fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));

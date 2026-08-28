@@ -76,7 +76,7 @@ artifact binding.
 ```bash
 npm test                          # alias of test:prepush (pre-push floor); not an edit loop, not completion evidence
 npm run test:prepush:repeat       # 20 attempts + local pass-rate/timing receipt
-npm run test:windows:portable     # Windows portable floor; not full parity (#1420)
+npm run test:windows:portable     # Windows portable floor; not full parity (archive#1420)
 npm run test:load-reliability     # dry-only plan for the opt-in local stress lane
 npm run test:full                 # resource-profiled complete Vitest corpus (needs install:playwright — see below)
 npm run verify:local              # resolve Node 24, pin it for children, run verify:static
@@ -118,10 +118,10 @@ image bytes or broad logs into agent context.
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
 OpenSSH argv, cleanup, and broken-pipe contracts. Full Windows Vitest parity
-remains failing closed under issue #1420; do not add exclusions or
+remains failing closed under issue archive#1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
-### Targeted screenshot capture and the baseline diff loop (station#4464)
+### Targeted screenshot capture and the baseline diff loop (archive#4464)
 
 `tests/screenshots.spec.ts`'s `SCREENS` list can be captured as a named
 subset instead of the full gallery: set `STATION_E2E_SCREENS` to a
@@ -173,7 +173,7 @@ Chromium launch flags (`--force-color-profile=srgb`,
 defensive pin against a future Chromium/host default change, since headless
 Chromium on the measured host already rasterizes through software
 SwiftShader/Vulkan by default. What had been diagnosed as residual
-sub-pixel rasterization jitter (station#4464) turned out, on closer
+sub-pixel rasterization jitter (archive#4464) turned out, on closer
 inspection of the diff images, to be a genuine content race instead: the
 Connections hub's shared tab-bar badges (`useIntegrationsQuery` /
 `GET /integrations`, `useGlobalKnowledgeStatusQuery` /
@@ -292,7 +292,7 @@ runner applies Station's approved patch step explicitly; it does not trust a
 root `postinstall` hook. `node_modules/playwright/package.json` declares no
 install script of its own. `npm run test:full` and `npm run full:regression`'s
 ordinary Vitest corpus include `BannerHost.touch-target.test.tsx`
-(station#3453), which launches a real repo-local Chromium to measure
+(archive#3453), which launches a real repo-local Chromium to measure
 cascade-resolved layout — not an E2E spec, so it is easy to assume it needs
 nothing beyond `npm run dependencies:ci`. It does not silently skip when the browser is
 missing (this repo's "no conditional green exits" browser-test doctrine
@@ -361,7 +361,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. Its 20-unit reservation overlaps the 80-unit `test-full-ordinary` phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (archive#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. Its 20-unit reservation overlaps the 80-unit `test-full-ordinary` phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `repo-governance` — 20-unit host reservation; 5-minute execution deadline.
@@ -565,14 +565,14 @@ A grep over changed string literals alone misses a route rename: the old
 inbound path can still resolve (kept as an alias in
 `resolveViewFromPath`) while the app's own outbound navigation now emits the
 new canonical path, so a spec elsewhere asserting the old outbound URL goes
-stale silently. This is exactly what happened between #190 and #205: #190's
+stale silently. This is exactly what happened between archive#190 and archive#205: archive#190's
 noun-unification pass renamed `/connections/agents` →
 `/connections/agent-apps` and `/connections/providers` → `/connections/models`
 plus a "cloud providers" → "cloud services" copy change, and judged the
 product bucket clear because no product-bucket spec referenced the changed
 strings — but `tests/onboarding-setup-banner.spec.ts` (extended bucket) and
 `tests/settings.spec.ts` (extended bucket) both pinned the old routes/copy
-and went stale until #205 closed the gap. Before narrowing an e2e
+and went stale until archive#205 closed the gap. Before narrowing an e2e
 verification lane, grep every bucket for both the changed strings and the
 changed route outputs, not just the bucket you are actively touching.
 

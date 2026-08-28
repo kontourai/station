@@ -66,7 +66,7 @@ describe('writeSSEError', () => {
   });
 });
 
-// station#1207 review round 2, item 3: the keepalive producer's cadence
+// archive#1207 review round 2, item 3: the keepalive producer's cadence
 // and cleanup were previously proven only by inspection (the two watchdog
 // suites at the client and adapter layers only ever verify the CONSUMER
 // side — that keepalives reset a stall timer). This exercises the

@@ -243,21 +243,21 @@ describe('native authenticated transport', () => {
     );
   });
 
-  /**
-   * station#1818 R2 — the fault this proves against: a rejected
-   * `invoke('station_native_http_request')` used to be collapsed with
-   * `String(error)`, which stringifies the `NativeCommandError` object Rust
-   * now rejects with (`{ code, message }`) to the useless
-   * `"[object Object]"` and discards the `code`
-   * `classifyNativeTransportRefusal` needs to tell "credential unreadable"
-   * apart from "genuinely unreachable". This asserts the thrown `Error`
-   * carries `.code` unchanged from the rejection.
-   */
+/**
+ * archive#1818 — the fault this proves against: a rejected
+* `invoke('station_native_http_request')` used to be collapsed with
+* `String(error)`, which stringifies the `NativeCommandError` object Rust
+* now rejects with (`{ code, message }`) to the useless
+* `"[object Object]"` and discards the `code`
+* `classifyNativeTransportRefusal` needs to tell "credential unreadable"
+* apart from "genuinely unreachable". This asserts the thrown `Error`
+* carries `.code` unchanged from the rejection.
+*/
   test('preserves a stale-ACL credential-store refusal from native transport', async () => {
     bridge.invoke.mockImplementation(async (command: string) => {
       if (command === 'station_native_http_request') {
-        // Exact code emitted before any server request when an ad-hoc bundle
-        // replacement can no longer read the prior keychain ACL.
+// Exact code emitted before any server request when an ad-hoc bundle
+// replacement can no longer read the prior keychain ACL.
         throw {
           code: 'credential_store_unreadable',
           message: 'read OS credential store: errSecAuthFailed',
@@ -297,16 +297,16 @@ describe('native authenticated transport', () => {
     });
   });
 
-  /** A command not yet converted to `NativeCommandError` still rejects with
-   * a bare string — preserved as the error's text, with `code` falling back
-   * to that same text (an unrecognized code, not a crash). */
-  /**
-   * station#1818 review round 1 (LOW): a legacy/uncoded rejection's raw
-   * prose must NOT become `.code` — that would let a future `.code`
-   * consumer accidentally match on a sentence, reopening the FFI-boundary
-   * prose-matching this mechanism replaced. The message itself is still
-   * preserved for logs/humans.
-   */
+/** A command not yet converted to `NativeCommandError` still rejects with
+* a bare string — preserved as the error's text, with `code` falling back
+* to that same text (an unrecognized code, not a crash). */
+/**
+ * archive#1818 1 : a legacy/uncoded rejection's raw
+* prose must NOT become `.code` — that would let a future `.code`
+* consumer accidentally match on a sentence, reopening the FFI-boundary
+* prose-matching this mechanism replaced. The message itself is still
+* preserved for logs/humans.
+*/
   test('leaves .code unset (never the raw prose) for a legacy (uncoded) invoke rejection', async () => {
     bridge.invoke.mockImplementation(async (command: string) => {
       if (command === 'station_native_http_request') {

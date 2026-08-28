@@ -23,7 +23,7 @@ export function CredentialProfileEnrolment({
   );
 
   if (isLoading) {
-    // SHELL-13: a twelfth loading sentence. The vocabulary is SkeletonList /
+    // a twelfth loading sentence. The vocabulary is SkeletonList /
     // SkeletonBlock, and a wait names itself in the skeleton's `label` — not
     // in a new string that disagrees with its neighbours on casing, ellipsis
     // and noun. Region-shaped wait, so SkeletonBlock.

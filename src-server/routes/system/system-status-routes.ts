@@ -68,7 +68,7 @@ function normalizeConfiguredProviders(
   }));
 }
 
-// station#1193 (epic #1191, slice A): "chat ready" must be engine-agnostic —
+// archive#1193 (epic archive#1191, slice A): "chat ready" must be engine-agnostic —
 // a ready EXTERNAL engine (Claude Code, Codex, or any future command-backed
 // engine) is exactly as chat-capable as a connected ACP engine, symmetric
 // with `acpConnected` below. This is derived GENERICALLY from the registered
@@ -295,7 +295,7 @@ async function resolveRuntimeEnabledPredicate(
 }
 
 /**
- * station#1194 review (HIGH): this previously hardcoded `enabled: true`, so it
+ * archive#1194 review (HIGH): this previously hardcoded `enabled: true`, so it
  * was STRUCTURALLY unable to see a connection the user had disabled in the
  * Connections hub — it had no `appConfig` to consult. `enriched-agents.ts`
  * reads the real setting (`conn.enabled && conn.status === 'ready'`) and
@@ -344,7 +344,7 @@ export async function resolveExternalEngineReadiness(
           // projection must withhold the CTA rather than fail status discovery
           // or invent a plausible connection ID.
         }
-        // Fail-closed (station#1193 review finding 1): `getPrerequisites` is
+        // Fail-closed (archive#1193 review finding 1): `getPrerequisites` is
         // OPTIONAL on `ProviderAdapterShape`. Treating an adapter that doesn't
         // implement it as `prerequisites: []` would let
         // `resolveRuntimeAdapterReadiness` find nothing required-missing and
@@ -500,14 +500,14 @@ function buildCapabilityStates(input: {
   );
 
   return {
-    // station#1194: chat readiness is engine-agnostic, symmetric with
+    // archive#1194: chat readiness is engine-agnostic, symmetric with
     // `runtime` below and resolved from the same signals. A ready engine
     // connection is already manufactured into a selectable agent
     // (`__agent:<connectionId>`, see enriched-agents.ts's
     // `conn.enabled && conn.status === 'ready'` branch), so a machine with
     // Claude Code or Codex ready can start a chat with no model connection
     // and no default agent — which is exactly what `runtime.ready` already
-    // reported while this said `false`, the contradiction #1191 opens with.
+    // reported while this said `false`, the contradiction archive#1191 opens with.
     //
     // Deliberately NOT gated on a registered default agent. That agent is a
     // convenience — the assistant that can set up projects, agents and
@@ -584,7 +584,7 @@ function buildSystemRecommendation(input: {
       detail: `Station can already route chat through ${enabledLlmProvider.type}. Review connections if you want to change the default.`,
     };
   }
-  // station#1194: a ready engine outranks an inactive model connection.
+  // archive#1194: a ready engine outranks an inactive model connection.
   // `runtime-only` below already carries the correct copy ("Ready engines can
   // start a chat without a separate model connection") — it was simply
   // unreachable, because ANY configured-but-inactive LLM provider (a detected
@@ -663,7 +663,7 @@ function buildSystemRecommendation(input: {
 // and the `prerequisites` install-guide list — NOT the readiness signal. Real
 // chat-readiness for an external engine comes from
 // `resolveExternalEngineReadiness` (CLI resolvable AND authenticated), never
-// from this alone. Shared with native-engine adoption (#1575) so both agree
+// from this alone. Shared with native-engine adoption (archive#1575) so both agree
 // on what "installed" means.
 const whichCmd = detectCliOnPath;
 
@@ -796,7 +796,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     ),
   );
 
-  // station#1985: an authenticated, additive self-report of this Station
+  // archive#1985: an authenticated, additive self-report of this Station
   // instance's build/port identity. Fail-OPEN (unlike `/identity`'s
   // fail-closed triple below): every field is independently omitted when
   // unavailable, mirroring `readBuildProvenance`'s own "absence degrades;
@@ -823,7 +823,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
       ...(build?.builtAt ? { builtAt: build.builtAt } : {}),
       ...(build?.channel ? { channel: build.channel } : {}),
       ...(typeof build?.dirty === 'boolean' ? { dirty: build.dirty } : {}),
-      // station#3677 review MED 4: the runtime's own consent-listener
+      // archive#3677 review MED 4: the runtime's own consent-listener
       // availability — what the CLI start report must derive its consent
       // line from, instead of a TCP probe an unrelated process can satisfy.
       ...(deps.getConsentAvailability
@@ -836,7 +836,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     const build = readBuildProvenance();
     systemOps.add(1, { op: 'get_identity' });
     // Identity stays fail-closed even though `readBuildProvenance` is now
-    // partial (station#1085): remote probes (openssh-worker-probe) treat this
+    // partial (archive#1085): remote probes (openssh-worker-probe) treat this
     // triple as proof of *which* Station answered, so a partial answer is not
     // an identity and must not be served as one.
     if (!build?.fullSha || !build.instanceId || !build.bootId) {
@@ -853,7 +853,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
   });
 
   app.get('/status', async (c) => {
-    // station#3843 §1: derived once, from the locality the auth boundary
+    // archive#3843 §1: derived once, from the locality the auth boundary
     // bound for THIS request, and spread into every branch below so the
     // deterministic E2E payload cannot answer a different device class from
     // the real one.
@@ -1060,7 +1060,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
       externalEngines: externalEngineReadiness.engines,
       capabilities,
       recommendation,
-      // The instance's own endpoint identity (#2551): operators and deploy
+      // The instance's own endpoint identity (archive#2551): operators and deploy
       // tooling matching a build to an endpoint need it in-band, not from
       // launchd args. Included only as far as the route host supplies it.
       ...(deps.host !== undefined ||

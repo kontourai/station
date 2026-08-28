@@ -39,8 +39,8 @@ export function TerminalPanel({
   terminalId?: string;
   shell?: string;
   shellArgs?: string[];
-  /** True when this is the visible terminal tab; only then does it accept
-   * externally-injected input (e.g. "Send to terminal" from the file tree). */
+/** True when this is the visible terminal tab; only then does it accept
+* externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
   const { apiBase, credentialProvider } = useApiBase();
@@ -51,16 +51,16 @@ export function TerminalPanel({
   const [wsError, setWsError] = useState(false);
   const [selection, setSelection] = useState('');
   const [handoffError, setHandoffError] = useState<string | null>(null);
-  // Populated by the WS effect; sends text to the PTY as if typed.
+// Populated by the WS effect; sends text to the PTY as if typed.
   const sendTextRef = useRef<((text: string) => boolean) | null>(null);
   const getLiveCwdRef = useRef<(() => Promise<string | null>) | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Bump the glyph size on phone-width viewports — xterm renders to a canvas,
-    // so the readable-text fix has to live in JS, not CSS. Mirrors the 768px
-    // mobile breakpoint used across the stylesheets.
+// Bump the glyph size on phone-width viewports — xterm renders to a canvas,
+// so the readable-text fix has to live in JS, not CSS. Mirrors the 768px
+// mobile breakpoint used across the stylesheets.
     const isMobileViewport =
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
@@ -118,10 +118,10 @@ export function TerminalPanel({
         return;
       }
 
-      // Connect to the host the app was loaded from (e.g. the LAN IP on a
-      // phone), not `localhost` — on a remote device localhost is the device
-      // itself and never reaches the terminal server. The WS server binds
-      // 0.0.0.0, so the LAN host resolves correctly.
+// Connect to the host the app was loaded from (e.g. the LAN IP on a
+// phone), not `localhost` — on a remote device localhost is the device
+// itself and never reaches the terminal server. The WS server binds
+// 0.0.0.0, so the LAN host resolves correctly.
       const base = new URL(apiBase, window.location.href);
       const wsProto = base.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${wsProto}//${base.hostname}:${port}`);
@@ -175,7 +175,7 @@ export function TerminalPanel({
             terminal.write('\r\n[terminal exited]\r\n');
           }
         } catch {
-          /* ignore malformed */
+/* ignore malformed */
         }
       };
 
@@ -198,8 +198,8 @@ export function TerminalPanel({
       }
     });
 
-    // Expose a way to inject text into this PTY (read ws/sessionId at call time).
-    // Refuse once the PTY has exited so callers don't write into a dead shell.
+// Expose a way to inject text into this PTY (read ws/sessionId at call time).
+// Refuse once the PTY has exited so callers don't write into a dead shell.
     sendTextRef.current = (text: string) => {
       if (!exited && ws?.readyState === WebSocket.OPEN && sessionId) {
         ws.send(JSON.stringify({ type: 'data', sessionId, data: text }));
@@ -253,9 +253,9 @@ export function TerminalPanel({
       for (const resolve of cwdRequests.values()) resolve(null);
       cwdRequests.clear();
       observer.disconnect();
-      // Unmounting is presentation lifecycle, not terminal lifecycle. The
-      // server retains an unowned session briefly so the same identity can
-      // reconnect after a host tab switch, move, or layout navigation.
+// Unmounting is presentation lifecycle, not terminal lifecycle. The
+// server retains an unowned session briefly so the same identity can
+// reconnect after a host tab switch, move, or layout navigation.
       terminal.dispose();
       terminalRef.current = null;
       ws?.close();
@@ -273,9 +273,9 @@ export function TerminalPanel({
   ]);
 
   const sendSelectionToChat = async () => {
-    // Read from xterm at the hand-off, rather than from selection state: this
-    // is the one complete, contiguous selection on which the credential scan
-    // must operate, even if PTY output arrived in multiple reads.
+// Read from xterm at the hand-off, rather than from selection state: this
+// is the one complete, contiguous selection on which the credential scan
+// must operate, even if PTY output arrived in multiple reads.
     const terminalOutput = terminalRef.current?.getSelection() ?? '';
     if (!terminalOutput) return;
     if (selectionContainsCredential(terminalOutput)) {
@@ -305,9 +305,9 @@ export function TerminalPanel({
     const nextDraft = existingDraft
       ? `${existingDraft}\n\n${handoff}`
       : handoff;
-    // Persist and project the same draft through the real composer seams.
-    // Neither operation dispatches a provider turn; sending remains the
-    // composer's explicit user action.
+// Persist and project the same draft through the real composer seams.
+// Neither operation dispatches a provider turn; sending remains the
+// composer's explicit user action.
     setDraft(activeChat, nextDraft);
     updateChat(activeChat, { input: getDraft(activeChat) });
     setHandoffError(null);
@@ -324,8 +324,8 @@ export function TerminalPanel({
     }
   };
 
-  // Register as the active terminal writer only while this tab is visible, so
-  // injected input always lands in the terminal the user is looking at.
+// Register as the active terminal writer only while this tab is visible, so
+// injected input always lands in the terminal the user is looking at.
   useEffect(() => {
     if (!isActive) return;
     activeTerminalWriter.setActive(terminalId, (text) =>
@@ -374,9 +374,9 @@ function CommandExecutor({ workingDir }: { workingDir: string }) {
   const { apiBase } = useApiBase();
   const isMobile = useIsMobile();
   const [input, setInput] = useState('');
-  // Mirror of the composer's unmount guard: blur never fires for an
-  // unmounted terminal, and a stuck terminalFocused would suppress every
-  // {not:'terminalFocused'} shortcut globally (sol review finding).
+// Mirror of the composer's unmount guard: blur never fires for an
+// unmounted terminal, and a stuck terminalFocused would suppress every
+// {not:'terminalFocused'} shortcut globally.
   useEffect(() => () => setShortcutContext('terminalFocused', false), []);
 
   const [history, setHistory] = useState<string[]>([]);

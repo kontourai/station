@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4463 slice 2 review MED-5: RegistryCatalog's tab strip had no
- * render-level coverage before this fix round. Smoke-level only — the
+* archive#4463: RegistryCatalog's tab strip had no
+* render-level coverage before this. Smoke-level only — the
  * primitive itself is covered in `Tabs.test.tsx`.
  */
 import { fireEvent, render, screen } from '@testing-library/react';

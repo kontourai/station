@@ -18,7 +18,7 @@ export interface CommandAgent {
  * skill is the attachment itself. This replaces a derivation that read the
  * authored record's own `agent` field and ignored the agent's own binding list
  * entirely — so attaching a record to an agent saved a setting that changed
- * nothing (CAT-R08).
+ * nothing (CAT-).
  */
 export function isSkillCommandOfferedTo(
   skill: Skill,
@@ -88,7 +88,7 @@ export type SkillVariableSubstitution =
 
 /**
  * Substitute a skill's `{{variables}}` — the ONE derivation shared by the
- * Test modal and the slash handler (review M3: the two used to disagree, and
+ * Test modal and the slash handler (review : the two used to disagree, and
  * both would substitute an empty string for a variable nobody supplied).
  *
  * A declared default applies when no value was provided. A CLEARED value
@@ -109,12 +109,12 @@ export function substituteSkillVariables(
   let content = body;
   for (const variable of variables) {
     const typed = provided[variable.name];
-    // An explicitly empty value is no value: fall to the default (delta
-    // review — clearing a Test field used to suppress the default until the
-    // modal was closed).
+// An explicitly empty value is no value: fall to the default (delta
+// review — clearing a Test field used to suppress the default until the
+// modal was closed).
     const value =
       typed !== undefined && typed.trim() !== '' ? typed : variable.default;
-    // An empty declared default is not usable either; both read as missing.
+// An empty declared default is not usable either; both read as missing.
     if (value === undefined || value.trim() === '') {
       missing.push(variable.name);
       continue;
@@ -130,7 +130,7 @@ export type ShellWords =
 
 /**
  * Split a typed command line the way a shell would — the ONE parser every
- * slash-command consumer uses (delta review: a plain whitespace split turned
+ * slash-command consumer uses (: a plain whitespace split turned
  * `/release "release notes" prod` into three broken words).
  *
  * Double and single quotes group; inside double quotes a backslash escapes
@@ -201,7 +201,7 @@ export type SkillVariableArgs =
   | { ok: false; error: string };
 
 /**
- * Map parsed command words onto a skill's declared variables (delta review:
+ * Map parsed command words onto a skill's declared variables (:
  * pure positional fill could not skip an earlier defaulted variable).
  *
  * A word whose `name=` prefix names a DECLARED variable assigns by name; every

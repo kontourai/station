@@ -80,7 +80,7 @@ async function withAgentPersistenceLock<T>(
  * `updateAgent` materialization, plugin installs — with zero dep
  * threading). Fail-closed by construction: a nonexistent project is the
  * only way this returns false. Exported so `plugin-install-shared.ts`'s
- * plugin-agent sync reuses this exact check (station#1004 review HIGH-1)
+ * plugin-agent sync reuses this exact check (archive#1004 review HIGH-1)
  * instead of duplicating it.
  */
 export function owningProjectExists(
@@ -93,7 +93,7 @@ export function owningProjectExists(
 }
 
 /**
- * A1 (station#1004 plan ambiguity resolution): reject only a save that
+ * A1 (archive#1004 plan ambiguity resolution): reject only a save that
  * introduces or CHANGES `project` to an unknown value. A save whose
  * `project` is byte-identical to the value already persisted for this slug
  * is allowed — this keeps an already-orphaned record editable (the user can
@@ -123,7 +123,7 @@ async function assertOwningProjectSavable(
 }
 
 /**
- * station#3549 review round 3 (independent, Codex): "this agent has no
+ * archive#3549 review round 3 (independent, Codex): "this agent has no
  * on-disk spec" and "this agent's spec could not be read" were both a bare
  * `Error`, so no caller could tell them apart.
  *
@@ -193,7 +193,7 @@ export async function loadAgentConfig(
 }
 
 /**
- * Drop `tools.aliases` from a spec read off disk (station#2832).
+ * Drop `tools.aliases` from a spec read off disk (archive#2832).
  *
  * The field was write-only for its whole life: a validated, scoped route and a
  * service setter persisted it, and nothing ever read it to rename or resolve a
@@ -262,7 +262,7 @@ function assertEngineIdentityWritable(
 /**
  * Returns the spec that was actually written, which is not always the spec
  * handed in: for the reserved Station identity the engine binding is stripped
- * here (station#3662 delta H3).
+ * here (archive#3662 delta H3).
  *
  * This is the one seam every Agent write shares — create, update and
  * `mutateAgentConfig` all land here under the per-Agent persistence lock — so
@@ -371,10 +371,10 @@ export async function createAgentConfig(
  * Four rules, all load-bearing:
  * - `slug`/`updatedAt`/`workflowWarnings` are RESPONSE shape, never input.
  * - `undefined` means "no change", so it must not overwrite a stored value.
- * - `project: null` is the ownership-clearing signal (station#1004 §4). The
+ * - `project: null` is the ownership-clearing signal (archive#1004 §4). The
  *   schema types `project` as a bare string, so `null` is never persisted; it
  *   deletes the key from the merged record instead.
- * - `execution: null` is the same shape for the engine binding (station#3662).
+ * - `execution: null` is the same shape for the engine binding (archive#3662).
  *   An Agent moved to Station's own engine must LOSE `execution`, and an
  *   omitted block cannot say that — `undefined` is "leave it alone", which
  *   kept the old binding across a save that visibly changed the engine. The
@@ -434,14 +434,14 @@ export async function updateAgentConfig(
     const existing = await loadAgentConfig(projectHomeDir, slug);
     const updated = mergeAgentConfigUpdate(existing, updates);
     // The WRITE is what decides the record, not the merge: the reserved
-    // Station identity's binding is stripped there (station#3662 delta H3),
+    // Station identity's binding is stripped there (archive#3662 delta H3),
     // so returning the merge result would report a field that is not on disk.
     return saveAgentConfigWithOwnedLock(projectHomeDir, slug, updated);
   });
 }
 
 /**
- * Read → derive → write, all INSIDE the per-agent lock (station#1606's
+ * Read → derive → write, all INSIDE the per-agent lock (archive#1606's
  * serialized-updater pattern).
  *
  * `updateAgentConfig` merges a partial and therefore cannot DELETE a field —

@@ -1,7 +1,7 @@
 /**
  * Shared relative-time util extracted from ChatDockInboxPanel so every
  * work-item surface (Home lanes, inbox, mobile task switcher) renders the
- * same "2m ago" story. Owner report 2026-08-14: task rows showed no time
+ * same "2m ago" story. Owner report : task rows showed no time
  * anywhere.
  */
 

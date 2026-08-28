@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#2642. The System tab is the "why did we disconnect" surface: it
+ * archive#2642. The System tab is the "why did we disconnect" surface: it
  * must render uptime + restart history from the boot-history query and the
  * device-local connection state, and must NOT fabricate a cause chip for a
  * record that carries none (label-vs-derivation rule).

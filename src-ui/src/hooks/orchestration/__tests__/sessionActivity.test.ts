@@ -39,9 +39,9 @@ beforeAll(async () => {
 
 describe('isSessionExecutionActive — indicator gating', () => {
   test('a stale idle orchestrationStatus no longer vetoes a local send', () => {
-    // The regression: after the first turn, orchestrationStatus is 'idle';
-    // the old preference order hid the indicator until the provider's
-    // session.state-changed round-tripped.
+// The regression: after the first turn, orchestrationStatus is 'idle';
+// the old preference order hid the indicator until the provider's
+// session.state-changed round-tripped.
     expect(
       isSessionExecutionActive({
         status: 'sending',
@@ -339,14 +339,14 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     ]);
   });
 
-  // #1076: `to` is the provider's coarse PROCESS status — 'running' means the
-  // runtime attached, not that a turn is open. The snapshot path already
-  // gates this (#1034); the live-event path must agree or a mere attach
-  // (service restart re-attach, reconnect) strands the chat as active for
-  // every orchestrationStatus consumer (home labels via the lifecycle merge,
-  // the streaming-shell engagement in isSessionExecutionActive).
+ // archive#1076: `to` is the provider's coarse PROCESS status — 'running' means the
+// runtime attached, not that a turn is open. The snapshot path already
+ // gates this (archive#1034); the live-event path must agree or a mere attach
+// (service restart re-attach, reconnect) strands the chat as active for
+// every orchestrationStatus consumer (home labels via the lifecycle merge,
+// the streaming-shell engagement in isSessionExecutionActive).
   test("a state-changed to 'running' with no open turn does not mark the chat running (#1076)", () => {
-    // No turn is open: the chat is at rest (no turn.started, no local send).
+// No turn is open: the chat is at rest (no turn.started, no local send).
     activeChatsStore.updateChat(threadId, {
       status: 'idle',
       orchestrationStatus: 'idle',
@@ -378,8 +378,8 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
   });
 
   test("a state-changed to 'running' during an open turn keeps the chat running (#1076)", () => {
-    // The REAL sequence, not seeded store state: turn.started opens the
-    // client turn fold.
+// The REAL sequence, not seeded store state: turn.started opens the
+// client turn fold.
     handleTurnStartedEvent({
       eventId: 'evt-turn',
       provider: 'claude',
@@ -414,10 +414,10 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     ).toBe(true);
   });
 
-  // #1076 review HIGH: an in-turn approval drops UI status to 'idle', so
-  // status alone must not be the turn authority — the post-approval
-  // 'running' state-change has to re-engage the shell for the still-open
-  // turn.
+// archive#1076: an in-turn approval drops UI status to 'idle', so
+// status alone must not be the turn authority — the post-approval
+// 'running' state-change has to re-engage the shell for the still-open
+// turn.
   test('the post-approval running state-change re-engages the still-open turn (#1076 review HIGH)', () => {
     const at = '2026-07-23T00:00:00.000Z';
     handleTurnStartedEvent({
@@ -451,7 +451,7 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
       } as any,
       activeChatsStore,
     );
-    // Mid-approval the shell is parked; the turn is still open.
+// Mid-approval the shell is parked; the turn is still open.
     expect(activeChatsStore.getSnapshot()[threadId]?.status).toBe('idle');
     handleRequestResolvedEvent({
       eventId: 'evt-4',
@@ -525,17 +525,17 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.orchestrationStatus).toBe('idle');
   });
 
-  // station#1207 review round 1, HIGH 2: a silent stall on the
-  // station-agent adapter's inner /chat bridge has no dedicated
-  // `turn.failed` event — `runtime.error` IS the terminal-failure signal
-  // for this path (server-side proof: `station-agent-adapter.test.ts`'s
-  // "a silently stalled inner /chat stream publishes runtime.error..."
-  // test). This pins the client maps it to error state + a real Retry
-  // affordance, reusing the EXISTING `[SYSTEM_EVENT] [CHAT_ERROR]` +
-  // `findPrecedingUserTurn` "Send again" mechanism (#797,
-  // `chat-dock-failed-turn-retry.test.ts` proves that mechanism generically
-  // resolves ANY correctly-shaped marker) rather than inventing a second
-  // retry path this module has no hook access to build.
+ // archive#1207 1, 2: a silent stall on the
+// station-agent adapter's inner /chat bridge has no dedicated
+// `turn.failed` event — `runtime.error` IS the terminal-failure signal
+// for this path (server-side proof: `station-agent-adapter.test.ts`'s
+// "a silently stalled inner /chat stream publishes runtime.error..."
+// test). This pins the client maps it to error state + a real Retry
+// affordance, reusing the EXISTING `[SYSTEM_EVENT] [CHAT_ERROR]` +
+ // `findPrecedingUserTurn` "Send again" mechanism (archive#797,
+// `chat-dock-failed-turn-retry.test.ts` proves that mechanism generically
+// resolves ANY correctly-shaped marker) rather than inventing a second
+// retry path this module has no hook access to build.
   test('runtime.error (the stall-triggered path) appends the reusable [SYSTEM_EVENT][CHAT_ERROR] retry marker after the real user turn', () => {
     const at = '2026-07-23T00:00:00.000Z';
     activeChatsStore.updateChat(threadId, {
@@ -571,8 +571,8 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(marker?.content).toMatch(/^\[SYSTEM_EVENT\] \[CHAT_ERROR\]/);
     expect(marker?.content).toContain('stalled — no response for 45s');
 
-    // The real user turn the marker should resolve back to is still there,
-    // immediately before it.
+// The real user turn the marker should resolve back to is still there,
+// immediately before it.
     const precedingTurn = (chat?.messages ?? []).at(-2);
     expect(precedingTurn).toMatchObject({
       role: 'user',
@@ -636,12 +636,12 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     } as any);
 
     chat = activeChatsStore.getSnapshot()[threadId];
-    // UX audit V3 review round 3: this used to assert TWO cards, which is the
-    // defect that review names — the previous turn's failure card survived
-    // beside the new turn's, both claiming the conversation. A card is a
-    // statement about one turn, so the earlier turn's is pruned and the new
-    // failure is NOT compacted into it (the counts above still prove
-    // compaction works WITHIN a turn).
+// this used to assert TWO cards, which is the
+// defect that review names — the previous turn's failure card survived
+// beside the new turn's, both claiming the conversation. A card is a
+// statement about one turn, so the earlier turn's is pruned and the new
+// failure is NOT compacted into it (the counts above still prove
+// compaction works WITHIN a turn).
     expect(
       chat?.messages?.filter((message) =>
         message.content.includes('[CHAT_ERROR]'),

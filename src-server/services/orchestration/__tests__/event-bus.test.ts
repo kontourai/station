@@ -46,7 +46,7 @@ describe('EventBus', () => {
   });
 
   /**
-   * station#1284 (HIGH 3). This test used to assert the opposite — that a
+   * archive#1284 (HIGH 3). This test used to assert the opposite — that a
    * throwing listener is REMOVED — and it pinned a defect: every subscriber
    * on this bus is a boot-wired infrastructure singleton (SSE fan-out,
    * console bridge, web push, the approval inbox) that never monitors its

@@ -10,7 +10,7 @@ interface UnsentMessagesProps {
 
 /**
  * The permanently refused follow-ups this chat is still holding for the user
- * (station#3706). Each row is user-authored text whose queue entry was dropped
+ * (archive#3706). Each row is user-authored text whose queue entry was dropped
  * and whose optimistic bubble was rolled back — this surface is the only
  * durable place it still exists, so every affordance here is about getting the
  * text back out, never about resending it: the refusal was permanent for this
@@ -19,8 +19,8 @@ interface UnsentMessagesProps {
  * Rows leave only by the user's own Dismiss, keyed on the record's `id`.
  */
 export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
-  // Copy feedback is per-row and transient; `id` is the row key (`at` is a
-  // timestamp, not an identity — #3706 review).
+// Copy feedback is per-row and transient; `id` is the row key (`at` is a
+ // timestamp, not an identity — archive#3706).
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const dismiss = (id: string) => {
@@ -37,8 +37,8 @@ export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
       await navigator.clipboard.writeText(record.content);
       setCopiedId(record.id);
     } catch {
-      // The row itself keeps showing the full text, so a refused clipboard
-      // write costs nothing — and claiming "Copied" here would be false.
+// The row itself keeps showing the full text, so a refused clipboard
+// write costs nothing — and claiming "Copied" here would be false.
       setCopiedId(null);
     }
   };

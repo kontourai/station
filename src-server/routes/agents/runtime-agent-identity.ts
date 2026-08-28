@@ -24,7 +24,7 @@ export function publicAgentIdFromRuntimeKey(runtimeKey: string): AgentId {
  * View an active-agent set (keyed by internal runtime keys) through public
  * Agent identity. `has('station')` consults the internal `default` entry —
  * the registry-declared default agent has no persisted file, so an
- * untranslated lookup misses it entirely (station#1992). The reserved
+ * untranslated lookup misses it entirely (archive#1992). The reserved
  * internal key is not a public identity: `has('default')` is false here even
  * though the underlying set contains it, matching `runtimeAgentKey`'s
  * ReservedAgentIdentityError refusal on the route path.

@@ -209,13 +209,13 @@ test.describe('core journey accessibility gate', () => {
 
     // Read focus once per keypress rather than polling, and press until a
     // containment boundary is actually reached. Both halves are load-bearing;
-    // station#1149 proved this test passed with focus containment removed from
+    // archive#1149 showed this test passing with focus containment removed from
     // `ResponsiveDialogSurface` outright, and measured why:
     //
     //   - `expect.poll` re-samples, so it reports success for any escape a
     //     background re-render happens to undo before the next sample. One
     //     immediate read per press is the shape that observes the state the
-    //     user actually lands in. (This was #1149's stated cause and it was
+    //     user actually lands in. (This was archive#1149's stated cause and it was
     //     NOT what masked this test — see below. It is still the right shape.)
     //   - The old sequence never left the interior. This dialog opens with
     //     focus on its working-directory input, which is the SECOND control;
@@ -224,10 +224,10 @@ test.describe('core journey accessibility gate', () => {
     //     inside whether or not a trap exists. Measured with containment
     //     disabled, every read of the old sequence returned "inside".
     //
-    // Review of #1173 found the first replacement inherited the same
-    // structural flaw it fixed: it assumed two Shift+Tabs reach control 0, and
-    // asserted nothing about where focus actually was. Adding ONE ordinary
-    // button to the form — with containment removed entirely — made it pass
+    // A press-count replacement would inherit the same
+    // structural flaw: it would assume two Shift+Tabs reach control 0, and
+    // assert nothing about where focus actually was. Adding ONE ordinary
+    // button to the form — with containment removed entirely — makes it pass
     // again (trajectory 2 -> 1 -> 0 -> 1, inside at every read, boundary never
     // touched). A press COUNT is not a position.
     //
@@ -284,7 +284,7 @@ test.describe('core journey accessibility gate', () => {
     page,
   }) => {
     // The assertion shape above, applied to the app's most-used dialog. Until
-    // station#1110 not one of ConfirmModal's 22 call sites had focus coverage,
+    // archive#1110 not one of ConfirmModal's 22 call sites had focus coverage,
     // which is why `aria-modal="true"` sat on a dialog whose second Tab landed
     // in the app chrome behind it and whose close stranded focus on <body>.
     // Settings' "Reset to Defaults" is a plain, hermetic instance of it.
@@ -299,13 +299,13 @@ test.describe('core journey accessibility gate', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Reset to Defaults' });
     await expect(dialog).toBeVisible();
-    // Armed by station#1125, which #1110 filed rather than buried: this audit
+    // Armed by archive#1125 (filed from archive#1110 rather than buried): this audit
     // used to report `.button--danger` at 2.78:1 (#ffffff on dark's
     // --error-text, #ff6b6b) and so was left out with a pointer to the token
     // decision. `--error-fill` settles it, and running the audit here is what
     // pins the only danger-button surface any audited spec renders.
     await expectNoBlockingAccessibilityViolations(page, 'confirm-modal-danger');
-    // ...in BOTH themes. Review of #1187 pointed out `--error-fill` is declared
+    // ...in BOTH themes (archive#1187): `--error-fill` is declared
     // inside the block that opens `:root, [data-theme="dark"]`, and the light
     // block deliberately omits it. It resolves correctly today — but if that
     // selector is ever split, or a light override of the error family is added,
@@ -321,7 +321,7 @@ test.describe('core journey accessibility gate', () => {
     // resolves BOTH `Close Reset to Defaults` and the danger button, and
     // `contrastRatio` fails on strict mode rather than measuring anything.
     // Anchoring on the exact confirm label keeps this pointed at the button
-    // whose contrast station#1246 is about.
+    // whose contrast archive#1246 is about.
     const dangerButton = dialog.getByRole('button', {
       name: 'Reset',
       exact: true,
@@ -347,10 +347,10 @@ test.describe('core journey accessibility gate', () => {
       ).toBeGreaterThanOrEqual(4.5);
     }
     // Read focus once per keypress rather than polling. `expect.poll` is the
-    // wrong instrument here: the pre-fix component re-ran `firstBtn.focus()` on
-    // every render (its effect depended on an inline `onCancel`), so a poll
-    // reports "focus is contained" for an escape that a background re-render
-    // happened to undo. Measured against origin/main, polling passed every one
+    // wrong instrument here: a component that re-ran `firstBtn.focus()` on
+    // every render (its effect depending on an inline `onCancel`) makes a poll
+    // report "focus is contained" for an escape that a background re-render
+    // happened to undo. Against such a build, polling passes every one
     // of these presses; a single immediate read fails on the first.
     const focusIsInDialog = () =>
       dialog.evaluate((node) => node.contains(document.activeElement));
@@ -438,7 +438,7 @@ test.describe('core journey accessibility gate', () => {
     // browser default. A journey-shaped version of this test measured that
     // default and passed against the exact value it was written to catch.
     //
-    // It exists because #1062 nearly shipped a light `--text-subtle` of #bdbdbd
+    // It exists because archive#1062 nearly shipped a light `--text-subtle` of #bdbdbd
     // (1.55:1 on the real input surface). The token had been shadowed by a later
     // `:root` block since it was written, so its declared value had never once
     // rendered and had never been looked at.

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * The one "Add computer" entry point and its three branches (audit CI-R9:
+ * The one "Add computer" entry point and its three branches (:
  * three differently-shaped ways to add a machine within 300px, one of which
  * bypassed the chooser whose copy exists to explain the difference).
  */
@@ -25,9 +25,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     mutateAsync: mocks.create,
   }),
-  // `undefined` is the SDK hook's own "the server has not answered yet" shape,
-  // and its docblock says a consumer must make no device claim in that state —
-  // so it is the honest default for a file that stands up no server.
+// `undefined` is the SDK hook's own "the server has not answered yet" shape,
+// and its docblock says a consumer must make no device claim in that state —
+// so it is the honest default for a file that stands up no server.
   useDevicePresentation: () => undefined,
 }));
 
@@ -35,10 +35,10 @@ vi.mock('@kontourai/station-connect', () => ({
   ConnectionManagerModal: ({ initialPanel }: { initialPanel: string }) => (
     <div data-testid="connection-manager">{initialPanel}</div>
   ),
-  // The SSH branch renders SshComputerCreatorDialog, which reads the device
-  // presentation and so reaches `useConnections()` for the active api base.
-  // A factory mock makes any unlisted export a hard throw, so this owes the
-  // line even though nothing here asserts on the connection.
+// The SSH branch renders SshComputerCreatorDialog, which reads the device
+// presentation and so reaches `useConnections` for the active api base.
+// A factory mock makes any unlisted export a hard throw, so this owes the
+// line even though nothing here asserts on the connection.
   useConnections: () => ({ apiBase: 'http://station.test' }),
 }));
 
@@ -84,7 +84,7 @@ describe('AddMachineModal', () => {
   });
 
   test('the Station branch opens the address dialog, and adding one persists it locally', async () => {
-    // A never-resolving handshake proves the add never waits on it.
+// A never-resolving handshake proves the add never waits on it.
     vi.stubGlobal(
       'fetch',
       vi.fn(() => new Promise(() => {})),
@@ -131,7 +131,7 @@ describe('AddMachineModal', () => {
         name: 'Run work on another computer over SSH',
       }),
     ).toBeTruthy();
-    // The shared surface, not the old bespoke uncentred panel with no scrim.
+// The shared surface, not the old bespoke uncentred panel with no scrim.
     expect(container.querySelector('.station-dialog__overlay')).toBeTruthy();
     expect(container.querySelector('.ssh-environment-modal')).toBeNull();
   });

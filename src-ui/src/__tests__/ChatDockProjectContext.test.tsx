@@ -32,9 +32,9 @@ const PROJECTS = [
  * exact bug that forced the badge's own click handler to guard on both the
  * mouse AND (now, as a real `<button>`) native keyboard paths.
  *
- * kontourai/station#793: the badge no longer navigates directly on click — it
+ * archive#793: the badge no longer navigates directly on click — it
  * always opens `ChatDockProjectSwitcherSheet`, whose own rows carry "Open
- * project" and (station#4524) "Switch to <project>". These specs pin the
+ * project" and (archive#4524) "Switch to <project>". These specs pin the
  * badge's button semantics and switcher-open wiring;
  * ChatDockProjectSwitcherSheet.test.tsx pins the sheet's own row behavior.
  */
@@ -60,9 +60,9 @@ describe('ChatDockProjectContext', () => {
       vi.fn<(projectSlug: string, projectName: string) => void>();
     const onHeaderToggle = overrides.onHeaderToggle ?? vi.fn<() => void>();
     render(
-      // The wrapper stands in for the dock header's toggle surface: any
-      // event that escapes the row lands here, like a real bubbled toggle.
-      // biome-ignore lint/a11y/noStaticElementInteractions: test stand-in for the dock header's toggle surface.
+// The wrapper stands in for the dock header's toggle surface: any
+// event that escapes the row lands here, like a real bubbled toggle.
+// biome-ignore lint/a11y/noStaticElementInteractions: test stand-in for the dock header's toggle surface.
       <div onClick={onHeaderToggle} onKeyDown={onHeaderToggle}>
         <ChatDockProjectContext
           projectSlug="alpha"
@@ -104,7 +104,7 @@ describe('ChatDockProjectContext', () => {
         .getAttribute('aria-expanded'),
     ).toBe('true');
     await screen.findByRole('dialog', { name: 'Switch project' });
-    // The dock header's toggle surface must NOT see the activation.
+// The dock header's toggle surface must NOT see the activation.
     expect(onHeaderToggle).not.toHaveBeenCalled();
   });
 
@@ -143,7 +143,7 @@ describe('ChatDockProjectContext', () => {
   });
 });
 
-// station#1803 (part 3): the chat dock header hid this entire row —
+// archive#1803: the chat dock header hid this entire row —
 // including the switch-project picker — whenever a chat had no bound
 // project, which is exactly backwards: a chat with no workspace is the one
 // most likely to need one assigned. `ChatDock.tsx` (the caller) no longer
@@ -229,7 +229,7 @@ describe('ChatDockProjectContext — clearable badge (chat-dock-maximize-readine
       />,
     );
 
-    // Exactly one project name surface, plus one clear affordance.
+// Exactly one project name surface, plus one clear affordance.
     expect(screen.getByText('Operations')).toBeTruthy();
     const clear = screen.getByLabelText('Clear project chat scope');
     fireEvent.click(clear);
@@ -237,11 +237,11 @@ describe('ChatDockProjectContext — clearable badge (chat-dock-maximize-readine
   });
 });
 
-// station#4525 review MED-1 (owner design ruling): the badge always names
+// archive#4525 (owner design ruling): the badge always names
 // the BOUND project (unchanged) — this is the muted lead-in the facts row
 // shows when the active session's own project diverges from it, so the
 // header never implies the visible transcript belongs to the badge's
-// project. HIGH-2's own ruling (session facts never gate on the badge) is
+// project. own ruling (session facts never gate on the badge) is
 // pinned by the `workingDirectory`/`gitStatus`/`codingLayoutSlug` props
 // always being present here regardless of `sessionProjectMismatchLabel`.
 describe('ChatDockProjectContext — session/badge mismatch label (station#4525 review MED-1)', () => {
@@ -260,12 +260,12 @@ describe('ChatDockProjectContext — session/badge mismatch label (station#4525 
       />,
     );
 
-    // The badge still names the BOUND project ("Alpha"), not the session's.
+// The badge still names the BOUND project ("Alpha"), not the session's.
     expect(screen.getByRole('button', { name: 'Alpha' })).toBeTruthy();
     const label = screen.getByText('Beta ·');
     expect(label.className).toContain('chat-dock__project-session-name');
-    // HIGH-2: the session's own facts (here, its directory) still render —
-    // never suppressed by the mismatch.
+ // the session's own facts (here, its directory) still render —
+// never suppressed by the mismatch.
     expect(screen.getByText('beta-checkout')).toBeTruthy();
   });
 

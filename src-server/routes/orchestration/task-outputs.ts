@@ -85,7 +85,7 @@ export function createTaskOutputRoutes(
       // TaskGraphService.deriveWorkspaceBinding, which stores
       // `realpathSync(resolve(expandTilde(...)))` at Task-creation time
       // (task-graph-service.ts) — never the project's raw stored value. That
-      // invariant has held since the field's introduction (#521: no other
+      // invariant has held since the field's introduction (archive#521: no other
       // writer sets it), so a captured binding can never carry an
       // unexpanded `~`; nothing downstream needs to expand it again.
       const workspace = task?.workspaceBinding?.workingDirectory;

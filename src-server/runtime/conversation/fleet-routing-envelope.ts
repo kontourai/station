@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3 — the pure fold from a Dispatch receipt plus this
+ * archive#1398 — the pure fold from a Dispatch receipt plus this
  * Station's routing context into a `station.fleet-routing-receipt/v1`
  * envelope (`docs/design/inference-fleet.md` §3.4, §4.5).
  *
@@ -18,7 +18,7 @@
  *   falling back with nothing in the receipt; naming it is what makes the
  *   fallback permissible at all.
  * - A failure code says what actually happened. `no-eligible-candidates`
- *   claims an exclusion, so it is only emitted alongside one (station#1556);
+ *   claims an exclusion, so it is only emitted alongside one (archive#1556);
  *   candidates that were dispatched and failed get `attempts-failed`, and a
  *   receipt that can support neither claim says so with
  *   `unexplained-no-attempt`.
@@ -83,7 +83,7 @@ function selectionFor(candidate: FleetRoutingCandidate): FleetRoutingSelection {
 
 /**
  * The one place `no-eligible-candidates` is constructed, so the invariant it
- * carries cannot be bypassed by a second call site (station#1556).
+ * carries cannot be bypassed by a second call site (archive#1556).
  *
  * `no-eligible-candidates` asserts that policy removed everything, and §4.5
  * requires every removal to be a named exclusion. With no exclusion recorded
@@ -117,7 +117,7 @@ function nothingAttempted(
  * `exclusions` is a parameter rather than something this function infers
  * because the codes are not interchangeable labels: `no-eligible-candidates`
  * is a claim ABOUT the exclusion list, so the list has to be in scope to make
- * it (station#1556).
+ * it (archive#1556).
  */
 export function deriveFleetRoutingFailure(
   receipt: EmbeddedDispatchReceipt,
@@ -166,7 +166,7 @@ export function deriveFleetRoutingFailure(
         // candidate list, and the replica can diverge from Dispatch's own set
         // (`docs/design/inference-fleet.md`, the L-3 tripwire). Asserting that
         // negative would be an inference from an incomplete list — the class
-        // of claim this receipt exists to refuse (station#1556 review, M5).
+        // of claim this receipt exists to refuse (archive#1556 review, M5).
         message:
           'Every candidate that was attempted failed, and none produced a completion.',
       };

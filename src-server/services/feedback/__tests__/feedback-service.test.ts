@@ -104,7 +104,7 @@ describe('FeedbackService', () => {
     expect(svc.getSummary()).toBeNull();
   });
 
-  // #2900: analysis reads the store, awaits an LLM round-trip, then writes.
+  // archive#2900: analysis reads the store, awaits an LLM round-trip, then writes.
   // Writing the pre-await snapshot back silently discarded any rating
   // submitted during that window.
   test('keeps a rating submitted while analysis is awaiting the model', async () => {

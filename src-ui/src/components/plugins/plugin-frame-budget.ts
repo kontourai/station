@@ -1,5 +1,5 @@
 /**
- * Per-plugin token buckets for the frame bridge (station#3308, station#3323).
+ * Per-plugin token buckets for the frame bridge (archive#3308, archive#3323).
  *
  * A plugin frame asks the shell to do things — show a toast, move the shell —
  * and nothing about `postMessage` bounds how often it asks. Each capability
@@ -103,7 +103,7 @@ export const pluginNavigationBudget = createPluginBudget({
 });
 
 /**
- * Confirmations (station#4201 step 3). The frame adapter lets a pane raise
+ * Confirmations (archive#4201 step 3). The frame adapter lets a pane raise
  * the contract's `confirm` intent, and the SHELL renders its own modal in
  * response — a full-viewport overlay the user must answer.
  *

@@ -1,9 +1,9 @@
 # Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 
 > Status: **draft for owner review (2026-08-01); tracking issue
-> [#1484](https://github.com/kontourai/station/issues/1484).** The complete
+> [archive#1484](https://github.com/kontourai/station/issues/1484).** The complete
 > brief is the 2026-08-01 comment thread on
-> [#1392](https://github.com/kontourai/station/issues/1392): the owner-shaped
+> [archive#1392](https://github.com/kontourai/station/issues/1392): the owner-shaped
 > product model, the availability model and its owner correction, the
 > hosted-tier relationship, and an **independent adversarial review (external
 > engine) whose verdict was UPHOLD-WITH-AMENDMENTS**. This doc turns that
@@ -14,29 +14,29 @@
 > Two of them are corrections that invalidate a construction recorded earlier
 > in the thread (epoch-only fencing; home-authored chains as evidence), and
 > they are carried in §3 as the design rather than as a footnote to it. Where
-> this doc and an earlier #1392 comment disagree, this doc follows the review.
+> this doc and an earlier archive#1392 comment disagree, this doc follows the review.
 >
 > **Nothing here is scheduled yet.** Implementation is sequenced *after* the
 > Flow 3 arc and the fleet arc per the recorded priority order (§12). The doc
-> is commissioned early because it is cheap and because #1423 (share
+> is commissioned early because it is cheap and because archive#1423 (share
 > permalinks) is the read-only degenerate case of this design and should not
 > be built in a shape this design would have to undo.
 >
 > Every claim about current behavior carries file:line evidence; §13 lists
-> what is UNVERIFIED. Refs #1392 (the brief; the multi-tenant tier), #1425
+> what is UNVERIFIED. Refs archive#1392 (the brief; the multi-tenant tier), archive#1425
 > (contribution/backing vocabulary — **a draft pending owner approval**,
-> §9.2), #1423 (permalinks), #1398 /
+> §9.2), archive#1423 (permalinks), archive#1398 /
 > [inference-fleet](inference-fleet.md) (contribution pattern, receipt
-> discipline, the "receipted, not signed" finding), #1410 (turn provenance
-> envelope), #741 (personal fleet), #1123 (peer pairing).
+> discipline, the "receipted, not signed" finding), archive#1410 (turn provenance
+> envelope), archive#741 (personal fleet), archive#1123 (peer pairing).
 
 ## 0. Naming, sources, and one repo-policy note
 
 This repo does not name competitors (`AGENTS.md:21`; precedent
-`docs/design/settings-architecture.md:3-5`). The system #1392 studied is called
+`docs/design/settings-architecture.md:3-5`). The system archive#1392 studied is called
 **"the reference implementation"** throughout this doc. It is the same codebase
 [inference-fleet.md](inference-fleet.md) calls "the reference mesh"; its product
-name, repo, and file:line evidence live in #1392's and #1398's comments and in
+name, repo, and file:line evidence live in archive#1392's and archive#1398's comments and in
 the private ops workspace analysis. Nothing here depends on reading them.
 
 Two readings of that implementation are load-bearing, and both are code
@@ -62,7 +62,7 @@ this doc that leans on that implementation is marked, and none of them are load
 
 ### 1.1 The question
 
-Station today is a single-operator runtime (§2.6). #1392 asks it to host shared
+Station today is a single-operator runtime (§2.6). archive#1392 asks it to host shared
 spaces: a project or channel where several people — and several people's agents
 — read and write the same conversation, with membership, moderation, threads,
 and provenance. The design question the owner posed is the load-bearing one:
@@ -85,7 +85,7 @@ propagates as a suggestion. An authority that evaluates policy at commit time is
 the only construction where "removed" means removed at a defined instant.
 
 Distribution stays where this repo already puts it: **compute** (fleet routing,
-#1398), **artifacts** (content-addressed provenance), and **tasks**
+archive#1398), **artifacts** (content-addressed provenance), and **tasks**
 (delegation). Conversation state is deliberately the exception.
 
 ### 1.3 The refinement that makes it sovereign
@@ -312,7 +312,7 @@ the empty array is never the signal (`:90-105`); two separable clocks
 identity in the body** — a manifest is attributed by the consumer to the
 environment it authenticated to.
 
-### 2.9 #1410's provenance envelope is a projection, and that is a problem at channel scope
+### 2.9 archive#1410's provenance envelope is a projection, and that is a problem at channel scope
 
 `TurnProvenanceEnvelope` (`packages/contracts/src/turn-provenance.ts:278-296`)
 carries `envelopeVersion`, session/turn ids, engine, requested and reported
@@ -324,7 +324,7 @@ distinct unavailable reasons (`:56-107`). It is assembled by
 `src-ui/src/components/chat/TurnProvenanceCard.tsx:221-231`.
 
 Its own docblock is explicit: "The envelope is a **projection**, not a second
-store (#1410 R5): it is re-derived from the durable orchestration event stream
+store (archive#1410 R5): it is re-derived from the durable orchestration event stream
 on every read" (`turn-provenance.ts:36-40`).
 
 **Design consequence, and it is a real finding: a projection re-derived from a
@@ -333,25 +333,25 @@ either the envelope's inputs are committed to the channel log, or the envelope
 becomes a `referenced` slot pointing at the authoring Station. §9.4 takes that
 decision.
 
-### 2.10 #1423 permalinks — the sweep, and its correction
+### 2.10 archive#1423 permalinks — the sweep, and its correction
 
 **This section as originally written is now false, and is corrected here rather
-than absorbed** (station#1598). It read: *"A sweep for `permalink`, `shareLink`,
+than absorbed** (archive#1598). It read: *"A sweep for `permalink`, `shareLink`,
 `share_token`, and sharing routes returns zero implementation hits. There is no
 share route, no share contract, and no share token on `origin/main`. Design
-consequence: #1423 is unconstrained by existing code and should be built as the
+consequence: archive#1423 is unconstrained by existing code and should be built as the
 read-only degenerate case of §3's addressing."*
 
-That was true when the sweep was run and stopped being true when #1423 shipped.
+That was true when the sweep was run and stopped being true when archive#1423 shipped.
 On `origin/main` today there is a share contract
 (`packages/contracts/src/answer-share.ts`), a public view route
 (`/.well-known/station/v1/share/view`), an operator management family
-(`/api/shares`), a token store, and a viewer page. **#1423 was therefore not
+(`/api/shares`), a token store, and a viewer page. **archive#1423 was therefore not
 unconstrained**, and the correction matters because the conclusion drawn from
-the sweep — that #1423 could adopt §3's addressing wholesale — is the half of
+the sweep — that archive#1423 could adopt §3's addressing wholesale — is the half of
 §9.1 that had to be withdrawn.
 
-**Design consequence, restated: #1423 exists, and channel addressing joins it
+**Design consequence, restated: archive#1423 exists, and channel addressing joins it
 additively rather than replacing its lookup key.** See §9.1 for the resolved
 contract.
 
@@ -557,7 +557,7 @@ could not give:
 - An agent that outlives its owner's membership stops being able to commit at a
   defined instant, rather than at whatever moment a cache refreshes.
 
-This is the channel-scoped shape of #1392's owner attestation and the natural
+This is the channel-scoped shape of archive#1392's owner attestation and the natural
 consumer of `OwnerAttribution` (`src-ui/src/utils/ownerAttribution.ts:15-19`),
 whose own comment already anticipates it. §5.3 covers the operational half
 (quotas, idempotency, coalescing).
@@ -643,7 +643,7 @@ info:
    the channel, not an implementation detail, and it belongs in the same
    disclosure.
 
-Corollary from the #1392 thread that survives review: **ownership is not
+Corollary from the archive#1392 thread that survives review: **ownership is not
 homing.** Owned by members and admins is a governance fact in the log; homed on a
 Station is an operational fact. **Moving a channel — including to the hosted tier
 — moves homing and never moves ownership.** Custody disclosure is how a member
@@ -788,7 +788,7 @@ renders as a **named gap**, per the delivery protocol's honesty rule
 
 ## 7. Resource leases during a home outage
 
-The #1392 thread originally claimed that channel state and contributed resources
+The archive#1392 thread originally claimed that channel state and contributed resources
 "degrade independently" — that a backing Station's resources keep working while
 the channel's home is down, because they ride pairing credentials rather than the
 home. **The review qualified this, and the qualification is adopted.**
@@ -862,7 +862,7 @@ replica by construction rather than by configuration.
 
 ## 9. Relationship to shipped and in-flight work
 
-### 9.1 #1423 permalinks — the read-only degenerate case, as resolved
+### 9.1 archive#1423 permalinks — the read-only degenerate case, as resolved
 
 A permalink is a channel-state read with no membership, no writes, and no
 liveness. Everything in §3.2 and §8.1 is exercised; nothing in §3.4, §5, or §7
@@ -870,15 +870,15 @@ is. That much survives contact with the implementation. The addressing claim
 did not.
 
 **Two halves of this section were false and are corrected rather than absorbed**
-(station#1598, closing slice-1 finding 4):
+(archive#1598, closing slice-1 finding 4):
 
 1. It said a permalink *is* `{ channelId, epoch, seq, checkpointDigest }`. It is
-   not. #1423 shipped a **bearer token** as the lookup key, and the record it
+   not. archive#1423 shipped a **bearer token** as the lookup key, and the record it
    resolves is bound to `{ sessionId, turnId }` — the turn the operator pointed
    at. A coordinate is not a capability, and replacing the token with one would
    have made every permalink an offline-constructible address to somebody else's
    answer.
-2. It said "#1423 is free to adopt this addressing directly." #1423 had already
+2. It said "archive#1423 is free to adopt this addressing directly." archive#1423 had already
    shipped when this was written (see §2.10's correction), so it was not free to,
    and the sentence licensed a rewrite of a live capability surface.
 
@@ -909,7 +909,7 @@ framing: a permalink built on `(conversationId, messageId)` alone indeed cannot
 say *which* history it came from — but the fix is to **record** the coordinate
 alongside the identity, not to address by it.
 
-### 9.2 #1425 portable project identity — a draft, and the contribution contract
+### 9.2 archive#1425 portable project identity — a draft, and the contribution contract
 
 `docs/design/portable-project-identity.md` is **a draft pending owner approval**
 (status: "draft for owner review (2026-08-01, revision 2)", twelve open
@@ -934,10 +934,10 @@ What it gives this design, if approved:
   doc adds "home" to the product vocabulary precisely because it is a statement
   about *where a channel lives*, not about an HTTP role.
 
-If #1425 is not approved in that shape, the affected surfaces here are §7 and
+If archive#1425 is not approved in that shape, the affected surfaces here are §7 and
 §9.3's vocabulary reuse — not §3.
 
-### 9.3 #1398's backing vocabulary — reused, not re-invented
+### 9.3 archive#1398's backing vocabulary — reused, not re-invented
 
 The channel-home advertisement and the backing view reuse four decisions from
 the shipped `station.fleet-contribution/v1`
@@ -960,7 +960,7 @@ And one receipt-discipline inheritance: `signature: null` reserved fields
 honest posture for a threat model that does not need signing. §2.3 explains why
 this design cannot copy it.
 
-### 9.4 #1410's turn envelope — message-level provenance, with a decision
+### 9.4 archive#1410's turn envelope — message-level provenance, with a decision
 
 The provenance envelope (§2.9) is the right per-message provenance record for a
 shared channel: its slot algebra already distinguishes `observed`, `referenced`,
@@ -1109,15 +1109,15 @@ of them block the doc.
 
 **Sequencing first, because it is the most important line in this section.**
 Implementation of this arc starts **after the Flow 3 arc and the fleet arc**, per
-the recorded priority order. The one exception is slice 0, which is #1423 and is
+the recorded priority order. The one exception is slice 0, which is archive#1423 and is
 already independently scheduled — it is listed here so it is built in a shape
 this design does not have to undo.
 
 Sized by dependency and shippability, not by estimate. Slices 0-2 are the honest
-personal-Station product; 3-7 are the collaboration tier; 8 is #1392's
+personal-Station product; 3-7 are the collaboration tier; 8 is archive#1392's
 multi-quarter program.
 
-- **Slice 0 — Permalinks as the read-only degenerate case (#1423).** The
+- **Slice 0 — Permalinks as the read-only degenerate case (archive#1423).** The
   addressing tuple (§8.1) and a bounded read route. No log, no authority, no
   membership. Independently useful, independently shippable, and the proof that
   §3.2's coordinate is the right one. *Small.*
@@ -1163,7 +1163,7 @@ multi-quarter program.
 
 - **Slice 8 — The hosted tier implementation of the same contract.** Multi-tenant,
   tenant-keyed, shard-by-channel, sticky routing, cross-node fan-out, rebalancing
-  via the same lease handover. **This is #1392's core and is already sized there
+  via the same lease handover. **This is archive#1392's core and is already sized there
   as a multi-quarter security and data-boundary program.** *Very large.*
 
 - **Deferred to its own arc — canvases and documents (§6).** A CRDT dependency,
@@ -1214,18 +1214,18 @@ has.
 - **Inclusion-commitment non-inclusion proofs require the complaining member to
   hold the intervening segment** (§3.5). The coverage this actually provides for
   members who were away is unquantified.
-- **The #1425 vocabulary this doc builds on is a draft pending owner approval**
+- **The archive#1425 vocabulary this doc builds on is a draft pending owner approval**
   (§9.2) and is not on `origin/main`. If its membership/contribution model
   changes, §7 and §9.3 change with it.
 - **The reference-implementation readings (§0) are second-hand here.** They were
-  established in #1392's and #1398's threads and in the private ops workspace
+  established in archive#1392's and archive#1398's threads and in the private ops workspace
   analysis; this doc did not re-derive them, and §0's survivorship caveat applies
   to all of them.
 - **No decision has been taken on any OQ in §11.** Every recommendation is the
   author's, and the doc's slices assume them; a different answer to OQ-1, OQ-3,
   or OQ-5 changes slice content materially.
 - **The adversarial review was not re-run against this document.** It reviewed
-  the architecture as described in #1392's thread. This doc's rendering of its
+  the architecture as described in archive#1392's thread. This doc's rendering of its
   amendments — particularly §3.4's lease mechanics, §3.5's inclusion
   commitments, and §5.2's matrix — is an interpretation that has not itself been
   independently reviewed.

@@ -1,6 +1,6 @@
 /**
- * WCAG 2.x relative-luminance / contrast-ratio primitives (station#1424
- * review round 3, NEW-3). Small and dependency-free on purpose: the
+ * WCAG 2.x relative-luminance / contrast-ratio primitives (archive#1424
+* 3). Small and dependency-free on purpose: the
  * identicon contrast gate (`__tests__/identicon-contrast.test.ts`) reads the
  * real `BrandIcon.css` token values and needs to compute the same numbers
  * the spec defines, not approximate them.

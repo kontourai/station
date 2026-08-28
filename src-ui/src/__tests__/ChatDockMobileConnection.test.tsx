@@ -19,17 +19,17 @@ const connectionStatus = {
 };
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => {
-  // The real indicator derivation, labels and dot are kept — only the health
-  // coordinator is replaced, so these tests exercise the shipped mapping from
-  // a failure reason to what the reader sees and where a tap goes.
+// The real indicator derivation, labels and dot are kept — only the health
+// coordinator is replaced, so these tests exercise the shipped mapping from
+// a failure reason to what the reader sees and where a tap goes.
   const actual =
     await importOriginal<typeof import('@kontourai/station-connect')>();
   return {
     ...actual,
     useConnectionStatus: () => connectionStatus,
-    // No active connection, no saved endpoint — `usePendingPairingApproval`
-    // reads real (empty, per-file jsdom) localStorage and stays null unless
-    // a test explicitly seeds a pending record.
+// No active connection, no saved endpoint — `usePendingPairingApproval`
+// reads real (empty, per-file jsdom) localStorage and stays null unless
+// a test explicitly seeds a pending record.
     useConnections: () => ({ activeConnection: null, connections: [] }),
   };
 });
@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 /**
- * station#3297 — the state that needs a decision, on the surface where the
+ * archive#3297 — the state that needs a decision, on the surface where the
  * decision is needed, distinguishable without hover and without colour.
  */
 describe('ChatDockMobileConnection', () => {
@@ -74,24 +74,24 @@ describe('ChatDockMobileConnection', () => {
 
     const button = screen.getByTestId('chat-dock-mobile-connection');
     expect(button.dataset.connectionState).toBe('needs-credential');
-    // Channel 1: a visible word. Survives a colour-blind reader.
+// Channel 1: a visible word. Survives a colour-blind reader.
     expect(button.textContent).toContain('Pair');
-    // Channel 2: the accessible name, which also names the action.
+// Channel 2: the accessible name, which also names the action.
     expect(button.getAttribute('aria-label')).toBe('Pair this device again');
-    // Channel 3: a different mark, not a recoloured dot.
+// Channel 3: a different mark, not a recoloured dot.
     expect(button.querySelector('svg path')).not.toBeNull();
-    // Channel 4: the amber attention background (station#4512 review H1 —
-    // all three attention states carry it, not needs-credential alone).
+ // Channel 4: the amber attention background (archive#4512 —
+// all three attention states carry it, not needs-credential alone).
     expect(button.className).toContain('chat-dock__mobile-conn--attention');
   });
 
-  /**
-   * station#4512 review (H1) — `needs-repair` (identity-mismatch) gets the
-   * same treatment as `needs-credential`: short word, enlarged triangle,
-   * attention background, and a tap that goes straight to the remedy rather
-   * than spending a recheck that can only fail again (aligned with the
-   * toolbar chip's own exclusion, `HeaderActions.test.tsx`).
-   */
+/**
+ * archive#4512 — `needs-repair` (identity-mismatch) gets the
+* same treatment as `needs-credential`: short word, enlarged triangle,
+* attention background, and a tap that goes straight to the remedy rather
+* than spending a recheck that can only fail again (aligned with the
+* toolbar chip's own exclusion, `HeaderActions.test.tsx`).
+*/
   it('marks an identity mismatch with its own short word and the repair shape', () => {
     connectionStatus.status = 'error';
     connectionStatus.reason = 'identity-mismatch';
@@ -120,19 +120,19 @@ describe('ChatDockMobileConnection', () => {
     }
   });
 
-  /**
-   * station#4512 review (H1) — `awaiting-approval` reaches this bar through
-   * the `reason` door station#4512 (M8) wired directly into
-   * `connectionIndicatorState` (a native `mid_authorization` refusal), not
-   * only through a locally-tracked pending record. It is NOT repair-like:
-   * the dot stays the ordinary 8px circle, and the tap still spends a
-   * recheck — not because a recheck can complete the exchange (it cannot:
-   * this device has no credential to probe with until the separate
-   * pending-exchange poll finishes, `HeaderActions.tsx`'s own retraction
-   * of this exact claim), but because it is harmless and the tap's real
-   * job for this state is `openConnectionsModal` below, which surfaces the
-   * pending exchange itself.
-   */
+/**
+ * archive#4512 — `awaiting-approval` reaches this bar through
+ * the `reason` door archive#4512 wired directly into
+* `connectionIndicatorState` (a native `mid_authorization` refusal), not
+* only through a locally-tracked pending record. It is NOT repair-like:
+* the dot stays the ordinary 8px circle, and the tap still spends a
+* recheck — not because a recheck can complete the exchange (it cannot:
+* this device has no credential to probe with until the separate
+* pending-exchange poll finishes, `HeaderActions.tsx`'s own retraction
+* of this exact claim), but because it is harmless and the tap's real
+* job for this state is `openConnectionsModal` below, which surfaces the
+* pending exchange itself.
+*/
   it('marks a pending approval as waiting, not broken', () => {
     connectionStatus.status = 'error';
     connectionStatus.reason = 'awaiting-approval';
@@ -143,7 +143,7 @@ describe('ChatDockMobileConnection', () => {
     expect(button.dataset.connectionState).toBe('awaiting-approval');
     expect(button.textContent).toBe('Waiting');
     expect(button.className).toContain('chat-dock__mobile-conn--attention');
-    // The ordinary circle, not the enlarged repair triangle.
+// The ordinary circle, not the enlarged repair triangle.
     expect(button.querySelector('svg')).toBeNull();
   });
 
@@ -189,8 +189,8 @@ describe('ChatDockMobileConnection', () => {
       render(<ChatDockMobileConnection />);
       fireEvent.click(screen.getByTestId('chat-dock-mobile-connection'));
       expect(opened).toEqual([{ mode: 'request-access' }]);
-      // Re-probing a rejected credential can only fail again. Doing it would
-      // be the same "offer a fix that cannot work" the copy avoids.
+// Re-probing a rejected credential can only fail again. Doing it would
+// be the same "offer a fix that cannot work" the copy avoids.
       expect(connectionStatus.recheck).not.toHaveBeenCalled();
     } finally {
       stop();
@@ -198,9 +198,9 @@ describe('ChatDockMobileConnection', () => {
   });
 
   it('retries immediately for a reachability failure, then opens the list', () => {
-    // This is where the banner's "Try now" went when transient reachability
-    // stopped bannering (station#3297 part 3). Tapping a failing indicator
-    // means "check again now"; the retry ladder's backoff can be 10s away.
+// This is where the banner's "Try now" went when transient reachability
+ // stopped bannering (archive#3297). Tapping a failing indicator
+// means "check again now"; the retry ladder's backoff can be 10s away.
     connectionStatus.status = 'error';
     connectionStatus.reason = 'unreachable';
     const { opened, stop } = openedModals();
@@ -214,21 +214,21 @@ describe('ChatDockMobileConnection', () => {
     }
   });
 
-  /**
-   * station#4512 review (L-new-4) — WCAG 2.5.3 (Label in Name): the
-   * accessible name must contain the visible label text. HeaderActions
-   * (the toolbar chip) already pins this, and it holds there by
-   * CONSTRUCTION — the chip's visible label and its accessible name both
-   * come from the same shared wording. This bar's short vocabulary
-   * (`SHORT_ACTION_LABEL`, station#4512 review H1) diverges from
-   * `connectionIndicatorLabel` — the shared function this button's
-   * `aria-label` still uses — so today's three pairs hold only by
-   * COINCIDENCE: each short word happens to be a case-insensitive
-   * substring of its own long form ("Waiting" ⊂ "Awaiting approval",
-   * "Re-pair" ⊂ "Needs re-pairing", "Pair" ⊂ "Pair this device again").
-   * Renaming a short word alone (e.g. "Waiting" → "Pending") would break
-   * this silently without a test naming the contract explicitly.
-   */
+/**
+* archive#4512 (-4) — WCAG 2.5.3 (Label in Name): the
+* accessible name must contain the visible label text. HeaderActions
+* (the toolbar chip) already pins this, and it holds there by
+* CONSTRUCTION — the chip's visible label and its accessible name both
+* come from the same shared wording. This bar's short vocabulary
+ * (`SHORT_ACTION_LABEL`, archive#4512) diverges from
+* `connectionIndicatorLabel` — the shared function this button's
+* `aria-label` still uses — so today's three pairs hold only by
+* COINCIDENCE: each short word happens to be a case-insensitive
+* substring of its own long form ("Waiting" ⊂ "Awaiting approval",
+* "Re-pair" ⊂ "Needs re-pairing", "Pair" ⊂ "Pair this device again").
+* Renaming a short word alone (e.g. "Waiting" → "Pending") would break
+* this silently without a test naming the contract explicitly.
+*/
   it.each([
     ['authentication-failed', 'Pair'],
     ['identity-mismatch', 'Re-pair'],

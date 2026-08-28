@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * station#4460 review H1/H2: `ChatWorkspacePane`'s local `useDockShellChrome`
+ * archive#4460 /: `ChatWorkspacePane`'s local `useDockShellChrome`
  * call (rules-of-hooks forces it to exist even when Chat is DOCKED and
  * `DockShell` already owns the real chrome) must never register
  * `dock.toggle`/`dock.maximize` itself — the shared shortcut registry keys
@@ -35,7 +35,7 @@ import { navigationStore } from '../../contexts/navigation-store';
 // --- Everything NOT under test: mocked to the lightest shape that lets the
 // real ChatWorkspacePane mount without crashing. Navigation, device settings
 // (a real store, no provider needed) and the keyboard-shortcut registry stay
-// real — those are exactly what H1/H2 exercise.
+// real — those are exactly what / exercise.
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -179,7 +179,7 @@ vi.mock('../../components/chat/ShareIntakeController', () => ({
 }));
 
 // `ChatDock.tsx` pre-warms `AmbientChatDockPaneHost`'s lazy chunk at module
-// load (`void loadAmbientChatDockPaneHost()`), which this test never
+// load (`void loadAmbientChatDockPaneHost`), which this test never
 // actually needs (it imports `DockShell` directly, not through the ambient
 // host). Left real, that dynamic import cascades into `HomeWorkspacePane` /
 // `HomeSurface` and can resolve AFTER this test file's environment tears
@@ -263,11 +263,11 @@ function renderFixture() {
   sharedQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  // `rerenderWithOccupant` below re-renders this SAME tree shape (same
-  // `QueryClient` instance) with a different `occupant` prop, so
-  // `KeyboardShortcutsProvider` / `NavigationProvider` / `DockShell` all keep
-  // their React identity across the swap — only `DockedFixture`'s leaf
-  // changes.
+// `rerenderWithOccupant` below re-renders this SAME tree shape (same
+// `QueryClient` instance) with a different `occupant` prop, so
+// `KeyboardShortcutsProvider` / `NavigationProvider` / `DockShell` all keep
+// their React identity across the swap — only `DockedFixture`'s leaf
+// changes.
   return render(
     <QueryClientProvider client={sharedQueryClient}>
       <KeyboardShortcutsProvider>
@@ -320,10 +320,10 @@ describe('dock.toggle / dock.maximize registration with Chat docked (station#446
     const shortcuts = registryApi?.getAllShortcuts() ?? [];
     const maximizeEntries = shortcuts.filter((s) => s.id === 'dock.maximize');
     const toggleEntries = shortcuts.filter((s) => s.id === 'dock.toggle');
-    // The registry map is keyed by id (one entry can only ever exist), so
-    // this cannot itself catch "a second live registration silently
-    // replaced the first" — the round-trip test below does. This asserts
-    // the weaker, still-necessary fact: the registration exists at all.
+// The registry map is keyed by id (one entry can only ever exist), so
+// this cannot itself catch "a second live registration silently
+// replaced the first" — the round-trip test below does. This asserts
+// the weaker, still-necessary fact: the registration exists at all.
     expect(maximizeEntries.length).toBe(1);
     expect(toggleEntries.length).toBe(1);
   });
@@ -345,9 +345,9 @@ describe('dock.toggle / dock.maximize registration with Chat docked (station#446
     });
     await waitFor(() => expect(isMaximizedInDom()).toBe(true));
 
-    // Switch to a placeholder occupant (Chat's local `useDockShellChrome`
-    // instance unmounts, its registration cleanup runs) and back (a FRESH
-    // local instance mounts) — `DockShell` never unmounts.
+// Switch to a placeholder occupant (Chat's local `useDockShellChrome`
+// instance unmounts, its registration cleanup runs) and back (a FRESH
+// local instance mounts) — `DockShell` never unmounts.
     rerenderWithOccupant(rerender, 'other');
     await waitFor(() => {
       expect(

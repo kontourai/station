@@ -5,7 +5,7 @@ import { afterAll, describe, expect, test, vi } from 'vitest';
 import { ACPProcess } from '../acp-process.js';
 
 /**
- * station#3422: orphaned engine processes accumulated under a LIVE Station —
+ * archive#3422: orphaned engine processes accumulated under a LIVE Station —
  * 21 of them on one host, 12 belonging to the probing instance — and nothing
  * anywhere said a reap had failed. `forceGroupKill` is the escalation of last
  * resort, and both of its exits were silent: a missing pid returned as though
@@ -46,7 +46,7 @@ describe('ACPProcess.forceGroupKill reports what it did (#3422)', () => {
       logger,
     });
 
-    // station#3441 LOW-2: `forceGroupKill()` is async now -- unawaited, this
+    // archive#3441 LOW-2: `forceGroupKill()` is async now -- unawaited, this
     // assertion would run before the method's own (synchronous-today, but
     // not guaranteed) body finishes, and any future `await` inserted before
     // this warning would make the assertion pass or fail by accident.
@@ -69,9 +69,9 @@ describe('ACPProcess.forceGroupKill reports what it did (#3422)', () => {
     // Attach a pid directly rather than spawning: this asserts the CLASSIFYING
     // branch, and a real signal's outcome depends on the runner's own process
     // group. `spawnedPid` is what `start()` records and what the escalation
-    // reads (station#3463); the sibling reaping suite sets it the same way.
+    // reads (archive#3463); the sibling reaping suite sets it the same way.
     (acpProcess as unknown as { spawnedPid: number }).spawnedPid = 424242;
-    // station#3441 MEDIUM-1: a registered release handle, so this test can
+    // archive#3441 MEDIUM-1: a registered release handle, so this test can
     // prove the EPERM branch never releases the registry record -- the exact
     // defect class HIGH-1 was raised for (a record released for a kill that
     // never happened).
@@ -96,7 +96,7 @@ describe('ACPProcess.forceGroupKill reports what it did (#3422)', () => {
     );
     expect(failure).toBeDefined();
     expect(failure?.data).toMatchObject({ code: 'EPERM', pid: 424242 });
-    // station#3441 MEDIUM-1: the signal was never delivered -- nothing may
+    // archive#3441 MEDIUM-1: the signal was never delivered -- nothing may
     // release the record on this path.
     expect(releaseOwnedChild).not.toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe('ACPProcess.forceGroupKill reports what it did (#3422)', () => {
     ).toBe(false);
   });
 
-  // station#3441 MEDIUM-2: the confirm budget (`FORCE_GROUP_KILL_CONFIRM_MS`,
+  // archive#3441 MEDIUM-2: the confirm budget (`FORCE_GROUP_KILL_CONFIRM_MS`,
   // acp-process.ts, not exported) was bound by no test -- mutating it from
   // 1000 to 0 left the whole suite green. Pin the OBSERVABLE consequence: an
   // unconfirmable kill waits roughly the budget before giving up, and never
@@ -168,7 +168,7 @@ describe('ACPProcess.forceGroupKill reports what it did (#3422)', () => {
     const elapsed = Date.now() - start;
 
     // Bound BOTH directions: too fast means the budget was not honored
-    // (station#3441 MEDIUM-2's injection D: 1000 -> 0), too slow means it grew
+    // (archive#3441 MEDIUM-2's injection D: 1000 -> 0), too slow means it grew
     // unbounded. Neither is hardcoded to the literal 1000ms constant so the
     // assertion survives a deliberate, disclosed change to the budget itself.
     expect(elapsed).toBeGreaterThanOrEqual(900);
@@ -176,7 +176,7 @@ describe('ACPProcess.forceGroupKill reports what it did (#3422)', () => {
     expect(releaseOwnedChild).not.toHaveBeenCalled();
   });
 
-  // station#3441 LOW-3: a REJECTING `probeIdentity` during the confirm-wait
+  // archive#3441 LOW-3: a REJECTING `probeIdentity` during the confirm-wait
   // poll must fail closed (never confirm, never release) and must not make
   // `forceGroupKill()` itself throw -- pre-fix, this rejection propagated
   // straight out of `waitUntilProcessGone()`.

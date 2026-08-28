@@ -26,7 +26,7 @@ export interface ConfirmModalProps {
  * Portal boundary containment. React synthetic events follow the React tree,
  * not the DOM tree, so an event raised inside a portal still bubbles to the
  * component that rendered `<ConfirmModal>` — even though the DOM node lives on
- * `document.body`. Station#1111: `ACPConnectionCard` puts `onClick` on its root
+ * `document.body`. archive#1111: `ACPConnectionCard` puts `onClick` on its root
  * `<div>`, so dismissing a "remove this connection" dialog by clicking the
  * scrim also fired the card's select handler.
  *
@@ -62,8 +62,8 @@ export function ConfirmModal({
   // Portalled to the document body rather than rendered where it is used. The
   // overlay is `position: fixed`, which is only relative to the viewport while
   // no ancestor establishes a containing block — and a `transform` does, even
-  // an identity one mid-transition. Station#1069: the profile page's stat cards
-  // lift on hover (`.profile-stats-grid > .profile-card:hover { transform }`),
+  // an identity one mid-transition. archive#1069: the profile page's stat cards
+  // lift on hover (`.profile-stats-grid >.profile-card:hover { transform }`),
   // and because this modal rendered inside one of those cards the two states
   // fed each other every frame — full-viewport overlay covers the cursor, so
   // the card is `:hover`, so the card takes a transform, so the overlay
@@ -76,11 +76,11 @@ export function ConfirmModal({
   // lifecycle this component used to half-implement. The per-instance
   // `aria-labelledby` id moved with it: two open dialogs used to emit the same
   // `id="confirm-modal-title"` and the label resolved to whichever the
-  // document held first (station#1111) — `Dialog`'s own `useId` keeps that
+  // document held first (archive#1111) — `Dialog`'s own `useId` keeps that
   // fix, for every dialog rather than this one.
   // focus containment, focus restoration, Escape, backdrop
-  // dismissal, and VisualViewport geometry. Before station#1110 the whole of
-  // the focus handling here was `firstBtn?.focus()`, so `aria-modal="true"` was
+  // dismissal, and VisualViewport geometry. Before archive#1110 the whole of
+  // the focus handling here was `firstBtn?.focus`, so `aria-modal="true"` was
   // a claim the DOM did not back — the second Tab walked out of the dialog into
   // the app behind it, and closing stranded focus on `<body>`.
   return createPortal(

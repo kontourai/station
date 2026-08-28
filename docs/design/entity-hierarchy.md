@@ -3,30 +3,30 @@
 **Status:** Draft (updated) — **direction superseded in part:** the agent-type taxonomy
 this doc is built on (Station/managed vs External/connected as a *type system*) is being
 dissolved by the agent–engine unification; see
-[`agent-engine-unification.md`](agent-engine-unification.md) (tracking issue #893) for
+[`agent-engine-unification.md`](agent-engine-unification.md) (tracking issue archive#893) for
 the target model. This doc remains the shipped-behavior contract for each boundary until
 the slice that moves that boundary lands, and is revised in the same commits (standing
-rule). **#894 (2026-07-26):** the badge/label reflection of the two-type taxonomy has
+rule). **archive#894 (2026-07-26):** the badge/label reflection of the two-type taxonomy has
 already shipped out from under this doc — every agent surface now renders an **engine
 chip** (not a Station/External/ACP badge), the Connections hub has an "Engines" section,
 and the new-chat picker groups by engine. The *type system* itself (the editor's
 Station-agent/External-agent split, `executionClass`, the two-tab editor shape) remains
 shipped behavior as described below until slices 5-6 replace it with an engine picker.
-**Slice 5 (station#975, 2026-07-27):** the editor half of the type system is now also
+**Slice 5 (archive#975, 2026-07-27):** the editor half of the type system is now also
 superseded — the "Station agent"/"External agent" `<select>` is gone, replaced by an
 engine picker (`#ae-engine`) that lists Station plus every enabled external engine
 connection; editor tabs (including the new Prompt tab) are derived per-agent from the
 `EngineCapabilityMatrix` (`packages/contracts/src/engine-capability-matrix.ts`), not a
 fixed per-`AgentType` set. `AgentType`/`resolveAgentTypeFromRuntimeConnection` remained
 in code (validator + registry consumers) at that point — their retirement was slice 6.
-**Slice 6 (station#1003, 2026-07-27):** `AgentType`/`resolveAgentTypeFromRuntimeConnection`
+**Slice 6 (archive#1003, 2026-07-27):** `AgentType`/`resolveAgentTypeFromRuntimeConnection`
 are retired outright (the matrix-driven `resolveEngineCapabilityMatrix` and
 `requiresAgentPromptForRuntime` are the sole replacements), and `executionClass` is
 replaced by `engineId: string` engine identity everywhere in this doc's boundary
 diagrams below — the `AgentType`/`executionClass` snippet in "Add agent type to
 `AgentSpec`" further down is retained only as the historical pre-unification sketch it
 always was.
-**Date:** 2026-03-27 (revised 2026-04-05; unification note 2026-07-26; #894 status note 2026-07-26; #975 status note 2026-07-27; #1003 status note 2026-07-27)
+**Date:** 2026-03-27 (revised 2026-04-05; unification note 2026-07-26; archive#894 status note 2026-07-26; archive#975 status note 2026-07-27; archive#1003 status note 2026-07-27)
 **Author:** Brian Anderson + Station
 **Depends on:** `.plans/01-connected-agents-overhaul.md`, `.plans/03-connections-runtime-ux.md`
 **Reference:** a surveyed provider/orchestration architecture (internal competitive notes)
@@ -43,7 +43,7 @@ Station's core entities (agents, skills, integrations, layouts, plugins) lack a 
 
 2. **No entity hierarchy.** The sidebar and Agents Hub present agents, skills, prompts, and layouts as equal top-level concepts. Skills and integrations are capabilities *of agents*. Layouts are views *of projects*. The UI doesn't reflect this.
 
-3. **No per-project agent scoping.** `ProjectConfig.agents?: string[]` exists in shared types but the UI doesn't use it. Every agent appears everywhere. **Superseded (station#1004, unification slice 7, 2026-07-27):** shipped, and widened past a filter — `AgentSpec.project` now supports true agent OWNERSHIP, not just opt-in visibility. `agent-engine-unification.md` §3.3 is the availability-boundary contract: `ProjectConfig.agents` still governs which GLOBAL agents a project opts into, but a project-owned agent (`project: '<slug>'` on the record) ignores that filter entirely — implicitly available in its own project, absent everywhere else (including the global/no-project context). Deleting the owning project orphans its agents visibly (a validation state naming the missing project) rather than deleting them.
+3. **No per-project agent scoping.** `ProjectConfig.agents?: string[]` exists in shared types but the UI doesn't use it. Every agent appears everywhere. **Superseded (archive#1004, unification slice 7, 2026-07-27):** shipped, and widened past a filter — `AgentSpec.project` now supports true agent OWNERSHIP, not just opt-in visibility. `agent-engine-unification.md` §3.3 is the availability-boundary contract: `ProjectConfig.agents` still governs which GLOBAL agents a project opts into, but a project-owned agent (`project: '<slug>'` on the record) ignores that filter entirely — implicitly available in its own project, absent everywhere else (including the global/no-project context). Deleting the owning project orphans its agents visibly (a validation state naming the missing project) rather than deleting them.
 
 4. **Inconsistent install lifecycle.** Agent install goes through `IAgentRegistryProvider` with proper provider pattern. Skill install is raw `fs` copy + directory re-scan. No unified registry experience.
 

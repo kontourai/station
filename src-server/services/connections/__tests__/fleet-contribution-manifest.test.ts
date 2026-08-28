@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 1 — the contributed-subset projection
+ * archive#1398 — the contributed-subset projection
  * (`docs/design/inference-fleet.md` §4.2/§4.5).
  *
  * The load-bearing assertions here are the negative ones: nothing is
@@ -176,7 +176,7 @@ describe('projectFleetContributionManifest — the contributed subset', () => {
     expect(manifest.projectedAt).not.toBe(manifest.sourceObservedAt);
   });
 
-  // station#1430 (deliberately re-pinned, not deleted): the producer gap
+  // archive#1430 (deliberately re-pinned, not deleted): the producer gap
   // this test used to pin as permanent is closed, so it now proves the
   // opposite invariant — the column is carried, and it carries the SAME
   // honest values `launchable-model-inventory.ts` computes (`null` unknown,

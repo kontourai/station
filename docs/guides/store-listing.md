@@ -77,5 +77,5 @@ for icon sets.
 ## Reviewer notes (internal testers only)
 
 Internal Play and TestFlight groups do not need these notes. External
-TestFlight and App Store review do, and they depend on #1772. Do not submit
+TestFlight and App Store review do, and they depend on archive#1772. Do not submit
 for public review until that decision has a reachable host or a demo path.

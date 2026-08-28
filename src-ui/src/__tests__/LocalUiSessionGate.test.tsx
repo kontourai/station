@@ -124,7 +124,7 @@ describe('LocalUiSessionGate degraded access check', () => {
   test('replaces the forever-wait with an honest degraded message and a reload', async () => {
     vi.useFakeTimers();
     try {
-      // A request that never settles: the exact shape the bound exists for.
+// A request that never settles: the exact shape the bound exists for.
       vi.stubGlobal(
         'fetch',
         vi.fn().mockReturnValue(new Promise<Response>(() => {})),
@@ -139,7 +139,7 @@ describe('LocalUiSessionGate degraded access check', () => {
       ).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
 
-      // Just short of the window: still an honest wait, not yet a claim.
+// Just short of the window: still an honest wait, not yet a claim.
       await act(async () => {
         vi.advanceTimersByTime(DEGRADED_QUERY_TIMEOUT_MS - 1);
       });

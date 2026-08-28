@@ -174,8 +174,8 @@ function KnowledgeStoreSubsection({ slug }: { slug: string }) {
 }
 
 /**
- * `guard` is `ProjectSettingsView.tsx`'s own `useUnsavedGuard` guard (review
- * finding, slice 5 HIGH 1) — both cross-links below must route through it
+ * `guard` is `ProjectSettingsView.tsx`'s own `useUnsavedGuard` guard (
+ * finding, 1) — both cross-links below must route through it
  * like every other navigation trigger on a page with dirty state.
  */
 export function KnowledgeSection({
@@ -216,7 +216,7 @@ export function KnowledgeSection({
       const result = await scanMutation.mutateAsync({});
       setScanResult(result ?? null);
     } catch {
-      /* ignore */
+/* ignore */
     }
     setScanning(false);
   }
@@ -231,7 +231,7 @@ export function KnowledgeSection({
           content,
         });
       } catch {
-        /* ignore */
+/* ignore */
       }
     }
     setUploading(false);

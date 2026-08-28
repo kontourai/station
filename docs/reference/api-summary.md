@@ -49,7 +49,7 @@
 - `GET /api/connections` - List model and runtime connections
 - `GET /api/connections/models` - List model/provider connections
 - `GET /api/connections/runtimes` - List runtime connections with runtime-scoped model metadata
-- `GET /api/connections/model-inventory` - Contributed-subset manifest (`station.fleet-contribution/v1`); requires `inference:invoke` since station#1398 slice 2 — no longer the full launchable inventory
+- `GET /api/connections/model-inventory` - Contributed-subset manifest (`station.fleet-contribution/v1`); requires `inference:invoke` since archive#1398 slice 2 — no longer the full launchable inventory
 - `GET /api/connections/:id` - Get one connection
 - `POST /api/connections` - Create a connection
 - `PUT /api/connections/:id` - Update a connection
@@ -57,7 +57,7 @@
 - `POST /api/connections/:id/test` - Run a connection health check
 
 #### Fleet Inference (2)
-Whole family requires `inference:invoke` (station#1398 slice 2). Like every
+Whole family requires `inference:invoke` (archive#1398 slice 2). Like every
 protected family, it rejects a credential-less loopback caller; completions
 only — never `delegate_task`.
 - `GET /api/inference/manifest` - Read the contributed-model manifest (the only place participation is readable)

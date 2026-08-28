@@ -1522,7 +1522,7 @@
     min-height: 44px;
   }
 
-  /* The header time controls live in .monitoring-header-actions; let them wrap and
+  /* The header time controls live in.monitoring-header-actions; let them wrap and
      fill the row width so nothing overflows on a narrow viewport. */
   .time-filter-wrapper {
     flex: 1 1 auto;

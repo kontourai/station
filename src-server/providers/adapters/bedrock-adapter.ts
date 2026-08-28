@@ -179,7 +179,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       model,
       // Retained so a later `session.configured` can restate it: consumers
       // read `cwd` off the latest such event, so an event that omits it
-      // erases the session's working directory downstream (#903).
+      // erases the session's working directory downstream (archive#903).
       ...(input.cwd ? { cwd: input.cwd } : {}),
       resumeCursor: callbackResult?.resumeCursor ?? input.resumeCursor,
       createdAt: callbackResult?.createdAt ?? now,
@@ -277,7 +277,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
     }
     this.activeTurns.set(input.threadId, { turnId, controller });
 
-    // #903: a per-turn model change must reach the read model and the
+    // archive#903: a per-turn model change must reach the read model and the
     // persisted row, and `session.configured` is the only event that carries a
     // model. Published before the state/turn events below so a consumer
     // folding in order ends on the turn's own state. Gated on the turn
@@ -285,7 +285,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
     // the catalog, so comparing resolved-vs-stored alone would restate on
     // ordinary turns whenever resolution is not idempotent.
     //
-    // Disclosed residual gap (#903 review): `updateSession` below overwrites
+    // Disclosed residual gap (archive#903 review): `updateSession` below overwrites
     // the stored model unconditionally, so a turn that omits a selector while
     // catalog resolution returns something new — an inference profile added or
     // deprecated behind the TTL cache — changes the session's model without
@@ -377,7 +377,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       messages.push({ role: 'user', content: input.input });
 
       let assistantText = '';
-      // station#3457: one id for the ONE assistant text item this turn
+      // archive#3457: one id for the ONE assistant text item this turn
       // streams, minted before the loop and reused by every chunk of it.
       // Minting inside the loop gave each token its own `itemId`, which is
       // per-chunk identity — that is what `eventId` is for.
@@ -389,7 +389,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
         | 'cancelled'
         | 'other'
         | undefined;
-      // station#4197: the finish chunk's reported usage, held for
+      // archive#4197: the finish chunk's reported usage, held for
       // `publishCompletion` to translate into `token-usage.updated`. Stays
       // `undefined` when the stream reported none — absence publishes no
       // event, never an event of zeros.
@@ -415,11 +415,11 @@ export class BedrockAdapter implements ProviderAdapterShape {
           });
         } else if (chunk.type === 'finish') {
           finishReason = normalizeFinishReason(chunk.finishReason);
-          // station#4197: Bedrock reports usage on every completed turn and
-          // this adapter used to discard it (the #4048 audit's "engines
+          // archive#4197: Bedrock reports usage on every completed turn and
+          // this adapter used to discard it (the archive#4048 audit's "engines
           // report, Station drops" finding).
           if (chunk.usage) turnUsage = chunk.usage;
-          // station#1182 survey finding: `chunk.reportedModel` (populated by
+          // archive#1182: `chunk.reportedModel` (populated by
           // `AiSdkLLMProvider.createStream`, shared with Ollama) is
           // deliberately NOT consumed here. Verified against
           // `@ai-sdk/amazon-bedrock`'s `doStream`/`doGenerate`: its
@@ -447,7 +447,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
         session.history.push({ role: 'assistant', content: assistantText });
       }
 
-      // station#3545: `finishReason` is `undefined` whenever the stream's
+      // archive#3545: `finishReason` is `undefined` whenever the stream's
       // finish chunk carried no `finishReason` — reachable here because the
       // loop above completed without throwing or being aborted, i.e. the
       // turn genuinely succeeded. This fallback used to be dead:
@@ -472,7 +472,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
         this.sessions.has(input.threadId) &&
         this.isCurrentTurn(input.threadId, turnId)
       ) {
-        // station#3466: this used to branch on `controller.signal.aborted`
+        // archive#3466: this used to branch on `controller.signal.aborted`
         // and publish `turn.completed`/`finishReason:'cancelled'` there.
         // That branch is UNREACHABLE, not merely untested: every `.abort()`
         // call site (the superseded-turn overwrite, `interruptTurn`'s
@@ -493,7 +493,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
         // a regression here would record a user-initiated cancel as a
         // FAILURE, not silence. The ordering-invariant tests above are what
         // actually catch it either way; this comment just says what the
-        // failure mode is now. station#3442: a genuine stream/runtime
+        // failure mode is now. archive#3442: a genuine stream/runtime
         // failure — not a cancellation — must publish `runtime.error`, the
         // only canonical event the session-lifecycle projector folds to
         // 'failed'. This branch used to publish `turn.completed` with
@@ -672,12 +672,12 @@ export class BedrockAdapter implements ProviderAdapterShape {
     outputText?: string;
     finishReason: 'stop' | 'tool-calls' | 'max-tokens' | 'cancelled' | 'other';
     resumeCursor?: unknown;
-    /** station#4197: the finish chunk's reported usage, when it carried one. */
+    /** archive#4197: the finish chunk's reported usage, when it carried one. */
     usage?: LLMStreamChunk['usage'];
   }): void {
     if (!this.isCurrentTurn(options.input.threadId, options.turnId)) return;
     const completedAt = new Date().toISOString();
-    // station#4197: publish exactly what Bedrock reported for THIS turn —
+    // archive#4197: publish exactly what Bedrock reported for THIS turn —
     // one per-turn event (declared `per-turn` in `PROVIDER_USAGE_SCOPE`),
     // derived by `bedrockReportedUsage` (cache fields presence-gated on the
     // Converse wire object; see that function's docblock). No usable
@@ -723,7 +723,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * station#3442: the failure counterpart to `publishCompletion` — publishes
+   * archive#3442: the failure counterpart to `publishCompletion` — publishes
    * `runtime.error` (never `turn.completed`) so the session-lifecycle
    * projector derives `failed`, then restores the same adapter-internal
    * session bookkeeping (`ready`/`idle`) `publishCompletion` performs so a
@@ -770,7 +770,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
   }
 }
 
-// station#3545: a finish chunk with no `finishReason` key at all is
+// archive#3545: a finish chunk with no `finishReason` key at all is
 // *absent*, not a recognized-but-other value. Collapsing that absence into
 // `'other'` made every successful Bedrock turn indistinguishable from a
 // genuinely unclassified one. This function preserves absence as `undefined`
@@ -780,7 +780,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
 // aborted, is where "absent, but the turn plainly succeeded" becomes
 // `'stop'`.
 //
-// station#3545 review HIGH, fixed one level down: `AiSdkLLMProvider.
+// archive#3545 review HIGH, fixed one level down: `AiSdkLLMProvider.
 // createStream` (which `BedrockLLMProvider` inherits unmodified) now awaits
 // ai-sdk's own `result.finishReason` and maps it onto this vocabulary
 // (`ai-sdk-llm-provider.ts`'s `mapAiSdkFinishReason`) instead of never
@@ -791,7 +791,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
 // being indistinguishable from an absent value. `'cancelled'` remains
 // adapter-only (it is never something the LLM stream itself reports).
 //
-// station#3545 review round 2 NIT: two mapping tables now exist for one
+// archive#3545 review round 2 NIT: two mapping tables now exist for one
 // vocabulary — `mapAiSdkFinishReason` (ai-sdk-llm-provider.ts) is
 // AUTHORITATIVE for translating ai-sdk's own vocabulary; this function is
 // deliberately NOT that translation. It stays as a boundary guard against a

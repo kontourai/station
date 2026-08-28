@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * M5 (station#4090): while a route's pane occupies the ambient dock, the
+ * (archive#4090): while a route's pane occupies the ambient dock, the
  * route renders an AWAY STATE instead of a second live copy of the pane —
  * and derives "away" from the host's published occupant state through
  * `isAmbientDockOccupant`, never a route-local flag.
@@ -17,8 +17,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 
 const selection = vi.hoisted(() => ({
-  // The shape HomeView/ActivityView admit as "builtin selected": pane
-  // selection is not what these tests exercise, so it stays permissive.
+// The shape HomeView/ActivityView admit as "builtin selected": pane
+// selection is not what these tests exercise, so it stays permissive.
   result: {
     state: 'selected',
     candidate: {
@@ -111,17 +111,17 @@ test('Home renders its away state while the published dock occupant is Home', ()
 });
 
 test('Home renders its pane again the moment the occupant is someone else', () => {
-  // The transition most likely to be wrong (M5 acceptance 1): the dock moved
-  // on to Activity, so Home is NOT docked anymore and `/` must render it.
+ // The transition most likely to be wrong ( acceptance 1): the dock moved
+// on to Activity, so Home is NOT docked anymore and `/` must render it.
   renderHome(publishedAction(WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId));
   expect(screen.queryByText('Home is in the dock')).toBeNull();
   expect(screen.getByTestId('home-surface')).not.toBeNull();
 });
 
 test('Home renders its pane when no host publishes an occupant at all', () => {
-  // No dock action means no dock — "away" cannot be derived, so it is not
-  // shown. A hand-rolled flag could survive the host unmounting; the
-  // derivation cannot.
+// No dock action means no dock — "away" cannot be derived, so it is not
+// shown. A hand-rolled flag could survive the host unmounting; the
+// derivation cannot.
   renderHome(null);
   expect(screen.queryByText('Home is in the dock')).toBeNull();
   expect(screen.getByTestId('home-surface')).not.toBeNull();

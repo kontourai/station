@@ -6,7 +6,7 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { isSessionUnanswerable } from './answerability';
 
 /**
- * A turn is mid-flight. #1073: gated on the summary's turn-level fold, not
+ * A turn is mid-flight. archive#1073: gated on the summary's turn-level fold, not
  * lifecycleState — an attach-only session projects 'queued' (previously a
  * fabricated 'running'), and neither state means work is in flight. A
  * legacy summary without the fold falls back to lifecycleState 'running'
@@ -36,7 +36,7 @@ export function linkedFlowStateLabel(state: unknown): string {
  * is not product vocabulary and must not leak back into user-facing copy.
  */
 /**
- * How the Builder run was joined to this session (station#189 S4), in the
+ * How the Builder run was joined to this session (archive#189), in the
  * user's words. Never collapses to a bare "linked": which of the two join
  * paths produced the row is the difference between Station's own record and a
  * match on a producer-supplied identity, and the reader is entitled to know
@@ -61,11 +61,11 @@ export function builderRunMatchLabel(
  * is what actually explains it, so this returns a label the caller pairs with
  * that reason rather than swallowing it.
  *
- * Says "engine session identity", not "runtime identity" (station#3139):
+ * Says "engine session identity", not "runtime identity" (archive#3139):
  * docs/glossary.md retires "runtime" as a user-facing word precisely because
  * it meant too many things, and names **engine** as the term for the thing
  * that executed the work. The status is about the sidecar's `runtime_session`
- * — the engine session the Builder run recorded — so the user-facing wording
+* the engine session the Builder run recorded — so the user-facing wording
  * follows the glossary while the wire field keeps its producer-owned name.
  */
 export function builderRunIdentityLabel(
@@ -109,7 +109,7 @@ export function humanizeId(value: string): string {
 }
 
 /**
- * The name a session is listed under. station#3139: this used to end at
+ * The name a session is listed under. archive#3139: this used to end at
  * `humanizeId(session.threadId)`, and `humanizeId` only strips a leading
  * `task[:-]?` and swaps `[-_]` for spaces — a NO-OP on a content-derived hex
  * digest, so an attached Claude session was listed as
@@ -138,7 +138,7 @@ export function sessionTitle(session: OrchestrationSessionSummary): string {
  * `home-view-model.ts` applies (max of updatedAt/lastEventAt/createdAt) so the
  * two surfaces cannot disagree about which session is newest. `0` means no
  * parseable stamp at all; callers must render that as "no time known" rather
- * than as a real duration (see `relativeTime`'s station#1795 guard).
+ * than as a real duration (see `relativeTime`'s archive#1795 guard).
  */
 export function sessionRecency(session: OrchestrationSessionSummary): number {
   return Math.max(
@@ -167,22 +167,22 @@ export function sessionKindLabel(session: OrchestrationSessionSummary): string {
  *
  * Every branch says exactly what is known, and no branch drops the session:
  * - a delegated task joined to a REMOTE Station purely by project *name* is
- *   labelled unverified (station#1463) — slugs are locally generated, so a
- *   cross-machine name match is a coincidence rather than proof of identity;
+*   labelled unverified (archive#1463) — slugs are locally generated, so a
+*   cross-machine name match is a coincidence rather than proof of identity;
  * - `directory-corroborated` still carries the unverified-name caveat: the
- *   corroboration proves the DIRECTORY matches the operator-verified path,
- *   and station#1462 is the standing proof that two projects can sit on one
- *   directory, so it is a weaker claim than a verified binding, not a
- *   substitute for one;
+*   corroboration proves the DIRECTORY matches the operator-verified path,
+*   and archive#1462 is the standing proof that two projects can sit on one
+*   directory, so it is a weaker claim than a verified binding, not a
+*   substitute for one;
  * - a working directory configured as more than one project reads as
- *   ambiguous with the candidates named (station#1462), never as one
- *   arbitrarily-chosen project and never as plain "Unassigned", which would
- *   read as "no project" when the truth is "too many". A bounded-away tail
- *   of candidates is counted rather than dropped, so the list never renders
- *   16 of 20 names as if that were all of them.
+*   ambiguous with the candidates named (archive#1462), never as one
+*   arbitrarily-chosen project and never as plain "Unassigned", which would
+*   read as "no project" when the truth is "too many". A bounded-away tail
+*   of candidates is counted rather than dropped, so the list never renders
+*   16 of 20 names as if that were all of them.
  *
  * Every surface that names a session's project goes through here — the
- * sessions list ROW PILL (station#3027 moved it off the heading and onto the
+ * sessions list ROW PILL (archive#3027 moved it off the heading and onto the
  * row, where it is also the project filter's control) and the detail panel's
  * Project row both — so one click cannot change the answer. The pill renders
  * this string verbatim, caveats included; a long one is visually truncated
@@ -216,21 +216,21 @@ export function sessionProjectLabel(
 /*
  * `sessionProjectSection` lived here — `Project · <label>`, or `'Unassigned'`
  * when nothing was known — and its own docblock said to retire it if no
- * surface grouped by project again. station#3227 A3 collected the evidence to
+ * surface grouped by project again. archive#3227 A3 collected the evidence to
  * decide, and retired it:
  *
- * - It never regained a rendering caller. station#3027 moved the sessions
- *   list off project headings onto state lanes and nothing moved back; only a
- *   test held it alive, which is the definition of machinery ahead of a call
- *   site (see the station#1781 note further down this file for the same call).
+ * - It never regained a rendering caller. archive#3027 moved the sessions
+*   list off project headings onto state lanes and nothing moved back; only a
+*   test held it alive, which is the definition of machinery ahead of a call
+*   site (see the archive#1781 note further down this file for the same call).
  * - Home DOES group by project (`activity-bars.tsx`, `HomeSurface.tsx`),
- *   so it was the one plausible caller — and it wants neither half of this
- *   function. The `Project · ` prefix is a section-heading form, and Home
- *   renders the label inside `{kindLabel} · {projectLabel}` and as a bar row
- *   name, where it would read "Session · Project · station". Its `'Unassigned'`
- *   fold also contradicts the `'No project'` Home already shows for a
- *   project-less direct chat, and one Home list must not spell the same
- *   absence two ways.
+*   so it was the one plausible caller — and it wants neither half of this
+*   function. The `Project · ` prefix is a section-heading form, and Home
+*   renders the label inside `{kindLabel} · {projectLabel}` and as a bar row
+*   name, where it would read "Session · Project · station". Its `'Unassigned'`
+*   fold also contradicts the `'No project'` Home already shows for a
+*   project-less direct chat, and one Home list must not spell the same
+*   absence two ways.
  *
  * Both callers now read `sessionProjectLabel` and fold `null` themselves at
  * the display site. Every assertion this function carried was kept, retargeted
@@ -238,13 +238,13 @@ export function sessionProjectLabel(
  */
 
 /**
- * Row-level permission posture (station#1424) — flags a message row whose
+ * Row-level permission posture (archive#1424) — flags a message row whose
  * session Station only reads, never authored/controls. Deliberately narrowed
  * to the one variant with a real, reachable call site today
  * (`AttachedSessionDetail`'s per-row transcript, gated on the same
  * `controlMode === 'read-only-attached'` check `SessionsView.tsx` already
  * uses) — a `delegated-worker`/`delegated-task` posture was cut in review
- * (station#1424 round 2, S1) because no chat/stream transcript surface
+* (archive#1424) because no chat/stream transcript surface
  * renders a delegated session's messages today (`SessionsView`/
  * `SessionDetailHeader` already show the equivalent page-level label via
  * `sessionKindLabel`); reintroduce it alongside a real wired call site in
@@ -266,7 +266,7 @@ export function permissionPostureLabel(posture: PermissionPosture): string {
  *
  * This is the ONE place Station turns a provider id into engine vocabulary —
  * session headers, the turn provenance card, and the per-turn engine chip
- * (station#1434) all read it, so a provider named here is named identically
+ * (archive#1434) all read it, so a provider named here is named identically
  * everywhere. Every built-in adapter that can stamp this field is listed:
  * `claude`, `codex`, `acp`, `bedrock`, `ollama`, `station-agent` (their
  * `readonly provider` in `src-server/providers/adapters/*`).
@@ -323,7 +323,7 @@ export interface SessionIconAgent {
  * glyph, and an unknown provider id shows its own initials rather than being
  * dressed up as some engine it might not be.
  *
- * Lives here rather than in `SessionsView` (station#3202): the project page's
+ * Lives here rather than in `SessionsView` (archive#3202): the project page's
  * Live work section renders the same rows for the same sessions, and two
  * copies of this precedence is how one surface starts drawing a delegated
  * session as its parent agent.
@@ -341,14 +341,14 @@ export function sessionIconAgent(
 }
 
 /**
- * station#3408: `'agent'` deliberately has no branch here, and the fallback is
+ * archive#3408: `'agent'` deliberately has no branch here, and the fallback is
  * the intended label for it.
  *
  * `'agent'` is in fact the ONLY `targetKind` either launch writer persists
  * (`station-control-delegation.ts` and `execution-target-execution.ts`); the
  * two explicit branches below cover contract values no writer in this repo
  * produces. So the fallback is already what every real delegated session
- * renders — before #3408 because the projection dropped `'agent'` and left
+ * renders — before archive#3408 because the projection dropped `'agent'` and left
  * `targetKind` undefined, and after it because `'agent'` falls through here.
  * The label is unchanged either way.
  *
@@ -397,14 +397,14 @@ export function displayEnvironment(
  * predicate (`{completed, failed, canceled}`: the session records a run
  * outcome and is not doing work), not the contract's terminal predicate
  * (`{completed}`: no transition out at all; `failed` and `canceled` are both
- * retryable). station#3244 replaced the hand-written list that used to sit
- * here — the same drift class station#1548 deleted server-side — with the
+ * retryable). archive#3244 replaced the hand-written list that used to sit
+ * here — the same drift class archive#1548 deleted server-side — with the
  * derivation, keeping the members identical. Callers gate ranking
  * (`delegatedTaskPriority`) and finished-session affordance removal
  * (`DelegatedTaskCoordinator`) on it, which are stopped-semantics questions;
  * whether the coordinator's follow-up composer should instead follow the
  * terminal predicate, as the session detail's composer now does, is a
- * separate deliberate call (reported on station#3244).
+ * separate deliberate call (reported on archive#3244).
  */
 export function isTerminalSession(
   session: OrchestrationSessionSummary,
@@ -415,7 +415,7 @@ export function isTerminalSession(
 }
 
 /**
- * NOTE ON THE SHAPE station#1781 SUGGESTED. Its "What" §1 offered
+ * NOTE ON THE SHAPE archive#1781 SUGGESTED. Its "What" §1 offered
  * `isActionableSession(summary)` = not terminal AND answerable as the
  * answerability-aware layer. It was written, and then removed: NO call site
  * wanted the conjunction. Every surface this slice touched needs the two
@@ -431,7 +431,7 @@ export function isTerminalSession(
  * The independence is real and is pinned in
  * `sessionDisplay-answerability.test.ts`: a `failed` session is
  * terminal-by-fold yet still ANSWERABLE (`failed -> queued | running` is a
- * live retry path, station#1090), and a `needs_input` session whose provider
+ * live retry path, archive#1090), and a `needs_input` session whose provider
  * adapter is gone is non-terminal yet unanswerable.
  */
 
@@ -441,7 +441,7 @@ export function isTerminalSession(
  * annotation on its card is still reachable (ADR 0012: consumers annotate,
  * they do not silently filter).
  *
- * Rank 3 is station#1781's addition. Before it, a dead session's sticky
+ * Rank 3 is archive#1781's addition. Before it, a dead session's sticky
  * `review_pending`/`pendingReview` returned rank 0 — the highest — and
  * `DelegatedTaskCoordinator` renders `tasks[0]` only, so one stranded task
  * occupied the single coordinator slot indefinitely while live work sat

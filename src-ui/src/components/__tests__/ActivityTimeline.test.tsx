@@ -21,7 +21,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 /**
- * station#771 regression. `ActivityTimeline` used to destructure only
+ * archive#771 regression. `ActivityTimeline` used to destructure only
  * `{ data, isLoading }` and gate on `loading && !data` / `!data?.byDate` — a
  * settled error left both false, so the component returned `null`: no chart,
  * no message, no console trace.

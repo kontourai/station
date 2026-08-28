@@ -1,5 +1,5 @@
 /**
- * Automatic adoption of detected native engines (#1575).
+ * Automatic adoption of detected native engines (archive#1575).
  *
  * A machine with the claude/codex CLI on PATH gets its engine connection and
  * same-ID default Agent created without a trip through the Providers UI.
@@ -70,7 +70,7 @@ export async function adoptDetectedNativeEngines(
   // at the same seam as detected engines, rather than projecting a special
   // locked row on every request — but WITHOUT an engine-connection binding,
   // because `station` is a reserved Agent identity the registry can never
-  // accept as a connection (station#3662; see `materializeStationAgent`).
+  // accept as a connection (archive#3662; see `materializeStationAgent`).
   // This is also where an older home is healed: the same call drops a
   // previously seeded `agentConnectionId: 'station'` on load.
   try {
@@ -85,7 +85,7 @@ export async function adoptDetectedNativeEngines(
     }
     return { outcomes };
   }
-  // station#3662 review MEDIUM-2: its OWN failure boundary. A home this
+  // archive#3662 review MEDIUM-2: its OWN failure boundary. A home this
   // process cannot write is a real state (read-only mount, a filesystem that
   // refuses the atomic replace), and it must neither abort native-engine
   // detection — which is a separate question — nor pass silently. The record

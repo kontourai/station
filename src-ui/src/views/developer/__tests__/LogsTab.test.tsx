@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
  *
- * #3843 T3 — the Developer log read on a paired principal.
+ * archive#3843 — the Developer log read on a paired principal.
  *
- * D6 redacts this read for anyone who did not prove home possession, and it
+ * redacts this read for anyone who did not prove home possession, and it
  * is right to. What was missing is the sentence: a page that quietly serves
  * `[REDACTED]` reads as a broken page rather than as a correct boundary. The
  * read itself is remote-safe — the host performs it, this device only asks —
@@ -51,15 +51,15 @@ describe('LogsTab', () => {
   test('on a paired device it says where the full logs are, beside the read it still renders', () => {
     devicePresentation = { deviceClass: 'paired', hostName: 'workshop' };
     render(<LogsTab />);
-    // Not a degraded page: the entries the device IS entitled to still render.
+// Not a degraded page: the entries the device IS entitled to still render.
     expect(screen.getByLabelText('Server logs')).toBeTruthy();
     expect(screen.getByText(/booted/)).toBeTruthy();
     expect(screen.getByText(REDACTED_SENTENCE)).toBeTruthy();
   });
 
   test('the empty read still says where the full logs are', () => {
-    // "No matching logs" from a paired device is exactly the state that reads
-    // as broken without the sentence.
+// "No matching logs" from a paired device is exactly the state that reads
+// as broken without the sentence.
     logsState.data = { entries: [] };
     devicePresentation = { deviceClass: 'paired', hostName: 'workshop' };
     render(<LogsTab />);
@@ -75,8 +75,8 @@ describe('LogsTab', () => {
   });
 
   test('the search field no longer claims the read is redacted regardless of who is asking', () => {
-    // A local operator receives UNREDACTED bytes; "Search redacted logs" was
-    // a state word nothing on this page derived.
+// A local operator receives UNREDACTED bytes; "Search redacted logs" was
+// a state word nothing on this page derived.
     devicePresentation = { deviceClass: 'host', hostName: 'workshop' };
     render(<LogsTab />);
     expect(screen.getByPlaceholderText('Search logs')).toBeTruthy();

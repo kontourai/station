@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 /**
- * station#3677 PR 3 — the trusted-approval flow on a native-broker host.
+ * archive#3677 — the trusted-approval flow on a native-broker host.
  * The claim under test: when the host reports the native consent broker,
  * `requestTrustedApproval` opens NO popup and resolves from the broker's
  * server-settled status; refusals and denials both resolve to "not granted".
@@ -66,7 +66,7 @@ async function driveTrustedApproval(onResult: (granted: boolean) => void) {
     </PermissionManager>,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
-  // The in-app modal (which only OPENS the request) appears first.
+// The in-app modal (which only OPENS the request) appears first.
   fireEvent.click(
     await screen.findByRole('button', { name: 'Review trusted access' }),
   );
@@ -122,10 +122,10 @@ test('native broker host: a broker refusal resolves false, never a silent grant'
 });
 
 test('station#3731: no review URL and no native broker resolves false, and opens no popup', async () => {
-  // The listener is down and this caller cannot decide natively, so the
-  // server returns a transaction with no browser way in. Opening a popup at
-  // nothing would stall the user on a blank window; the honest outcome is
-  // "not granted".
+// The listener is down and this caller cannot decide natively, so the
+// server returns a transaction with no browser way in. Opening a popup at
+// nothing would stall the user on a blank window; the honest outcome is
+// "not granted".
   fetchMock.mockResolvedValue(
     jsonResponse({ approval: { id: 'txn-5', reviewUrl: null } }),
   );

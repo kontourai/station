@@ -1,7 +1,7 @@
 # Multi-agent delivery protocol
 
 > Status: **active practice, codified 2026-08-01** from a measured delivery arc
-> (issues #189, #1410, #1424, #1426, #1432, #1398 slice 1, #189 S4 — eight
+> (issues archive#189, archive#1410, archive#1424, archive#1426, archive#1432, archive#1398 slice 1, archive#189 S4 — eight
 > branches, six merged at time of writing). This document records *how agents
 > deliver into this repo*, alongside `local-merge-readiness.md` (which owns the
 > merge evidence basis during the hosted-CI outage). It adds no new gates or
@@ -270,12 +270,12 @@ establishing the host was the cause, and disclosed either way. Conflating them
 guarantees one of those responses is wrong.
 
 Related and load-bearing: **`firstCausalExcerpt` named the first diagnostic in
-the output, not the cause** (station#1871). It twice named an unrelated
+the output, not the cause** (archive#1871). It twice named an unrelated
 *warning* — once while the run failed on a lint error elsewhere, once while the
 run was cancelled and nothing failed at all. Both times the truth was further
 down, in `counts` and the tool's own tally (`Found 1 error. / Found 374
 warnings.`). Reading it top-down cost one lane a round of edits to another
-lane's files on a false premise. **Fixed in station#1871**, and the fix took three
+lane's files on a false premise. **Fixed in archive#1871**, and the fix took three
 rounds, so it is worth knowing exactly what it does and does not promise.
 
 For a chained gate command (`verify:static:raw`, `typecheck`, ...) the excerpt
@@ -305,7 +305,7 @@ that perfectly mimic real defects. The triage ladder, in order:
 1. `uptime` — load over ~20 means suspect the host first. Then **identify the
    source**, do not assume it is a sibling test run:
    `ps -Ao pid,ppid,pcpu,etime,comm -r | head -20`. A `pgrep vitest` that
-   returns nothing is not an all-clear (station#3205: an editor holding 373
+   returns nothing is not an all-clear (archive#3205: an editor holding 373
    concurrent `git status --untracked-files=all` children took this host to
    load **110** with zero test processes running — one status costs ~128ms,
    so the cost was the multiplier, not any single command). If the top
@@ -487,14 +487,14 @@ to any surface that makes claims:
 - **Is the fix reachable from every production path that exhibits the
   defect?** A fix that is correct where it sits but sits off the path is not a
   fix — and its own tests will pass, because they exercise the fixed code
-  directly. The tool-gate fail-closed change (station#1834) landed correct in
+  directly. The tool-gate fail-closed change (archive#1834) landed correct in
   `createAgentHooks`, but the default agent — which every scheduler job,
   feedback turn, and CLI invocation runs through — was a *hookless* temp agent,
   so the new denial was unreachable from exactly the unattended paths the issue
   named; the fix's 300+ tests all passed against the one path that *was* wired.
-  Separately, the confinement comparator (station#1870) was correct but
+  Separately, the confinement comparator (archive#1870) was correct but
   unreachable: dispatch forwarded remote work as `{kind:'current'}` before the
-  gate ran (station#2023). **Enumerate the production entry points that reach
+  gate ran (archive#2023). **Enumerate the production entry points that reach
   the defective behavior, and prove the fix is on each — not just on the one
   the author instrumented.** A test that builds the object under test directly
   cannot answer this; the regression test must enter through the real caller.
@@ -514,7 +514,7 @@ to any surface that makes claims:
   implied success, never silent omission, never a blank cell.
 - **No claim without a truthful source.** If no producer can populate a
   field, the capability does not exist yet — delete the claim rather than
-  defend it (see #1426's `structured-tools` removal, #1430).
+  defend it (see archive#1426's `structured-tools` removal, archive#1430).
 - **Never assert-then-retract**: a surface must not show an identity/claim it
   will silently withdraw (streaming vs persisted rows must tell one story).
 - **No claims about a turn/artifact from mutable current state** — per-record
@@ -530,7 +530,7 @@ to any surface that makes claims:
   like *"539/539 unit files with 3822 passed"* in the same claim's
   human-readable field does not: it is a precise, falsifiable count on a
   claim that substantiates none of it, and the human audience takes it as a
-  result (station#1552). On an attestation claim, either name the class in
+  result (archive#1552). On an attestation claim, either name the class in
   the sentence — *"recorded as a session-local attestation, not a
   CI-reconcilable test_output claim"* — or omit the count. Pinned by
   `scripts/__tests__/trust-bundle-claim-prose.test.ts`; the two
@@ -541,7 +541,7 @@ to any surface that makes claims:
   contract that describes a live dereference path while nothing writes the
   field is the same defect as a fabricated value, arriving through the docs
   instead of the code — and it survives review because the reader, the
-  renderer, and the tests all exist (station#1558, station#1510). Tests that
+  renderer, and the tests all exist (archive#1558, archive#1510). Tests that
   hand-build the payload confirm the fold and never the reachability. Where
   a slot's implementation status is load-bearing, declare it as data and
   reconcile it against the source tree in both directions.

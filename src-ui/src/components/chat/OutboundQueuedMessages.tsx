@@ -105,10 +105,10 @@ export function OutboundQueuedMessages({
         {turns.map((turn, index) => {
           const workspaceRefused = isWorkspaceRefusedTurn(turn);
           const refusedAt = turn.createdAt;
-          // 'May have been answered' requires an ANSWER: only a newer
-          // assistant message counts as advancement — a system event or the
-          // user's own later message must not produce the claim (review
-          // finding). Equal timestamps stay conservative (not advanced).
+// 'May have been answered' requires an ANSWER: only a newer
+// assistant message counts as advancement — a system event or the
+// user's own later message must not produce the claim (
+// finding). Equal timestamps stay conservative (not advanced).
           const threadAdvanced =
             workspaceRefused &&
             typeof refusedAt === 'number' &&
@@ -192,9 +192,9 @@ export function OutboundQueuedMessages({
                       <button
                         type="button"
                         onClick={() =>
-                          // A failed discard leaves the row actionable on
-                          // purpose — the draft exists either way; surfacing
-                          // the error beats a silent duplicate-capable state.
+// A failed discard leaves the row actionable on
+// purpose — the draft exists either way; surfacing
+// the error beats a silent duplicate-capable state.
                           void Promise.resolve(
                             onStartNewChat(
                               turn.content,

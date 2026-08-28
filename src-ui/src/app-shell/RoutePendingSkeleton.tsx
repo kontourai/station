@@ -45,7 +45,7 @@ import './route-pending-skeleton.css';
  * click and for `popstate` alike, and nothing in the UI wraps navigation in
  * `startTransition`. Under a transition React does the opposite: it keeps the
  * departing content revealed and renders no fallback at all, which is exactly
- * the symptom #3660 described. Both halves are asserted in
+ * the symptom archive#3660 described. Both halves are asserted in
  * `__tests__/RoutePendingSkeleton.test.tsx`, so wrapping navigation in a
  * transition later reddens a test that names the reason instead of quietly
  * restoring the defect.
@@ -54,13 +54,13 @@ export function RoutePendingSkeleton({
   view,
   spec,
 }: {
-  /** The arriving route. Omitted by a caller that has no route (embedded outlets, tests). */
+/** The arriving route. Omitted by a caller that has no route (embedded outlets, tests). */
   view?: NavigationView;
   spec?: PageFrameSpec | null;
 }) {
   const { message } = useLocale();
-  // A `matchMedia` subscription, but only for as long as this placeholder is
-  // mounted — which is only while a route outlet is suspended.
+// A `matchMedia` subscription, but only for as long as this placeholder is
+// mounted — which is only while a route outlet is suspended.
   const isMobile = useIsMobile();
   const shape = view ? routePendingShape(view, spec, isMobile) : 'unshaped';
 
@@ -77,7 +77,7 @@ export function RoutePendingSkeleton({
         <div className="route-pending__rail">
           <SkeletonList count={6} label={message('route.loading')} />
         </div>
-        {/* Decorative: the rail's `SkeletonList` is already the one live
+{/* Decorative: the rail's `SkeletonList` is already the one live
             region announcing the wait, and a second `role="status"` beside it
             makes a screen reader say "loading" twice for one navigation. */}
         <div className="route-pending__detail" aria-hidden="true">
@@ -98,10 +98,10 @@ export function RoutePendingSkeleton({
 
   if (shape === 'region') {
     const blocks = <SkeletonBlock count={3} label={message('route.loading')} />;
-    // A `flush` frame drops its body inset for a list rail that runs to the
-    // frame edge. This shape has no rail — Guidance's Commands tab is the one
-    // route that is both — so it puts the inset back and holds the x-origin the
-    // arriving body renders at.
+// A `flush` frame drops its body inset for a list rail that runs to the
+// frame edge. This shape has no rail — Guidance's Commands tab is the one
+// route that is both — so it puts the inset back and holds the x-origin the
+// arriving body renders at.
     return spec?.flush ? (
       <div className="route-pending route-pending--inset">{blocks}</div>
     ) : (

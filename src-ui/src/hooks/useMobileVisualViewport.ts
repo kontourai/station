@@ -15,10 +15,10 @@ export function readMobileVisualViewport(
   return {
     height,
     offsetTop,
-    // Fixed bottom sheets are positioned against the layout viewport. The
-    // visual viewport may end above Android system chrome or the software
-    // keyboard, so expose that gap as an explicit inset instead of leaving
-    // the dock's controls underneath it.
+// Fixed bottom sheets are positioned against the layout viewport. The
+// visual viewport may end above Android system chrome or the software
+// keyboard, so expose that gap as an explicit inset instead of leaving
+// the dock's controls underneath it.
     bottomInset: Math.max(0, target.innerHeight - (offsetTop + height)),
   };
 }
@@ -82,7 +82,7 @@ export function useMobileVisualViewport() {
  * publishes it on itself and rides above the keyboard; the agent editor's
  * sticky Save bar is a SIBLING, offsets itself by the dock's height, and had no
  * way to read the inset the dock had just moved by, so with an input focused
- * the dock rose and the bar stayed behind the keyboard (sol review, MEDIUM).
+* the dock rose and the bar stayed behind the keyboard.
  *
  * Published once on the document element, from the same `readMobileVisualViewport`
  * reader, so any fixed surface can consume it without owning a subscription.

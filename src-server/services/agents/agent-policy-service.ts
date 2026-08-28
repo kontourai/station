@@ -159,7 +159,7 @@ const HOOK_SCRIPTS = {
 type PolicyClass = keyof typeof HOOK_SCRIPTS;
 
 /**
- * Who wrote a blocking verdict's `reason` (station#3210).
+ * Who wrote a blocking verdict's `reason` (archive#3210).
  *
  * `engine` cannot answer this and must not be used to guess it: the `native`
  * engine returns the hook process's own `stderr`/`stdout` on one path and
@@ -171,7 +171,7 @@ type PolicyClass = keyof typeof HOOK_SCRIPTS;
  * unless this says `station`, so a future branch that returns a reason without
  * declaring authorship is quoted rather than spoken in Station's voice — the
  * safe direction of the two, since presenting foreign prose as Station's own
- * verdict is the defect station#3210 exists to close.
+ * verdict is the defect archive#3210 exists to close.
  */
 export type PolicyReasonAuthor = 'station' | 'external-hook';
 
@@ -644,7 +644,7 @@ export class AgentPolicyService {
           (result as HookRunOutput).exitCode === 2
         ) {
           const output = result as HookRunOutput;
-          // station#3210: the hook's own output and Station's fallback are
+          // archive#3210: the hook's own output and Station's fallback are
           // two different authors reached from the same `engine: 'native'`
           // branch, so authorship is decided here, where the two are still
           // distinguishable, rather than inferred downstream from `engine`.

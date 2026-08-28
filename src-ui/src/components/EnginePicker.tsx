@@ -1,17 +1,17 @@
 /**
- * station#1194 (epic #1191, slice B): the picker that binds Station's
+* archive#1194: the picker that binds Station's
  * built-in DEFAULT agent to an engine.
  *
  * Where it renders (and why that changed twice): it began as the first-run
- * modal behind `OnboardingGate`'s `setupBannerVariant` gate. #1359 retired
+ * modal behind `OnboardingGate`'s `setupBannerVariant` gate. archive#1359 retired
  * that call site — chat readiness no longer routes through a chooser — and
- * #1441 revived the component as the Settings "Change…" action
+ * archive#1441 revived the component as the Settings "Change…" action
  * (`views/settings/BuiltinEngineRow.tsx`), which is now its ONE consumer.
  * That matters for the empty state below: the modal no longer appears on its
  * own, it appears because the user clicked a button, and a button that opens
  * nothing is worse than no button.
  *
- * Deliberately does NOT cover `station-voice` (review round 2): Voice is a
+ * Deliberately does NOT cover `station-voice` ( 2): Voice is a
  * speech-to-speech agent (`voice-session.ts`'s `IS2SProvider`, e.g. Nova
  * Sonic) that never reads an engine binding — "running Voice on Claude
  * Code/Codex" is a category error, not a real capability this picker can
@@ -20,7 +20,7 @@
  * Every capability judgement comes from
  * `@kontourai/station-contracts/engine-capability-matrix` via
  * `utils/engineBinding.ts` — the SAME matrix the agent editor's own engine
- * picker (station#975, `AgentEditorBasicTab.tsx`) reads and the same one
+ * picker (archive#975, `AgentEditorBasicTab.tsx`) reads and the same one
  * `session-agent-resolution.ts` keys its station-control exemption on — so
  * this never hardcodes a per-engine-id branch and can never diverge from
  * what the resolver will accept.
@@ -64,7 +64,7 @@ const CAPABILITY_DESCRIPTION =
  * The sentence that names what to connect. Derived from the capability
  * matrix itself (`controlPlaneCapableEngineNames`), never written out
  * here: an engine gains or loses its place in this list the moment its
- * matrix cell changes, exactly as Codex did when #1195 shipped
+ * matrix cell changes, exactly as Codex did when archive#1195 shipped
  * `'url-token'`. A hardcoded sentence would have kept saying "Claude Code"
  * for weeks after Codex became capable.
  */
@@ -76,33 +76,33 @@ function capableEngineSentence(): string {
 }
 
 export interface EnginePickerProps {
-  /** Called after a choice is successfully saved. */
+/** Called after a choice is successfully saved. */
   onChosen: () => void;
-  /** Called when the user dismisses without choosing. */
+/** Called when the user dismisses without choosing. */
   onDismiss: () => void;
-  /**
-   * station#settings-revamp slice 3: the Settings "Change…" action
-   * (`views/settings/BuiltinEngineRow.tsx`) overrides this copy so the modal
-   * reads as a deliberate re-configuration rather than first-run framing.
-   * The none-capable panel below keeps its own title and description — there
-   * is nothing to choose there, so a "choose an engine" title supplied by
-   * any call site would be a false promise.
-   */
+/**
+ * archive#settings-revamp: the Settings "Change…" action
+* (`views/settings/BuiltinEngineRow.tsx`) overrides this copy so the modal
+* reads as a deliberate re-configuration rather than first-run framing.
+* The none-capable panel below keeps its own title and description — there
+* is nothing to choose there, so a "choose an engine" title supplied by
+* any call site would be a false promise.
+*/
   eyebrow?: string;
   title?: string;
   description?: string;
-  /**
-   * station#settings-revamp slice 3 review finding 3: when provided, the
-   * picker calls this with the chosen connectionId (then `onChosen`)
-   * instead of PATCHing `builtinAgentEngineConnectionId` itself. The
-   * Settings "Change…" row (`views/settings/BuiltinEngineRow.tsx`) passes
-   * this so the choice flows into SettingsView's own batched draft/dirty-
-   * state/Save/Discard cycle — without it, the picker's own immediate save
-   * would land server-side, but the page's dirty-draft re-sync guard skips
-   * adopting fresh server data while the user has unsaved edits, so the
-   * NEXT Save would silently overwrite the just-made choice back to the
-   * stale draft value.
-   */
+/**
+* archive#settings-revamp: when provided, the
+* picker calls this with the chosen connectionId (then `onChosen`)
+* instead of PATCHing `builtinAgentEngineConnectionId` itself. The
+* Settings "Change…" row (`views/settings/BuiltinEngineRow.tsx`) passes
+* this so the choice flows into SettingsView's own batched draft/dirty-
+* state/Save/Discard cycle — without it, the picker's own immediate save
+* would land server-side, but the page's dirty-draft re-sync guard skips
+* adopting fresh server data while the user has unsaved edits, so the
+* NEXT Save would silently overwrite the just-made choice back to the
+* stale draft value.
+*/
   onSelect?: (connectionId: EngineConnectionId | null) => void;
 }
 
@@ -121,16 +121,16 @@ export function EnginePicker({
 
   const stationChatReady = status ? isStationChatReady(status) : false;
   const readyOptions = readyEngineOptions({ stationChatReady, connections });
-  // Owner directive (station#1194): offer ONLY engines that can actually
-  // power the assistant. Chat readiness is already decoupled from this
-  // choice (#1263), so the only thing this modal binds is the ability to
-  // operate Station — and an engine that cannot carry `station-control`
-  // would deliver an assistant that responds and cannot do the one thing it
-  // exists for.
+// Owner directive (archive#1194): offer ONLY engines that can actually
+// power the assistant. Chat readiness is already decoupled from this
+ // choice (archive#1263), so the only thing this modal binds is the ability to
+// operate Station — and an engine that cannot carry `station-control`
+// would deliver an assistant that responds and cannot do the one thing it
+// exists for.
   const options = capableEngineOptions(readyOptions);
-  // station#1549: ready engines Station has a reviewed mechanism for but has
-  // never observed. Listed and explained, never offered as a radio — see
-  // `pendingObservationEngineOptions`.
+// archive#1549: ready engines Station has a reviewed mechanism for but has
+// never observed. Listed and explained, never offered as a radio — see
+// `pendingObservationEngineOptions`.
   const pendingOptions = pendingObservationEngineOptions(readyOptions);
   const readyExternalEngines = options
     .filter(
@@ -143,12 +143,12 @@ export function EnginePicker({
     .map((option) => ({
       connectionId: option.connectionId,
       matrix: option.matrix,
-      // station#1549 (review finding): the observation MUST travel with the
-      // matrix here. `resolveBuiltinAgentEngineBinding` re-derives capability
-      // from (matrix, observation) rather than trusting the caller's filter,
-      // so dropping it would make this picker offer a row it then refuses to
-      // resolve — rendering a user's own verified engine unselected and
-      // saving `null` (Station) over a working binding on confirm.
+// archive#1549: the observation MUST travel with the
+// matrix here. `resolveBuiltinAgentEngineBinding` re-derives capability
+// from (matrix, observation) rather than trusting the caller's filter,
+// so dropping it would make this picker offer a row it then refuses to
+// resolve — rendering a user's own verified engine unselected and
+// saving `null` (Station) over a working binding on confirm.
       controlPlaneObservation: option.controlPlaneObservation,
     }));
 
@@ -167,26 +167,26 @@ export function EnginePicker({
   const resolvedSelectedId =
     selectedId !== undefined ? selectedId : computedDefaultId;
 
-  // station#1549: opening the picker is the moment the user asks the
-  // question, so it is the moment to go and answer it. Probing is already
-  // this connection's own standing job (the ACP probe runs a
-  // spawn+initialize cycle on a cadence); this only asks for one now, so a
-  // row that says "not checked yet" can resolve in place while the modal is
-  // open instead of making the user close it and come back.
-  //
-  // Scoped to rows that are ACTUALLY unresolved and fired ONCE per
-  // connection per mount: a probe is a real child process, and re-firing it
-  // on every render (or for connections whose answer is already known)
-  // would turn an explanation into a spawn loop.
-  // `mutateAsync`, NOT `mutate` with an `onSettled` option (review finding):
-  // a `useMutation` observer holds ONE options slot and ONE current mutation,
-  // so a second `mutate(...)` in the same pass overwrites the first's
-  // callbacks and detaches its observer — with two unobserved connections,
-  // only the LAST one's settle handler would ever run and the other row would
-  // read "Checking…" forever, asserting an answer was coming when nothing was
-  // in flight. `mutateAsync` returns the promise for THAT call, so the
-  // bookkeeping is genuinely per connection. It is also referentially stable,
-  // unlike the mutation object, so the effect is not re-run per state change.
+// archive#1549: opening the picker is the moment the user asks the
+// question, so it is the moment to go and answer it. Probing is already
+// this connection's own standing job (the ACP probe runs a
+// spawn+initialize cycle on a cadence); this only asks for one now, so a
+// row that says "not checked yet" can resolve in place while the modal is
+// open instead of making the user close it and come back.
+//
+// Scoped to rows that are ACTUALLY unresolved and fired ONCE per
+// connection per mount: a probe is a real child process, and re-firing it
+// on every render (or for connections whose answer is already known)
+// would turn an explanation into a spawn loop.
+ // `mutateAsync`, NOT `mutate` with an `onSettled` option :
+// a `useMutation` observer holds ONE options slot and ONE current mutation,
+// so a second `mutate(...)` in the same pass overwrites the first's
+// callbacks and detaches its observer — with two unobserved connections,
+// only the LAST one's settle handler would ever run and the other row would
+// read "Checking…" forever, asserting an answer was coming when nothing was
+// in flight. `mutateAsync` returns the promise for THAT call, so the
+// bookkeeping is genuinely per connection. It is also referentially stable,
+// unlike the mutation object, so the effect is not re-run per state change.
   const { mutateAsync: probeConnection } = useReconnectACPConnectionMutation();
   const queryClient = useQueryClient();
   const probedRef = useRef<Set<string>>(new Set());
@@ -203,11 +203,11 @@ export function EnginePicker({
       setCheckingIds((current) =>
         current.includes(id) ? current : [...current, id],
       );
-      // Success and failure land in the same place on purpose: either the
-      // probe produced an observation (and the refreshed connection list
-      // resolves the row) or it did not (and the row honestly goes back to
-      // "not checked yet"). Neither outcome may leave the row spinning, so
-      // the cleanup hangs off `finally`, never off the success path.
+// Success and failure land in the same place on purpose: either the
+// probe produced an observation (and the refreshed connection list
+// resolves the row) or it did not (and the row honestly goes back to
+// "not checked yet"). Neither outcome may leave the row spinning, so
+// the cleanup hangs off `finally`, never off the success path.
       void Promise.resolve(probeConnection(id))
         .catch(() => undefined)
         .finally(() => {
@@ -219,11 +219,11 @@ export function EnginePicker({
     }
   }, [pendingIds, probeConnection, queryClient]);
 
-  // station#1549: the not-yet-observed rows, shared by both panels below.
-  // Rendered as plain rows with no `<input type="radio">` — the absence of a
-  // control IS the honesty: there is nothing to choose here yet, and a
-  // disabled radio would still assert the row belongs to the same set of
-  // answers as the selectable ones.
+// archive#1549: the not-yet-observed rows, shared by both panels below.
+// Rendered as plain rows with no `<input type="radio">` — the absence of a
+// control IS the honesty: there is nothing to choose here yet, and a
+// disabled radio would still assert the row belongs to the same set of
+// answers as the selectable ones.
   const pendingRows =
     pendingOptions.length === 0 ? null : (
       <section
@@ -253,23 +253,23 @@ export function EnginePicker({
     );
 
   if (options.length === 0) {
-    // Nothing to choose from. This is a REACHABLE steady state once
-    // incapable engines are filtered out — an engine can be connected and
-    // ready and still be unable to run the assistant — and the only way in
-    // here is a deliberate click on "Change…". Rendering null would leave
-    // that button silently doing nothing, and the owner rejected greying it
-    // out for the same reason: the user is left to discover elsewhere why
-    // the assistant never appeared. So the modal opens and explains.
-    //
-    // Nothing is persisted from this panel. The state resolves by itself the
-    // moment an engine's matrix cell gains a station-control delivery
-    // mechanism (exactly how Codex went from excluded to offered when #1195
-    // shipped `'url-token'`), and any saved choice must still be sitting
-    // there untouched when it does.
-    // station#1549: a not-yet-observed engine has NOT been judged incapable,
-    // so it must not appear in the "can chat, but it can't operate Station"
-    // sentence — that sentence is a verdict, and Station has not reached one.
-    // It gets its own row below instead.
+// Nothing to choose from. This is a REACHABLE steady state once
+// incapable engines are filtered out — an engine can be connected and
+// ready and still be unable to run the assistant — and the only way in
+// here is a deliberate click on "Change…". Rendering null would leave
+// that button silently doing nothing, and the owner rejected greying it
+// out for the same reason: the user is left to discover elsewhere why
+// the assistant never appeared. So the modal opens and explains.
+//
+// Nothing is persisted from this panel. The state resolves by itself the
+// moment an engine's matrix cell gains a station-control delivery
+ // mechanism (exactly how Codex went from excluded to offered when archive#1195
+// shipped `'url-token'`), and any saved choice must still be sitting
+// there untouched when it does.
+// archive#1549: a not-yet-observed engine has NOT been judged incapable,
+// so it must not appear in the "can chat, but it can't operate Station"
+// sentence — that sentence is a verdict, and Station has not reached one.
+// It gets its own row below instead.
     const incapableNames = readyOptions
       .filter((option) => option.capability !== 'observation-required')
       .map((option) => option.name);
@@ -297,7 +297,7 @@ export function EnginePicker({
               ×
             </button>
           </div>
-          {/*
+{/*
             MERGE (#1644 x #1547 AC5). Both descriptions speak about
             `incapableNames`, so both sit behind this branch's guard rather
             than only the first: on a panel whose one unresolved engine is
@@ -307,7 +307,7 @@ export function EnginePicker({
             documentation…") would be describing a verdict Station has not
             reached. Gating one and not the other would keep half of a
             two-sentence claim on screen with its premise removed.
-          */}
+*/}
           {(incapableNames.length > 0 || pendingOptions.length === 0) && (
             <>
               <div className="engine-picker__description">
@@ -317,7 +317,7 @@ export function EnginePicker({
                     ? `${incapableNames[0]} can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.`
                     : `Your connected engines (${incapableNames.join(', ')}) can chat, but none of them can operate Station — creating agents, running jobs, changing settings — so none of them can run the built-in assistant.`}
               </div>
-              {/* station#1547 AC5. Restored, and this time it has a producer:
+{/* archive#1547. Restored, and this time it has a producer:
                   the ACP adapter now delivers the credential-free
                   `station-docs` server on every ACP session (acp-adapter.ts),
                   which is exactly the engine class that can never carry
@@ -347,9 +347,9 @@ export function EnginePicker({
           )}
           {pendingRows}
           {pendingOptions.length > 0 && (
-            // Without this, the only call to action on a panel whose one
-            // unresolved engine is mid-check would be "go connect a different
-            // engine" — true, but the wrong thing to tell that user.
+// Without this, the only call to action on a panel whose one
+// unresolved engine is mid-check would be "go connect a different
+// engine" — true, but the wrong thing to tell that user.
             <div className="engine-picker__description">
               This panel updates on its own if Station finds one of them can run
               the assistant.
@@ -428,8 +428,8 @@ export function EnginePicker({
           disabled={updateConfig.isPending}
           onClick={() => {
             if (onSelect) {
-              // finding 3: route the choice through the caller's own
-              // draft/save cycle — no network mutation here.
+ // route the choice through the caller's own
+// draft/save cycle — no network mutation here.
               onSelect(resolvedSelectedId);
               onChosen();
               return;

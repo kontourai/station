@@ -30,9 +30,9 @@ export function ProjectKnowledgeRulesEditor({
       </div>
       {!rulesLoaded && rulesLoading ? (
         <SkeletonBlock count={1} label="Loading rules" />
-      ) : // station#771: this used to fall straight through to an EMPTY,
+      ) : // archive#771: this used to fall straight through to an EMPTY,
       // EDITABLE textarea on a settled error — no message at all, and the
-      // save button's own guard (`!rulesContent.trim()`) is the only thing
+      // save button's own guard (`!rulesContent.trim`) is the only thing
       // standing between that and silently clobbering saved rules.
       !rulesLoaded && rulesError ? (
         <ErrorState

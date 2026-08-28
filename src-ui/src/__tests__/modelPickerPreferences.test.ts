@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#settings-revamp slice 3 (#1359 convergence): modelPickerPreferences
+ * archive#settings-revamp (archive#1359 convergence): modelPickerPreferences
  * is now backed by the registry-driven device-settings envelope (a module
  * singleton) rather than the raw `station.device-settings` root — reset
  * modules per test for a fresh, un-migrated store.
@@ -46,7 +46,7 @@ describe('model picker device settings', () => {
 
     updateModelPickerPreferences((current) => current);
 
-    // The shared legacy root is fully retired after migration.
+// The shared legacy root is fully retired after migration.
     expect(window.localStorage.getItem('station.device-settings')).toBeNull();
     expect(readModelPickerPreferences().favorites).toEqual(['provider-model']);
   });

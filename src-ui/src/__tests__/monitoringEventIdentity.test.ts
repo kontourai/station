@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3658 delta review MEDIUM-2 — the identity the SSE stream and the
+ * archive#3658 — the identity the SSE stream and the
  * historical read reconcile on.
  */
 import { describe, expect, test } from 'vitest';
@@ -26,12 +26,12 @@ describe('monitoringEventIdentity', () => {
     ).toBe('evt-42');
   });
 
-  /*
-   * `MonitoringEmitter.base()` stamps `Date.now()` and attaches no event id,
-   * so two tool calls on one trace inside the same millisecond used to share
-   * an identity — and a snapshot containing only the first then confirmed
-   * (and erased) both.
-   */
+/*
+* `MonitoringEmitter.base` stamps `Date.now` and attaches no event id,
+* so two tool calls on one trace inside the same millisecond used to share
+* an identity — and a snapshot containing only the first then confirmed
+* (and erased) both.
+*/
   test('two tool events in the same millisecond on the same trace are distinct', () => {
     const first = toolEvent({
       'gen_ai.tool.name': 'read_file',
@@ -47,13 +47,13 @@ describe('monitoringEventIdentity', () => {
     );
   });
 
-  /*
-   * Delta2 review, MEDIUM-2 reopened. The identity was a 32-bit FNV-1a digest
-   * of the canonical form, and a 32-bit digest used as an EQUALITY key claims
-   * two payloads are the same event when all that matched is four bytes. The
-   * review's probe found this exact pair; under the digest they shared an
-   * identity, so a snapshot containing one confirmed and erased the other.
-   */
+/*
+ *reopened. The identity was a 32-bit FNV-1a digest
+* of the canonical form, and a 32-bit digest used as an EQUALITY key claims
+* two payloads are the same event when all that matched is four bytes. The
+* review's probe found this exact pair; under the digest they shared an
+* identity, so a snapshot containing one confirmed and erased the other.
+*/
   test("the reviewer's FNV-1a collision pair are still two events", () => {
     const first = toolEvent({
       'gen_ai.tool.call.result': 'payload-v3xik8-s20',
@@ -76,12 +76,12 @@ describe('monitoringEventIdentity', () => {
     );
   });
 
-  /*
-   * The SSE copy and the persisted copy are the SAME redacted object
-   * (`MonitoringEmitter.emit`), but the persisted one comes back through a
-   * JSON round-trip. Key order must not change the answer, or the merge would
-   * stop recognising an event as already present and show it twice.
-   */
+/*
+* The SSE copy and the persisted copy are the SAME redacted object
+* (`MonitoringEmitter.emit`), but the persisted one comes back through a
+* JSON round-trip. Key order must not change the answer, or the merge would
+* stop recognising an event as already present and show it twice.
+*/
   test('key order does not change the identity', () => {
     const live = toolEvent({
       'gen_ai.tool.name': 'read_file',

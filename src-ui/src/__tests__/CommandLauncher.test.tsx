@@ -213,8 +213,8 @@ describe('CommandLauncher', () => {
   });
 
   /**
-   * station#1206 gap 3. This surface hand-rolled the same
-   * `if (returnFocus?.isConnected) returnFocus.focus()` as the shared frame and
+   * archive#1206 gap 3. This surface hand-rolled the same
+   * `if (returnFocus?.isConnected) returnFocus.focus` as the shared frame and
    * imports only `ResponsiveDialogCloseButton`, so #1187's fix never reached it
    * — a trigger removed while the launcher is open still dropped focus to
    * `<body>`. It now goes through `@kontourai/station-shared/return-focus`, so it inherits the

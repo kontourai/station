@@ -105,19 +105,19 @@ describe('active chat state helpers', () => {
     ]);
   });
 
-  // station#1566: title round-trips through serialize -> hydrate, and a
-  // title change is itself a persist-worthy update, so a reload shows the
-  // real title immediately instead of falling back to a stale default while
-  // the conversation list refetches.
+// archive#1566: title round-trips through serialize -> hydrate, and a
+// title change is itself a persist-worthy update, so a reload shows the
+// real title immediately instead of falling back to a stale default while
+// the conversation list refetches.
   test('station#3300: a persisted LIVE orchestrationStatus is not resurrected as a claim of in-flight work', () => {
-    // The resume defect: `orchestrationStatus: 'running'` was persisted
-    // mid-turn, the turn settled while the app was hidden, and a webview
-    // reload restored the stale claim — with `orchestrationTurnOpen`,
-    // `status`, and `streamingMessage` all deliberately NOT persisted, the
-    // restored flag was a label nothing could re-derive, and the chat
-    // rendered "Working…" under its own settled answer. Fail closed: a
-    // rehydrated chat cannot claim work it cannot verify; the SSE
-    // snapshot/state-changed sync supplies the true value after connect.
+// The resume defect: `orchestrationStatus: 'running'` was persisted
+// mid-turn, the turn settled while the app was hidden, and a webview
+// reload restored the stale claim — with `orchestrationTurnOpen`,
+// `status`, and `streamingMessage` all deliberately NOT persisted, the
+// restored flag was a label nothing could re-derive, and the chat
+// rendered "Working…" under its own settled answer. Fail closed: a
+// rehydrated chat cannot claim work it cannot verify; the SSE
+// snapshot/state-changed sync supplies the true value after connect.
     const hydrate = (orchestrationStatus?: string) =>
       hydrateActiveChats([
         {
@@ -137,8 +137,8 @@ describe('active chat state helpers', () => {
 
     expect(hydrate('running').orchestrationStatus).toBeUndefined();
     expect(hydrate('awaiting-approval').orchestrationStatus).toBeUndefined();
-    // Settled statuses are facts about the past, not live claims — they
-    // survive the round trip unchanged.
+// Settled statuses are facts about the past, not live claims — they
+// survive the round trip unchanged.
     expect(hydrate('errored').orchestrationStatus).toBe('errored');
     expect(hydrate('exited').orchestrationStatus).toBe('exited');
     expect(hydrate('idle').orchestrationStatus).toBe('idle');
@@ -382,8 +382,8 @@ describe('active chat state helpers', () => {
       ephemeral: true,
       timestamp: new Date('2026-01-01T00:00:05.000Z').getTime() + 1,
     });
-    // station#1292: insertAfterCount was dropped — nothing ever read it, and
-    // the guaranteed timestamp above is sufficient for the transcript sort.
+// archive#1292: insertAfterCount was dropped — nothing ever read it, and
+// the guaranteed timestamp above is sufficient for the transcript sort.
     expect(next?.ephemeralMessages?.[0]).not.toHaveProperty('insertAfterCount');
   });
 
@@ -440,8 +440,8 @@ describe('active chat state helpers', () => {
         sessionId: 'legacy:1',
         conversationId: 'conv-legacy',
         agentSlug: 'planner',
-        // A pre-#1292 sessionStorage payload could still have this field —
-        // hydrate must discard it rather than resurrect a stale notice.
+ // A pre-archive#1292 sessionStorage payload could still have this field —
+// hydrate must discard it rather than resurrect a stale notice.
         ephemeralMessages: [
           { role: 'system', content: 'stale notice from before reload' },
         ],
@@ -573,15 +573,15 @@ describe('active chat state helpers', () => {
 
     test('is a no-op that returns the identical chat object at either boundary (moveUp at 0, moveDown at length-1)', () => {
       const chat = chatWithQueue(['a', 'b', 'c']);
-      // moveUp(0) → reorder(0, -1): clamps to 0, same position.
+// moveUp(0) → reorder(0, -1): clamps to 0, same position.
       expect(reorderQueuedMessageState(chat, 0, -1)).toBe(chat);
-      // moveDown(2) → reorder(2, 3): clamps to 2, same position.
+// moveDown(2) → reorder(2, 3): clamps to 2, same position.
       expect(reorderQueuedMessageState(chat, 2, 3)).toBe(chat);
     });
   });
 });
 
-// UX audit T3: a queued follow-up is user-authored content Station is holding
+// a queued follow-up is user-authored content Station is holding
 // on the user's behalf. Hydration always started it empty and serialization
 // omitted it entirely, so a reload destroyed both the retained text and the
 // reason it was retained.
@@ -604,8 +604,8 @@ describe('queued follow-ups survive a reload (UX audit T3)', () => {
     } as ChatUIState,
   };
 
-  // station#3706: a permanently refused follow-up has NO queue row left, so
-  // the unsent record is its only durable copy. Same T3 principle.
+// archive#3706: a permanently refused follow-up has NO queue row left, so
+ // the unsent record is its only durable copy. Same principle.
   test('unsent records round-trip through storage', () => {
     const withUnsent = {
       s1: {
@@ -627,9 +627,9 @@ describe('queued follow-ups survive a reload (UX audit T3)', () => {
     expect(rehydrated.s1?.unsentMessages).toEqual(withUnsent.s1.unsentMessages);
   });
 
-  // #3706 review (BLOCKING 2): a drop can land while a new chat is still
-  // awaiting conversation promotion; filtering conversation-less chats out of
-  // serialization silently destroyed the record's ONLY durable copy.
+// archive#3706: a drop can land while a new chat is still
+// awaiting conversation promotion; filtering conversation-less chats out of
+// serialization silently destroyed the record's ONLY durable copy.
   test('a chat holding unsent records is persisted even before conversation promotion', () => {
     const preChats = {
       fresh: {
@@ -659,8 +659,8 @@ describe('queued follow-ups survive a reload (UX audit T3)', () => {
     expect(rehydrated.fresh?.conversationId).toBeUndefined();
   });
 
-  // …and a conversation-less chat WITHOUT them stays unpersisted — the
-  // filter widened for exactly one reason, not for every transient chat.
+// …and a conversation-less chat WITHOUT them stays unpersisted — the
+// filter widened for exactly one reason, not for every transient chat.
   test('a conversation-less chat without unsent records is still not persisted', () => {
     const transientChats = {
       transient: createDefaultChatState({

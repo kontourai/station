@@ -5,10 +5,10 @@ import { whiteOnHslContrast } from '../utils/color-contrast';
 
 /**
  * Gates the identicon swatch's actual CSS tokens against WCAG AA (station
- * #1424 review round 3, NEW-3) — reads `BrandIcon.css` itself rather than
+* archive#1424 3) — reads `BrandIcon.css` itself rather than
  * duplicating its numbers here, so a future edit to those tokens is caught
  * by THIS test instead of silently reintroducing the low-contrast defect
- * (#1125/#1167 precedent: nothing previously gated this class of bug).
+ * (archive#1125/archive#1167 precedent: nothing previously gated this class of bug).
  *
  * Only h=0/60/120/180/240/300 are possible local extrema of relative
  * luminance over the hue wheel at a fixed saturation/lightness (RGB moves

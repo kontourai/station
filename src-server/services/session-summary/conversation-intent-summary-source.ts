@@ -30,7 +30,7 @@ export interface ConversationIntentSummarySourceInput {
   messages: ConversationMessage[];
   /** Snapshot watermark from the bounded event window, not a live tail. */
   watermark?: number | string;
-  /** Only consumed #4148 markers belong in a derived-source revision. */
+  /** Only consumed archive#4148 markers belong in a derived-source revision. */
   consumedBoundaries?: readonly {
     boundaryId: string;
     policy: 'continue-from-history' | 'empty-next-cold-start';

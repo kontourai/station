@@ -140,7 +140,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     expect(screen.getByText(/no update provenance/).className).toContain(
       'settings__update-msg--warning',
     );
-    // No provenance fields → no meta row at all, not empty labels.
+// No provenance fields → no meta row at all, not empty labels.
     expect(screen.queryByText(/Current:/)).toBeNull();
     expect(screen.queryByText(/Branch:/)).toBeNull();
   });
@@ -158,13 +158,13 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     });
     const message = screen.getByText(/Could not reach/);
     expect(message.className).toContain('settings__update-msg--warning');
-    // No false "Up to date" claim while the remote is unknown.
+// No false "Up to date" claim while the remote is unknown.
     expect(screen.queryByText(/Up to date/)).toBeNull();
   });
 });
 
 /**
- * 6-OPS-44. A `git ls-remote` against a cold remote took ~30 s in the audit,
+ * 6-. A `git ls-remote` against a cold remote took ~30 s in the audit,
  * and for that whole window the card replaced Channel/Branch/Current/Latest
  * with one disabled "Checking…" — so the user LOST the answer they already had
  * in order to be told an answer was coming. The review confirmed the source
@@ -200,14 +200,14 @@ describe('re-check keeps the last known state (6-OPS-44)', () => {
     const { rerender } = renderWith(KNOWN);
     expect(screen.getByText(/Channel: nightly/)).toBeTruthy();
 
-    // The transition under test: the same card, now refetching.
+// The transition under test: the same card, now refetching.
     queryState.isFetching = true;
     rerender(<CoreUpdateCheck apiBase="http://localhost:3141" />);
 
     expect(screen.getByText(/Channel: nightly/)).toBeTruthy();
     expect(screen.getByText(/Current: aaaaaaa/)).toBeTruthy();
     expect(screen.getByText(/showing the last result/)).toBeTruthy();
-    // The skeleton is for a wait with nothing to preserve; this is not one.
+// The skeleton is for a wait with nothing to preserve; this is not one.
     expect(screen.queryByLabelText('Checking for updates')).toBeNull();
     queryState.isFetching = false;
   });
@@ -229,7 +229,7 @@ describe('git-based self-update affordances (#1624)', () => {
         name: 'Update & restart (aaaaaaa → bbbbbbb)',
       }),
     ).toBeTruthy();
-    // No reinstall guidance when a real apply path exists.
+// No reinstall guidance when a real apply path exists.
     expect(screen.queryByText(/Update by reinstalling/)).toBeNull();
   });
 

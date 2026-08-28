@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#settings-revamp slice 3 (#1359 convergence): shortcutPreferences
+ * archive#settings-revamp (archive#1359 convergence): shortcutPreferences
  * is now backed by the registry-driven device-settings envelope (a module
  * singleton) rather than the raw `station.device-settings` root — reset
  * modules per test so each test gets a fresh, un-migrated store the same
@@ -44,8 +44,8 @@ describe('shortcut device settings', () => {
       'app.settings': { key: 's', modifiers: ['cmd'] },
       'chat.new': { key: 'n', modifiers: ['cmd'] },
     });
-    // The shared legacy root is fully retired — the envelope is the only
-    // home for shortcut overrides now.
+// The shared legacy root is fully retired — the envelope is the only
+// home for shortcut overrides now.
     expect(window.localStorage.getItem('station.device-settings')).toBeNull();
     expect(
       window.localStorage.getItem('station-device-settings-v1'),

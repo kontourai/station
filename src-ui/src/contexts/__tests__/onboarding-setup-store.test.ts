@@ -94,8 +94,8 @@ describe('useOnboardingSetupState', () => {
 
     expect(result.current.visible).toBe(false);
     expect(result.current.isBlockingFullScreen).toBe(false);
-    // Dismissal now persists through the device-settings store (station#
-    // settings-revamp slice 2) rather than its own raw localStorage key.
+// Dismissal now persists through the device-settings store (archive#
+ // settings-revamp) rather than its own raw localStorage key.
     expect(deviceSettingsStore.get('onboardingSetupDismissed')).toBe(true);
   });
 
@@ -167,10 +167,10 @@ describe('useOnboardingSetupState', () => {
     expect(result.current.visible).toBe(false);
   });
 
-  // station#settings-revamp slice2 review finding 5: `dismissedState` used
-  // to be copied out of the device store once at construction and never
-  // read again, so an import (or a cross-tab change) that flipped
-  // `onboardingSetupDismissed` never reached this store's subscribers.
+// archive#settings-revamp: `dismissedState` used
+// to be copied out of the device store once at construction and never
+// read again, so an import (or a cross-tab change) that flipped
+// `onboardingSetupDismissed` never reached this store's subscribers.
   test('importEnvelope flipping onboardingSetupDismissed is reflected in the snapshot and notifies listeners', () => {
     currentStatus = createStatus();
     const { result, rerender } = renderHook(() => useOnboardingSetupState());
@@ -250,10 +250,10 @@ describe('shouldRenderSetupLauncher', () => {
     expect(decide({ pathname: '/connections/providers' })).toBe(false);
   });
 
-  // Audit CI-R12: the setup banner rendered on the very page its action
-  // targets, offering "Open Connections" to a reader already there. Every
-  // section of the redesigned hub — and every legacy path that redirects into
-  // one — must suppress it, not just the one route this suite used to name.
+// Audit : the setup banner rendered on the very page its action
+// targets, offering "Open Connections" to a reader already there. Every
+// section of the redesigned hub — and every legacy path that redirects into
+// one — must suppress it, not just the one route this suite used to name.
   test.each([
     '/connections/models',
     '/connections/engines',
@@ -273,9 +273,9 @@ describe('shouldRenderSetupLauncher', () => {
   });
 
   test('every remaining combination of the four inputs', () => {
-    // 2x2x2x2 exhaustive: the predicate is a conjunction, so exactly one of
-    // the sixteen rows may be true. A future clause that flips any other row
-    // reddens here rather than being discovered on a blank route.
+// 2x2x2x2 exhaustive: the predicate is a conjunction, so exactly one of
+// the sixteen rows may be true. A future clause that flips any other row
+// reddens here rather than being discovered on a blank route.
     const rows: boolean[] = [];
     for (const credentialRequired of [false, true])
       for (const setupVisible of [false, true])
@@ -303,10 +303,10 @@ describe('at most one first-run overlay (review H2)', () => {
   });
 
   test('an open first-run chapter stands the launcher down, and closing it restores', () => {
-    // ONE piece of state, read by both overlays. The integrated proof — that
-    // this actually keeps `OnboardingGate` from mounting `SetupLauncher` under
-    // the chapter's scrim — is
-    // `src-ui/src/__tests__/first-run-overlay-exclusivity.test.tsx`.
+// ONE piece of state, read by both overlays. The integrated proof — that
+// this actually keeps `OnboardingGate` from mounting `SetupLauncher` under
+// the chapter's scrim — is
+// `src-ui/src/__tests__/first-run-overlay-exclusivity.test.tsx`.
     currentStatus = createStatus();
     const { result, rerender } = renderHook(() => useOnboardingSetupState());
     expect(result.current.visible).toBe(true);
@@ -316,9 +316,9 @@ describe('at most one first-run overlay (review H2)', () => {
     rerender();
     expect(result.current.visible).toBe(false);
     expect(result.current.isBlockingFullScreen).toBe(false);
-    // The PROBE has not changed its mind, and this is the field that says so —
-    // the chapter's own auto-open gate reads it, so the suppression cannot
-    // become circular.
+// The PROBE has not changed its mind, and this is the field that says so —
+// the chapter's own auto-open gate reads it, so the suppression cannot
+// become circular.
     expect(result.current.launcherWouldShow).toBe(true);
 
     act(() => firstRunChapterPresence.set(false));

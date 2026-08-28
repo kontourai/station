@@ -37,7 +37,7 @@ import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat'
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 
 /**
- * Answer-share store (station#1423) — the durable half of Station's first
+ * Answer-share store (archive#1423) — the durable half of Station's first
  * sharing primitive.
  *
  * Secret-bearing, so it takes the same hardening as `peer-credentials.json`
@@ -56,7 +56,7 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
  *
  * 2. **Revocation is a tombstone, not a delete** (`DevicePairingService`'s
  *    shape). A deleted record would make a revoked share indistinguishable
- *    from one that never existed, which is exactly the ambiguity #1423 asks
+ *    from one that never existed, which is exactly the ambiguity archive#1423 asks
  *    the surface to remove for a holder who has proven possession.
  */
 
@@ -65,7 +65,7 @@ import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycl
  * which versions the viewer payload. Gated by exact equality below, so a
  * mismatch is a hard refusal.
  *
- * **station#1598 added two fields and deliberately did NOT bump this.** Both
+ * **archive#1598 added two fields and deliberately did NOT bump this.** Both
  * are optional and absent-tolerant, so every existing `answer-shares.json`
  * stays valid byte for byte. Bumping it would be actively harmful: an invalid
  * document throws from the constructor, which runs during route
@@ -101,7 +101,7 @@ export interface StoredAnswerShare {
   revokedAt: string | null;
   /**
    * Where this answer sat in a channel log **when the share was minted**
-   * (station#1598).
+   * (archive#1598).
    *
    * `undefined` is a THIRD state, not a missing value: the record was minted
    * before this Station recorded bindings, so nothing was observed. It is not
@@ -112,7 +112,7 @@ export interface StoredAnswerShare {
   channel?: AnswerShareChannelBinding;
   /**
    * SHA-256 hex over the canonicalized blocks that were SERVED at mint time
-   * (station#1598), and the sole authority for the words a view may show.
+   * (archive#1598), and the sole authority for the words a view may show.
    * `undefined` on a record minted before digests existed, which resolves
    * exactly as it did then.
    */
@@ -390,7 +390,7 @@ export interface AnswerShareStoreOptions {
   writeOperations?: Partial<AnswerShareWriteOperations>;
 }
 
-// Async-compatible seam (#2646): the default is the ASYNC cross-process lock
+// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
 // so a contended acquisition yields the event loop; sync test fakes remain
 // assignable (awaiting a non-promise is a no-op).
 type AnswerShareMutationLock = (
@@ -432,7 +432,7 @@ export class AnswerShareStore {
     label?: string;
     ttlMs?: number;
     /**
-     * The mint-time channel observation (station#1598). Absent means the
+     * The mint-time channel observation (archive#1598). Absent means the
      * caller made no observation, and the record then reads as "predates
      * channel addressing" forever — so a caller that CAN observe must pass
      * one, including `{ binding: 'none' }`.

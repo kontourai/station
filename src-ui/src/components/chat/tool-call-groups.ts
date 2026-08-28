@@ -14,7 +14,7 @@
  *
  * Per-call labeling (the verb taxonomy, target extraction) lives in
  * `tool-call-labels.ts` — the eager collapsed activity row needs it too
- * (station#2652 redesign) — and is composed here; only the multi-call
+ * (archive#2652 redesign) — and is composed here; only the multi-call
  * summary phrasing ("Read 2 files, ran 2 commands") is batch-specific.
  */
 import {
@@ -85,7 +85,7 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   summary: string;
   inProgress: boolean;
   /** How many of this run's calls failed — a collapsed batch must disclose
-   * failure without being opened (station#2652 redesign). */
+   * failure without being opened (archive#2652 redesign). */
   failedCount: number;
 }
 

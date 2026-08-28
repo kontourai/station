@@ -12,7 +12,7 @@ import {
 import { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 
 /**
- * station#1136: integration-style tests for the SSH environment MANAGEMENT
+ * archive#1136: integration-style tests for the SSH environment MANAGEMENT
  * verbs (`create_ssh_environment`, `get_ssh_environment`,
  * `connect_ssh_environment`, `disconnect_ssh_environment`,
  * `remove_ssh_environment`).

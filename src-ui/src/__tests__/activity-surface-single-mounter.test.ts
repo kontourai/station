@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * Epic station#4142 (M3): a route is a PLACEMENT of a pane, not a second
+* Epic archive#4142: a route is a PLACEMENT of a pane, not a second
  * identity. `/activity` renders the sessions surface through the pane path —
  * `ActivityWorkspacePane` with the canonical occurrence — and the ambient
  * dock and the Developer archive embed render the SAME pane. That leaves
@@ -41,15 +41,15 @@ function* sourceFiles(dir: string): Generator<string> {
 
 /**
  * A VALUE import of the `SessionsView` binding from the SessionsView module.
- * `import type { ... }` and `type X` specifiers are erased at build time and
+* `import type {... }` and `type X` specifiers are erased at build time and
  * cannot mount anything, so they are not counted; a mixed import that
  * carries the value binding (`{ SessionsView, type X }`) is. The path
  * pattern's trailing anchor keeps `./SessionsView.css` from matching.
  */
 function importsSessionsViewValue(source: string): boolean {
-  // The clause of an import statement can never contain a quote, which is
-  // what stops this pattern spanning from one import statement into a later
-  // one that happens to end in /SessionsView.
+// The clause of an import statement can never contain a quote, which is
+// what stops this pattern spanning from one import statement into a later
+// one that happens to end in /SessionsView.
   const importPattern =
     /import\s+([^'"]*?)from\s+['"][^'"]*\/SessionsView(?:\.js)?['"]/g;
   for (const match of source.matchAll(importPattern)) {
@@ -71,7 +71,7 @@ function importsSessionsViewValue(source: string): boolean {
       return true;
     }
   }
-  // A re-export is a second doorway to the same component.
+// A re-export is a second doorway to the same component.
   return /export\s+(?:{[^}]*\bSessionsView\b[^}]*}|\*)\s+from\s+['"][^'"]*\/SessionsView(?:\.js)?['"]/.test(
     source,
   );
@@ -83,7 +83,7 @@ describe('SessionsView has exactly one mounter reachable from the shell', () => 
     const mountSites: string[] = [];
     for (const file of sourceFiles(SRC)) {
       const path = relative(SRC, file);
-      // The module's own definition is not a mounter of itself.
+// The module's own definition is not a mounter of itself.
       if (path === 'views/SessionsView.tsx') continue;
       const source = readFileSync(file, 'utf8');
       if (importsSessionsViewValue(source)) importers.push(path);

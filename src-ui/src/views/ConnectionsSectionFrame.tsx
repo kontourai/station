@@ -20,14 +20,14 @@ import {
   type ConnectionSectionId,
 } from './connections-hub/connection-sections';
 
-// station#4463 slice 2: the rail now renders the shared `Tabs` primitive,
+// archive#4463: the rail now renders the shared `Tabs` primitive,
 // which self-imports `.page__tabs`/`.page__tab`'s stylesheet — the frame no
 // longer needs to carry this import for it (see `components/Tabs.tsx`).
 
 /**
  * The eyebrow every section publishes: 'Connections', unlinked.
  *
- * station#4463 slice 1 fix round (arbiter decision): `/connections` is a
+ * archive#4463: `/connections` is a
  * redirect-only resolver — `ConnectionsHub` immediately navigates to
  * whichever section most needs attention, or to Models. A click here would
  * therefore either be a no-op (it redirects right back to the section
@@ -72,8 +72,8 @@ function ConnectionsSectionFrameInner({
   const { navigate } = useNavigation();
   const [computerChooserOpen, setComputerChooserOpen] = useState(false);
   const mobileReturnFocus = useSplitPaneExternalReturnFocus();
-  // One derivation for both facts this rail renders, shared with the
-  // `/connections` resolver (sol review findings 5 and 6).
+// One derivation for both facts this rail renders, shared with the
+// `/connections` resolver.
   const { count, needsAttention } = useConnectionSectionSignals();
   usePageHeader({
     eyebrow: CONNECTIONS_EYEBROW,
@@ -99,7 +99,7 @@ function ConnectionsSectionFrameInner({
   return (
     <div className="pane-host connections-section-frame">
       <PageFrameActions>
-        {/* station#4463 slice 5 (Button): was a bespoke `button button--primary`
+ {/* archive#4463 (Button): was a bespoke `button button--primary`
             with no size modifier, rendering at the base 10px/16px scale while
             every other primary page action (Agents/Plugins/Skills/Schedule)
             renders through the shared `Button` at `size="sm"` — the audit's
@@ -111,11 +111,11 @@ function ConnectionsSectionFrameInner({
       <Tabs
         id={TABS_ID}
         aria-label="Connection sections"
-        // Manual activation (station#4463 slice 2 review HIGH-2): each
-        // tab's onSelect pushes a ROUTE (`navigate`), so automatic
-        // activation was pushing one history entry per arrow-key press and
-        // yanking focus out of the strip. Arrows move focus only here;
-        // Enter/Space navigates.
+// Manual activation (archive#4463): each
+// tab's onSelect pushes a ROUTE (`navigate`), so automatic
+// activation was pushing one history entry per arrow-key press and
+// yanking focus out of the strip. Arrows move focus only here;
+// Enter/Space navigates.
         activation="manual"
         items={CONNECTION_SECTIONS.map((entry) => ({
           key: entry.id,

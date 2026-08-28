@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import { nextTabIndex } from '../utils/tab-navigation';
-// Self-imported rather than left to each host to remember: station#3306 was
+// Self-imported rather than left to each host to remember: archive#3306 was
 // exactly this failure mode (a direct navigation rendered `.page__tabs`
 // unstyled because the host forgot this stylesheet). The primitive owning
 // its own required CSS makes that class of bug structurally impossible for
@@ -8,7 +8,7 @@ import { nextTabIndex } from '../utils/tab-navigation';
 import '../views/page-layout.css';
 
 /**
- * The shared TRUE-tab primitive (station#4463 slice 2, fix round). Reserved
+* The shared TRUE-tab primitive (archive#4463). Reserved
  * for hosts switching between panels in one composite widget — real
  * `role="tablist"`/`role="tab"`/`aria-selected`, a documented tabpanel
  * contract via `tabElementId`/`tabPanelElementId`, and WAI-ARIA APG's
@@ -28,47 +28,47 @@ import '../views/page-layout.css';
  * non-tab node into the tablist row.
  */
 export interface TabItem {
-  /** Stable identity — what `activeKey` compares against and `onSelect` receives. */
+/** Stable identity — what `activeKey` compares against and `onSelect` receives. */
   key: string;
   label: string;
-  /** A count badge inside the tab (Connections' per-section counts). */
+/** A count badge inside the tab (Connections' per-section counts). */
   count?: number;
-  /** A "needs attention" status dot after the label (Connections' warn dots). */
+/** A "needs attention" status dot after the label (Connections' warn dots). */
   attention?: boolean;
 }
 
 export type TabActivation = 'automatic' | 'manual';
 
 export interface TabsProps {
-  /**
-   * Stable identity for this tablist, used as the prefix for every
-   * generated tab/panel id (see `tabElementId`/`tabPanelElementId`). Two
-   * `Tabs` instances on the same page must use different `id`s.
-   */
+/**
+* Stable identity for this tablist, used as the prefix for every
+* generated tab/panel id (see `tabElementId`/`tabPanelElementId`). Two
+* `Tabs` instances on the same page must use different `id`s.
+*/
   id: string;
   items: readonly TabItem[];
   activeKey: string;
   onSelect: (key: string) => void;
-  /** Required — every tablist needs an accessible name distinguishing it from other tablists on the page. */
+/** Required — every tablist needs an accessible name distinguishing it from other tablists on the page. */
   'aria-label': string;
-  /** Extra class(es) merged onto the `.page__tabs` strip, for a host's own layout hooks. */
+/** Extra class(es) merged onto the `.page__tabs` strip, for a host's own layout hooks. */
   className?: string;
-  /** Pins the strip to the top of its scroll container while content scrolls under it (Registry's catalog). */
+/** Pins the strip to the top of its scroll container while content scrolls under it (Registry's catalog). */
   sticky?: boolean;
-  /**
-   * WAI-ARIA APG's automatic-vs-manual tab activation choice — no default,
-   * every host must pick deliberately:
-   * - `'automatic'`: arrow-key movement activates the tab immediately.
-   *   Correct when switching is a cheap in-place re-render (Guidance,
-   *   Registry, Memory's knowledge-root switcher).
-   * - `'manual'`: arrow-key movement only moves DOM focus (roving
-   *   tabindex tracks the FOCUSED tab, not the active one); Enter or Space
-   *   activates the focused tab. Required whenever `onSelect` has a
-   *   side-effect heavier than local state — specifically a route change
-   *   (`navigate(...)`, Connections and Developer) — because automatic
-   *   activation there was pushing one history entry per arrow-key press
-   *   and yanking focus out of the strip on every navigation.
-   */
+/**
+* WAI-ARIA APG's automatic-vs-manual tab activation choice — no default,
+* every host must pick deliberately:
+* - `'automatic'`: arrow-key movement activates the tab immediately.
+*   Correct when switching is a cheap in-place re-render (Guidance,
+*   Registry, Memory's knowledge-root switcher).
+* - `'manual'`: arrow-key movement only moves DOM focus (roving
+*   tabindex tracks the FOCUSED tab, not the active one); Enter or Space
+*   activates the focused tab. Required whenever `onSelect` has a
+*   side-effect heavier than local state — specifically a route change
+*   (`navigate(...)`, Connections and Developer) — because automatic
+*   activation there was pushing one history entry per arrow-key press
+*   and yanking focus out of the strip on every navigation.
+*/
   activation: TabActivation;
 }
 
@@ -106,10 +106,10 @@ export const Tabs = forwardRef<HTMLDivElement, TabsProps>(function Tabs(
   forwardedRef,
 ) {
   const elementByKey = useRef(new Map<string, HTMLElement>());
-  // Manual activation needs a roving-tabindex target independent of the
-  // active tab (arrow keys move focus without activating). Kept in sync
-  // with `activeKey` so a host-driven selection change (e.g. a deep link)
-  // starts the next arrow-key journey from the newly active tab, per APG.
+// Manual activation needs a roving-tabindex target independent of the
+// active tab (arrow keys move focus without activating). Kept in sync
+// with `activeKey` so a host-driven selection change (e.g. a deep link)
+// starts the next arrow-key journey from the newly active tab, per APG.
   const [focusedKey, setFocusedKey] = useState(activeKey);
   useEffect(() => {
     setFocusedKey(activeKey);
@@ -160,30 +160,30 @@ export const Tabs = forwardRef<HTMLDivElement, TabsProps>(function Tabs(
     >
       {items.map((item, index) => {
         const selected = item.key === activeKey;
-        // Leading space kept for `accessibleName` below (plain string
-        // concatenation, unaffected by CSS) — NOT relied on for the
-        // rendered gap: `.page__tab` is `display: inline-flex`, and
-        // flexbox trims a flex item's own leading whitespace at the start
-        // of its line box, so this span's leading space renders as nothing
-        // ("Models0" instead of "Models 0" — visible/accessible-name
-        // divergence, station#4463 slice 2 review HIGH-1 fix round). The
-        // visual gap instead comes from `page-layout.css`'s
-        // `.page__tab-count` rule (`margin-left`), which the span below
-        // carries.
+// Leading space kept for `accessibleName` below (plain string
+// concatenation, unaffected by CSS) — NOT relied on for the
+// rendered gap: `.page__tab` is `display: inline-flex`, and
+// flexbox trims a flex item's own leading whitespace at the start
+// of its line box, so this span's leading space renders as nothing
+// ("Models0" instead of "Models 0" — visible/accessible-name
+// divergence, archive#4463). The
+// visual gap instead comes from `page-layout.css`'s
+// `.page__tab-count` rule (`margin-left`), which the span below
+// carries.
         const countText = item.count !== undefined ? ` ${item.count}` : '';
-        // A `role="status"` nested inside a `role="tab"` button is not
-        // reliably exposed as its own accessible object by assistive tech —
-        // interactive widget roles generally flatten/prune nested
-        // landmark-ish descendants when computing the tab's own accessible
-        // name (review MED — the previous nested-status implementation
-        // tested green in jsdom, which does not model that pruning, while
-        // lying about what a real AT announces). The visible dot stays for
-        // sighted users (`aria-hidden`); the attention text instead joins
-        // the tab's own accessible name, mirroring the exact pattern
-        // `CodingInspectorPanel.tsx` already uses. (Cited by component name
-        // only: this file has no Coding dependency, and the full path token
-        // anchors coding-composition-inventory-gate's semantic scan, which
-        // would then demand an inventory entry nothing derives.)
+// A `role="status"` nested inside a `role="tab"` button is not
+// reliably exposed as its own accessible object by assistive tech —
+// interactive widget roles generally flatten/prune nested
+// landmark-ish descendants when computing the tab's own accessible
+// name (review MED — the previous nested-status implementation
+// tested green in jsdom, which does not model that pruning, while
+// lying about what a real AT announces). The visible dot stays for
+// sighted users (`aria-hidden`); the attention text instead joins
+// the tab's own accessible name, mirroring the exact pattern
+// `CodingInspectorPanel.tsx` already uses. (Cited by component name
+// only: this file has no Coding dependency, and the full path token
+// anchors coding-composition-inventory-gate's semantic scan, which
+// would then demand an inventory entry nothing derives.)
         const accessibleName = item.attention
           ? `${item.label}${countText}, needs attention`
           : undefined;
@@ -194,10 +194,10 @@ export const Tabs = forwardRef<HTMLDivElement, TabsProps>(function Tabs(
             type="button"
             role="tab"
             id={tabElementId(id, item.key)}
-            // Only the selected tab points at a panel: the documented
-            // contract is that hosts render the ACTIVE panel only, so an
-            // aria-controls on an unselected tab is an IDREF guaranteed to
-            // dangle — an asserted relationship nothing derives.
+// Only the selected tab points at a panel: the documented
+// contract is that hosts render the ACTIVE panel only, so an
+// aria-controls on an unselected tab is an IDREF guaranteed to
+// dangle — an asserted relationship nothing derives.
             aria-controls={
               selected ? tabPanelElementId(id, item.key) : undefined
             }

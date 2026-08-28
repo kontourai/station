@@ -36,9 +36,9 @@ describe('DeveloperView', () => {
     }
   });
 
-  // station#4463 slice 1 fix round: 'Developer' is a real parent (the title
-  // is the active tab's name, never 'Developer' itself — decision #5), so
-  // its eyebrow stays linked, unlike the unlinked Connections eyebrow.
+// archive#4463: 'Developer' is a real parent (the title
+// is the active tab's name, never 'Developer' itself — decision #5), so
+// its eyebrow stays linked, unlike the unlinked Connections eyebrow.
   test('publishes a linked "Developer" eyebrow back to /developer', () => {
     const { container } = render(
       <PageFrame

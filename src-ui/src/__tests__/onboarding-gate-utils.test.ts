@@ -433,14 +433,14 @@ describe('onboardingGateUtils', () => {
     });
   });
 
-  // station#1193 (epic #1191, slice A): "chat ready" is engine-agnostic — the
-  // UI mirrors whatever the backend's `recommendation.code`/`ready` already
-  // decided (system-status-routes.ts's `resolveExternalEngineReadiness`),
-  // rather than re-deriving readiness from `clis`/provider names itself. This
-  // block pins that mirroring for every case station#1193 requires: ACP
-  // connected, a ready+authed native engine (Claude Code, Codex), a Station
-  // model connection alone, and the negative case (CLI present but not
-  // authenticated) staying NOT hidden.
+// archive#1193: "chat ready" is engine-agnostic — the
+// UI mirrors whatever the backend's `recommendation.code`/`ready` already
+// decided (system-status-routes.ts's `resolveExternalEngineReadiness`),
+// rather than re-deriving readiness from `clis`/provider names itself. This
+// block pins that mirroring for every case archive#1193 requires: ACP
+// connected, a ready+authed native engine (Claude Code, Codex), a Station
+// model connection alone, and the negative case (CLI present but not
+// authenticated) staying NOT hidden.
   describe('engine-agnostic chat readiness (station#1193)', () => {
     test('hides the banner when an ACP engine is connected, with no model connection', () => {
       const status = createStatus({
@@ -529,14 +529,14 @@ describe('onboardingGateUtils', () => {
     });
 
     test('does NOT surface the engine picker (or hide the banner) when an external engine CLI is installed but not authenticated', () => {
-      // The backend never emits `runtime-only`/`ready: true` for an
-      // installed-but-unauthenticated engine (resolveExternalEngineReadiness
-      // requires CLI resolvable AND authenticated) -- this is exactly the
-      // "clis: true" case that used to leak through the old bare-`which`
-      // reading. With nothing else configured or detected, the honest
-      // backend state is `unconfigured`/`ready: false`, and the UI must keep
-      // showing setup guidance rather than treating CLI presence alone as
-      // readiness.
+// The backend never emits `runtime-only`/`ready: true` for an
+// installed-but-unauthenticated engine (resolveExternalEngineReadiness
+// requires CLI resolvable AND authenticated) -- this is exactly the
+// "clis: true" case that used to leak through the old bare-`which`
+// reading. With nothing else configured or detected, the honest
+// backend state is `unconfigured`/`ready: false`, and the UI must keep
+// showing setup guidance rather than treating CLI presence alone as
+// readiness.
       const status = createStatus({
         clis: { codex: true },
         recommendation: {
@@ -555,11 +555,11 @@ describe('onboardingGateUtils', () => {
     });
   });
 
-  // station#chat-dock-maximize-readiness: while prerequisite discovery is
-  // `pending`, the status route serves an all-false placeholder snapshot that
-  // reads as 'unconfigured'. The onboarding conclusion must be withheld until
-  // discovery settles, so a genuinely ready Claude/Codex/ACP/Ollama path can
-  // suppress the launcher instead of flashing a false setup overlay.
+// archive#chat-dock-maximize-readiness: while prerequisite discovery is
+// `pending`, the status route serves an all-false placeholder snapshot that
+// reads as 'unconfigured'. The onboarding conclusion must be withheld until
+// discovery settles, so a genuinely ready Claude/Codex/ACP/Ollama path can
+// suppress the launcher instead of flashing a false setup overlay.
   describe('provisional pending-state safety', () => {
     test('withholds the setup conclusion while discovery is pending, even with an all-false snapshot', () => {
       const status = createStatus({ prerequisitesState: 'pending' });

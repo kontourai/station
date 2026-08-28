@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1094 review (HIGH): a stream that terminal-stops (401/403) must
- * be `.close()`d, not just dropped from `ensureOrchestrationEventStream`'s
+* archive#1094: a stream that terminal-stops (401/403) must
+* be `.close`d, not just dropped from `ensureOrchestrationEventStream`'s
  * dedup map — otherwise it becomes an orphan that stays strongly referenced
  * by the SDK's origin-scoped credential-change wake registry
  * (`packages/sdk/src/client/http.ts`) and silently reactivates alongside
@@ -71,21 +71,21 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
     vi.useFakeTimers();
     const fetchMock = vi
       .fn()
-      // Stream #1 (first mount): 401 — terminal, must close+deregister.
+// Stream #1 (first mount): 401 — terminal, must close+deregister.
       .mockResolvedValueOnce(new Response('', { status: 401 }))
-      // Stream #2 (remount after #1's dedup entry frees up): connects and
-      // delivers exactly one event, then stays open.
+// Stream #2 (remount after #1's dedup entry frees up): connects and
+// delivers exactly one event, then stays open.
       .mockResolvedValueOnce(
         openSseResponseWithOneFrame(orchestrationEventFrame('evt-live')),
       )
-      // Only reached if the orphan bug is present: stream #1 reconnecting.
+// Only reached if the orphan bug is present: stream #1 reconnecting.
       .mockResolvedValueOnce(new Response('', { status: 401 }));
     vi.stubGlobal('fetch', fetchMock);
 
     ensureOrchestrationEventStream(APP_ORIGIN);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    // Let the terminal catch handler's synchronous close()+delete() run
-    // before "remounting" — mirrors a real unmount/remount tick.
+// Let the terminal catch handler's synchronous close+delete run
+// before "remounting" — mirrors a real unmount/remount tick.
     await Promise.resolve();
     await Promise.resolve();
 
@@ -95,8 +95,8 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
     );
 
-    // The credential-change wake that resumes a genuinely blocked stream
-    // must NOT reach stream #1: it was closed, not parked.
+// The credential-change wake that resumes a genuinely blocked stream
+// must NOT reach stream #1: it was closed, not parked.
     notifyCredentialChanged(APP_ORIGIN);
     await vi.advanceTimersByTimeAsync(60_000);
 
@@ -106,7 +106,7 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
 });
 
 /**
- * station#1410 (D6) — pins the wire seam itself.
+ * archive#1410 — pins the wire seam itself.
  *
  * The server hangs the provenance envelope on a SIBLING key of the SSE
  * frame's JSON (`{ event, provenance }`) and this module is the only place
@@ -182,7 +182,7 @@ describe('ensureOrchestrationEventStream — turn provenance sibling (station#14
   });
 });
 
-// UX audit V3 (live-reproduced): a session killed mid-turn showed a red
+// V3 a session killed mid-turn showed a red
 // `Failed` chip (fed by this stream) beside a transcript that just stopped and
 // no reason at all — the dock's failure banner reads the SHARED session
 // read-model, whose cached copy still said `lifecycleState: 'running'` because
@@ -265,20 +265,20 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
     );
   });
 
-  // The mount-order trap this refresh has to survive: `ChatDock.tsx` creates
-  // the stream WITHOUT a client while `useOrchestration` creates it WITH one,
-  // and only the first call for an apiBase takes effect.
+// The mount-order trap this refresh has to survive: `ChatDock.tsx` creates
+// the stream WITHOUT a client while `useOrchestration` creates it WITH one,
+// and only the first call for an apiBase takes effect.
   it('still refreshes when the stream was created by the caller that has no client', async () => {
     const invalidateQueries = vi.fn();
-    // A prior call binds the app's one client...
+// A prior call binds the app's one client...
     ensureOrchestrationEventStream(
       'https://ensure-orchestration-bound.example.test',
       {
         invalidateQueries,
       } as never,
     );
-    // The refresh is throttled to at most once a second; the preceding test
-    // fired one, so wait past that window rather than racing it.
+// The refresh is throttled to at most once a second; the preceding test
+// fired one, so wait past that window rather than racing it.
     await new Promise((resolve) => setTimeout(resolve, 1100));
     vi.stubGlobal(
       'fetch',
@@ -290,7 +290,7 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
           ),
         ),
     );
-    // ...and a DIFFERENT origin's stream, created with no client, still uses it.
+//.and a DIFFERENT origin's stream, created with no client, still uses it.
     ensureOrchestrationEventStream(
       'https://ensure-orchestration-unbound.example.test',
     );

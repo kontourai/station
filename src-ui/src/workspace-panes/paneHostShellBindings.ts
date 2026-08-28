@@ -7,7 +7,7 @@ import { BANNER_PRIORITY, bannerStore } from '../contexts/banner-store';
 
 /**
  * The shell half of the pane-host contract, shared by BOTH transports
- * (station#4201, `docs/design/pane-host-contract.md`).
+ * (archive#4201, `docs/design/pane-host-contract.md`).
  *
  * The design's claim is that one interface serves two runtime tiers. That
  * claim is only worth something if the two adapters agree about what a
@@ -27,10 +27,10 @@ import { BANNER_PRIORITY, bannerStore } from '../contexts/banner-store';
 /** A contract target resolved onto the shell's own path grammar. */
 export interface PaneNavigationRoute {
   pathname: string;
-  /**
-   * Query fields to write with the navigation. `null` CLEARS a field, which
-   * is load-bearing rather than cosmetic — see the project-layout case.
-   */
+/**
+* Query fields to write with the navigation. `null` CLEARS a field, which
+* is load-bearing rather than cosmetic — see the project-layout case.
+*/
   params: Record<string, string | null>;
 }
 
@@ -72,15 +72,15 @@ export function resolvePaneNavigationRoute(
         return null;
       return {
         pathname: `/projects/${target.projectSlug}/layouts/${target.layoutSlug}`,
-        // A project-layout target is the one that can CHANGE project, and
-        // `navigate` starts from the live URL: without clearing these, a
-        // navigation away from `/projects/alpha/...?previewPath=src/secret.ts`
-        // would carry the fields onto beta and reconstitute the intent as
-        // `beta:src/secret.ts`. Project identity is route-owned
-        // (`openFilePreviewIntent.ts`); a preview must never survive a project
-        // switch. (`setLayout` clears them as a side effect; panes
-        // deliberately do not go through `setLayout` — see the frame
-        // adapter's note on not recording a pane's choice as the user's.)
+// A project-layout target is the one that can CHANGE project, and
+// `navigate` starts from the live URL: without clearing these, a
+// navigation away from `/projects/alpha/...?previewPath=src/secret.ts`
+// would carry the fields onto beta and reconstitute the intent as
+// `beta:src/secret.ts`. Project identity is route-owned
+// (`openFilePreviewIntent.ts`); a preview must never survive a project
+// switch. (`setLayout` clears them as a side effect; panes
+// deliberately do not go through `setLayout` — see the frame
+// adapter's note on not recording a pane's choice as the user's.)
         params: {
           previewPath: null,
           previewLineStart: null,
@@ -89,11 +89,11 @@ export function resolvePaneNavigationRoute(
       };
     }
     case 'app-surface': {
-      // The registry is the app's own inventory of navigable surfaces, so the
-      // vocabulary cannot drift from what the shell actually renders — and an
-      // unknown id is refused rather than turned into a path. `view` is what
-      // marks a surface's route as an exact, navigable root; a surface
-      // without one has no destination to offer.
+// The registry is the app's own inventory of navigable surfaces, so the
+// vocabulary cannot drift from what the shell actually renders — and an
+// unknown id is refused rather than turned into a path. `view` is what
+// marks a surface's route as an exact, navigable root; a surface
+// without one has no destination to offer.
       const surface = APP_SURFACE_REGISTRY.get(target.surfaceId);
       if (!surface?.view) return null;
       return { pathname: surface.route, params: {} };
@@ -122,7 +122,7 @@ export function paneAppSurfaceIdForRoute(pathname: string): string | null {
 }
 
 /**
- * D8's one-line redirect notice, and the banner id it is presented under.
+ * one-line redirect notice, and the banner id it is presented under.
  * Exported so both adapters, the mounter's unit test and the durable E2E all
  * name the same sentence rather than four copies that can drift.
  */
@@ -137,7 +137,7 @@ export const BOARD_UNAVAILABLE_BANNER_ID = 'project:board-unavailable';
  * said it knows no Builder run for this project); the sentence and the banner
  * id are the shell's, which is why they live here and not in the pane. Keyed
  * by reason so a second reason is a row in this table rather than a second
- * hardcoded sentence beside the first — the shape C1's review asked for.
+ * hardcoded sentence beside the first — the shape review asked for.
  */
 const PANE_UNAVAILABLE_PRESENTATION: Record<
   PaneUnavailableReason,
@@ -160,7 +160,7 @@ const PANE_UNAVAILABLE_PRESENTATION: Record<
  *
  * `userInitiated` because the reader just navigated here and the guard
  * redirected them — their own action, not a background condition
- * (station#3823).
+ * (archive#3823).
  */
 export function presentPaneUnavailable(
   reason: PaneUnavailableReason,

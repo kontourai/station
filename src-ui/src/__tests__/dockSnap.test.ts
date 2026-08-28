@@ -41,13 +41,13 @@ describe('dockSnap', () => {
   });
 
   test('collapsed honors a CSS-driven collapsedHeight override (mobile bar)', () => {
-    // On mobile --chat-dock-header-height is bumped (e.g. 52px); the snap math
-    // must track the real bar height so the Collapsed snap lands on it.
+// On mobile --chat-dock-header-height is bumped (e.g. 52px); the snap math
+// must track the real bar height so the Collapsed snap lands on it.
     const mobile = { ...metrics, collapsedHeight: 52 };
     expect(dockSnapPixels('collapsed', mobile)).toBe(52);
-    // A live drag near the bar snaps to Collapsed at the larger height.
+// A live drag near the bar snaps to Collapsed at the larger height.
     expect(nearestDockSnap(54, mobile)).toBe('collapsed');
-    // Clamp floor follows the override too.
+// Clamp floor follows the override too.
     expect(clampDockHeight(5, mobile)).toBe(52);
   });
 
@@ -91,10 +91,10 @@ describe('dockSnap', () => {
     ).toBe('full');
   });
 
-  // #795: this used to assert that direction wins for a slow drag too, which
-  // is what made every upward nudge resolve to Full regardless of where the
-  // pointer actually was. A deliberate, unhurried gesture now lands on the
-  // snap nearest the release height; flings still own intent (below).
+ // archive#795: this used to assert that direction wins for a slow drag too, which
+// is what made every upward nudge resolve to Full regardless of where the
+// pointer actually was. A deliberate, unhurried gesture now lands on the
+// snap nearest the release height; flings still own intent (below).
   test('a slow release lands on the nearest snap rather than on the drag direction', () => {
     expect(
       resolveMobileDockSnap({
@@ -142,9 +142,9 @@ describe('dockSnap', () => {
   });
 
   test('a slow drag ending near Half stays Half — no accidental dismissal', () => {
-    // At rest at release (no direction, no fling): the geometric-midpoint
-    // fallback, not the Collapsed band, decides — and 460 sits well above the
-    // Collapsed/Half midpoint (244) and below the Half/Full midpoint (700).
+// At rest at release (no direction, no fling): the geometric-midpoint
+// fallback, not the Collapsed band, decides — and 460 sits well above the
+// Collapsed/Half midpoint (244) and below the Half/Full midpoint (700).
     expect(
       resolveMobileDockSnap({
         pixels: 460,
@@ -202,19 +202,19 @@ describe('dockSnap', () => {
     );
   });
 
-  // Real mobile geometry from the adversarial-review repro: viewport 800,
-  // collapsed bar 52px → Half ≈ 360px, Collapsed/Half midpoint ≈ 206px.
-  // Reopening from Collapsed necessarily starts the drag near the Collapsed
-  // pixel height, so the position-based collapse check must never fire for
-  // an upward-opening gesture just because it hasn't traveled far yet.
+// Real mobile geometry from the adversarial-review repro: viewport 800,
+// collapsed bar 52px → Half ≈ 360px, Collapsed/Half midpoint ≈ 206px.
+// Reopening from Collapsed necessarily starts the drag near the Collapsed
+// pixel height, so the position-based collapse check must never fire for
+// an upward-opening gesture just because it hasn't traveled far yet.
   const reopenMetrics = { viewportHeight: 800, collapsedHeight: 52 };
 
   test('reopening from Collapsed: a modest upward drag opens the dock, never collapses it', () => {
-    // A realistic thumb swipe up (deltaY=-100) that ends well below the
-    // Collapsed/Half midpoint (~206px). Position alone would call this
-    // Collapsed, which would make an opening gesture close the dock — so the
-    // opening guard lifts it to Half. It no longer jumps all the way to Full
-    // (#795): a modest drag gets a modest result.
+// A realistic thumb swipe up (deltaY=-100) that ends well below the
+// Collapsed/Half midpoint (~206px). Position alone would call this
+// Collapsed, which would make an opening gesture close the dock — so the
+// opening guard lifts it to Half. It no longer jumps all the way to Full
+ // (archive#795): a modest drag gets a modest result.
     expect(
       resolveMobileDockSnap({
         pixels: 150,
@@ -247,9 +247,9 @@ describe('dockSnap', () => {
     ).toBe('collapsed');
   });
 
-  // #795, as reported: phone 390x844, dock at Half (380px). Both a 60px and a
-  // 200px upward drag used to land on Full (788px) — the chosen height was
-  // ignored entirely.
+ // archive#795, as reported: phone 390x844, dock at Half (380px). Both a 60px and a
+// 200px upward drag used to land on Full (788px) — the chosen height was
+// ignored entirely.
   test('the reported phone geometry: a small drag holds Half, a large one reaches Full', () => {
     const phone = {
       viewportHeight: 844,
@@ -286,9 +286,9 @@ describe('dockSnap', () => {
   });
 });
 
-// #869: a maximized dock is opaque and full-height, so a route change moved the
+// archive#869: a maximized dock is opaque and full-height, so a route change moved the
 // view underneath it while nothing visibly happened. Dock state lives in the
-// query string and `navigate()` preserves it, so `maximize=true` survived.
+// query string and `navigate` preserves it, so `maximize=true` survived.
 describe('shouldRestoreDockOnNavigation (#869)', () => {
   test('restores a maximized dock when the pathname actually changes', () => {
     expect(
@@ -310,8 +310,8 @@ describe('shouldRestoreDockOnNavigation (#869)', () => {
     ).toBe(false);
   });
 
-  // The dock writes its own `dock`/`maximize` params, so a query-only update
-  // must not collapse a dock the user just maximized.
+// The dock writes its own `dock`/`maximize` params, so a query-only update
+// must not collapse a dock the user just maximized.
   test('ignores a re-render or query-only update on the same pathname', () => {
     expect(
       shouldRestoreDockOnNavigation({
@@ -323,7 +323,7 @@ describe('shouldRestoreDockOnNavigation (#869)', () => {
   });
 });
 
-// #869 review: restoring only `isDockMaximized` is not enough. The mobile
+// archive#869: restoring only `isDockMaximized` is not enough. The mobile
 // snap-sync effect computes `isDockMaximized ? 'full' : dockSnap`, so clearing
 // the flag while the snap still says Full makes it re-expand and undo the
 // restore — and the persisted snap doubles as "previous size", so it would

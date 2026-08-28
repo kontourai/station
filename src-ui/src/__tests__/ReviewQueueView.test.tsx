@@ -212,9 +212,9 @@ describe('ReviewQueueView', () => {
     }));
   });
 
-  // station#4463 slice 1 (2026-08-26 shell audit): the nav item is 'Review',
-  // so the page title is 'Review' too — 'Review Queue' disagreed with its own
-  // nav noun. The subtitle keeps the fuller queue description.
+// archive#4463: the nav item is 'Review',
+// so the page title is 'Review' too — 'Review Queue' disagreed with its own
+// nav noun. The subtitle keeps the fuller queue description.
   test('titles the page "Review", matching its nav item — not "Review Queue"', () => {
     render(
       <NavigationProvider>
@@ -290,7 +290,7 @@ describe('ReviewQueueView', () => {
     expect(
       screen.getByText(/That review receipt isn’t available/i),
     ).toBeTruthy();
-    // The promise this message exists for: no substitution (station#3965).
+// The promise this message exists for: no substitution (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -427,7 +427,7 @@ describe('ReviewQueueView', () => {
         updatedAt: now,
       },
     ];
-    // The project exposes a coding layout the action can resolve and navigate to.
+// The project exposes a coding layout the action can resolve and navigate to.
     layouts = [
       { type: 'chat', slug: 'overview' },
       { type: 'coding', slug: 'workspace' },
@@ -586,11 +586,11 @@ describe('ReviewQueueView', () => {
 });
 
 describe('the double-empty rule (station#4463 slice 2)', () => {
-  // The 2026-08-26 shell audit: with an empty queue, Review rendered TWO
-  // empty states at once — the list pane's "Nothing to review" beside the
-  // detail pane's "Select an item" (select from what?). This pins Review as
-  // the proving case for `SplitPaneLayout`'s single-empty-message rule,
-  // exercised through the real view rather than hand-built props.
+ // The : with an empty queue, Review rendered TWO
+// empty states at once — the list pane's "Nothing to review" beside the
+// detail pane's "Select an item" (select from what?). This pins Review as
+// the proving case for `SplitPaneLayout`'s single-empty-message rule,
+// exercised through the real view rather than hand-built props.
   test('an empty queue renders exactly one empty message, not a second "Select an item"', () => {
     changes = [];
     comments = [];
@@ -626,11 +626,11 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
 
 describe('failed sources never read as an empty queue', () => {
   test('a failing proposed-changes fetch names itself instead of "Nothing to review"', () => {
-    // `data = []` on error rendered the queue as empty — absence-as-success
-    // on the surface whose job is surfacing pending approvals. The empty
-    // state must say WHICH source failed, scoped, without breaking the
-    // healthy sources (their items would still render).
-    // Module-level fixtures leak between tests; pin this test's world.
+// `data = []` on error rendered the queue as empty — absence-as-success
+// on the surface whose job is surfacing pending approvals. The empty
+// state must say WHICH source failed, scoped, without breaking the
+// healthy sources (their items would still render).
+// Module-level fixtures leak between tests; pin this test's world.
     changes = [];
     comments = [];
     surveyReviews = [];
@@ -652,9 +652,9 @@ describe('failed sources never read as an empty queue', () => {
   });
 
   test('a partial failure stays visible while healthy sources still render items', () => {
-    // The discriminating case: the alert must not live only in the empty
-    // state — with a healthy comment present, the list renders items AND the
-    // failed source stays named.
+// The discriminating case: the alert must not live only in the empty
+// state — with a healthy comment present, the list renders items AND the
+// failed source stays named.
     const now = new Date().toISOString();
     changes = [];
     surveyReviews = [];
@@ -689,10 +689,10 @@ describe('failed sources never read as an empty queue', () => {
   });
 
   test('unavailable review-evidence projects are named with their reason while readable receipts still render', () => {
-    // Per-project isolation (#3303): one unreadable project must not blank
-    // the whole independent-review section, and must not be invisible either.
-    // The partial case is NOT phrased as a failed load — the source loaded —
-    // and each project carries its reason (the operator remedy differs).
+ // Per-project isolation (archive#3303): one unreadable project must not blank
+// the whole independent-review section, and must not be invisible either.
+// The partial case is NOT phrased as a failed load — the source loaded —
+// and each project carries its reason (the operator remedy differs).
     changes = [];
     comments = [];
     surveyReviews = [];
@@ -715,8 +715,8 @@ describe('failed sources never read as an empty queue', () => {
         'Independent review evidence is partial — 2 projects unavailable',
       );
       expect(alert).toContain('broken-project (workspace path unreadable)');
-      // A lock timeout is not proof of a second process — a long index repair
-      // reads the same way — so the copy must not send the operator hunting.
+// A lock timeout is not proof of a second process — a long index repair
+// reads the same way — so the copy must not send the operator hunting.
       expect(alert).toContain(
         'contended-project (contended — another Station process or a long repair)',
       );

@@ -18,7 +18,7 @@ vi.mock('../hooks/useSystemStatus', () => ({
 }));
 
 /**
- * station#1549: the picker asks a not-yet-observed connection to probe when
+ * archive#1549: the picker asks a not-yet-observed connection to probe when
  * the modal opens. Captured rather than stubbed away so the tests below can
  * assert BOTH directions — that it fires for an unobserved row, and (the
  * property that actually matters) that it never fires for a row whose answer
@@ -88,7 +88,7 @@ function expectNoRetiredNouns(): void {
  * A command-backed connection that has been OBSERVED and cannot run the
  * built-in assistant.
  *
- * The `controlPlaneObservation` is load-bearing as of station#1684 and is
+ * The `controlPlaneObservation` is load-bearing as of archive#1684 and is
  * deliberately part of the default. Before that change the `acp` matrix cell
  * named no delivery mechanism, so every ACP connection derived `chat-only`
  * from the matrix alone and the fixture needed no evidence. The cell now
@@ -125,12 +125,12 @@ function acpConnection(overrides: Record<string, unknown> = {}): any {
 
 describe('readyEngineOptions — station#1194 (matrix-driven, no per-engine branch)', () => {
   test('Claude Code AND Codex are badged "full" (each has a station-control delivery mechanism); an observed-incapable command-backed engine is "chat-only"', () => {
-    // The predicate keys on the matrix's builtinStationControlDelivery cell
-    // — the same field session-agent-resolution.ts exempts on — so Codex
-    // flipped to "full" when #1195 shipped its 'url-token' delivery.
-    // station#1684: the command-backed row's answer is no longer read off
-    // the matrix alone; it is derived from the matrix PLUS this connection's
-    // own observation, which here says the CLI does not advertise HTTP MCP.
+// The predicate keys on the matrix's builtinStationControlDelivery cell
+// the same field session-agent-resolution.ts exempts on — so Codex
+ // flipped to "full" when archive#1195 shipped its 'url-token' delivery.
+// archive#1684: the command-backed row's answer is no longer read off
+// the matrix alone; it is derived from the matrix PLUS this connection's
+// own observation, which here says the CLI does not advertise HTTP MCP.
     const options = readyEngineOptions({
       stationChatReady: false,
       connections: [claudeConnection(), codexConnection(), acpConnection()],
@@ -156,10 +156,10 @@ describe('readyEngineOptions — station#1194 (matrix-driven, no per-engine bran
   });
 
   test('keeps Codex eligible when its live native projection uses codex-runtime as its adapter type', () => {
-    // This is the exact shape published by native adapter discovery: the
-    // public matrix identity belongs in config.engineId, not the private
-    // runtime selector. Codex's #1195 declared delivery therefore needs no
-    // runtime observation to be offered.
+// This is the exact shape published by native adapter discovery: the
+// public matrix identity belongs in config.engineId, not the private
+ // runtime selector. Codex's archive#1195 declared delivery therefore needs no
+// runtime observation to be offered.
     expect(
       readyEngineOptions({
         stationChatReady: false,
@@ -228,26 +228,26 @@ describe('EnginePicker component', () => {
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
-    // Claude Code (#1157) and Codex (#1195) each have a reviewed
-    // station-control delivery mechanism — both offered. Kiro's wire
-    // channel has none: the assistant this modal binds could not operate
-    // Station there, so it must not be selectable at all — not badged,
-    // absent.
+ // Claude Code (archive#1157) and Codex (archive#1195) each have a reviewed
+// station-control delivery mechanism — both offered. Kiro's wire
+// channel has none: the assistant this modal binds could not operate
+// Station there, so it must not be selectable at all — not badged,
+// absent.
     expect(screen.getByText('Claude Code')).toBeTruthy();
     expect(screen.getByText('Codex')).toBeTruthy();
     expect(screen.queryByText('Kiro')).toBeNull();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
-    // No per-row capability badge survives the filter: every offered row is
-    // capable, so a badge could only ever read one value.
+// No per-row capability badge survives the filter: every offered row is
+// capable, so a badge could only ever read one value.
     expect(screen.queryByText(/^(Full|Chat only)$/)).toBeNull();
   });
 
   test('never renders retired nouns — engine names only, never "External"/"ACP"/"runtime"', () => {
-    // What this case has always protected: a command-backed connection is
-    // named by its OWN connection name, never by the protocol it speaks.
-    // The capable-only filter moved WHERE such a connection is named — it
-    // is no longer an offerable row — but it did not remove the naming, and
-    // the surface that still names it must obey the same rule.
+// What this case has always protected: a command-backed connection is
+// named by its OWN connection name, never by the protocol it speaks.
+// The capable-only filter moved WHERE such a connection is named — it
+// is no longer an offerable row — but it did not remove the naming, and
+// the surface that still names it must obey the same rule.
     statusData = { providers: { configuredChatReady: true } };
     connectionsData = [claudeConnection(), acpConnection()];
     configData = undefined;
@@ -261,18 +261,18 @@ describe('EnginePicker component', () => {
     expectNoRetiredNouns();
     offered.unmount();
 
-    // Same connection, on the surface that DOES have to name it: the
-    // explanation shown when nothing capable is connected.
+// Same connection, on the surface that DOES have to name it: the
+// explanation shown when nothing capable is connected.
     statusData = { providers: { configuredChatReady: false } };
     connectionsData = [acpConnection()];
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
-    // station#1547 AC5 restored a second sentence that also names this
-    // connection (what it CAN still do), so the panel now names it twice.
-    // The rule under test is unchanged — every naming uses the connection's
-    // own name, never "External"/"ACP"/"runtime" — so this asserts "named at
-    // least once", not "named exactly once".
+ // archive#1547 restored a second sentence that also names this
+// connection (what it CAN still do), so the panel now names it twice.
+// The rule under test is unchanged — every naming uses the connection's
+// own name, never "External"/"ACP"/"runtime" — so this asserts "named at
+// least once", not "named exactly once".
     expect(screen.getAllByText(/\bKiro\b/).length).toBeGreaterThan(0);
     expectNoRetiredNouns();
   });
@@ -293,7 +293,7 @@ describe('EnginePicker component', () => {
     );
   });
 
-  // station#settings-revamp slice 3 review finding 3.
+// archive#settings-revamp.
   test('onSelect mode: confirming calls onSelect(id) and onChosen, and never fires the update-config mutation', () => {
     statusData = { providers: { configuredChatReady: false } };
     connectionsData = [codexConnection()];
@@ -332,11 +332,11 @@ describe('EnginePicker component', () => {
   });
 
   test('a ready-but-incapable-only machine gets the explanation, not silence and not a bind', () => {
-    // The reachable steady state the capable-only filter creates: an engine
-    // is connected and ready, no Station model, and nothing on the machine
-    // can run the assistant. Rendering null here would leave the "Change…"
-    // button doing nothing and the user never learning why the assistant
-    // never appeared.
+// The reachable steady state the capable-only filter creates: an engine
+// is connected and ready, no Station model, and nothing on the machine
+// can run the assistant. Rendering null here would leave the "Change…"
+// button doing nothing and the user never learning why the assistant
+// never appeared.
     statusData = { providers: { configuredChatReady: false } };
     connectionsData = [acpConnection()];
     configData = undefined;
@@ -354,24 +354,24 @@ describe('EnginePicker component', () => {
         "Kiro can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.",
       ),
     ).toBeTruthy();
-    // Nothing to choose, and nothing is ever written from this state: an
-    // engine becoming capable later (as Codex did at #1195) must find the
-    // saved config exactly as the user left it.
+// Nothing to choose, and nothing is ever written from this state: an
+ // engine becoming capable later (as Codex did at archive#1195) must find the
+// saved config exactly as the user left it.
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
     fireEvent.click(screen.getByText('Got it'));
     expect(onDismiss).toHaveBeenCalled();
     expect(mutate).not.toHaveBeenCalled();
   });
 
-  /**
-   * station#1547 AC5. The sentence shipped once and was reverted at
-   * 5a61adbf because it was false — no non-`station` agent received the docs
-   * server, so the engine the panel is about was precisely the engine that
-   * got nothing. It ships again only because the ACP adapter now grants
-   * `station-docs` on every ACP session; these assertions and
-   * `acp-adapter.test.ts`'s "station#1547 AC5" block are two halves of one
-   * claim, and neither is worth anything alone.
-   */
+/**
+* archive#1547. The sentence shipped once and was reverted at
+* 5a61adbf because it was false — no non-`station` agent received the docs
+* server, so the engine the panel is about was precisely the engine that
+* got nothing. It ships again only because the ACP adapter now grants
+* `station-docs` on every ACP session; these assertions and
+ * `acp-adapter.test.ts`'s "archive#1547 " block are two halves of one
+* claim, and neither is worth anything alone.
+*/
   test('station#1547 AC5: the single-incapable-engine panel says what that engine CAN still do', () => {
     statusData = { providers: { configuredChatReady: false } };
     connectionsData = [acpConnection()];
@@ -384,9 +384,9 @@ describe('EnginePicker component', () => {
         "Kiro still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings.",
       ),
     ).toBeTruthy();
-    // The "can't operate it" half has to stay in the same breath: an
-    // assistant that answers confidently while silently unable to act is the
-    // assert-then-retract failure delivery-protocol §6 forbids.
+// The "can't operate it" half has to stay in the same breath: an
+// assistant that answers confidently while silently unable to act is the
+ // assert-then-retract failure delivery-protocol §6 forbids.
     expect(
       screen.getByText(
         "Kiro can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.",
@@ -419,10 +419,10 @@ describe('EnginePicker component', () => {
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
-    // Deliberately NOT "any engine you connect": a capable engine receives
-    // documentation by way of the built-in assistant it can actually run,
-    // not by the ACP grant, so the broader sentence would claim a delivery
-    // path that does not exist for it. The panel says what ships.
+// Deliberately NOT "any engine you connect": a capable engine receives
+// documentation by way of the built-in assistant it can actually run,
+// not by the ACP grant, so the broader sentence would claim a delivery
+// path that does not exist for it. The panel says what ships.
     expect(
       screen.getByText(
         "An engine that can't run the built-in assistant still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings.",
@@ -438,9 +438,9 @@ describe('EnginePicker component', () => {
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
-    // Derived, not transcribed: the assertion is built from the contract's
-    // own list, so an engine gaining or losing a station-control delivery
-    // mechanism moves the copy and this expectation together.
+// Derived, not transcribed: the assertion is built from the contract's
+// own list, so an engine gaining or losing a station-control delivery
+// mechanism moves the copy and this expectation together.
     const names = controlPlaneCapableEngineNames();
     expect(names.length).toBeGreaterThan(1);
     const list = `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
@@ -452,10 +452,10 @@ describe('EnginePicker component', () => {
   });
 
   test('no engine connected at all also explains — the "Change…" button never opens an empty modal', () => {
-    // #1359 retired the first-run gate that used to be this modal's only
-    // caller, so "zero ready engines" is no longer a render race with a
-    // gate: it is a deliberate click from Settings, and rendering nothing
-    // would be a dead button.
+ // archive#1359 retired the first-run gate that used to be this modal's only
+// caller, so "zero ready engines" is no longer a render race with a
+// gate: it is a deliberate click from Settings, and rendering nothing
+// would be a dead button.
     statusData = { providers: { configuredChatReady: false } };
     connectionsData = [];
     configData = undefined;

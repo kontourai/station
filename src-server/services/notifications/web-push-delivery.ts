@@ -1,6 +1,6 @@
 /**
  * wireWebPushDelivery — the decoupled EventBus subscriber that turns a
- * pushable notification delivery (station#1100: approval/input requests and
+ * pushable notification delivery (archive#1100: approval/input requests and
  * failures — `classifyNotificationCategory`) into a Web Push fan-out to
  * every paired device that has subscribed.
  *
@@ -13,7 +13,7 @@
  *
  * Payload composition (title/body/deep-link/TTL) is delegated to
  * `composeWebPushPayload` (`push-payload-composer.ts`), which ranks,
- * per-state-TTLs, and deep-links per station#1100's design. This listener
+ * per-state-TTLs, and deep-links per archive#1100's design. This listener
  * always composes from a single-item `pending` list — the notification that
  * just fired — deliberately not re-ranking against every other currently
  * pending notification: doing so could replace a fresh event's own push

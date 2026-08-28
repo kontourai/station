@@ -321,14 +321,14 @@ export interface InstalledPluginResult {
     autoGranted: string[];
     /**
      * Active-tier permissions granted because the operator approved them
-     * BEFORE this install ran (station#4288). Named apart from
+     * BEFORE this install ran (archive#4288). Named apart from
      * `autoGranted` so neither word has to cover the other's meaning.
      */
     consentGranted: string[];
     pendingConsent: Array<{ permission: string; tier: string }>;
     /**
      * Permissions this install WITHDREW because it replaced the code they
-     * were granted against (station#4288). Named rather than implied: an
+     * were granted against (archive#4288). Named rather than implied: an
      * install over an existing plugin can leave it holding less than it did a
      * moment ago, and a capability that disappears without a word is its own
      * defect. Empty on a first install, which withdraws nothing.
@@ -339,7 +339,7 @@ export interface InstalledPluginResult {
 
 const REGISTRY_INSTALLS_PATH = ['config', 'registry-installs.json'] as const;
 const AGENT_REGISTRY_PATH = ['config', 'agent-registry.json'] as const;
-// Plugin grants are deliberately NOT in the raw-copy backup set (#1835
+// Plugin grants are deliberately NOT in the raw-copy backup set (archive#1835
 // finding 2): a whole-file cpSync restore bypasses the grants store's lock and
 // atomic writer (it can tear), and a stale snapshot reverts consent recorded
 // for OTHER plugins between snapshot and rollback (e.g. a host approval).
@@ -412,7 +412,7 @@ export async function restorePluginDurableState(
   if (!existsSync(snapshotPath)) return;
   const parsed: unknown = JSON.parse(readFileSync(snapshotPath, 'utf-8'));
   const snapshot = parsed as { pluginName?: unknown; entry?: unknown };
-  // station#4288: the snapshot carries the grant RECORD (permissions plus the
+  // archive#4288: the snapshot carries the grant RECORD (permissions plus the
   // content digest they were granted against), so the validation is shape-
   // checked here too — a rollback that restored permissions without their
   // digest would leave the entry reading `unverified` for a tree that was
@@ -520,7 +520,7 @@ async function removePluginAgentDefinitions(
 }
 
 /**
- * §3.3 ownership preservation across plugin sync (station#1004 review
+ * §3.3 ownership preservation across plugin sync (archive#1004 review
  * HIGH-1): a plugin's own `agent.json` almost never authors `project` — it
  * is a scope a HUMAN assigns after install, not something the plugin author
  * knows about. `synchronizePluginAgentDefinitions` deletes-then-recopies
@@ -566,7 +566,7 @@ export function capturePersistedAgentOwnership(
 
 /**
  * Reconciles the freshly-copied `agent.json`'s `project` field against the
- * ownership rules (station#1004 review HIGH-1): an incoming definition that
+ * ownership rules (archive#1004 review HIGH-1): an incoming definition that
  * explicitly declares its OWN valid owner wins; an incoming definition that
  * declares an unknown owner has it stripped (with a warn) — plugins cannot
  * mint orphans; an incoming definition that declares nothing carries
@@ -650,7 +650,7 @@ export async function synchronizePluginAgentDefinitions(options: {
   include?: (slug: string) => boolean;
   logger?: Logger;
   /**
-   * Pre-captured ownership map (station#1004 review HIGH-1 residual b):
+   * Pre-captured ownership map (archive#1004 review HIGH-1 residual b):
    * when the caller already deleted the installed agent directories before
    * calling this (e.g. `uninstallInstalledPlugin`'s rollback, called after
    * its own try block already ran `removePluginAgentDefinitions`), a live
@@ -859,7 +859,7 @@ function resolveInstalledPluginName(
  * It used to diff `<plugins>` against a listing taken before the install and
  * delete everything that had appeared since — which is every plugin directory
  * a CONCURRENT operation created in the same window, deleted with no lock
- * held while that operation was still building into it (station#4309 follow-up
+ * held while that operation was still building into it (archive#4309 follow-up
  * review, HIGH 1). `createdPluginTrees` is populated by the frames that did
  * the creating (`installPluginDependency`), so a tree is removed because this
  * install made it, not because it appeared during a window.
@@ -1178,7 +1178,7 @@ export async function installPluginFromSource(
     registryId?: string;
     registryKey?: string;
     /**
-     * The operator's pre-install decision (station#4288). Omitted means no
+     * The operator's pre-install decision (archive#4288). Omitted means no
      * decision was taken — which is not the same as "none was needed", and is
      * why the default names a caller rather than being permissive: the check
      * refuses whatever such a caller could not have disclosed.
@@ -1213,7 +1213,7 @@ export async function installPluginFromSource(
   let backupRoot: string | null = null;
   // Destructive rollback (delete the live plugin dir, restore from backup) is
   // gated on this flag, never on backupRoot existence: the root is created
-  // before the backup finishes (#1835 delta review).
+  // before the backup finishes (archive#1835 delta review).
   let backupComplete = false;
   let serverQuiescence: PluginPublicServerQuiescence | null = null;
   let eventSubscriptionQuiescence: { release(): void } | null = null;
@@ -1233,7 +1233,7 @@ export async function installPluginFromSource(
     // installed under such a name instead of letting the operator remove it.
     assertPluginIdentityAvailable(pluginName);
 
-    // ── The consent gate (station#4288) ──────────────────────────────────
+    // ── The consent gate (archive#4288) ──────────────────────────────────
     //
     // Everything above this line reads: the source has been staged into
     // `<plugins>/.preview-*`, and its manifest parsed. Nothing outside that
@@ -1256,7 +1256,7 @@ export async function installPluginFromSource(
     assertPluginInstallConsent({ pluginName, consent, basis: consentBasis });
     const consentedPermissions =
       consent.kind === 'operator-decision' ? consent.permissions : [];
-    // station#4288, review MEDIUM 1. The gate above can only check the ids the
+    // archive#4288, review MEDIUM 1. The gate above can only check the ids the
     // STAGED manifest declares; `installPluginDependency` then recurses into
     // each dependency's own manifest, fetched after the decision was taken. So
     // the approved list travels down the recursion and is enforced at the
@@ -1319,7 +1319,7 @@ export async function installPluginFromSource(
 
     const dependencyResults: InstalledPluginResult['dependencies'] = [];
     let installedLayoutSlug: string | null = null;
-    // station#4288, review HIGH 3: this is a tree-mutating path like update
+    // archive#4288, review HIGH 3: this is a tree-mutating path like update
     // and uninstall — it deletes `<plugins>/<name>` and copies a new tree in
     // its place — so it holds the same per-plugin content lock they do. That
     // is what serializes it against a concurrent consent decision's
@@ -1333,7 +1333,7 @@ export async function installPluginFromSource(
         // Plugin directory + integrations are backed up BEFORE the grants
         // snapshot: backupPluginDurableState throws typed on a corrupt grants
         // store, and the destructive delete-and-restore rollback below is only
-        // entered once the backup is COMPLETE (#1835 delta review). Gating on
+        // entered once the backup is COMPLETE (archive#1835 delta review). Gating on
         // backupRoot alone destroyed the installed plugin: the catch deleted
         // the live directory and then restored from a backup that was never
         // taken.
@@ -1377,7 +1377,7 @@ export async function installPluginFromSource(
             // `cause`, not just the message: a refused lock acquisition is a
             // typed error carrying WHICH plugins are waiting on each other,
             // and flattening it here is what left the routes with a sentence
-            // they could only answer 500 to (station#4309 follow-up).
+            // they could only answer 500 to (archive#4309 follow-up).
             throw new Error(
               dependencyResult.error ||
                 `Plugin dependency '${dependency.id}' failed to install`,
@@ -1430,7 +1430,7 @@ export async function installPluginFromSource(
         // digest, but reads happen INSIDE this span (`hasGrant` below, and
         // `rebindGrantsAfterContentChange`), so it is dropped here too —
         // O(1), and it is what stops those reads answering from a digest
-        // taken before the install (station#4288).
+        // taken before the install (archive#4288).
         forgetPluginContentDigest(pluginsDir, pluginName);
 
         await synchronizePluginAgentDefinitions({
@@ -1462,7 +1462,7 @@ export async function installPluginFromSource(
           logger,
         );
 
-        // station#4288, review HIGH 2. Installing OVER an existing plugin is
+        // archive#4288, review HIGH 2. Installing OVER an existing plugin is
         // a first-class path — it backs up, it has `hadExistingPlugin`, and
         // `assertRegistryInstallTargetAvailable` deliberately permits
         // reinstalling over the same registry item, which is how a registry
@@ -1510,10 +1510,10 @@ export async function installPluginFromSource(
           requiredPermissionsForManifest(manifest),
           // The decision the gate above already refused to proceed without,
           // recorded against the tree that just landed rather than through a
-          // second round trip after the mutation (station#4288).
+          // second round trip after the mutation (archive#4288).
           { consented: consentedPermissions },
         );
-        // Derived, not the `[]` a first install used to assert (station#4288,
+        // Derived, not the `[]` a first install used to assert (archive#4288,
         // delta review). A first install CAN withdraw: a leftover grants
         // entry for this name — left by a hand-deleted plugin directory, or
         // by an uninstall that failed after the tree went — is `changed`
@@ -1604,14 +1604,14 @@ export async function installPluginFromSource(
           // has touched the existing installation yet, and there is no complete
           // backup to restore from. Deleting the live plugin directory here
           // would be unrecoverable — fail the install and leave it alone
-          // (#1835 delta review).
+          // (archive#1835 delta review).
           throw error;
         }
         if (hadExistingPlugin && backupRoot) {
           try {
             rmSync(pluginDir, { recursive: true, force: true });
             cpSync(join(backupRoot, 'plugin'), pluginDir, PLUGIN_TREE_COPY);
-            // station#4288, delta review MEDIUM 1. The memo currently holds
+            // archive#4288, delta review MEDIUM 1. The memo currently holds
             // the digest of the tree this rollback just DELETED —
             // `rebindGrantsAfterContentChange` and `processInstallPermissions`
             // both refreshed it to the new tree's value before the failure.
@@ -1659,7 +1659,7 @@ export async function installPluginFromSource(
         } else {
           // Rollback failures must not REPLACE the original install failure —
           // aggregate both, matching the existing-plugin and uninstall branches
-          // (#1835 delta review).
+          // (archive#1835 delta review).
           try {
             rmSync(pluginDir, { recursive: true, force: true });
             removePluginOwnedIntegrations(
@@ -1746,7 +1746,7 @@ export async function uninstallInstalledPlugin(
   }
   deps.beginConfigurationMutation?.();
   const pluginName = manifest.name || name;
-  // Captured BEFORE any agent directory deletion (station#1004 review
+  // Captured BEFORE any agent directory deletion (archive#1004 review
   // HIGH-1 residual b) — if a later step in this try block throws, the
   // catch block's rollback `synchronizePluginAgentDefinitions` call can no
   // longer recover human-assigned ownership by reading the (by-then
@@ -1756,7 +1756,7 @@ export async function uninstallInstalledPlugin(
   // Destructive rollback requires this flag, never backupRoot existence: a
   // PARTIAL backup (copy failed midway, or the grants snapshot threw) must
   // fail the uninstall without deleting the live plugin and "restoring" an
-  // incomplete copy (#1835 delta-2 review; same invariant as install).
+  // incomplete copy (archive#1835 delta-2 review; same invariant as install).
   let backupComplete = false;
   try {
     backupRoot = createStationTempDirSync('plugin-uninstall');
@@ -1810,13 +1810,13 @@ export async function uninstallInstalledPlugin(
     // Only a COMPLETE backup may drive the delete-and-restore rollback; an
     // incomplete one means nothing destructive has run inside the try yet —
     // fail the uninstall and leave the live plugin and its integrations
-    // untouched (#1835 delta-2 review).
+    // untouched (archive#1835 delta-2 review).
     if (backupRoot && backupComplete) {
       try {
         rmSync(pluginDir, { recursive: true, force: true });
         cpSync(join(backupRoot, 'plugin'), pluginDir, PLUGIN_TREE_COPY);
         // Defensive, for the same reason as the install rollback above
-        // (station#4288, delta review MEDIUM 1). Nothing in the uninstall
+        // (archive#4288, delta review MEDIUM 1). Nothing in the uninstall
         // path refreshes the memo today, so this rollback's `hasGrant` is
         // correct by luck rather than by construction; a restored tree is a
         // tree whose memoized digest must not be trusted, whoever wrote it.

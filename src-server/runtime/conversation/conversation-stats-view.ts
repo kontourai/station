@@ -6,7 +6,7 @@ import {
 
 /**
  * Every figure an engine may or may not report is optional: absent means
- * "nothing measured this", never "measured zero" (station#3201). `turns`
+ * "nothing measured this", never "measured zero" (archive#3201). `turns`
  * and `toolCalls` stay required — Station counts those events itself.
  */
 export interface ConversationStats {
@@ -14,7 +14,7 @@ export interface ConversationStats {
   outputTokens?: number;
   totalTokens?: number;
   /**
-   * Prompt-cache figures the engine reported (station#4196). Absent when
+   * Prompt-cache figures the engine reported (archive#4196). Absent when
    * no event ever carried one — the station-memory path has no cache
    * concept, so its views legitimately never set these, and the empty view
    * does NOT invent zeros for them.
@@ -42,7 +42,7 @@ export interface ConversationStatsViewInput {
    * Station's own estimate of what IT would send as a system prompt / tool
    * schema for this agent. Omitted for an engine-events view: the external
    * engine composed its own context, so Station's spec-derived figure would
-   * describe a prompt that engine never sent (station#3201's `MCP Tools: 1`,
+   * describe a prompt that engine never sent (archive#3201's `MCP Tools: 1`,
    * which was `Math.ceil(len('[]') / 4)`).
    */
   systemPromptTokens?: number;
@@ -50,7 +50,7 @@ export interface ConversationStatsViewInput {
   userMessageTokens?: number;
   assistantMessageTokens?: number;
   notFound?: boolean;
-  /** See `calculateContextWindowPercentage` (station#1299 item 3a). */
+  /** See `calculateContextWindowPercentage` (archive#1299 item 3a). */
   contextWindowTokens?: number;
   measurement?: ConversationStatsMeasurement;
 }
@@ -136,7 +136,7 @@ export function buildConversationStatsView({
    * path. It must NOT extend to an engine-events view: there `totalTokens`
    * is a SUM ACROSS TURNS of what each turn sent and received, which is not
    * context occupancy and overstates it without bound as a session grows
-   * (station#1299's "contextTokens formula double-counts"). An engine that
+   * (archive#1299's "contextTokens formula double-counts"). An engine that
    * reports no context observation has none here.
    */
   const contextTokens = fromStationMemory

@@ -23,7 +23,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 /**
- * station#3215. These use REAL corrupt bytes on a real store rather than a
+ * archive#3215. These use REAL corrupt bytes on a real store rather than a
  * thrown fixture: the whole claim is that Station notices what SQLite actually
  * does to it, and a hand-authored error object cannot prove that. The one
  * previous corruption fixture in this tree was a mangled `errstr` that a
@@ -96,7 +96,7 @@ describe('EventStore notices corruption that develops after boot', () => {
     damageSchemaPages();
     expect(readCorruptionMarker(databasePath)).toBeNull();
 
-    // No boot check stands in front of this any more (station#3219 removed
+    // No boot check stands in front of this any more (archive#3219 removed
     // the per-boot `PRAGMA quick_check`): damage present before open reaches
     // the constructor's own migration/ensure/backfill sequence directly, and
     // the watch on the connection is what must observe it.
@@ -121,10 +121,10 @@ describe('EventStore notices corruption that develops after boot', () => {
       realpathSync(databasePath),
     );
     expect([11, 26]).toContain(marker?.errcode);
-    // The counter station#3219 will reason from. Unasserted, deleting the
+    // The counter archive#3219 will reason from. Unasserted, deleting the
     // increment leaves every suite green — and the standing lesson is that
     // the instrument a gate depends on is the one that turns out never to
-    // have been readable. station#3218 adds `source`: both detection paths
+    // have been readable. archive#3218 adds `source`: both detection paths
     // dimension the counter, so it can answer which one found the damage.
     expect(corruptionObserved.add).toHaveBeenCalledWith(1, {
       errcode: marker?.errcode,
@@ -133,7 +133,7 @@ describe('EventStore notices corruption that develops after boot', () => {
   });
 
   test('a header-read failure at the first migration statement is observed and typed', () => {
-    // station#3219's coverage proof for the migration block: the connection
+    // archive#3219's coverage proof for the migration block: the connection
     // is wrapped by `watchForSqliteCorruption` BEFORE the migration runs, and
     // the watch proxies `exec`, so the very first `CREATE TABLE IF NOT
     // EXISTS` dying on a `not a sqlite database` header (errcode 26 NOTADB)
@@ -164,7 +164,7 @@ describe('EventStore notices corruption that develops after boot', () => {
     // derivation behind it at the query site. Swapping the two statements in
     // `event-store.ts` makes the throw land before the marker write and reds
     // this — a test mock missing the instrument did exactly that, silently,
-    // during station#3215 (the scheduled site has the same proof).
+    // during archive#3215 (the scheduled site has the same proof).
     corruptionObserved.add.mockImplementationOnce(() => {
       throw new Error('unregistered instrument');
     });
@@ -249,7 +249,7 @@ describe('EventStore notices corruption that develops after boot', () => {
     const marker = readCorruptionMarker(databasePath);
     expect(marker).not.toBeNull();
     expect([11, 26]).toContain(marker?.errcode);
-    // The counter station#3219 will reason from. Unasserted, deleting the
+    // The counter archive#3219 will reason from. Unasserted, deleting the
     // increment leaves every suite green — and the standing lesson is that
     // the instrument a gate depends on is the one that turns out never to
     // have been readable.

@@ -175,23 +175,23 @@ export interface BrandIconProps {
   name: string;
   id?: string;
   icon?: unknown;
-  /** Output-only same-origin URL issued by Station's local icon route. */
+/** Output-only same-origin URL issued by Station's local icon route. */
   iconUrl?: string;
-  /** Preserve existing agent/project artwork without permitting remote hotlinks. */
+/** Preserve existing agent/project artwork without permitting remote hotlinks. */
   allowSafeImageIcon?: boolean;
   size?: number;
   className?: string;
   style?: React.CSSProperties;
   alt?: string;
-  /**
-   * Deterministic identicon seed (station#1424) — when set, the plain-text
-   * initials fallback (no glyph/brand mark/image resolved) renders with a
-   * seed-derived hue instead of the flat default swatch, so two different
-   * unbranded identities are visually distinguishable. Omitted callers
-   * (project icons, integration glyphs) keep today's flat fallback exactly
-   * as before — this is opt-in per call site, never a default behavior
-   * change to `BrandIcon` itself.
-   */
+/**
+* Deterministic identicon seed (archive#1424) — when set, the plain-text
+* initials fallback (no glyph/brand mark/image resolved) renders with a
+* seed-derived hue instead of the flat default swatch, so two different
+* unbranded identities are visually distinguishable. Omitted callers
+* (project icons, integration glyphs) keep today's flat fallback exactly
+* as before — this is opt-in per call site, never a default behavior
+* change to `BrandIcon` itself.
+*/
   identiconSeed?: string;
 }
 
@@ -243,15 +243,15 @@ export function BrandIcon({
         {
           width: size,
           height: size,
-          // station#1424 review fix (round 3 NEW-4): `.brand-icon__initials`'s
-          // font-size is a percentage of THIS custom property, not of `size`
-          // directly — a bare percentage font-size resolves against the
-          // inherited ambient text size, not this element's own box
-          // dimensions, so without this the initials never actually scaled
-          // with the icon (always ~the same few px regardless of a 20px vs
-          // 48px icon). Always set, not just for the identicon path — every
-          // initials fallback benefits, and it's inert (unused) on every
-          // other content branch.
+ // archive#1424 fix : `.brand-icon__initials`'s
+// font-size is a percentage of THIS custom property, not of `size`
+// directly — a bare percentage font-size resolves against the
+// inherited ambient text size, not this element's own box
+// dimensions, so without this the initials never actually scaled
+// with the icon (always ~the same few px regardless of a 20px vs
+// 48px icon). Always set, not just for the identicon path — every
+// initials fallback benefits, and it's inert (unused) on every
+// other content branch.
           '--icon-size': `${size}px`,
           ...(isIdenticon
             ? ({

@@ -105,7 +105,7 @@ describe('wireStrandsAgentHooks', () => {
       toolUse: { name: 'write_file', toolUseId: 'tool-2', input: {} },
     });
 
-    // station#3091: the map now carries the full structured denial (not
+    // archive#3091: the map now carries the full structured denial (not
     // just its reason string) so a `policyDenied` marker can ride along.
     // This particular denial is a mocked hand-set object with no marker —
     // pinned absent here for contrast with the REAL-policy test below.
@@ -200,7 +200,7 @@ describe('wireStrandsAgentHooks', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  // station#3091: the FULL carrying seam for one real denial — a REAL
+  // archive#3091: the FULL carrying seam for one real denial — a REAL
   // pre-tool-policy deny() → the REAL Strands SDK's error-wrapping
   // (wireStrandsToolGate + the real FunctionTool) → mapStrandsStreamEvent,
   // the exact function that produces what goes out over SSE. Nothing here
@@ -273,7 +273,7 @@ describe('wireStrandsAgentHooks', () => {
     });
   });
 
-  // station#3113: the twin of the test above for an ORDINARY (non-policy)
+  // archive#3113: the twin of the test above for an ORDINARY (non-policy)
   // failure — a real tool `execute` throws, the REAL Strands SDK wraps it as
   // a status:'error' ToolResultBlock (no gate involved, no `deniedToolCalls`
   // entry), and `mapStrandsStreamEvent` — the exact function that produces
@@ -336,7 +336,7 @@ describe('wireStrandsAgentHooks', () => {
     expect(JSON.stringify(chunk)).not.toContain(canary);
   });
 
-  // station#1834 round 4 (delta-3 HIGH): a tool-planted look-alike context in
+  // archive#1834 round 4 (delta-3 HIGH): a tool-planted look-alike context in
   // the tool-writable invocationState bag must not redirect memory sync or
   // afterInvocation to another conversation/user.
   test('memory sync and afterInvocation ignore a spoofed in-bag context and use the bound one', async () => {

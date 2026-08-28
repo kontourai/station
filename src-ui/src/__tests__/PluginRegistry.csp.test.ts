@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4287 — how a plugin bundle reaches the shell's realm, and what the
+ * archive#4287 — how a plugin bundle reaches the shell's realm, and what the
  * shell hands it on the way.
  *
  * jsdom does not enforce CSP and never loads an external `<script src>`, so
@@ -134,10 +134,10 @@ describe('same-origin plugin bundles', () => {
         'demo-layout': { components: { 'demo-pane': () => null } },
       };
     });
-    // The exports read must happen after the script evaluated, not before it
-    // was appended. It must ALSO not happen after the load was reported --
-    // that is station#4302's late-bundle window, pinned in
-    // `PluginRegistry.late-bundle.test.ts`.
+// The exports read must happen after the script evaluated, not before it
+// was appended. It must ALSO not happen after the load was reported --
+// that is archive#4302's late-bundle window, pinned in
+// `PluginRegistry.late-bundle.test.ts`.
     expect(await settled).toBe('ready');
     expect(registry.hasLayout('demo-pane')).toBe(true);
   });
@@ -154,10 +154,10 @@ describe('same-origin plugin bundles', () => {
 
     expect(await settled).toBe('degraded');
     expect(registry.getLoadStatus().failedPluginNames).toEqual(['demo-layout']);
-    // Deliberately NOT removed. Removing a `<script src>` does not cancel its
-    // pending fetch or its evaluation, so removal cannot mean "this will not
-    // run" -- it would only hide a load still in flight. The reload sweep
-    // clears `[data-station-plugin]`, which is what actually tidies up.
+// Deliberately NOT removed. Removing a `<script src>` does not cancel its
+// pending fetch or its evaluation, so removal cannot mean "this will not
+// run" -- it would only hide a load still in flight. The reload sweep
+// clears `[data-station-plugin]`, which is what actually tidies up.
     expect(pluginScript()).not.toBe(null);
   });
 });
@@ -177,8 +177,8 @@ describe('cross-origin plugin bundles (the desktop shell)', () => {
     const script = pluginScript();
     expect(script?.getAttribute('src')).toBe(null);
     expect(script?.textContent).toContain('window.__desktop_bundle_ran');
-    // Disclosed residual: Tauri's window is its asset origin, so `'self'`
-    // cannot admit the loopback bundle URL and this path still needs a nonce.
+// Disclosed residual: Tauri's window is its asset origin, so `'self'`
+// cannot admit the loopback bundle URL and this path still needs a nonce.
     expect(script?.nonce).toBe('tauri-runtime-nonce');
   });
 });

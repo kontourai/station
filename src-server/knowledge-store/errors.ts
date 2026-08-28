@@ -49,7 +49,7 @@ export class SlugConflictError extends Error {
 }
 
 /**
- * Thrown by every mutation verb on a read-only projection adapter (station#1879,
+ * Thrown by every mutation verb on a read-only projection adapter (archive#1879,
  * e.g. the conversation-history root) — a Station extension beyond
  * store-contract.md §8.1 (see `KnowledgeStoreErrorCode`'s `READ_ONLY` doc comment).
  * `op` is the verb the caller attempted (`create`, `update`, `link`, `propose`,

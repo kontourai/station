@@ -318,9 +318,9 @@ export type RestartBootFinding =
  * `staleAfterMs` mirrors the watchdog's own health-verification budget
  * (`SELF_UPDATE_WATCHDOG_DEADLINE_MS`, which shares the cold-start
  * MEASUREMENT behind `packages/cli/src/commands/lifecycle.ts`'s
- * `STARTUP_READINESS_TIMEOUT_MS` but, since #2646, not its budget — that one
+ * `STARTUP_READINESS_TIMEOUT_MS` but, since archive#2646, not its budget — that one
  * is an extendable base, this one a hard ceiling; see the watchdog constant.
- * station#1903): a `pending` record younger than that is an ordinary
+ * archive#1903): a `pending` record younger than that is an ordinary
  * in-flight restart — this boot is very likely the one the watchdog is
  * currently polling — and must not be reported as a problem. Older than
  * that, or `failed` outright, means a restart cycle never resolved and must

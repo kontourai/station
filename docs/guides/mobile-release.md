@@ -155,14 +155,14 @@ confirmed the synchronous durable commit. Remove the patch only after a
 reviewed upstream release carries the same fail-loud contract; a read-after-
 write probe is not equivalent durability evidence.
 
-Closed-app completion delivery remains blocked by #917: neither Tauri local
+Closed-app completion delivery remains blocked by archive#917: neither Tauri local
 notifications nor a running Rust watcher can wake a terminated app. A real
 implementation must provision an APNs/FCM application, device-token
 registration, and an authenticated server delivery path. There is no honest
 provider-neutral implementation that omits those credentials, so the native
-capability report remains `remote-push: unsupported` and #1225 stays open.
+capability report remains `remote-push: unsupported` and archive#1225 stays open.
 
-The #2013 keyboard dependency search was repeated against crates.io, npm, the
+The archive#2013 keyboard dependency search was repeated against crates.io, npm, the
 official Tauri plugin workspace, and GitHub on 2026-08-09. No maintained Tauri
 2 Android+iOS software-keyboard avoidance plugin exists; the similarly named
 npm packages are absent, and repository search returned no viable plugin.

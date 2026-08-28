@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { PROVIDER_PRESETS } from '../providerCatalog';
 
 /*
- * station#3653 delta review HIGH-1 — the drift trip-wire.
+ * archive#3653 — the drift trip-wire.
  *
  * Every one of these presets reaches the same `OpenAICompatLLMProvider`, and
  * what its empty `GET /models` MEANS now comes from the endpoint, not the
@@ -17,9 +17,9 @@ import { PROVIDER_PRESETS } from '../providerCatalog';
 const OPERATOR_SUPPLIED_PRESET_IDS = new Set([
   'lmstudio',
   'litellm',
-  // Azure AI Foundry ships with an EMPTY base URL: the resource endpoint is
-  // per-account and Station cannot know it, which is the definition of an
-  // endpoint it has no catalogue knowledge of.
+// Azure AI Foundry ships with an EMPTY base URL: the resource endpoint is
+// per-account and Station cannot know it, which is the definition of an
+// endpoint it has no catalogue knowledge of.
   'azure-foundry',
 ]);
 

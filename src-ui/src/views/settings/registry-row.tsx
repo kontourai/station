@@ -1,5 +1,5 @@
 /**
- * station#settings-revamp slice 3 (docs/design/settings-architecture.md §4:
+ * archive#settings-revamp (docs/design/settings-architecture.md §4:
  * "the Settings UI rows for scalar settings (form-from-schema; composite
  * editors like the guardian config opt out with a custom component)").
  *
@@ -26,7 +26,7 @@ import {
 } from './settings-catalog';
 
 /**
- * station#1840: a control must show the EFFECTIVE value, never the raw stored
+ * archive#1840: a control must show the EFFECTIVE value, never the raw stored
  * one. An un-overridden setting has `value === undefined` while the runtime
  * applies `definition.defaultValue` — rendering the raw value made two
  * default-on toggles read "off" beside copy describing an active feature. The
@@ -176,10 +176,10 @@ export function renderSettingRow({
       );
 
     case 'composite':
-      // Never a generic editor (see module doc comment) — a key reaching
-      // here is either explicitly deferred (render nothing) or an
-      // unclassified drift that `registry-row.test.tsx`'s completeness
-      // test catches before merge; render nothing defensively either way.
+// Never a generic editor (see module doc comment) — a key reaching
+// here is either explicitly deferred (render nothing) or an
+// unclassified drift that `registry-row.test.tsx`'s completeness
+// test catches before merge; render nothing defensively either way.
       if (!DEFERRED_COMPOSITE_KEYS.includes(key)) {
         console.warn(
           `renderSettingRow: composite key "${key}" is not in COMPOSITE_EDITORS or DEFERRED_COMPOSITE_KEYS`,

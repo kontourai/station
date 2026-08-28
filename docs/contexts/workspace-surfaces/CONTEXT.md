@@ -162,7 +162,7 @@ _Avoid_: raw route push for project layout navigation
   invokes rollback removal before the occurrence can become live authority.
 - File Preview open/rollback durability currently assumes one writer in the
   renderer context. Multi-tab or cross-context host single-writer coordination
-  is `NOT_VERIFIED` and belongs to #1371; this slice does not claim distributed
+  is `NOT_VERIFIED` and belongs to archive#1371; this slice does not claim distributed
   serialization through browser storage.
 - Proposed changes belong to sessions and projects and require decisions before they become accepted work.
 - Navigation restore depends on persisting project-layout selection, not just changing URL.

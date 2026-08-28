@@ -243,27 +243,27 @@ export type ProviderReadiness =
   | 'Ready'
   | 'Sign in required'
   | 'Found, not connected'
-  /**
-   * The endpoint answered but exposes no usable model catalogue. Reachability
-   * is proven; chat is not (delta review H1). Never Ready, never a refusal.
-   */
+/**
+* The endpoint answered but exposes no usable model catalogue. Reachability
+* is proven; chat is not. Never Ready, never a refusal.
+*/
   | 'Reachable — no model catalog'
-  /**
-   * RT-06: a model connection's `status` is derived from "a non-empty string
-   * is saved in the key box", so a knowingly invalid key read "Ready" on both
-   * this hub card and the provider page. This is what the server actually
-   * computed until something asks the provider and it answers.
-   */
+/**
+ * a model connection's `status` is derived from "a non-empty string
+* is saved in the key box", so a knowingly invalid key read "Ready" on both
+* this hub card and the provider page. This is what the server actually
+* computed until something asks the provider and it answers.
+*/
   | 'Saved — not verified'
-  /** An explicit check ran against this configuration and was refused. */
+/** An explicit check ran against this configuration and was refused. */
   | 'Check failed'
-  /**
-   * Station could not reach the endpoint on its last try, but a prior pass is
-   * still inside the documented grace window, so this is a degraded-
-   * reachability notice rather than a verdict (delta2 review M1).
-   */
+/**
+* Station could not reach the endpoint on its last try, but a prior pass is
+* still inside the documented grace window, so this is a degraded-
+* reachability notice rather than a verdict.
+*/
   | 'Unreachable — retrying'
-  /** Unreachable for long enough that Station has stopped calling it transient. */
+/** Unreachable for long enough that Station has stopped calling it transient. */
   | 'Cannot reach provider'
   | 'Setup required'
   | 'Limited'
@@ -284,14 +284,14 @@ interface ProviderCatalogInputBase {
   status: string;
   href: string;
   prerequisites?: Prerequisite[];
-  /** Provider-specific setup copy when no stronger readiness applies. */
+/** Provider-specific setup copy when no stronger readiness applies. */
   description?: string;
   readOnly?: boolean;
-  /**
-   * The server's own readiness derivation for this connection. Present for a
-   * real connection, absent for a catalog discovery card (which names a thing
-   * this Station has never observed).
-   */
+/**
+* The server's own readiness derivation for this connection. Present for a
+* real connection, absent for a catalog discovery card (which names a thing
+* this Station has never observed).
+*/
   readinessEvidence?: ConnectionReadinessEvidence;
 }
 
@@ -437,28 +437,28 @@ export function resolveProviderPresentation(
     };
   }
 
-  /*
-   * RT-06 / 6-OPS-27 — one readiness derivation, read by the hub card and the
-   * provider page alike. `status: 'ready'` on a model connection only means
-   * its prerequisites are satisfied, and the only required prerequisite is a
-   * saved key; the server already computes what actually happened
-   * (`readinessEvidence`) and every consumer used to discard it. A connection
-   * whose explicit check was refused cannot read as usable, and one nothing
-   * has asked yet says so rather than claiming Ready.
-   */
+/*
+ * / 6- — one readiness derivation, read by the hub card and the
+* provider page alike. `status: 'ready'` on a model connection only means
+* its prerequisites are satisfied, and the only required prerequisite is a
+* saved key; the server already computes what actually happened
+* (`readinessEvidence`) and every consumer used to discard it. A connection
+* whose explicit check was refused cannot read as usable, and one nothing
+* has asked yet says so rather than claiming Ready.
+*/
   const evidence = input.readinessEvidence;
   if (input.kind === 'model' && evidence) {
-    // Delta review H1: a passed smoke is a complete chat turn against this
-    // connection — strictly stronger evidence than any catalogue answer — so
-    // it is read BEFORE a refusal, not after it. Ordering these the other way
-    // meant a smoke could never repair the presentation.
-    //
-    // Delta2 review H3: only before an OLDER one. Smoke receipts stay fresh
-    // for 24 hours, so unconditional precedence rendered "Ready" over a
-    // genuine refusal observed after the smoke. `connectionCheckOutranksSmoke`
-    // is the same derivation the server used to compute `level`, imported
-    // rather than restated, so this screen cannot reach a different verdict
-    // about the same two timestamps.
+ // a passed smoke is a complete chat turn against this
+// connection — strictly stronger evidence than any catalogue answer — so
+// it is read BEFORE a refusal, not after it. Ordering these the other way
+// meant a smoke could never repair the presentation.
+//
+ // only before an OLDER one. Smoke receipts stay fresh
+// for 24 hours, so unconditional precedence rendered "Ready" over a
+// genuine refusal observed after the smoke. `connectionCheckOutranksSmoke`
+// is the same derivation the server used to compute `level`, imported
+// rather than restated, so this screen cannot reach a different verdict
+// about the same two timestamps.
     const checkSpeaks =
       evidence.level !== 'smoke-passed' ||
       connectionCheckOutranksSmoke(evidence.check, evidence.smoke);
@@ -474,21 +474,21 @@ export function resolveProviderPresentation(
           actionLabel: 'Fix and test again',
         };
       }
-      /*
-       * Delta review H1: the endpoint answered and has no usable model
-       * catalogue. That proves reachability and nothing about chat, so it is
-       * neither a refusal nor Ready — an OpenAI-compatible server that serves
-       * chat and no `/models` lives here until an explicit test drives its
-       * chat route.
-       */
-      /*
-       * Delta2 review M1: Station could not reach the endpoint. While the
-       * server says it is still retrying (a prior pass, inside the documented
-       * grace window) this is a degraded-reachability notice, not a refusal —
-       * one DNS blip on one listing must not read as "this connection is
-       * broken". Once the grace window closes the server stops setting
-       * `retrying`, and the same status reads as a fault.
-       */
+/*
+ * the endpoint answered and has no usable model
+* catalogue. That proves reachability and nothing about chat, so it is
+* neither a refusal nor Ready — an OpenAI-compatible server that serves
+* chat and no `/models` lives here until an explicit test drives its
+* chat route.
+*/
+/*
+ * Station could not reach the endpoint. While the
+* server says it is still retrying (a prior pass, inside the documented
+* grace window) this is a degraded-reachability notice, not a refusal —
+* one DNS blip on one listing must not read as "this connection is
+* broken". Once the grace window closes the server stops setting
+* `retrying`, and the same status reads as a fault.
+*/
       if (evidence.check?.status === 'unreachable') {
         return evidence.check.retrying
           ? {
@@ -520,16 +520,16 @@ export function resolveProviderPresentation(
         };
       }
     }
-    /*
-     * Review H2: `catalog-ready` alone used to be enough, and every listing
-     * runs catalogue discovery — so a connection could read "Ready" with
-     * `check.status: 'not-checked'`, which is the claim T1 exists to remove.
-     * Discovery is now recorded as a real bound check
-     * (`source: 'catalog-discovery'`), so the ONLY things that make a model
-     * connection Ready are a provider that answered and a smoke that passed.
-     * A level with no receipt behind it means nobody reached the provider —
-     * a timeout, an abort, or a fallback to configured selectors.
-     */
+/*
+ * `catalog-ready` alone used to be enough, and every listing
+* runs catalogue discovery — so a connection could read "Ready" with
+ * `check.status: 'not-checked'`, which is the claim exists to remove.
+* Discovery is now recorded as a real bound check
+* (`source: 'catalog-discovery'`), so the ONLY things that make a model
+* connection Ready are a provider that answered and a smoke that passed.
+* A level with no receipt behind it means nobody reached the provider —
+* a timeout, an abort, or a fallback to configured selectors.
+*/
     if (
       (input.status === 'ready' || input.status === 'available') &&
       evidence.level !== 'smoke-passed' &&

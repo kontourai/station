@@ -5,7 +5,7 @@
 /**
  * The 4-second undo window survives closing the notification panel.
  *
- * This is a *composition* claim, and it is the one station#2751 nearly broke.
+ * This is a *composition* claim, and it is the one archive#2751 nearly broke.
  * `NotificationHistory` holds each dismissal in a `setTimeout` it owns and
  * flushes any pending ones on unmount — correct as an app-teardown safety net,
  * so a dismissal the user asked for is not silently lost. Deferring the panel

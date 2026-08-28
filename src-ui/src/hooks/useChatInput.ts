@@ -93,14 +93,14 @@ interface UseChatInputOptions {
   availableModels: SelectableModel[];
   modelsStale?: boolean;
   bindingStatus?: BindingStatus;
-  /**
-   * The chat's backing engine connection (a model connection for
-   * Station-engine chats, the runtime connection otherwise). Carries the
-   * canonical `engineId` the capability-matrix resolver needs — without it
-   * every external engine resolves to the unknown matrix and the model
-   * button renders disabled as "does not support model selection"
-   * (caught by the new-chat provider-managed E2E lane).
-   */
+/**
+* The chat's backing engine connection (a model connection for
+* Station-engine chats, the runtime connection otherwise). Carries the
+* canonical `engineId` the capability-matrix resolver needs — without it
+* every external engine resolves to the unknown matrix and the model
+* button renders disabled as "does not support model selection"
+* (caught by the new-chat provider-managed E2E lane).
+*/
   runtimeConnection?: {
     engineId?: string;
     type?: string;
@@ -111,17 +111,17 @@ interface UseChatInputOptions {
   onSessionMigrate?: (newSessionId: string) => void;
   onAuthError?: () => void;
   onOpenNewChat?: () => void;
-  /**
-   * station#1294 review (SHOULD-FIX-4): whether the transcript this
-   * session's send-failure notice would render into is actually visible
-   * right now — e.g. `ChatDock`'s `isDockOpen`. Defaults to `true` for
-   * callers (like `ACPChatPanel`) that only ever mount while their own
-   * transcript is on screen. `hasSessionContext` alone (below) checks store
-   * *existence*, not visibility: a send failing while the dock is
-   * collapsed has a chat state to write the notice into, but nothing on
-   * screen renders it — suppressing the toast in that case would leave the
-   * failure with NO visible surface at all.
-   */
+/**
+* archive#1294: whether the transcript this
+* session's send-failure notice would render into is actually visible
+* right now — e.g. `ChatDock`'s `isDockOpen`. Defaults to `true` for
+* callers (like `ACPChatPanel`) that only ever mount while their own
+* transcript is on screen. `hasSessionContext` alone (below) checks store
+* *existence*, not visibility: a send failing while the dock is
+* collapsed has a chat state to write the notice into, but nothing on
+* screen renders it — suppressing the toast in that case would leave the
+* failure with NO visible surface at all.
+*/
   isChatVisible?: boolean;
   attachmentCapabilities?: {
     images: boolean;
@@ -150,7 +150,7 @@ export function useChatInput({
   const { showToast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Autocomplete state
+// Autocomplete state
   const {
     commandQuery,
     modelQuery,
@@ -162,10 +162,10 @@ export function useChatInput({
     onInputCleared,
   } = useAutocompleteState();
 
-  // History navigation index
+// History navigation index
   const [, setHistoryIndex] = useState<Map<string, number>>(new Map());
 
-  // Get actions from context
+// Get actions from context
   const {
     updateChat,
     clearInput,
@@ -184,7 +184,7 @@ export function useChatInput({
   const currentAgent = useAgent(agentSlug || '');
   const cancelMessage = useCancelMessage(apiBase);
 
-  // Slash commands
+// Slash commands
   const { commands: slashCommands } = useSlashCommands(
     agentSlug,
     activeChatState,
@@ -192,7 +192,7 @@ export function useChatInput({
   );
   const handleSlashCommand = useSlashCommandHandler();
 
-  // Wrap slash command handler
+// Wrap slash command handler
   const slashCommandHandler = useCallback(
     async (sid: string, command: string) => {
       return handleSlashCommand(sid, command, {
@@ -232,7 +232,7 @@ export function useChatInput({
     ],
   );
 
-  // Send message
+// Send message
   const sendMessageAction = useSendMessage(
     apiBase,
     (newSessionId) => onSessionMigrate?.(newSessionId),
@@ -241,24 +241,24 @@ export function useChatInput({
         onAuthError?.();
         return;
       }
-      // station#1294: a send failure renders its own transcript notice —
-      // the ephemeral "Retry" strip (station#1292) for a live session, or
-      // the durable `[CHAT_ERROR]` block on reload — as the single owner of
-      // this failure's presentation. Showing this toast on top of that
-      // notice was the exact "same failure text twice" overlap #1294
-      // reported. Only fall back to the toast when that notice has no
-      // visible surface to render into — the toast is then the only signal
-      // left, so it must not be suppressed.
+// archive#1294: a send failure renders its own transcript notice —
+// the ephemeral "Retry" strip (archive#1292) for a live session, or
+// the durable `[CHAT_ERROR]` block on reload — as the single owner of
+// this failure's presentation. Showing this toast on top of that
+ // notice was the exact "same failure text twice" overlap archive#1294
+// reported. Only fall back to the toast when that notice has no
+// visible surface to render into — the toast is then the only signal
+// left, so it must not be suppressed.
       const hasSessionContext = !!(
         sessionId && activeChatsStore.getSnapshot()[sessionId]
       );
-      // station#1294 review (SHOULD-FIX-4): `hasSessionContext` alone
-      // checks store *existence*, not visibility — a send failing while
-      // the dock is collapsed still has a chat state to write the notice
-      // into, but the notice renders nowhere on screen, and nothing else
-      // (e.g. an unread badge) backstops it today. Suppress the toast only
-      // when the notice is BOTH backed by live session state AND actually
-      // visible.
+// archive#1294: `hasSessionContext` alone
+// checks store *existence*, not visibility — a send failing while
+// the dock is collapsed still has a chat state to write the notice
+// into, but the notice renders nowhere on screen, and nothing else
+// (e.g. an unread badge) backstops it today. Suppress the toast only
+// when the notice is BOTH backed by live session state AND actually
+// visible.
       const noticeHasVisibleSurface = hasSessionContext && isChatVisible;
       if (!noticeHasVisibleSurface) {
         showToast(`Error: ${error.message}`, 'error');
@@ -267,19 +267,19 @@ export function useChatInput({
     slashCommandHandler,
   );
 
-  // Input value
+// Input value
   const input = activeChatState?.input || '';
   const attachments = activeChatState?.attachments || [];
   const attachmentStages = activeChatState?.attachmentStages || [];
-  // Through the SAME resolver the dispatcher uses, so the chip cannot name a
-  // model the turn will not ask for. The old expression substituted
-  // `agentDefaultModel` when `requestedModel === null` — but that is exactly
-  // the case where no override is sent and the engine keeps the model it
-  // already retained, which the client is holding in `activeChatState.model`.
-  // It displayed the default while running the retained one (station#3149).
-  //
-  // When nothing is requested and nothing has been reported, there is no
-  // model to name; `undefined` lets the chip say so instead of inventing one.
+// Through the SAME resolver the dispatcher uses, so the chip cannot name a
+// model the turn will not ask for. The old expression substituted
+// `agentDefaultModel` when `requestedModel === null` — but that is exactly
+// the case where no override is sent and the engine keeps the model it
+// already retained, which the client is holding in `activeChatState.model`.
+// It displayed the default while running the retained one (archive#3149).
+//
+// When nothing is requested and nothing has been reported, there is no
+// model to name; `undefined` lets the chip say so instead of inventing one.
   const resolvedTurnModel = resolveTurnModel({
     requestedModel: activeChatState?.requestedModel,
     model: activeChatState?.model,
@@ -311,10 +311,10 @@ export function useChatInput({
       capabilities?.supportsAutoMode === true
     );
   });
-  // Matrix delivery says an engine has *some* model-selection channel. The
-  // launch declaration decides whether this existing conversation can accept
-  // a per-turn override. ACP is start-only, so keep its picker available for
-  // a fresh chat but refuse to present an unusable continuation control.
+// Matrix delivery says an engine has *some* model-selection channel. The
+// launch declaration decides whether this existing conversation can accept
+// a per-turn override. ACP is start-only, so keep its picker available for
+// a fresh chat but refuse to present an unusable continuation control.
   const engineModelSelection = resolveEngineCapabilityMatrix(
     activeChatState?.agentConnectionId,
     activeChatState?.executionMode === EXECUTION_MODE.STATION
@@ -380,7 +380,7 @@ export function useChatInput({
     };
   }, [flushDraft]);
 
-  // Handlers
+// Handlers
   const handleInputChange = useCallback(
     (value: string) => {
       if (!sessionId) return;
@@ -399,19 +399,19 @@ export function useChatInput({
       overrideText?: string,
       overrideAttachments?: FileAttachment[],
       options?: {
-        /**
-         * Ambient, model-facing context (timezone, geolocation, …) delivered
-         * out-of-band (#685) — never spliced into the sent/persisted text.
-         */
+/**
+* Ambient, model-facing context (timezone, geolocation, …) delivered
+ * out-of-band (archive#685) — never spliced into the sent/persisted text.
+*/
         ambientContext?: string;
       },
     ) => {
       if (!sessionId || !agentSlug) return;
-      // An override lets callers (e.g. context-composing send) supply the exact
-      // text to send synchronously, avoiding a stale-closure read of `input`
-      // after a just-issued handleInputChange.
-      // Explicit overrides bypass the persisted composer value, so sanitize at
-      // the shared send boundary as well as on ordinary input updates.
+// An override lets callers (e.g. context-composing send) supply the exact
+// text to send synchronously, avoiding a stale-closure read of `input`
+// after a just-issued handleInputChange.
+// Explicit overrides bypass the persisted composer value, so sanitize at
+// the shared send boundary as well as on ordinary input updates.
       const text = sanitizeChatInput(
         overrideText !== undefined ? overrideText : input,
       );
@@ -439,8 +439,8 @@ export function useChatInput({
         selectedAttachments,
         options?.ambientContext,
       );
-      // A durable offline row owns queued text. Clearing its draft prevents
-      // the composer from rendering a second editable copy after a resume.
+// A durable offline row owns queued text. Clearing its draft prevents
+// the composer from rendering a second editable copy after a resume.
       if (
         sent === true ||
         activeChatsStore.getSnapshot()[sessionId]?.status === 'queued'
@@ -467,10 +467,10 @@ export function useChatInput({
   const handleCancel = useCallback(async () => {
     if (!sessionId) return;
     const currentChat = activeChatsStore.getSnapshot()[sessionId];
-    // A restored durable conversation can have a child execution session.
-    // Until the authorized conversation window identifies that child, Stop
-    // must remain unavailable rather than guessing the legacy/root id and
-    // supervising the wrong execution context.
+// A restored durable conversation can have a child execution session.
+// Until the authorized conversation window identifies that child, Stop
+// must remain unavailable rather than guessing the legacy/root id and
+// supervising the wrong execution context.
     if (currentChat?.conversationId && !currentChat.currentSessionId) {
       showToast(
         'Restoring this conversation before Stop is available.',
@@ -478,12 +478,12 @@ export function useChatInput({
       );
       return;
     }
-    // UX audit T1: the notice used to be written BEFORE anything was known —
-    // "User canceled the ongoing request" was posted whether the interrupt
-    // succeeded, was refused, or never answered, and it described the user's
-    // intent rather than the engine's outcome. Now it renders the outcome the
-    // server derived (cooperative / forced / already-finished) or an honest
-    // indeterminate/failed state, and nothing at all when there was no turn.
+ // the notice used to be written BEFORE anything was known —
+// "User canceled the ongoing request" was posted whether the interrupt
+// succeeded, was refused, or never answered, and it described the user's
+// intent rather than the engine's outcome. Now it renders the outcome the
+// server derived (cooperative / forced / already-finished) or an honest
+// indeterminate/failed state, and nothing at all when there was no turn.
     const outcome = await cancelMessage(
       currentChat?.currentSessionId ?? sessionId,
     );
@@ -712,9 +712,9 @@ export function useChatInput({
     );
     const defaultProviderId = activeChatState?.defaultProviderId;
     updateChat(sessionId, {
-      // `null` is a deliberate request to omit overrides on the next send;
-      // `undefined` would mean no picker request and fall back to the last
-      // runtime-reported model/options at the send seam.
+// `null` is a deliberate request to omit overrides on the next send;
+// `undefined` would mean no picker request and fall back to the last
+// runtime-reported model/options at the send seam.
       requestedModel: null,
       requestedModelSource: defaultModelSource ?? 'agent default',
       requestedProviderOptions: undefined,
@@ -726,15 +726,15 @@ export function useChatInput({
           }
         : {}),
     });
-    // Resetting is choosing the default: forget the remembered choice so
-    // the next New Chat opens on the default too, not the one the user
-    // just walked away from. Two exceptions (review findings):
-    // - Station-engine sessions never touch this memory (same live-state
-    //   gate as the select path).
-    // - When the session's default IS the remembered choice
-    //   (defaultModelSource 'last chosen'), the reset re-affirms that
-    //   memory rather than renouncing it — clearing here would contradict
-    //   the "Model reset to last chosen" message shown below.
+// Resetting is choosing the default: forget the remembered choice so
+// the next New Chat opens on the default too, not the one the user
+ // just walked away from. Two exceptions :
+// - Station-engine sessions never touch this memory (same live-state
+//   gate as the select path).
+// - When the session's default IS the remembered choice
+//   (defaultModelSource 'last chosen'), the reset re-affirms that
+//   memory rather than renouncing it — clearing here would contradict
+//   the "Model reset to last chosen" message shown below.
     if (
       currentAgent &&
       activeChatState?.executionMode !== EXECUTION_MODE.STATION &&
@@ -744,14 +744,14 @@ export function useChatInput({
       try {
         clearLastChosenModel(buildLastChosenModelBindingKey(currentAgent));
       } catch {
-        // Best-effort memory — never block the reset.
+// Best-effort memory — never block the reset.
       }
     }
-    // Says what clearing the override DOES, not what the default happens to
-    // be. Clearing sends no override, so the engine keeps whatever model it
-    // retained — which is frequently not `defaultModel`. The old wording
-    // announced "Model reset to agent default <X>" while the session kept
-    // running <Y>, printing the falsehood into the transcript (station#3149).
+// Says what clearing the override DOES, not what the default happens to
+// be. Clearing sends no override, so the engine keeps whatever model it
+// retained — which is frequently not `defaultModel`. The old wording
+// announced "Model reset to agent default <X>" while the session kept
+// running <Y>, printing the falsehood into the transcript (archive#3149).
     addEphemeralMessage(sessionId, {
       role: 'system',
       content:
@@ -796,17 +796,17 @@ export function useChatInput({
     navigateHistoryDown(sessionId);
   }, [sessionId, navigateHistoryDown]);
 
-  // Memoized: this object is passed whole as the `chatInput` prop to the
-  // memoized ChatDockContentArea — returning a fresh literal every render
-  // would defeat that memo on every unrelated re-render (e.g. the resize
-  // drag's per-frame renders). Every handler here is already a stable
-  // `useCallback`, so the object only changes identity when one of the
-  // actual state values below changes.
+// Memoized: this object is passed whole as the `chatInput` prop to the
+// memoized ChatDockContentArea — returning a fresh literal every render
+// would defeat that memo on every unrelated re-render (e.g. the resize
+// drag's per-frame renders). Every handler here is already a stable
+// `useCallback`, so the object only changes identity when one of the
+// actual state values below changes.
   return useMemo(
     () => ({
-      // Refs
+// Refs
       textareaRef,
-      // State
+// State
       input,
       attachments,
       attachmentError,
@@ -819,7 +819,7 @@ export function useChatInput({
       modelQuery,
       commandQuery,
       slashCommands,
-      // Handlers
+// Handlers
       handleInputChange,
       handleSend,
       handleCancel,

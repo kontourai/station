@@ -87,7 +87,7 @@ export function parseInlineMarkdown(text: string): InlineMarkdownToken[] {
       const labelEnd = nextCloseBracket(index + 1);
       if (labelEnd !== -1 && text[labelEnd + 1] === '(') {
         const hrefEnd = nextParen(labelEnd + 2);
-        // Require a non-empty destination; `[label]()` stays plain text.
+        // Require a non-empty destination; `[label]` stays plain text.
         if (hrefEnd !== -1 && hrefEnd > labelEnd + 2) {
           pushPlain(index);
           tokens.push({

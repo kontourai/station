@@ -24,8 +24,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   resetSessionEventWindowCapabilityRecovery: vi.fn(),
   SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS: 30_000,
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`, which
-  // reads system status to decide between the guided rescue and the normal copy.
+// archive#3764: the empty-transcript filler renders `ChatEmptyState`, which
+// reads system status to decide between the guided rescue and the normal copy.
   useSystemStatusForApiBaseQuery: () => ({ data: undefined }),
 }));
 vi.mock('@kontourai/station-connect', () => ({
@@ -33,7 +33,7 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+// archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -203,10 +203,10 @@ describe('ChatDockBody offline settling (station#2605)', () => {
   });
 
   test('dismissing the refused turn returns the composer to normal', async () => {
-    // Recovery is the same derivation running over the remaining turns:
-    // once the durable refused row is gone, workspaceRefused re-derives
-    // false and ordinary Send returns (review finding — the transition
-    // itself was previously untested).
+// Recovery is the same derivation running over the remaining turns:
+// once the durable refused row is gone, workspaceRefused re-derives
+// false and ordinary Send returns (the transition
+// itself was previously untested).
     const refused = session(0);
     refused.outboundQueuedTurns = [
       {
@@ -242,8 +242,8 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       .mockResolvedValueOnce({
         protocolVersion: 1,
         conversationId: 'offline-thread',
-        // This fixture is deliberately the one-session legacy/root shape: a
-        // later handoff would point this field at the newest child session.
+// This fixture is deliberately the one-session legacy/root shape: a
+// later handoff would point this field at the newest child session.
         currentSessionId: 'offline-thread',
         watermark: 1,
         hasMore: false,
@@ -287,19 +287,19 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     expect(queueMounts).toHaveBeenCalledTimes(firstQueueMounts);
   });
   test('canSteer derives from capability AND live execution — idle sessions offer no steer', async () => {
-    // Server enforcement (typed refusal) is the backstop, but the issue
-    // requires the AFFORDANCE to be absent without an active turn: pin the
-    // ChatDockBody derivation, not just the row component's prop handling.
+// Server enforcement (typed refusal) is the backstop, but the issue
+// requires the AFFORDANCE to be absent without an active turn: pin the
+// ChatDockBody derivation, not just the row component's prop handling.
     const idle = session(0);
     idle.orchestrationProvider = 'claude';
     idle.queuedMessages = ['queued steer'];
     const view = render(dock(idle));
-    // Wait for the ASSERTION, not merely for the first call: the derivation
-    // settles across a re-render, so waiting on "has been called" and then
-    // asserting on the LAST call reads whichever render happened to land
-    // first. Under corpus load that is the pre-settle render, which made this
-    // file fail in four consecutive full-regression runs while passing in
-    // isolation. Matches the pattern the rest of this file already uses.
+// Wait for the ASSERTION, not merely for the first call: the derivation
+// settles across a re-render, so waiting on "has been called" and then
+// asserting on the LAST call reads whichever render happened to land
+// first. Under corpus load that is the pre-settle render, which made this
+// file fail in four consecutive full-regression runs while passing in
+// isolation. Matches the pattern the rest of this file already uses.
     await waitFor(() =>
       expect(queuedMessagesProps).toHaveBeenLastCalledWith(
         expect.objectContaining({ canSteer: false }),

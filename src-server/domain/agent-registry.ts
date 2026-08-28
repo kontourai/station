@@ -57,7 +57,7 @@ export interface AgentRegistry {
   /**
    * Native engine ids the user explicitly removed. Automatic adoption of
    * detected CLIs must never resurrect one of these — a deliberate deletion
-   * outranks detection (#1575).
+   * outranks detection (archive#1575).
    */
   declinedEngineConnections?: string[];
 }
@@ -321,7 +321,7 @@ async function saveRegistry(
     } finally {
       await temporary.close();
     }
-    // Async acquisitions (#2646): a contended cross-process lock wait must
+    // Async acquisitions (archive#2646): a contended cross-process lock wait must
     // not freeze the server's event loop. Both locks are still taken in the
     // same path-lock → identity-lock order as every other writer, and the
     // signature recheck below runs after the lock is held, so in-process
@@ -511,7 +511,7 @@ interface RegisterEngineConnectionOptions {
   /**
    * What a recorded decline means for this registration, evaluated inside
    * the same CAS snapshot as the write so a concurrent removal can never
-   * be silently overridden (#1575 review HIGH):
+   * be silently overridden (archive#1575 review HIGH):
    * - 'clear' (default): an EXPLICIT registration outranks an old decline
    *   and erases it — the user asking for the engine back must win.
    * - 'abort': AUTOMATIC adoption must never resurrect a decline; throws
@@ -602,7 +602,7 @@ async function registerEngineConnectionDetailed(
 
 /** Removes an owned connection/default pair while preserving custom agents. */
 /**
- * Outcome of one automatic native-engine adoption attempt (#1575). Only
+ * Outcome of one automatic native-engine adoption attempt (archive#1575). Only
  * 'adopted' changed the registry; every other value is a settled no-op the
  * caller must not retry.
  */
@@ -625,7 +625,7 @@ export type NativeEngineAdoptionOutcome =
  * Register a DETECTED native engine (claude/codex CLI on PATH) exactly once,
  * without ever fighting the user: an existing connection, a recorded decline
  * (the user deleted this engine before), or a user-authored agent squatting
- * the id all settle as no-ops (#1575).
+ * the id all settle as no-ops (archive#1575).
  */
 export async function adoptNativeEngineConnection(
   configLoader: ConfigLoader,
@@ -635,7 +635,7 @@ export async function adoptNativeEngineConnection(
   try {
     // The decline/exists checks live INSIDE the registration CAS snapshot:
     // a pre-check here would be stale the moment a concurrent removal
-    // records a decline (#1575 review HIGH).
+    // records a decline (archive#1575 review HIGH).
     const { created } = await registerEngineConnectionDetailed(
       configLoader,
       engineConnectionId(id),
@@ -756,7 +756,7 @@ export interface StationAgentMaterialization {
 }
 
 /**
- * Materialize (and heal) Station's own Agent — station#3662.
+ * Materialize (and heal) Station's own Agent — archive#3662.
  *
  * Deliberately NOT `materializeEngineAgent`. That function binds the file it
  * writes to an engine CONNECTION of the same id, and `station` is the one id
@@ -783,7 +783,7 @@ export interface StationAgentMaterialization {
  *
  * HEALS AT LOAD, and only then. This runs at every startup, so it must not
  * rewrite a file it has already corrected: the write is gated on the binding
- * actually being present (the #1588/#3063 self-write-loop rule). Only the
+ * actually being present (the archive#1588/#3063 self-write-loop rule). Only the
  * `agentConnectionId` key is dropped — anything else the user put on
  * `execution` (a model pin, runtime options) is preserved, and `execution`
  * itself is removed only when nothing else remains.
@@ -803,7 +803,7 @@ export interface StationAgentMaterialization {
  * (`materializeStationAgent`), the WRITE boundary
  * (`config-loader-agents.ts`'s `saveAgentConfigWithOwnedLock`) and the read
  * projection (`AgentService`) that has to cope when the write could not
- * happen (station#3662 review MEDIUM-2, delta H3).
+ * happen (archive#3662 review MEDIUM-2, delta H3).
  *
  * ANY `agentConnectionId`, not merely the impossible literal `station`.
  * `AppConfig.builtinAgentEngineConnectionId` is the authority for this one
@@ -983,7 +983,7 @@ export async function unregisterEngineConnection(
       return current;
     }
     // A user-removed NATIVE engine records a decline so automatic adoption
-    // of a still-detected CLI cannot resurrect it (#1575). ACP/plugin
+    // of a still-detected CLI cannot resurrect it (archive#1575). ACP/plugin
     // engines are never auto-adopted, so they need no decline memory.
     // Absent source (a hand-edited registry — the file is documented as
     // authoritative and user-editable) defaults to 'native' deliberately:
@@ -1045,7 +1045,7 @@ export async function registryOwnsAgentAtHome(
 
 /**
  * Shared commit lock for the two stores that can claim an Agent id. The
- * ACQUISITION is async (#2646 review MEDIUM): with `saveRegistry` taking this
+ * ACQUISITION is async (archive#2646 review MEDIUM): with `saveRegistry` taking this
  * lock asynchronously, any remaining synchronous acquirer that queued behind
  * an async holder would spin `Atomics.wait` on the event loop — which also
  * prevents the holder's release from ever running, deterministically freezing

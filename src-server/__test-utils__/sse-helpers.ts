@@ -67,7 +67,7 @@ export async function collectSSE(
  * looking for in the text accumulated so far, then return that text.
  * Rejects nothing on stream end — callers assert on the returned text, so a
  * dead/errored connection that never satisfies `matcher` fails the test's
- * own assertion instead of hanging (station#1164/#1197/#1205 real-service
+ * own assertion instead of hanging (archive#1164/#1197/#1205 real-service
  * ownership-gate suites use this to prove a connection is genuinely alive
  * — it received a marker frame it should — before asserting a leaked
  * payload is absent from the same accumulated text).

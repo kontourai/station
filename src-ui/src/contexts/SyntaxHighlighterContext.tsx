@@ -43,7 +43,7 @@ let shikiLoading = false;
 const shikiWaiters: Array<(h: ShikiHighlighter) => void> = [];
 
 /**
- * station#3354 — exported for the async highlight client's main-thread
+ * archive#3354 — exported for the async highlight client's main-thread
  * fallback (jsdom / failed worker bootstrap); interactive callers keep using
  * the provider.
  */

@@ -53,7 +53,7 @@ export function SkillsView({
   filter,
 }: {
   basePath?: string;
-  /** `commands` narrows the list to command-enabled skills. */
+/** `commands` narrows the list to command-enabled skills. */
   filter?: 'commands';
 }) {
   const {
@@ -79,19 +79,19 @@ export function SkillsView({
   const createChatSession = useCreateChatSession();
   const sendMessage = useSendMessage(apiBase);
 
-  // SHELL-09: this read `const isLoading = false`, so for the ~2.2s the skills
-  // query was in flight the list panel rendered its DEFINITIVE empty state —
-  // "No installed skills yet", with a CTA to create one — and then replaced it
-  // with 24 installed skills (reproduced 3/3). A loading flag nothing derives
-  // is the label-vs-derivation defect in its purest form: the view had the
-  // fact and threw it away. `isPending` is the initial-read signal (a
-  // background refetch must NOT blank a populated list back to skeletons).
-  //
-  // The `= []` default is the second half of the same defect (review H1): a
-  // FAILED read also settles with no data, so `isPending === false` plus an
-  // empty array rendered "No installed skills yet" over a 500 — a definitive
-  // claim about the user's Guidance that Station had not measured. `error` is
-  // read here and handed to the pane, which renders the failure instead.
+// this read `const isLoading = false`, so for the ~2.2s the skills
+// query was in flight the list panel rendered its DEFINITIVE empty state —
+// "No installed skills yet", with a CTA to create one — and then replaced it
+// with 24 installed skills (reproduced 3/3). A loading flag nothing derives
+// is the label-vs-derivation defect in its purest form: the view had the
+// fact and threw it away. `isPending` is the initial-read signal (a
+// background refetch must NOT blank a populated list back to skeletons).
+//
+ // The `= []` default is the second half of the same defect : a
+// FAILED read also settles with no data, so `isPending === false` plus an
+// empty array rendered "No installed skills yet" over a 500 — a definitive
+// claim about the user's Guidance that Station had not measured. `error` is
+// read here and handed to the pane, which renders the failure instead.
   const {
     data: localRaw = [],
     error: skillsError,
@@ -117,11 +117,11 @@ export function SkillsView({
 
   const items = useMemo(() => buildSkillListItems(filtered), [filtered]);
 
-  // M3 (delta review round 3): the CURRENT TAB's collection with no query
-  // applied — so a tab that itself has zero matches (e.g. no skill is a
-  // command yet) reads as genuinely empty, never as "your search matched
-  // nothing" the moment a stale query also happens to be typed. Search
-  // alone emptying a populated tab still routes to FilteredEmpty.
+ // the CURRENT TAB's collection with no query
+// applied — so a tab that itself has zero matches (e.g. no skill is a
+// command yet) reads as genuinely empty, never as "your search matched
+// nothing" the moment a stale query also happens to be typed. Search
+// alone emptying a populated tab still routes to FilteredEmpty.
   const tabFiltered = useMemo(
     () => filterSkills(skills, '', filter === 'commands'),
     [skills, filter],
@@ -130,11 +130,11 @@ export function SkillsView({
   const selected = skills.find((skill) => skill.name === selectedId);
   const selectedSkillName =
     !isCreating && selected?.installed ? selected.name : undefined;
-  // The detail pane's states derive from the DETAIL read, not the list
-  // entry: the list only proves the skill exists, while the detail carries
-  // the body the form edits. A guard on `!!selectedSkillName` keeps a
-  // disabled/absent query (nothing selected, or the create form) from
-  // reading as "loading".
+// The detail pane's states derive from the DETAIL read, not the list
+// entry: the list only proves the skill exists, while the detail carries
+// the body the form edits. A guard on `!!selectedSkillName` keeps a
+// disabled/absent query (nothing selected, or the create form) from
+// reading as "loading".
   const {
     data: selectedSkillDetail,
     error: detailError,
@@ -145,16 +145,16 @@ export function SkillsView({
   });
   const detailLoading = !!selectedSkillName && detailPending;
   const detailFailed = !!selectedSkillName && !!detailError;
-  // No action may operate on a body that is not the selected skill's: while
-  // the detail is in flight or failed, Test/Export/Duplicate/Save/Remove are
-  // all gated on this (review M2).
+// No action may operate on a body that is not the selected skill's: while
+// the detail is in flight or failed, Test/Export/Duplicate/Save/Remove are
+ // all gated on this 
   const detailBusy = detailLoading || detailFailed;
 
-  // A skill created from the commands list — or from Commands' "+ New
-  // command" — starts as a command, because that is what the reader asked for.
-  // Everywhere else a new skill is a plain skill until someone says otherwise.
-  // Memoised because it is an effect dependency: a fresh object every render
-  // would re-run that effect every render and wipe the form being typed into.
+// A skill created from the commands list — or from Commands' "+ New
+// command" — starts as a command, because that is what the reader asked for.
+// Everywhere else a new skill is a plain skill until someone says otherwise.
+// Memoised because it is an effect dependency: a fresh object every render
+// would re-run that effect every render and wipe the form being typed into.
   const newSkillForm: SkillForm = useMemo(
     () => ({
       ...EMPTY_SKILL_FORM,
@@ -190,10 +190,10 @@ export function SkillsView({
       setDirty(false);
       return;
     }
-    // No detail for the selected skill yet (in flight or failed): the
-    // previously edited skill's form is NOT this skill's form, so it is
-    // cleared rather than left standing under the new selection. When the
-    // detail resolves (or is already cached), it fills the form.
+// No detail for the selected skill yet (in flight or failed): the
+// previously edited skill's form is NOT this skill's form, so it is
+// cleared rather than left standing under the new selection. When the
+// detail resolves (or is already cached), it fills the form.
     setForm(
       selectedSkillDetail
         ? skillDetailToForm(selectedSkillDetail)
@@ -207,9 +207,9 @@ export function SkillsView({
       showToast('Name and body are required');
       return;
     }
-    // station#3737: the same rule the field shows and the HTTP schema
-    // enforces. Pressing Save on a word the server will refuse used to be the
-    // only way to find out, and the refusal was silent.
+// archive#3737: the same rule the field shows and the HTTP schema
+// enforces. Pressing Save on a word the server will refuse used to be the
+// only way to find out, and the refusal was silent.
     const commandWord = formCommandWord(form);
     const commandWordError =
       form.commandEnabled && commandWord !== null
@@ -243,9 +243,9 @@ export function SkillsView({
       await createLocalMutation.mutateAsync({
         ...buildSkillPayload(form),
         name: copy,
-        // Two skills cannot answer to one command word, and the server refuses
-        // the clash. A copy is a draft, so it starts as a plain skill rather
-        // than failing to save at all.
+// Two skills cannot answer to one command word, and the server refuses
+// the clash. A copy is a draft, so it starts as a plain skill rather
+// than failing to save at all.
         command: { enabled: false },
       });
       select(copy);
@@ -634,7 +634,7 @@ export function SkillsView({
                 {!isCreating && selected && (
                   <div className="editor__footer">
                     <div className="skill-detail__stats">
-                      {/* Never "0 runs" for a store that could not be read — see
+{/* Never "0 runs" for a store that could not be read — see
                       `formatSkillStatsSummary`. */}
                       <span>{statsSummary ?? 'No runs recorded'}</span>
                     </div>

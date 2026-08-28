@@ -6,7 +6,7 @@ import { canAgentStartChat } from '../utils/execution';
 import { agentRunnability } from './agent-runnability';
 
 /**
- * §3.3 two-input rule (station#1004, unification slice 7): an owned agent
+ * §3.3 two-input rule (archive#1004, unification): an owned agent
  * (`agent.project` set) is available only inside its own project — the
  * `ProjectConfig.agents` filter never applies to it, and absent project
  * context (`selectedProjectSlug` undefined) is the global context, where an
@@ -29,7 +29,7 @@ function projectAgentScopeAllows(
  * there is no `ProjectConfig.agents` filter to apply either.
  *
  * Exists so a caller that is inherently global (the first-run engines
- * chapter, station#3027 — first run has no project context) can apply the
+ * chapter, archive#3027 — first run has no project context) can apply the
  * same two-input rule as the pickers without re-deriving it or fabricating a
  * `selectedProjectSlug`. Deliberately not the bucketed
  * `selectProjectScopedChatAgents`: that one needs live connections to sort
@@ -75,9 +75,9 @@ export function selectProjectScopedChatAgents({
         agent,
       ),
   );
-  // An unavailable persisted Agent still belongs in New Chat: hiding a custom
-  // Agent whose connection was removed also hides its reason and repair path.
-  // Apply the same project-scope rule used for launchable Agents.
+// An unavailable persisted Agent still belongs in New Chat: hiding a custom
+// Agent whose connection was removed also hides its reason and repair path.
+// Apply the same project-scope rule used for launchable Agents.
   const unavailableAgents = agents.filter(
     (agent) =>
       agent.available === false &&
@@ -127,7 +127,7 @@ export function selectChatReadyAgents({
 }
 
 /**
- * #3309: what the header's New button does. Exactly one chat-ready agent opens
+ * archive#3309: what the header's New button does. Exactly one chat-ready agent opens
  * a chat directly; anything else opens the picker — including ZERO, where the
  * picker is what explains why nothing can start (an unavailable agent and its
  * repair path are listed there). Named here rather than written inline at the
@@ -147,16 +147,16 @@ export function selectFirstChatTarget({
 }: {
   agents: AgentData[];
   agentConnections: ConnectionConfig[];
-  /**
-   * §3.3 A3 (station#1004 review MED): the project identity the header
-   * currently renders inside, if any (threaded from
-   * `getHeaderBreadcrumb(currentView)?.projectSlug` — absent = global
-   * context). Without this, the header's quick-start prompt picked the
-   * first agent that could start a chat from the FULL unfiltered catalog,
-   * including an agent owned by a project the header isn't even inside —
-   * the same two-input rule the dock's own `selectChatReadyAgents` path
-   * already enforces.
-   */
+/**
+ * §3.3 A3 (archive#1004 MED): the project identity the header
+* currently renders inside, if any (threaded from
+* `getHeaderBreadcrumb(currentView)?.projectSlug` — absent = global
+* context). Without this, the header's quick-start prompt picked the
+* first agent that could start a chat from the FULL unfiltered catalog,
+* including an agent owned by a project the header isn't even inside —
+* the same two-input rule the dock's own `selectChatReadyAgents` path
+* already enforces.
+*/
   selectedProjectSlug?: string;
 }): AgentData | undefined {
   return agents.find(

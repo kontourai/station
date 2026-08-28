@@ -13,15 +13,15 @@ const LEGACY_PATH_CASES = [
   ['/sessions/?session=x&extra=y', '/activity?session=x&extra=y'],
   ['/sessions?session=x&anything=y', '/activity?session=x&anything=y'],
   ['/developer/config', '/settings?view=station-config'],
-  // station#3313: Feature Previews retired into a Settings section.
+// archive#3313: Feature Previews retired into a Settings section.
   ['/feature-previews', '/settings?view=feature-previews'],
   ['/developer/storage', '/connections/knowledge'],
   ['/developer/mcp', '/connections/tools'],
   ['/developer/mcp/example', '/connections/tools/example'],
   ['/agents/planner/tools', '/agents/planner'],
   ['/agents/planner/workflows', '/agents/planner'],
-  // Playbooks are Skills: the retired paths land on the surface that absorbed
-  // them, not on a tab that no longer exists.
+// Playbooks are Skills: the retired paths land on the surface that absorbed
+// them, not on a tab that no longer exists.
   ['/prompts', '/guidance?tab=skills'],
   ['/prompts/release-review', '/guidance/release-review?tab=skills'],
   ['/playbooks', '/guidance?tab=skills'],
@@ -310,8 +310,8 @@ describe('app-shell routing', () => {
       type: 'registry',
       tab: 'integrations',
     });
-    // An unknown tab segment falls back to plain registry behavior rather
-    // than propagating an unvalidated string into the view.
+// An unknown tab segment falls back to plain registry behavior rather
+// than propagating an unvalidated string into the view.
     expect(resolveViewFromPath('/registry/not-a-real-tab')).toEqual({
       type: 'registry',
     });
@@ -352,13 +352,13 @@ describe('app-shell routing', () => {
       tab: 'skills',
       selectedId: 'skill one',
     });
-    // A tab the UI no longer has is not a tab: it is dropped rather than
-    // carried into a view that cannot render it.
+// A tab the UI no longer has is not a tab: it is dropped rather than
+// carried into a view that cannot render it.
     expect(resolveViewFromPath('/guidance?tab=playbooks')).toEqual({
       type: 'guidance',
     });
-    // `?filter=commands` narrows the Skills list, so it has to survive a URL
-    // round trip.
+// `?filter=commands` narrows the Skills list, so it has to survive a URL
+// round trip.
     expect(resolveViewFromPath('/guidance?tab=skills&filter=commands')).toEqual(
       {
         type: 'guidance',
@@ -369,7 +369,7 @@ describe('app-shell routing', () => {
     expect(
       getPathForView({ type: 'guidance', tab: 'skills', filter: 'commands' }),
     ).toBe('/guidance?tab=skills&filter=commands');
-    // A filter nothing defines is dropped rather than carried into the view.
+// A filter nothing defines is dropped rather than carried into the view.
     expect(resolveViewFromPath('/guidance?tab=skills&filter=nonsense')).toEqual(
       { type: 'guidance', tab: 'skills' },
     );
@@ -380,12 +380,12 @@ describe('app-shell routing', () => {
       type: 'not-found',
       path: '/this-route-does-not-exist',
     });
-    // station#settings-revamp slice 5: the dead `/providers` alias
-    // (never emitted by getPathForView, only defensively consumed) is
-    // removed — the bare path is a genuine 404 now, same as any other
-    // unmatched route. The canonical `/connections/providers` and
-    // `/connections/providers` routes are unaffected (see the alias
-    // table above).
+ // archive#settings-revamp: the dead `/providers` alias
+// (never emitted by getPathForView, only defensively consumed) is
+// removed — the bare path is a genuine 404 now, same as any other
+// unmatched route. The canonical `/connections/providers` and
+// `/connections/providers` routes are unaffected (see the alias
+// table above).
     expect(resolveViewFromPath('/providers')).toEqual({
       type: 'not-found',
       path: '/providers',
@@ -394,15 +394,15 @@ describe('app-shell routing', () => {
       type: 'not-found',
       path: '/providers/demo',
     });
-    // Even with a last project, an unmatched non-root path is a 404 — it must
-    // not silently redirect to the last project (that hid broken deep links).
+// Even with a last project, an unmatched non-root path is a 404 — it must
+// not silently redirect to the last project (that hid broken deep links).
     expect(
       resolveViewFromPath('/nonsense-xyz', {
         lastProject: 'alpha',
         lastProjectLayout: 'coding',
       }),
     ).toEqual({ type: 'not-found', path: '/nonsense-xyz' });
-    // Root still restores.
+// Root still restores.
     expect(
       resolveViewFromPath('/', {
         lastProject: 'alpha',
@@ -426,12 +426,12 @@ describe('app-shell routing', () => {
     });
   });
 
-  /**
-   * 4-HOME-012. `/projects/<slug>/<anything>` used to render the project
-   * dashboard, so a mistyped or stale deep link was indistinguishable from a
-   * working one — and it contradicted `routing.ts`'s own comment that a
-   * non-root path matching no route is a genuine 404.
-   */
+/**
+* 4-HOME-012. `/projects/<slug>/<anything>` used to render the project
+* dashboard, so a mistyped or stale deep link was indistinguishable from a
+* working one — and it contradicted `routing.ts`'s own comment that a
+* non-root path matching no route is a genuine 404.
+*/
   test('a project subroute that matches no project route is a 404, not the project page', () => {
     expect(
       resolveViewFromPath('/projects/audit-alpha/zzz-does-not-exist'),
@@ -451,19 +451,19 @@ describe('app-shell routing', () => {
     });
   });
 
-  /**
-   * The third segment under a layout is its TAB — `setLayoutTab` navigates to
-   * exactly this shape and `NavigationStore`'s pathname parse reads it back as
-   * `activeTab`. It used to 404, which made every tab of every layout,
-   * including every plugin-provided one, land on "Page not found" (seen in
-   * `tests/meeting-notes.spec.ts` on `.../layouts/meeting-notes/library` and in
-   * `tests/mcp-ui-layout.spec.ts` on `.../layouts/mixed/tool-ui`).
-   *
-   * 4-HOME-012's rule is preserved by NAMING the segment rather than
-   * discarding it: a stale tab id stays visible on the view and in the URL,
-   * and `LayoutView` falls back to the layout's first tab — the behaviour it
-   * already had for a remembered-but-since-deleted tab.
-   */
+/**
+* The third segment under a layout is its TAB — `setLayoutTab` navigates to
+* exactly this shape and `NavigationStore`'s pathname parse reads it back as
+* `activeTab`. It used to 404, which made every tab of every layout,
+* including every plugin-provided one, land on "Page not found" (seen in
+* `tests/meeting-notes.spec.ts` on `.../layouts/meeting-notes/library` and in
+* `tests/mcp-ui-layout.spec.ts` on `.../layouts/mixed/tool-ui`).
+*
+* 4-HOME-012's rule is preserved by NAMING the segment rather than
+* discarding it: a stale tab id stays visible on the view and in the URL,
+* and `LayoutView` falls back to the layout's first tab — the behaviour it
+* already had for a remembered-but-since-deleted tab.
+*/
   test('a layout tab segment resolves to its layout and names the tab', () => {
     expect(
       resolveViewFromPath(
@@ -483,11 +483,11 @@ describe('app-shell routing', () => {
       layoutSlug: 'coding',
       tab: 'extra',
     });
-    // No tab segment means no `tab` on the view, not an empty one.
+// No tab segment means no `tab` on the view, not an empty one.
     expect(
       resolveViewFromPath('/projects/audit-alpha/layouts/coding'),
     ).not.toHaveProperty('tab');
-    // …and the path the view produces round-trips the tab.
+// …and the path the view produces round-trips the tab.
     expect(
       getPathForView({
         type: 'layout',
@@ -547,9 +547,9 @@ describe('app-shell routing', () => {
     expect(
       getPathForView({ type: 'activity', sessionId: 'thread/alpha' }),
     ).toBe('/activity?session=thread%2Falpha');
-    // station#4052 slice 3: the one-shot evidence focus intent rides the
-    // session deep link. It only means anything alongside a session, and any
-    // other `focus` value is ignored rather than carried.
+// archive#4052: the one-shot evidence focus intent rides the
+// session deep link. It only means anything alongside a session, and any
+// other `focus` value is ignored rather than carried.
     expect(
       resolveViewFromPath('/activity?session=thread%2Falpha&focus=evidence'),
     ).toEqual({

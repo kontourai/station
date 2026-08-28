@@ -109,10 +109,10 @@ describe('typing a command skill', () => {
       'Ship ABC-1 to staging',
     );
   });
-  // Review M3: a variable with neither a typed value nor a declared default
-  // is REJECTED — named in an error the user reads — never silently
-  // substituted with an empty string. Nothing is sent and the run is not
-  // counted, because the skill did not run.
+ // a variable with neither a typed value nor a declared default
+// is REJECTED — named in an error the user reads — never silently
+// substituted with an empty string. Nothing is sent and the run is not
+// counted, because the skill did not run.
   test('refuses to send when a required variable has no value or default', async () => {
     seedSkills([
       { name: 'release-check', command: { enabled: true, global: true } },
@@ -132,7 +132,7 @@ describe('typing a command skill', () => {
     expect(mocks.updateChat).toHaveBeenCalledWith('session-1', { input: '' });
   });
 
-  // Delta review: args parse shell-style — quotes group into one value.
+// args parse shell-style — quotes group into one value.
   test('a quoted argument is one value, not split on its spaces', async () => {
     seedSkills([
       { name: 'release-check', command: { enabled: true, global: true } },
@@ -148,8 +148,8 @@ describe('typing a command skill', () => {
     );
   });
 
-  // Delta review: `name=value` assigns by name, so an earlier defaulted
-  // variable keeps its default while a later required one is supplied.
+// `name=value` assigns by name, so an earlier defaulted
+// variable keeps its default while a later required one is supplied.
   test('a named argument supplies a later variable while the earlier keeps its default', async () => {
     seedSkills([
       { name: 'release-check', command: { enabled: true, global: true } },
@@ -180,8 +180,8 @@ describe('typing a command skill', () => {
     );
   });
 
-  // Delta review: a line the parser cannot read is never dispatched — not
-  // to a skill, a builtin, or the model.
+// a line the parser cannot read is never dispatched — not
+// to a skill, a builtin, or the model.
   test('an unterminated quote reports the parse error and sends nothing', async () => {
     seedSkills([
       { name: 'release-check', command: { enabled: true, global: true } },
@@ -215,7 +215,7 @@ describe('typing a command skill', () => {
     expect(mocks.runSkill).not.toHaveBeenCalled();
   });
 
-  // The command word can differ from the skill name.
+// The command word can differ from the skill name.
   test('matches the declared command word', async () => {
     seedSkills([
       {
@@ -233,8 +233,8 @@ describe('typing a command skill', () => {
     expect(mocks.readSkillDetail).toHaveBeenCalledWith('release-check');
   });
 
-  // CAT-R08: attaching is what makes a non-global command available, and the
-  // binding is `agent.skills` — the record the agent editor writes.
+ // CAT-: attaching is what makes a non-global command available, and the
+// binding is `agent.skills` — the record the agent editor writes.
   test('a non-global command skill is only typable where it is attached', async () => {
     seedSkills([
       { name: 'deploy-notes', command: { enabled: true, global: false } },
@@ -245,7 +245,7 @@ describe('typing a command skill', () => {
       variables: [],
     });
 
-    // Not attached: falls through to the unknown-command path.
+// Not attached: falls through to the unknown-command path.
     await run('/deploy-notes');
     expect(mocks.readSkillDetail).not.toHaveBeenCalled();
 
@@ -255,8 +255,8 @@ describe('typing a command skill', () => {
     await expect(run('/deploy-notes')).resolves.toBe('Notes');
   });
 
-  // A failed body read must not send the raw `/command` to the model as if the
-  // user had typed it as a message.
+// A failed body read must not send the raw `/command` to the model as if the
+// user had typed it as a message.
   test('reports a failed body read instead of sending the command text', async () => {
     seedSkills([
       { name: 'release-check', command: { enabled: true, global: true } },

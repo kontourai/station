@@ -6,8 +6,8 @@
  * failures. The generic 'Native Station request failed:' prefix must NEVER
  * match on its own: the native wrapper uses it for authorization/profile
  * refusals too, and claiming Station is unreachable for a refusal is the
- * misclassification the #2630 delta review prohibited (re-caught by the
- * #2645 sol round when an extraction reintroduced it).
+ * misclassification the archive#2630 prohibited (re-caught by the
+ * archive#2645 sol round when an extraction reintroduced it).
  */
 const TRANSPORT_FAILURE_PATTERNS = [
   /timed out before response headers arrived/i,

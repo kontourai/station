@@ -1,5 +1,5 @@
 /**
- * Pure layout helpers for the transient toast stack (station#1960).
+ * Pure layout helpers for the transient toast stack (archive#1960).
  * Station-owned — no external toast library.
  */
 

@@ -45,7 +45,7 @@ function saveDocs(
  *
  * Retained ONLY as the read path for data that has not yet been migrated to a
  * K2 knowledge-store root + sqlite-vec `KnowledgeIndexProvider` index
- * (ADR-0009 / K3, issue #201). It is deprecated as a recommended default —
+ * (ADR-0009 / K3, issue archive#201). It is deprecated as a recommended default —
  * new setups should use Knowledge stores + `station knowledge reindex`/
  * `migrate` instead.
  *

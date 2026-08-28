@@ -101,7 +101,7 @@ describe('mapStrandsStreamEvent', () => {
       // NO toolName. This assertion previously required `toolName: 'tool-1'`
       // — the CALL ID, copied into the name field — so the test pinned the
       // defect in place and would have gone red when someone fixed it
-      // (station#3082). A result event carries only the id; the name belongs
+      // (archive#3082). A result event carries only the id; the name belongs
       // to the call, and MetadataHandler resolves it from there.
       toolCallId: 'tool-1',
       output: { ok: true },
@@ -112,7 +112,7 @@ describe('mapStrandsStreamEvent', () => {
     // `|| ''` here wrote '' into the durable monitoring record. The empty
     // string is a VALUE: every id-less result then joins to every other one
     // on a group-by-call-id, and the emitter's own absence handling never
-    // gets to see that the id was missing (station#3086).
+    // gets to see that the id was missing (archive#3086).
     const chunk = mapStrandsStreamEvent({
       type: 'toolResultEvent',
       result: { content: { ok: true } },
@@ -136,10 +136,10 @@ describe('mapStrandsStreamEvent', () => {
     expect(chunk).toMatchObject({ output: { isError: true } });
   });
 
-  // station#3113: before this fix, an ordinary (non-policy) Strands failure
+  // archive#3113: before this fix, an ordinary (non-policy) Strands failure
   // set NO top-level `error` at all — `output.isError` was redacted
   // correctly, but the chunk read as neither success nor failure at the top
-  // level, which is the "silent" half of #3113 (VoltAgent's twin bug was a
+  // level, which is the "silent" half of archive#3113 (VoltAgent's twin bug was a
   // false checkmark; Strands' was silence). It must now carry a truthful
   // top-level `error`, and that text must be the fixed generic message, not
   // the real (possibly remote-shaped) text already proven redacted above.
@@ -164,7 +164,7 @@ describe('mapStrandsStreamEvent', () => {
   });
 
   /**
-   * station#3210 parity block. The rule these three cases pin is the SAME
+   * archive#3210 parity block. The rule these three cases pin is the SAME
    * rule `voltagent-adapter.test.ts` pins for `normalizeVoltAgentToolErrors`
    * and `appendObservedToolDenials`, asserted here on the other engine so a
    * denial cannot read differently depending on which engine ran the agent.

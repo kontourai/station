@@ -60,7 +60,7 @@ import {
 import { getChatTurnDedupStore } from './chat-turn-dedup.js';
 
 /**
- * station#977: `RuntimeContext` has no `connectionService` (agent/runtime
+ * archive#977: `RuntimeContext` has no `connectionService` (agent/runtime
  * connections — Claude Code/Codex/ACP) — only `providerService` (model/LLM
  * connections, used by the pre-existing Station-engine availability lens
  * below). Adding it here (rather than widening the shared `RuntimeContext`
@@ -84,9 +84,9 @@ type ChatRuntimeContext = RuntimeContext & {
  * Honest response for an Agent whose spec is bound to a
  * ready external engine connection (Claude Code, Codex, or a plugin ACP
  * connection). Before this fix such an agent was reported "not currently
- * launchable" — a false negative: the reload lifecycle (station#954/#977)
+ * launchable" — a false negative: the reload lifecycle (archive#954/#977)
  * deliberately never builds a Station-engine agent for it, but it is
- * launchable through orchestration via its bound engine. station#3027: the
+ * launchable through orchestration via its bound engine. archive#3027: the
  * signposted orchestration path itself now refuses a spec-less engine
  * default, so the message states the authored-Agent requirement rather than
  * promising a route that would answer 400 for the same alias. Exported so
@@ -245,7 +245,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         agent,
         configurationLease,
         projectSlug,
-        // station#1224 (offline slice 2): per-home-dir singleton so a replay
+        // archive#1224 (offline): per-home-dir singleton so a replay
         // of the same clientTurnId (retry, or a flushed offline-queue turn)
         // is recognized even after a server restart — see chat-turn-dedup.ts.
         dedupStore: getChatTurnDedupStore(ctx.orchestrationEventStore),
@@ -300,7 +300,7 @@ async function resolveUnavailablePersistedAgent(
   // registry-aware catalog used by GET /api/agents.
   //
   // The reserved Station identity goes through the same door even when its
-  // file DOES load (station#3662 delta H3): its engine binding lives on the
+  // file DOES load (archive#3662 delta H3): its engine binding lives on the
   // per-boot runtime projection and never on the record, and `ctx.listAgents`
   // is `AgentService.listAgents` — where that projection is applied. Reading
   // the file alone made this path answer "not currently launchable" for a
@@ -341,7 +341,7 @@ async function resolveUnavailablePersistedAgent(
     return null;
   }
 
-  // station#977: reuse the exact same honesty check `GET /api/agents`
+  // archive#977: reuse the exact same honesty check `GET /api/agents`
   // applies (`enriched-agents.ts`'s `isHonestlyAvailableConnectedAgent`)
   // rather than re-deriving (and potentially diverging from) the same
   // rule here. Fails open on any lookup error or a missing

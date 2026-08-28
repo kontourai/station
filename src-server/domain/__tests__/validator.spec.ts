@@ -8,7 +8,7 @@ import { ConfigLoader } from '../config-loader.js';
 import { validator } from '../validator.js';
 
 // Mock the logger seam directly — config-loader.ts's module-scope logger
-// is built through `createLogger` from our own seam (station#1895), not
+// is built through `createLogger` from our own seam (archive#1895), not
 // `@voltagent/logger` any more. `vi.hoisted` is required because `vi.mock`
 // factories are hoisted above normal `const`s.
 const { mockLogger } = vi.hoisted(() => ({
@@ -189,12 +189,12 @@ describe('App schema validation', () => {
     expect(() => validator.validateAppConfig(config)).not.toThrow();
   });
 
-  // ── station#1503 delta review, R4 ────────────────────────────────────────
+  // ── archive#1503 delta review, R4 ────────────────────────────────────────
 
   it('LOADS a contribution scope key this version cannot name', () => {
     // This schema is validated on the config LOAD path
     // (`config-loader-app.ts`), not just on save. An earlier revision of
-    // station#1500 constrained `contribution`'s key shape with
+    // archive#1500 constrained `contribution`'s key shape with
     // `propertyNames.pattern`, which turned a key written by a NEWER Station —
     // a future `channel:` scope — into an UNLOADABLE config after a downgrade.
     // That converts the graceful degradation `parseContributionScopeKey` exists

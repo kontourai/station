@@ -122,7 +122,7 @@ describe('executeSchedulerJobAttempt', () => {
     });
 
     expect(result).toMatchObject({ outcome: 'deferred', success: false });
-    // station#3089: a deferred scheduled job and a refused engine start are
+    // archive#3089: a deferred scheduled job and a refused engine start are
     // different facts and must not collapse into one message — this names
     // the scheduler explicitly and carries the exact observed busyPercent
     // the posture probe returned, never a re-sampled value.

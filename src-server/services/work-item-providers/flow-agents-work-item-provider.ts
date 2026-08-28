@@ -1,6 +1,6 @@
 /**
- * flow-agents-contract work-item provider backend (roadmap #583, part of
- * epic #580, S3, read path only).
+ * flow-agents-contract work-item provider backend (roadmap archive#583, part of
+ * epic archive#580, S3, read path only).
  *
  * Reads the SAME shared provider settings files `@kontourai/flow-agents`
  * itself resolves (workspace -> project -> defaults; see the pinned

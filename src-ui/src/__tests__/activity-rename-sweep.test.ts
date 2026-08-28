@@ -9,7 +9,7 @@ import {
 import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
 
 /**
- * station#3280: Activity owns the canonical `activity` identity and
+ * archive#3280: Activity owns the canonical `activity` identity and
  * `/activity` route. Prior `/sessions` URLs are a permanent redirect boundary:
  * persisted notifications and old Discord messages remain reachable without a
  * store migration, while every current producer mints the canonical path.
@@ -20,7 +20,7 @@ describe('Activity rename sweep', () => {
   test('the surface is labeled Activity, on the sidebar and on the palette', () => {
     expect(surface).not.toBeNull();
     expect(surface!.label()).toBe('Activity');
-    // SHELL-08 / lane 7's open question, decided yes: Home's lanes were the
+    //  / lane 7's open question, decided yes: Home's lanes were the
     // only advertised way in, and Activity was one of five surfaces that
     // resolved but appeared in no navigation at all. It now leads the
     // sidebar's flat `primary` band with Agents and Connections.

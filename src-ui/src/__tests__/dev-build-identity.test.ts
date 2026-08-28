@@ -105,7 +105,7 @@ describe('the dev build is visually distinct wherever the brand shows', () => {
     // Matched on the call, not on its line-wrapping: `toggle` (rather than a
     // bare `add`) is the part that carries meaning here, and pinning the
     // formatter's chosen breaks made this fail for a reindent that changed
-    // nothing about the behaviour (station#1079).
+    // nothing about the behaviour (archive#1079).
     expect(profile).toMatch(/classList\.toggle\(\s*'is-dev-build',/);
     expect(profile).toContain('isDevBuild');
     expect(profile).not.toMatch(/is-dev-build[\s\S]{0,200}import\.meta\.env/);
@@ -134,8 +134,8 @@ describe('the dev mark matches the dev launcher icon', () => {
   });
 
   it('selects by src, so every render site is covered', () => {
-    // The same file renders as .app-toolbar__logo, .sidebar__logo,
-    // .guided-connect__logo and the SDK's .fs-logo; a class-based rule would
+    // The same file renders as.app-toolbar__logo,.sidebar__logo,
+    //.guided-connect__logo and the SDK's.fs-logo; a class-based rule would
     // miss whichever one was not listed.
     const css = read('index.css');
     expect(css).toContain('img[src="/favicon.png"]');

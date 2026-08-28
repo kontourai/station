@@ -68,14 +68,14 @@ describe('groupMobileActivity snooze', () => {
     ).toEqual(['conversation-1']);
   });
 
-  // station#1311 review (MEDIUM, opposite direction from #1295's original
-  // report): a Station-native/bedrock direct chat re-synthesizes a FRESH
-  // `chatSessionId` on every reopen (`useOpenConversation`'s
-  // `${agentSlug}:${Date.now()}` branch) while its `conversationId` (== the
-  // item's `id` here) stays constant. Keying the snooze on `chatSessionId`
-  // would lose it on every close+reopen — `item.id` (which already prefers
-  // the conversationId) must be what wins, unaffected by chatSessionId
-  // churning underneath it.
+// archive#1311 (opposite direction from archive#1295's original
+// report): a Station-native/bedrock direct chat re-synthesizes a FRESH
+// `chatSessionId` on every reopen (`useOpenConversation`'s
+// `${agentSlug}:${Date.now}` branch) while its `conversationId` (== the
+// item's `id` here) stays constant. Keying the snooze on `chatSessionId`
+// would lose it on every close+reopen — `item.id` (which already prefers
+// the conversationId) must be what wins, unaffected by chatSessionId
+// churning underneath it.
   it('a snooze on a reopened chat survives even though chatSessionId is re-synthesized on every reopen', () => {
     const beforeReopen = item({
       id: 'conv-stable',
@@ -89,9 +89,9 @@ describe('groupMobileActivity snooze', () => {
       beforeReopen,
     ]);
 
-    // Reopened: same conversationId (`id`), but a brand-new synthesized
-    // `chatSessionId` — exactly what `useOpenConversation`'s bedrock/
-    // Station-native branch produces on every reopen.
+// Reopened: same conversationId (`id`), but a brand-new synthesized
+// `chatSessionId` — exactly what `useOpenConversation`'s bedrock/
+// Station-native branch produces on every reopen.
     const afterReopen = item({
       id: 'conv-stable',
       chatSessionId: 'agent-1:2000',
@@ -106,8 +106,8 @@ describe('groupMobileActivity snooze', () => {
     expect(secondGroups.find((g) => g.id === 'active')?.items).toHaveLength(0);
   });
 
-  // A stale snooze keyed by an id the item no longer carries at all must not
-  // falsely apply.
+// A stale snooze keyed by an id the item no longer carries at all must not
+// falsely apply.
   it('a snooze entry matching neither the current id does not apply', () => {
     const chatItem = item({
       id: 'conv-123',
@@ -143,13 +143,13 @@ describe('snoozeWakeAt', () => {
 });
 
 /**
- * station#1783 — the mobile grouping is derived from `lifecycleLabel`, so the
+ * archive#1783 — the mobile grouping is derived from `lifecycleLabel`, so the
  * `'Unanswerable'` label added to `orchestrationLifecycleLabel` reaches this
  * surface without a second derivation.
  *
- * station#3227 A6 changed WHERE such an item files: the groups now come from
+ * archive#3227 A6 changed WHERE such an item files: the groups now come from
  * the shared lane partition (`partitionHomeWorkItems`), whose Active lane
- * means "not finished" — and #1783's own desktop adjudication was that an
+ * means "not finished" — and archive#1783's own desktop adjudication was that an
  * unanswerable session did not finish, it stopped being reachable. So it
  * stays in "Active now" on mobile exactly as it does on desktop, carrying
  * its basis (`unanswerableNotice` + the translated "Can't answer here"
@@ -172,8 +172,8 @@ describe('groupMobileActivity answerability (station#1783, re-adjudicated by #32
   });
 
   it('...and it is not dropped or double-filed — it lands in exactly one real group', () => {
-    // Annotate/de-prioritize, never filter: the row still exists, carrying
-    // `unanswerableNotice`, in exactly one group.
+// Annotate/de-prioritize, never filter: the row still exists, carrying
+// `unanswerableNotice`, in exactly one group.
     const groups = groupMobileActivity(
       [item({ id: 'dead', lifecycleLabel: 'Unanswerable', updatedAt: NOW })],
       NOW,
@@ -190,8 +190,8 @@ describe('groupMobileActivity answerability (station#1783, re-adjudicated by #32
   });
 
   it('next-9am stays calendar-correct across a DST boundary', () => {
-    // US DST spring-forward 2026-03-08: 02:00 -> 03:00. Adding 24h of
-    // milliseconds would land at 10am; setting calendar fields must not.
+ // US DST spring-forward : 02:00 -> 03:00. Adding 24h of
+// milliseconds would land at 10am; setting calendar fields must not.
     const beforeSpring = new Date(2026, 2, 7, 22, 0, 0); // Mar 7, 10pm local
     const wake = new Date(
       snoozeWakeAt(SNOOZE_OPTIONS[2], beforeSpring.getTime()),

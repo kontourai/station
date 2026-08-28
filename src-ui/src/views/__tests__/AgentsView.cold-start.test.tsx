@@ -5,10 +5,10 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#3751 — the cold-start readiness window.
+ * archive#3751 — the cold-start readiness window.
  *
  * `/api/agents` serves the LAST STABLE catalog while the runtime is
- * mid-reconciliation and marks it `catalogState: 'reconciling'` (#1574).
+ * mid-reconciliation and marks it `catalogState: 'reconciling'` (archive#1574).
  * Those rows are real, but their readiness was computed for a configuration
  * that may already be gone: an agent bound to a MISSING engine reads "Ready".
  * `isLoading` cannot see it — the bytes arrived — and the SDK used to drop the
@@ -30,7 +30,7 @@ vi.mock('../../contexts/AgentsContext', async () => {
 import { buildAgentsViewItems } from '../agent-editor/agentsViewHelpers';
 
 /** An agent the server has NOT said anything about; `agentRunnability` reads
- *  an absent `available` as runnable, which is the "provisional Ready". */
+*  an absent `available` as runnable, which is the "provisional Ready". */
 const AGENT = {
   slug: 'writer',
   name: 'Writer',
@@ -56,8 +56,8 @@ describe('the Agents rail during the cold-start readiness window', () => {
   });
 
   test('a reconciling catalog states no readiness at all', () => {
-    // The whole point: no state word from a projection the server has not
-    // recomputed for the runtime as it is now.
+// The whole point: no state word from a projection the server has not
+// recomputed for the runtime as it is now.
     expect(badgeOf(false)).not.toContain('Ready');
   });
 

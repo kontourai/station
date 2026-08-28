@@ -265,7 +265,7 @@ export function BranchToolbar({
   // in its `compact` variant — a poor visual fit for a toolbar strip). See
   // the state-primitives (#192) plan's Wave 2 "Workflow & connection-surface
   // convergence" task.
-  // station#771: an errored discovery query also settles with `repos = []`
+  // archive#771: an errored discovery query also settles with `repos = []`
   // (the `dataonly` fallback below), which used to read identically to
   // "no repository here" — a real read failure with no trace, and no way to
   // retry short of reloading the whole layout.
@@ -465,7 +465,7 @@ export function BranchToolbar({
                 label="Loading branches"
               />
             )}
-            {/* station#771: a failed branch list also settles as
+            {/* archive#771: a failed branch list also settles as
                 `branches = []`; say so instead of the indistinguishable
                 "No branches" — the inline error banner below the toolbar
                 already carries `branchesQuery.error`, but this is the

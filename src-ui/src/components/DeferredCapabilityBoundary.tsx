@@ -40,8 +40,8 @@ class DeferredCapabilityErrorBoundary extends Component<
   }
 
   componentDidCatch(_error: Error, _info: ErrorInfo) {
-    // The visible diagnostic is deliberately durable. Logging here would only
-    // duplicate React's development error reporting without repairing a chunk.
+// The visible diagnostic is deliberately durable. Logging here would only
+// duplicate React's development error reporting without repairing a chunk.
     const failure = this.props.connectionHealthy ? 'defect' : 'consequence';
     this.setState({ failure });
     this.props.onFailureClassified(failure);
@@ -59,8 +59,8 @@ function createCapabilityAttempt(
   load: () => DeferredCapabilityModule,
   _attempt: number,
 ) {
-  // `_attempt` is the retry identity for useMemo; React.lazy itself only needs
-  // the loader. A new identity is what discards React.lazy's cached rejection.
+// `_attempt` is the retry identity for useMemo; React.lazy itself only needs
+// the loader. A new identity is what discards React.lazy's cached rejection.
   return lazy(load);
 }
 
@@ -78,9 +78,9 @@ export function DeferredCapabilityBoundary({
 }: {
   children?: ReactNode;
   copy: DeferredCapabilityCopy;
-  /** Stable instance id; sibling boundaries must never overwrite each other. */
+/** Stable instance id; sibling boundaries must never overwrite each other. */
   id: string;
-  /** Loader form permits a failed React.lazy import to be attempted again after reconnect. */
+/** Loader form permits a failed React.lazy import to be attempted again after reconnect. */
   load?: () => DeferredCapabilityModule;
 }) {
   const { status } = useConnectionStatus({

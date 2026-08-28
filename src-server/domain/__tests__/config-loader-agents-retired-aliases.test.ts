@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadAgentConfig, saveAgentConfig } from '../config-loader-agents.js';
 
 /**
- * station#2832 — `tools.aliases` is retired from the schema.
+ * archive#2832 — `tools.aliases` is retired from the schema.
  *
  * `tools` is `additionalProperties: false`, so removing the property WITHOUT
  * stripping it first would make every agent config that carries the key fail

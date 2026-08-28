@@ -42,7 +42,7 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     setProject,
     setLayout,
-    // Must be the module-level spy, not a fresh `vi.fn()` per render: the
+    // Must be the module-level spy, not a fresh `vi.fn` per render: the
     // navigateTo assertions below inspect `navigate`, and handing the component
     // a throwaway mock made them unfalsifiable (they asserted 0 calls forever).
     navigate,
@@ -194,7 +194,7 @@ describe('NotificationContainer', () => {
     await flushRestore();
     expect(document.activeElement).toBe(queueTrigger);
 
-    // station#1259: a tap on non-focusable chrome closed the popover and left
+    // archive#1259: a tap on non-focusable chrome closed the popover and left
     // focus stranded on whatever the panel had — in a browser, on `<body>`.
     fireEvent.click(queueTrigger);
     focusInsidePanel();
@@ -204,7 +204,7 @@ describe('NotificationContainer', () => {
     expect(document.activeElement).toBe(queueTrigger);
 
     // …but a tap that landed on a real control keeps that control
-    // (station#1206 gap 1). This is the assertion that stops the fix from
+    // (archive#1206 gap 1). This is the assertion that stops the fix from
     // becoming focus theft on the pointer path.
     fireEvent.click(queueTrigger);
     const outside = screen.getByRole('button', { name: 'Outside' });
@@ -216,10 +216,10 @@ describe('NotificationContainer', () => {
   });
 
   /**
-   * station#1259, the case that made this popover worse than an ordinary
+   * archive#1259, the case that made this popover worse than an ordinary
    * bypass: approving the last pending request empties `approvals`, which
    * unmounts the queue element *and the trigger inside it*. Nothing restored
-   * on that path at all — focus was left on `<body>`, station#1126's outcome,
+   * on that path at all — focus was left on `<body>`, archive#1126's outcome,
    * from the surface's own primary action.
    *
    * jsdom proves this half: it is about a node being removed from the document
@@ -410,7 +410,7 @@ describe('NotificationContainer', () => {
 
   test('a coarse-pointer tap expands the stack instead of activating the front card', () => {
     // (hover: hover) does not match → a device that cannot hover, where CSS
-    // :hover expansion can never fire (station#3308, #1960 follow-up).
+    // hover expansion can never fire (archive#3308, #1960 follow-up).
     vi.stubGlobal('matchMedia', () => ({ matches: false }));
     const onNavigate = vi.fn();
     notifications = ['a', 'b', 'c'].map((id) => ({

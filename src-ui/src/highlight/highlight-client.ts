@@ -1,31 +1,31 @@
 /**
- * station#3354 — async client for chat syntax highlighting.
+ * archive#3354 — async client for chat syntax highlighting.
  *
- * This module is loaded ONLY via dynamic `import()` from
+* This module is loaded ONLY via dynamic `import` from
  * `components/chat/HighlightedCodeBlock.tsx`, so the worker bootstrap and
  * everything Shiki-related stay out of the entry bundle (same posture as
  * DiffPanel's `?worker` import, which lives in its own lazy chunk).
  *
  * What this module guarantees:
- *  - The pool holds AT MOST ONE request per worker. A request waits in a
- *    client-side queue until a worker is idle, and its wedge timer is armed
- *    at dispatch, so the deadline measures that worker's service time rather
- *    than time spent queued behind other blocks. (Arming at `postMessage`
- *    with round-robin dispatch gave every block mounted in the same commit
- *    one shared deadline that the worker's cold Shiki init had to fit into.)
- *  - Recycling a worker rejects the request bound to it before replacing it.
- *    One-in-flight makes that exactly one request, so no request is ever
- *    left waiting on a terminated worker, and no timeout can fire against a
- *    worker its request never owned. A hung worker can therefore neither
- *    wedge the caller nor poison the pool.
- *  - Every request settles. It is dispatched to an idle worker, then either
- *    answered or rejected within WEDGE_TIMEOUT_MS of that dispatch; a queued
- *    request is never dropped, because each recycle re-pumps the queue.
- *  - A worker that dies asynchronously (script/CSP load failure, uncaught
- *    error, undeserializable message) fires `error`/`messageerror` instead
- *    of answering. `withWorkerErrorFallback` then switches permanently to
- *    `highlightOnMainThread`, rather than every later block burning a full
- *    timeout and rendering plain forever behind a memoised client.
+*  - The pool holds AT MOST ONE request per worker. A request waits in a
+*    client-side queue until a worker is idle, and its wedge timer is armed
+*    at dispatch, so the deadline measures that worker's service time rather
+*    than time spent queued behind other blocks. (Arming at `postMessage`
+*    with round-robin dispatch gave every block mounted in the same commit
+*    one shared deadline that the worker's cold Shiki init had to fit into.)
+*  - Recycling a worker rejects the request bound to it before replacing it.
+*    One-in-flight makes that exactly one request, so no request is ever
+*    left waiting on a terminated worker, and no timeout can fire against a
+*    worker its request never owned. A hung worker can therefore neither
+*    wedge the caller nor poison the pool.
+*  - Every request settles. It is dispatched to an idle worker, then either
+*    answered or rejected within WEDGE_TIMEOUT_MS of that dispatch; a queued
+*    request is never dropped, because each recycle re-pumps the queue.
+*  - A worker that dies asynchronously (script/CSP load failure, uncaught
+*    error, undeserializable message) fires `error`/`messageerror` instead
+*    of answering. `withWorkerErrorFallback` then switches permanently to
+*    `highlightOnMainThread`, rather than every later block burning a full
+*    timeout and rendering plain forever behind a memoised client.
  *
  * Costs of one worker with no queue deadline, accepted rather than hidden: a
  * request's clock starts at dispatch, so a worker that wedges on its cold
@@ -53,7 +53,7 @@ import { initShiki } from '../contexts/SyntaxHighlighterContext';
 import { escapeHtml, HighlightCache, highlightCacheKey, THEME } from './shared';
 
 /**
- * station#3354 — main-thread fallback used when `Worker` is unavailable
+ * archive#3354 — main-thread fallback used when `Worker` is unavailable
  * (jsdom/SSR) or worker bootstrap fails. Awaits the shared Shiki singleton,
  * then tokenizes with the same language resolution and escaped-HTML fallback
  * the context's own highlighter uses. Lives HERE (the async chunk), not in
@@ -82,9 +82,9 @@ export interface HighlightWorkerLike {
     | ((e: MessageEvent<unknown>) => void)
     | null
     | undefined,);
-  /** Fired when the worker script fails to load or throws uncaught. */
+/** Fired when the worker script fails to load or throws uncaught. */
   set onerror(handler: ((e: ErrorEvent) => void) | null | undefined);
-  /** Fired when a posted message cannot be deserialized. */
+/** Fired when a posted message cannot be deserialized. */
   set onmessageerror(handler:
     | ((e: MessageEvent<unknown>) => void)
     | null
@@ -118,13 +118,13 @@ type InFlightRequest = QueuedRequest & {
 };
 
 export interface HighlightWorkerPoolOptions {
-  /**
-   * Called when a worker dies asynchronously — `error` (script/CSP load
-   * failure, uncaught throw) or `messageerror` — rather than answering. The
-   * pool still recycles the slot; the client uses this to stop routing work
-   * to workers at all, because a worker that cannot load will not load on
-   * the replacement either.
-   */
+/**
+* Called when a worker dies asynchronously — `error` (script/CSP load
+* failure, uncaught throw) or `messageerror` — rather than answering. The
+* pool still recycles the slot; the client uses this to stop routing work
+* to workers at all, because a worker that cannot load will not load on
+* the replacement either.
+*/
   onWorkerError?: (err: Error) => void;
 }
 
@@ -158,8 +158,8 @@ export class HighlightWorkerPool {
   private spawn(index: number): HighlightWorkerLike {
     const worker = this.factory();
     worker.onmessage = (e) => {
-      // A recycled worker's handler is detached, but guard on identity too:
-      // the slot it used to own now belongs to a different worker.
+// A recycled worker's handler is detached, but guard on identity too:
+// the slot it used to own now belongs to a different worker.
       if (this.workers[index] !== worker) return;
       this.settle(index, e.data as HighlightResponse);
     };
@@ -176,7 +176,7 @@ export class HighlightWorkerPool {
 
   private settle(index: number, response: HighlightResponse): void {
     const entry = this.inFlight[index];
-    // Stale or duplicate answer for a request that already settled.
+// Stale or duplicate answer for a request that already settled.
     if (!entry || entry.id !== response.id) return;
     clearTimeout(entry.timer);
     this.inFlight[index] = null;
@@ -185,14 +185,14 @@ export class HighlightWorkerPool {
     this.pump();
   }
 
-  /**
-   * Terminate a worker, reject the request bound to it, and replace it.
-   *
-   * Rejecting first is the whole point: a terminated worker can never answer,
-   * so anything still bound to the slot would otherwise wait out its own
-   * timeout and recycle the slot AGAIN — destroying the freshly-spawned
-   * replacement and orphaning whatever it had just been handed.
-   */
+/**
+* Terminate a worker, reject the request bound to it, and replace it.
+*
+* Rejecting first is the whole point: a terminated worker can never answer,
+* so anything still bound to the slot would otherwise wait out its own
+* timeout and recycle the slot AGAIN — destroying the freshly-spawned
+* replacement and orphaning whatever it had just been handed.
+*/
   private recycle(index: number, reason: Error): void {
     const worker = this.workers[index];
     worker.onmessage = null;
@@ -201,7 +201,7 @@ export class HighlightWorkerPool {
     try {
       worker.terminate();
     } catch {
-      // A worker that cannot even be terminated is dropped either way.
+// A worker that cannot even be terminated is dropped either way.
     }
     const entry = this.inFlight[index];
     this.inFlight[index] = null;
@@ -225,7 +225,7 @@ export class HighlightWorkerPool {
     });
   }
 
-  /** Hand queued requests to idle workers. Re-entrancy-safe. */
+/** Hand queued requests to idle workers. Re-entrancy-safe. */
   private pump(): void {
     if (this.pumping || this.disposed) return;
     this.pumping = true;
@@ -258,7 +258,7 @@ export class HighlightWorkerPool {
         lang: request.lang,
       });
     } catch (err) {
-      // A worker that rejects the post is as dead as one that never answers.
+// A worker that rejects the post is as dead as one that never answers.
       this.recycle(index, err instanceof Error ? err : new Error(String(err)));
     }
   }
@@ -281,7 +281,7 @@ export class HighlightWorkerPool {
       try {
         w.terminate();
       } catch {
-        // ignore
+// ignore
       }
     }
   }
@@ -313,8 +313,8 @@ export function withWorkerErrorFallback(
     onWorkerError: () => {
       if (degraded) return;
       degraded = true;
-      // Rejects everything in flight and queued; the catch below routes each
-      // of those callers to the fallback instead of surfacing the failure.
+// Rejects everything in flight and queued; the catch below routes each
+// of those callers to the fallback instead of surfacing the failure.
       pool.dispose();
     },
   });
@@ -331,7 +331,7 @@ let clientPromise: Promise<HighlightFn> | null = null;
 
 async function createClient(): Promise<HighlightFn> {
   if (typeof Worker === 'undefined') {
-    // jsdom / SSR: no workers; tokenize on the main thread (test-only path).
+// jsdom / SSR: no workers; tokenize on the main thread (test-only path).
     return (code, lang) => highlightOnMainThread(code, lang);
   }
   try {
@@ -343,9 +343,9 @@ async function createClient(): Promise<HighlightFn> {
       highlightOnMainThread,
     );
   } catch {
-    // Worker bootstrap failed synchronously (e.g. hostile embedding context)
-    // — degrade to the main-thread highlighter rather than shipping
-    // unhighlighted code.
+// Worker bootstrap failed synchronously (e.g. hostile embedding context)
+// degrade to the main-thread highlighter rather than shipping
+// unhighlighted code.
     return (code, lang) => highlightOnMainThread(code, lang);
   }
 }

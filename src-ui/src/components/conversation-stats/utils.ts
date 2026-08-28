@@ -49,7 +49,7 @@ export function formatAverageTokens(
 ) {
   // `undefined` is "never measured", and an average of an unmeasured
   // figure is not zero — the caller renders the shared unreported dash
-  // (station#3201).
+  // (archive#3201).
   if (turns <= 0 || totalTokens === undefined) {
     return null;
   }

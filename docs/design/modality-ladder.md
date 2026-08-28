@@ -1,7 +1,7 @@
 # The modality ladder
 
-> Status: design contract, adopted 2026-08-14 (station#2685). Cited in review:
-> when a PR introduces or moves a surface, name its rung. Deviations from the
+> Status: design contract, adopted 2026-08-14 (archive#2685). When a PR
+> introduces or moves a surface, name its rung. Deviations from the
 > ladder are design decisions and get a sentence of rationale in the PR body —
 > not silent precedent.
 
@@ -110,7 +110,7 @@ is a dialog (or an inline control on the page).
 
 | Surface today | Today's container | Target rung |
 | --- | --- | --- |
-| Provider add | converged in station#2685 | 2 — create inside the providers split-pane (proving slice for this doc) |
+| Provider add | converged in archive#2685 | 2 — create inside the providers split-pane (proving slice for this doc) |
 | Project create (`/projects/new` route renders `NewProjectModal`) | route-modal | 1/2 — a real page (it already has the URL; drop the modal dressing) |
 | Schedule job create (`JobFormModal`) | dialog | 2 if jobs are list+detail; 3 only while the form stays short |
 | ACP connection add (`ACPAddConnectionModal`) | dialog | 2 — connections are entity management |
@@ -121,12 +121,12 @@ is a dialog (or an inline control on the page).
 | Modal-stack aggregators ×3 | three hosts | one stacking host (cross-cutting rule) |
 
 Deviations converge as small slices, each citing this doc; the provider-add
-hybrid goes first as the proving slice (station#2685). Nothing here licenses a
+hybrid goes first as the proving slice (archive#2685). Nothing here licenses a
 big-bang rewrite.
 
 ## Refs
 
-- station#2685 (this document's issue), #692 (design program), #2559 (polish
-  epic), #803 (new-chat modal semantics), #1948 (micro-UX batch).
+- archive#2685 (this document's issue), archive#692 (design program), archive#2559 (polish
+  epic), archive#803 (new-chat modal semantics), archive#1948 (micro-UX batch).
 - `docs/design/settings-architecture.md` — the scope model this document's
   "creation belongs where the thing lives" rule extends to containers.

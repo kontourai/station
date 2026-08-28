@@ -3,10 +3,10 @@
  */
 
 /**
- * station#1245 — the mobile drawer's return focus.
+ * archive#1245 — the mobile drawer's return focus.
  *
- * `ProjectSidebar` hand-rolled `if (trigger?.isConnected) trigger.focus()`
- * inside its own `requestAnimationFrame`, so it kept both station#1126 gaps:
+ * `ProjectSidebar` hand-rolled `if (trigger?.isConnected) trigger.focus`
+ * inside its own `requestAnimationFrame`, so it kept both archive#1126 gaps:
  * `isConnected` answers "is it in the document", not "can it take focus", and
  * a trigger the drawer's own navigation removed got nothing at all. It now
  * goes through `@kontourai/station-shared/return-focus`.

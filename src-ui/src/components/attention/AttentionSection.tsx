@@ -4,7 +4,7 @@ import { Empty } from '../state';
 import { AttentionCard } from './AttentionCard';
 
 /**
- * station#3214: the heading takes BOTH counts, never one number whose meaning
+ * archive#3214: the heading takes BOTH counts, never one number whose meaning
  * depends on `filtered`. `pendingTotal` is the bell badge's own number
  * (`AttentionProjection.pendingCount`); `pendingVisible` is how many of those
  * survive the page's history filters. `attentionCountLabel` decides which of

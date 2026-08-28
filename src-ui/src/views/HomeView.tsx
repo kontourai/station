@@ -42,7 +42,7 @@ const HomeRolePane = lazy(() =>
  * Home's host.
  *
  * Owns the shared model and mounts whichever renderer the Workspace Pane
- * selector admits for this build's fixed Home descriptor (station#3122 stage
+ * selector admits for this build's fixed Home descriptor (archive#3122 stage
  * 2). That descriptor's primary renderer is the built-in component. The
  * built-in renders because `selectClientWorkspacePaneRenderer` selected it,
  * not because this file directly mounts a surface.
@@ -66,7 +66,7 @@ const HomeRolePane = lazy(() =>
  * there is still deliberately no fallback when selection refuses: rendering
  * Home anyway would make the selection above decorative.
  *
- * station#3122's six-variant experiment concluded before this: the owner ran
+ * archive#3122's six-variant experiment concluded before this: the owner ran
  * them and picked, so the variant registry, selector store, switcher and
  * variant error boundary are gone and `HomeSurface` absorbed the two blocks
  * the winner contributed. That registry was a rival seam with no provenance,
@@ -91,31 +91,31 @@ export function HomeView({
       instance: WORKSPACE_HOME_PANE_INSTANCE,
     },
   );
-  // The built-in is mounted directly rather than looked up through
-  // `getBuiltinWorkspacePaneRenderer`, and only that lookup is skipped —
-  // the authorization above is the shared one. The registry's component
-  // table statically reaches Chat, the Coding panels, Flow and the evidence
-  // inspectors (~800kB of chunk, measured), which the root route must not
-  // download to render Home. `HomeWorkspacePane` is registered there under
-  // the same renderer name, and a test pins that the registry resolves
-  // Home's descriptor so the two cannot silently diverge.
+// The built-in is mounted directly rather than looked up through
+// `getBuiltinWorkspacePaneRenderer`, and only that lookup is skipped —
+// the authorization above is the shared one. The registry's component
+// table statically reaches Chat, the Coding panels, Flow and the evidence
+// inspectors (~800kB of chunk, measured), which the root route must not
+// download to render Home. `HomeWorkspacePane` is registered there under
+// the same renderer name, and a test pins that the registry resolves
+// Home's descriptor so the two cannot silently diverge.
   const builtinSelected =
     selection.state === 'selected' &&
     selection.candidate.source === 'primary' &&
     selection.candidate.renderer.kind === 'builtin-component';
 
-  // While Home's canonical occurrence occupies the ambient dock, this route
-  // renders the away state instead of a second live copy of the pane
-  // (station#4090 M5; M2 disclosed the co-mount this replaces). The
-  // derivation is the host's own published occupant state through
-  // `isAmbientDockOccupant` — never a route-local flag — so choosing another
-  // dock occupant clears this state without any route-side bookkeeping.
+// While Home's canonical occurrence occupies the ambient dock, this route
+// renders the away state instead of a second live copy of the pane
+ // (archive#4090; disclosed the co-mount this replaces). The
+// derivation is the host's own published occupant state through
+// `isAmbientDockOccupant` — never a route-local flag — so choosing another
+// dock occupant clears this state without any route-side bookkeeping.
   const dock = useWorkspacePaneDockAction();
   const paneAway = isAmbientDockOccupant(dock, WORKSPACE_HOME_PANE_INSTANCE);
 
-  // The un-removable floor (station#3122 stage 3): built once, used by both
-  // branches below, so the granted path can only ever ADD a Pane above it —
-  // there is no code path where a grant makes the built-in unreachable.
+ // The un-removable floor (archive#3122): built once, used by both
+// branches below, so the granted path can only ever ADD a Pane above it —
+// there is no code path where a grant makes the built-in unreachable.
   const builtinHome = paneAway ? (
     <WorkspacePaneAwayState paneName={WORKSPACE_HOME_PANE_DESCRIPTOR.name} />
   ) : builtinSelected ? (
@@ -134,20 +134,20 @@ export function HomeView({
     />
   );
 
-  // The Home role (stage 3). Absent, unresolved, or unreadable — the floor
-  // states — this render is the stage-2 one. Granted, `HomeRolePane` owns
-  // mounting the granted Pane, its recovery boundary, and every fall back
-  // to the floor. Lapsed, the floor renders with the server-derived reason.
+// The Home role. Absent, unresolved, or unreadable — the floor
+// states — this render is the stage-2 one. Granted, `HomeRolePane` owns
+// mounting the granted Pane, its recovery boundary, and every fall back
+// to the floor. Lapsed, the floor renders with the server-derived reason.
   const status = useWorkspaceHomeRoleStatus();
   const revoke = useRevokeWorkspaceHomeRole();
 
   return (
-    // The shell owns the `main` landmark (`App.tsx`'s `#station-main`), so a
-    // route renders a `section` inside it. Two `main` elements on one page is
-    // not a stronger signal than one — it is an ambiguous landmark list and a
-    // skip target that means two different things.
+// The shell owns the `main` landmark (`App.tsx`'s `#station-main`), so a
+// route renders a `section` inside it. Two `main` elements on one page is
+// not a stronger signal than one — it is an ambiguous landmark list and a
+// skip target that means two different things.
     <section className="home-view" aria-label="Home">
-      {/* Home is where the guided first run lives (UX audit RT-02/SHELL-12).
+ {/* Home is where the guided first run lives.
           Mounted HERE rather than in `DeferredAppOverlays` on purpose: a
           surface that renders only inside this route cannot follow the user
           across routes, and cannot render on a page it has nothing to do
@@ -155,7 +155,7 @@ export function HomeView({
           `firstRun` fact says it is on the table. Route chrome, not a Home
           renderer: it stays above BOTH the built-in and a granted Home. */}
       <FirstRunHomeChapter />
-      {/* Starter Work is a post-onboarding offer.  It reads the same durable
+{/* Starter Work is a post-onboarding offer.  It reads the same durable
           first-run decision as the chapter; a cached/default browser flag
           cannot make a real Task offer appear before setup is complete. */}
       {config?.firstRun?.status === 'completed' && (

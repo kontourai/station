@@ -7,7 +7,7 @@ import {
 } from '../session-state';
 
 /**
- * station#3227 A1. `orchestrationLifecycleLabel` is the fold every lane
+ * archive#3227 A1. `orchestrationLifecycleLabel` is the fold every lane
  * heading, project badge and project page is built from; `sessionStatusWord`
  * is the word a ROW prints. Before this slice the row printed
  * `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state, with
@@ -26,7 +26,7 @@ function session(
     provider: 'claude',
     status: 'ready',
     controlMode: 'station-owned',
-    // station#1778: required decoration, supplied rather than cast away.
+// archive#1778: required decoration, supplied rather than cast away.
     answerability: { answerable: true },
     isLoaded: true,
     isPersisted: true,
@@ -45,16 +45,16 @@ const UNANSWERABLE = {
 } as const;
 
 describe('the four shapes where the raw state and the fold disagree', () => {
-  /**
-   * Each case names the word the OLD row label printed. That word is asserted
-   * absent, not merely "the new one is present": a row that printed both
-   * would still be a contradiction.
-   */
+/**
+* Each case names the word the OLD row label printed. That word is asserted
+* absent, not merely "the new one is present": a row that printed both
+* would still be a contradiction.
+*/
 
   test('#1069 — `running` with no turn in flight is Ready, never Running', () => {
-    // Observed live: 13 of 24 sessions carried lifecycleState 'running' with
-    // `hasActiveTurn: false`, because `session.configured` moves the state and
-    // only `turn.completed` moves it back.
+// Observed live: 13 of 24 sessions carried lifecycleState 'running' with
+// `hasActiveTurn: false`, because `session.configured` moves the state and
+// only `turn.completed` moves it back.
     const idle = session({ lifecycleState: 'running', hasActiveTurn: false });
     expect(orchestrationLifecycleLabel(idle)).toBe('Ready');
     expect(sessionStatusWord(idle)).toBe('Ready');
@@ -89,8 +89,8 @@ describe('the four shapes where the raw state and the fold disagree', () => {
       answerability: UNANSWERABLE,
     });
     expect(orchestrationLifecycleLabel(stranded)).toBe('Unanswerable');
-    // `lifecycleLabelText`'s translation, not this system's own term: the
-    // same wording the chat-dock inbox and the mobile switcher already use.
+// `lifecycleLabelText`'s translation, not this system's own term: the
+// same wording the chat-dock inbox and the mobile switcher already use.
     expect(sessionStatusWord(stranded)).toBe("Can't answer here");
     expect(sessionStatusWord(stranded)).not.toBe('Waiting on you');
   });
@@ -103,12 +103,12 @@ describe('the four shapes where the raw state and the fold disagree', () => {
 });
 
 describe('the refinement the row legitimately adds', () => {
-  /**
-   * A lane heading is coarser than a row word and that is worth keeping —
-   * "Recently finished" does not say Completed from Failed, and "Needs you"
-   * does not say whether you owe a reply or a review. The rule is that a row
-   * may only be finer WITHIN what the fold decided.
-   */
+/**
+* A lane heading is coarser than a row word and that is worth keeping —
+* "Recently finished" does not say Completed from Failed, and "Needs you"
+* does not say whether you owe a reply or a review. The rule is that a row
+* may only be finer WITHIN what the fold decided.
+*/
 
   test.each([
     ['needs_input', 'Needs attention', 'Waiting on you'],
@@ -126,8 +126,8 @@ describe('the refinement the row legitimately adds', () => {
   );
 
   test('a finer word that CONTRADICTS its state loses to the state', () => {
-    // A turn is in flight while the state still reads `queued`. "Queued"
-    // would say work has not started; the fold says it has.
+// A turn is in flight while the state still reads `queued`. "Queued"
+// would say work has not started; the fold says it has.
     const starting = session({ lifecycleState: 'queued', hasActiveTurn: true });
     expect(orchestrationLifecycleLabel(starting)).toBe('Running');
     expect(sessionStatusWord(starting)).toBe('Running');
@@ -136,13 +136,13 @@ describe('the refinement the row legitimately adds', () => {
 });
 
 describe('a session with no lifecycleState', () => {
-  /**
-   * The four render sites used to fall back to `session.status` here, which
-   * is a TRANSPORT identifier — so an undecorated closed session literally
-   * printed the word "closed" under a "Recently finished" heading. That is
-   * the raw-token leak `sessionLifecycleLabel`'s docblock exists to prevent,
-   * arriving through the fallback rather than the label.
-   */
+/**
+* The four render sites used to fall back to `session.status` here, which
+* is a TRANSPORT identifier — so an undecorated closed session literally
+* printed the word "closed" under a "Recently finished" heading. That is
+* the raw-token leak `sessionLifecycleLabel`'s docblock exists to prevent,
+* arriving through the fallback rather than the label.
+*/
 
   test('a closed session reads Completed, not the wire word "closed"', () => {
     const undecorated = session({ status: 'closed' });
@@ -178,11 +178,11 @@ describe('the row word is always product vocabulary', () => {
     'closed',
   ] as const;
 
-  /**
-   * Every word this function can print, written out rather than derived from
-   * the implementation's own table — a test that recomputes the map it is
-   * checking cannot catch the map being wrong.
-   */
+/**
+* Every word this function can print, written out rather than derived from
+* the implementation's own table — a test that recomputes the map it is
+* checking cannot catch the map being wrong.
+*/
   const VOCABULARY = new Set([
     'Needs attention',
     'Waiting on you',
@@ -225,7 +225,7 @@ describe('the row word is always product vocabulary', () => {
 });
 
 /*
- * station#3227 B1. The failed → finished → awaiting → active adjudication
+* archive#3227. The failed → finished → awaiting → active adjudication
  * inside `orchestrationLifecycleLabel` is the SHARED
  * `sessionAttentionDisposition` fold — the same derivation the server's
  * attention projection counts the bell from (its own matrix test asserts item
@@ -298,12 +298,12 @@ describe('the label is the shared attention disposition, rendered (station#3227 
   });
 
   test('the two B1 shapes, pinned by name', () => {
-    // The bell now counts this one: blocked was under "Needs you" here while
-    // the server projected nothing.
+// The bell now counts this one: blocked was under "Needs you" here while
+// the server projected nothing.
     const blocked = session({ lifecycleState: 'blocked', status: 'running' });
     expect(orchestrationLifecycleLabel(blocked)).toBe('Needs attention');
-    // And no longer counts this one: every client surface files it under
-    // Recently finished while the server kept projecting the stale ask.
+// And no longer counts this one: every client surface files it under
+// Recently finished while the server kept projecting the stale ask.
     const closedStale = session({
       lifecycleState: 'needs_input',
       status: 'closed',

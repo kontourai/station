@@ -23,7 +23,7 @@ export const STATUS_GLYPH_BY_STATE = {
   Stopped: { glyph: '■', color: 'muted', ariaLabel: 'Stopped' },
   Running: { glyph: '●', color: 'active', ariaLabel: 'Running' },
   Ready: { glyph: '○', color: 'muted', ariaLabel: 'Ready' },
-  // station#1783 vocabulary rule: 'Unanswerable' is the system's internal
+  // archive#1783 vocabulary rule: 'Unanswerable' is the system's internal
   // term, never the user's word — same translation lifecycleLabelText applies.
   Unanswerable: {
     glyph: '?',

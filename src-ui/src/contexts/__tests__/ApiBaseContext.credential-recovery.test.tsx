@@ -1,5 +1,5 @@
 /**
- * AC2, asserted on the thing a user can see.
+ *asserted on the thing a user can see.
  *
  * A rejected credential leaves TWO pieces of stale evidence behind —
  * `lastError` (recorded by the health probe) and `credentialState: 'required'`
@@ -13,7 +13,7 @@
  * over the REAL `ConnectionStore` and the REAL SDK transport, and asserts on
  * the banner. A previous revision duplicated the gate's
  * `credentialState === 'required'` expression instead, which pinned the
- * implementation it was meant to check (delta review, MEDIUM). Only the
+* implementation it was meant to check. Only the
  * peripheral modules `OnboardingGate` needs are mocked; nothing on the path
  * from an HTTP response to the banner is.
  *
@@ -121,13 +121,13 @@ async function renderShell() {
     </ApiBaseProvider>,
   );
   await screen.findByText('App');
-  // `ConnectionsProvider` keeps ONE module-level store, and neither
-  // `vi.resetModules()` nor unmounting clears it — a mocked module's factory
-  // result is cached across a registry reset, so a second test in this file
-  // would silently inherit the first one's recovered connection and its 401
-  // would be unobservable. Rather than fight that, every test states its own
-  // baseline through the store's public API: a connection whose device session
-  // is currently good, which is what a freshly bootstrapped browser has.
+// `ConnectionsProvider` keeps ONE module-level store, and neither
+// `vi.resetModules` nor unmounting clears it — a mocked module's factory
+// result is cached across a registry reset, so a second test in this file
+// would silently inherit the first one's recovered connection and its 401
+// would be unobservable. Rather than fight that, every test states its own
+// baseline through the store's public API: a connection whose device session
+// is currently good, which is what a freshly bootstrapped browser has.
   const active = connections?.activeConnection;
   if (!active) throw new Error('no active connection to base the test on');
   await act(async () => {
@@ -175,11 +175,11 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     });
     expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
 
-    // The cookie the bootstrap exchange installed is now present, and the very
-    // next protected request is accepted. Nothing else happens — no health
-    // probe, no reload, no navigation. `act` flushes the store update and the
-    // effects it causes, so asserting straight after it is the "within one
-    // render" claim rather than an eventual-consistency one: no `waitFor`.
+// The cookie the bootstrap exchange installed is now present, and the very
+// next protected request is accepted. Nothing else happens — no health
+// probe, no reload, no navigation. `act` flushes the store update and the
+// effects it causes, so asserting straight after it is the "within one
+// render" claim rather than an eventual-consistency one: no `waitFor`.
     fetchByPath({ '/api/': async () => new Response('{"success":true}') });
     await act(async () => {
       await authenticatedFetch(`${origin}/api/settings`);
@@ -189,10 +189,10 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
   });
 
   it('keeps the banner when a 2xx that was issued BEFORE the 401 lands after it', async () => {
-    // The lockout ordering. Request A is accepted but slow; request B meets a
-    // revoked credential and raises the banner; A then lands and — before the
-    // credential-generation guard — erased it. The user was left with no
-    // banner, no "Request access", and a session that no longer works.
+// The lockout ordering. Request A is accepted but slow; request B meets a
+// revoked credential and raises the banner; A then lands and — before the
+// credential-generation guard — erased it. The user was left with no
+// banner, no "Request access", and a session that no longer works.
     const origin = window.location.origin;
     await renderShell();
 
@@ -207,15 +207,15 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
       },
     });
 
-    // A starts first and is still in flight.
+// A starts first and is still in flight.
     const slowRequest = authenticatedFetch(`${origin}/api/projects`);
-    // B starts, is rejected, and raises the banner.
+// B starts, is rejected, and raises the banner.
     await act(async () => {
       await authenticatedFetch(`${origin}/api/boot`);
     });
     expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
 
-    // A finally lands, carrying a 200 that predates the rejection.
+// A finally lands, carrying a 200 that predates the rejection.
     await act(async () => {
       releaseSlowSuccess?.();
       await slowRequest;
@@ -228,30 +228,30 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
   });
 
   it('does not let a 401 from before a pairing undo that pairing', async () => {
-    // The damaging shape the SDK's response-time credential re-resolve caused:
-    // a request leaves while the connection is unauthorized, the user completes
-    // pairing, and the old request's 401 then lands bound to the NEW device
-    // session — which `markCredentialRequired` deletes, putting the banner back
-    // and undoing the pairing the user just finished. Both credential values
-    // are `undefined` for a device session, so the store's equality guard
-    // cannot tell the two apart; only the request-time generation can.
-    //
-    // This drives the REAL resolver: `ApiBaseProvider` installs it, the SDK
-    // reports through it, and the store decides. The store's own
-    // stale-unauthorized test hand-supplies the old credential and therefore
-    // assumes what this test checks.
+// The damaging shape the SDK's response-time credential re-resolve caused:
+// a request leaves while the connection is unauthorized, the user completes
+// pairing, and the old request's 401 then lands bound to the NEW device
+// session — which `markCredentialRequired` deletes, putting the banner back
+// and undoing the pairing the user just finished. Both credential values
+// are `undefined` for a device session, so the store's equality guard
+// cannot tell the two apart; only the request-time generation can.
+//
+// This drives the REAL resolver: `ApiBaseProvider` installs it, the SDK
+// reports through it, and the store decides. The store's own
+// stale-unauthorized test hand-supplies the old credential and therefore
+// assumes what this test checks.
     const origin = window.location.origin;
     await renderShell();
     const id = connections?.activeConnection?.id as string;
 
-    // The connection is currently unauthorized and the banner is up.
+// The connection is currently unauthorized and the banner is up.
     fetchByPath();
     await act(async () => {
       await authenticatedFetch(`${origin}/api/boot`);
     });
     expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
 
-    // Request A leaves now, carrying the unauthorized evidence.
+// Request A leaves now, carrying the unauthorized evidence.
     let releaseA: (() => void) | undefined;
     const aInFlight = new Promise<void>((resolve) => {
       releaseA = resolve;
@@ -266,7 +266,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     });
     const requestA = authenticatedFetch(`${origin}/api/projects`);
 
-    // The user completes pairing while A is still in flight.
+// The user completes pairing while A is still in flight.
     await act(async () => {
       connections?.markDeviceSession(id);
     });
@@ -274,7 +274,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     const generationAfterPairing = connections?.activeConnection;
     expect(generationAfterPairing?.credentialState).toBe('device-session');
 
-    // A's 401 lands. It is about a session that no longer exists.
+// A's 401 lands. It is about a session that no longer exists.
     await act(async () => {
       releaseA?.();
       await requestA;
@@ -288,9 +288,9 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
   });
 
   it('does not let a 401 from before a credential replacement delete the new credential', async () => {
-    // The same shape with a saved bearer rather than a device session. Here the
-    // equality guard alone would have held, so this pins that the generation
-    // guard did not break the case that already worked.
+// The same shape with a saved bearer rather than a device session. Here the
+// equality guard alone would have held, so this pins that the generation
+// guard did not break the case that already worked.
     const origin = window.location.origin;
     await renderShell();
     const id = connections?.activeConnection?.id as string;
@@ -325,16 +325,16 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
   });
 
   it('captures the credential and the address it is sent to as one live snapshot', async () => {
-    // Between a synchronous connection switch and React committing the new
-    // context, a resolver that mixed a LIVE credential with a RENDER-captured
-    // `apiBase` would attach the new connection's credential to a request for
-    // the old connection's origin. The store's origin check stops that from
-    // causing a false recovery; it cannot un-send the credential.
+// Between a synchronous connection switch and React committing the new
+// context, a resolver that mixed a LIVE credential with a RENDER-captured
+// `apiBase` would attach the new connection's credential to a request for
+// the old connection's origin. The store's origin check stops that from
+// causing a false recovery; it cannot un-send the credential.
     await renderShell();
     const before = connections;
     const renderedApiBase = before?.apiBase;
 
-    // Switch synchronously, WITHOUT letting React commit.
+// Switch synchronously, WITHOUT letting React commit.
     before?.setApiBase('https://switched.example.test');
 
     const evidence = before?.captureCredentialEvidence();
@@ -342,16 +342,16 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
       before?.apiBase,
       'the render capture was expected to still be stale here',
     ).toBe(renderedApiBase);
-    // The live read is the switched connection, address and all; the render
-    // is still the previous one. Before this was one call, the resolver
-    // combined exactly these two rows.
+// The live read is the switched connection, address and all; the render
+// is still the previous one. Before this was one call, the resolver
+// combined exactly these two rows.
     const renderedConnectionId = before?.activeConnection?.id;
     expect(renderedConnectionId).toBeTruthy();
     expect(evidence?.origin).toBe('https://switched.example.test');
     expect(evidence?.connectionId).toBeTruthy();
     expect(evidence?.connectionId).not.toBe(renderedConnectionId);
 
-    // Put it back so the shared store does not leak into the next test.
+// Put it back so the shared store does not leak into the next test.
     await act(async () => {
       before?.setApiBase(renderedApiBase as string);
     });
@@ -367,8 +367,8 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     });
     expect((await screen.findByRole('alert')).textContent).toMatch(BANNER);
 
-    // The real production `authentication: 'omit'` caller: same origin, 200,
-    // and deliberately unauthenticated. It says nothing about our credentials.
+// The real production `authentication: 'omit'` caller: same origin, 200,
+// and deliberately unauthenticated. It says nothing about our credentials.
     fetchByPath({
       '/.well-known/station/v1': async () =>
         new Response('{"capabilities":{"eventStreamResume":true}}'),

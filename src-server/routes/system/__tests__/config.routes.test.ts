@@ -745,7 +745,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
 });
 
 /**
- * station#1398 slice 2, §5.4 — the beneficiary-cannot-flip guard.
+ * archive#1398, §5.4 — the beneficiary-cannot-flip guard.
  *
  * §5.4's disposition (contribution keeps riding `orchestration:operate`)
  * holds only while a credential that can ENABLE contribution cannot also
@@ -842,7 +842,7 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
     );
   });
 
-  // ── station#1500 slice 2.5 / station#1503 review M6 + L7 ────────────────
+  // ── archive#1500 / archive#1503 review M6 + L7 ────────────────
 
   test('the invoke guard also covers the SCOPED contribution map', async () => {
     // Its `inference` axis names billable connections exactly as

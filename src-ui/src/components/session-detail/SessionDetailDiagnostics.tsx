@@ -6,7 +6,7 @@ import type { DiagnosticsEntry } from '../../utils/sessionDiagnosticsLog';
  * `buildDiagnosticsLog` (duplicate event names, repeated identical events,
  * and split text-delta fragments) — see that module for why `renderKey`
  * (not `key`) is the React list key. Split out of `MutableSessionDetail`
- * per station#1204.
+ * per archive#1204.
  */
 export function SessionDetailDiagnostics({
   eventCount,

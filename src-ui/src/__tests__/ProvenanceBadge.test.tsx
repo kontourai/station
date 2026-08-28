@@ -31,7 +31,7 @@ describe('ProvenanceBadge', () => {
     expect(screen.getByText('Set by operator: STATION_FEATURES')).toBeTruthy();
   });
 
-  // station#1557: there is no "Overridden by {var}" chip any more. It claimed
+  // archive#1557: there is no "Overridden by {var}" chip any more. It claimed
   // the stored value did not apply, and for its single instance (`region`)
   // that was the opposite of what the resolver did.
   test('a stored value renders no badge, whatever the environment holds', () => {

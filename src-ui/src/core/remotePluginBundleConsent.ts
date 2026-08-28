@@ -13,7 +13,7 @@ export function remotePluginBundlesAllowedKey(connectionId: string): string {
 // These helpers take the semantic id, never a raw storage key: this module is
 // allowlisted by the raw-localStorage policy gate, so an export accepting an
 // arbitrary key would let any caller write outside this module's prefixes
-// through the allowlist (review round 2 finding).
+// through the allowlist ( 2 finding).
 export function remoteIsolationDismissalIsStored(
   connectionId: string,
 ): boolean {
@@ -35,7 +35,7 @@ export function storeRemoteIsolationDismissal(connectionId: string): void {
       '1',
     );
   } catch {
-    // Session-only dismissal; the banner returns next launch.
+// Session-only dismissal; the banner returns next launch.
   }
 }
 
@@ -79,9 +79,9 @@ export function setRemotePluginBundlesAllowed(
       if (window.localStorage.getItem(key) !== origin) return false;
     } else {
       window.localStorage.removeItem(key);
-      // Root-window bundle code has the same localStorage authority as Station,
-      // so this store cannot defend consent from a previously enabled bundle.
-      // station#2456's iframe isolation is the needed architectural boundary.
+// Root-window bundle code has the same localStorage authority as Station,
+// so this store cannot defend consent from a previously enabled bundle.
+// archive#2456's iframe isolation is the needed architectural boundary.
       if (window.localStorage.getItem(key) === origin) return false;
     }
   } catch {

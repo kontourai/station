@@ -124,7 +124,7 @@ export function registerPluginPublicRoutes(
     try {
       const manifest = await readPluginManifestFile(manifestPath);
       const declared = requiredPermissionsForManifest(manifest);
-      // station#4288: `granted` is the EFFECTIVE set. When the installed tree
+      // archive#4288: `granted` is the EFFECTIVE set. When the installed tree
       // no longer matches the one consent was given against, the withheld
       // names and the binding state travel with it, so the panel can say what
       // was taken away and why instead of a permission just disappearing.
@@ -141,7 +141,7 @@ export function registerPluginPublicRoutes(
       }
       if (error instanceof PluginGrantsUnavailableError) {
         // Display surface: an unreadable store must not render as "nothing
-        // granted" (#1835). Surface the unavailable state explicitly.
+        // granted" (archive#1835). Surface the unavailable state explicitly.
         return c.json(
           {
             success: false,
@@ -193,7 +193,7 @@ export function registerPluginPublicRoutes(
       deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
         name,
       });
-      // Derived, never the request echoed back (station#4288, delta review
+      // Derived, never the request echoed back (archive#4288, delta review
       // MEDIUM 2). Granting one permission against a `changed` binding
       // withdraws every OTHER recorded permission — `trusted` ones included,
       // which are re-acquirable only through the isolated host-approval
@@ -211,7 +211,7 @@ export function registerPluginPublicRoutes(
         return c.json(manifestSafetyFailure(name, randomUUID(), error), 400);
       }
       if (error instanceof PluginGrantsUnavailableError) {
-        // Consent write path: nothing was granted; say why (#1835).
+        // Consent write path: nothing was granted; say why (archive#1835).
         return c.json(
           {
             success: false,
@@ -223,7 +223,7 @@ export function registerPluginPublicRoutes(
       }
       if (error instanceof PluginContentUnavailableError) {
         // A grant is a consent to bytes; bytes we cannot read cannot be
-        // consented to, so nothing was written (station#4288).
+        // consented to, so nothing was written (archive#4288).
         return c.json(
           {
             success: false,
@@ -238,7 +238,7 @@ export function registerPluginPublicRoutes(
   });
 
   /**
-   * Withdraws permissions a plugin currently holds (station#3815).
+   * Withdraws permissions a plugin currently holds (archive#3815).
    *
    * DELETE, not POST: this removes authority and is idempotent — asking
    * twice leaves the same state, and asking for something never granted is
@@ -282,7 +282,7 @@ export function registerPluginPublicRoutes(
     } catch (error: unknown) {
       if (error instanceof PluginGrantsUnavailableError) {
         // Nothing was withdrawn; say why rather than reporting success for a
-        // write that did not land (#1835's posture, applied to this verb).
+        // write that did not land (archive#1835's posture, applied to this verb).
         return c.json(
           {
             success: false,
@@ -315,7 +315,7 @@ export function registerPluginPublicRoutes(
       }
     } catch (error: unknown) {
       if (error instanceof PluginGrantsUnavailableError) {
-        // Enforcement gate, fail-closed with the honest reason (#1835).
+        // Enforcement gate, fail-closed with the honest reason (archive#1835).
         return c.json(
           {
             success: false,
@@ -395,7 +395,7 @@ export function registerPluginPublicRoutes(
       }
     } catch (error: unknown) {
       if (error instanceof PluginGrantsUnavailableError) {
-        // Enforcement gate, fail-closed with the honest reason (#1835).
+        // Enforcement gate, fail-closed with the honest reason (archive#1835).
         return c.json(
           {
             success: false,

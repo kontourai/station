@@ -9,7 +9,7 @@ import {
 } from '../PluginPermissionsSection';
 
 /**
- * station#3815. The panel used to show only what a plugin was still
+ * archive#3815. The panel used to show only what a plugin was still
  * MISSING, so a permission became invisible the moment it was granted —
  * a user could approve `plugin.server` and never find that out again.
  * These pin the inversion: held permissions lead, and each one can be
@@ -31,15 +31,15 @@ test('what the plugin HOLDS is rendered, in words, with its identifier and a way
     />,
   );
 
-  // The capability, not the identifier, is the headline — it is the
-  // question a person reviewing a grant is actually asking.
+// The capability, not the identifier, is the headline — it is the
+// question a person reviewing a grant is actually asking.
   expect(
     screen.getByText('Run server-side plugin code inside Station'),
   ).toBeTruthy();
   expect(
     screen.getByText('Make network requests through the server'),
   ).toBeTruthy();
-  // The identifier is still present for the reader who wants it.
+// The identifier is still present for the reader who wants it.
   expect(screen.getByText('plugin.server')).toBeTruthy();
 
   fireEvent.click(
@@ -63,7 +63,7 @@ test('a plugin holding nothing says so, rather than rendering an empty list', ()
       onReviewPermissions={vi.fn()}
     />,
   );
-  // Rendered through the canonical Empty primitive, not a bespoke class.
+// Rendered through the canonical Empty primitive, not a bespoke class.
   expect(screen.getByText('No permissions')).toBeTruthy();
   expect(
     screen.getByText('This plugin holds nothing on this Station.'),
@@ -83,7 +83,7 @@ test('an outstanding request is shown as a request, and routes to the review pag
   );
 
   expect(screen.getByText('Requested and not granted')).toBeTruthy();
-  // A pending ask carries no Remove control — there is nothing to take back.
+// A pending ask carries no Remove control — there is nothing to take back.
   expect(
     screen.queryByRole('button', { name: 'Remove Use MCP tools' }),
   ).toBeNull();
@@ -105,7 +105,7 @@ test('only the row being withdrawn shows pending, not the whole section', () => 
     />,
   );
   expect(screen.getByText('Removing…')).toBeTruthy();
-  // The other row stays actionable.
+// The other row stays actionable.
   expect(
     screen.getByRole('button', {
       name: 'Remove Make network requests through the server',
@@ -114,24 +114,24 @@ test('only the row being withdrawn shows pending, not the whole section', () => 
 });
 
 test('the asymmetry decides which removals ask first', () => {
-  // Removing is always safe — it narrows what a plugin may do. What differs
-  // is the cost of changing your mind: a trusted grant can only be restored
-  // through the isolated host review page, so that one asks.
+// Removing is always safe — it narrows what a plugin may do. What differs
+// is the cost of changing your mind: a trusted grant can only be restored
+// through the isolated host review page, so that one asks.
   expect(revokeNeedsConfirmation('trusted')).toBe(true);
   expect(revokeNeedsConfirmation('active')).toBe(false);
   expect(revokeNeedsConfirmation('passive')).toBe(false);
 });
 
 test('a held permission shows its REAL tier, not a cautious default (station#3815)', () => {
-  // The bug this pins: a granted permission is by definition not "missing",
-  // so deriving its tier from the missing list rendered every held row as
-  // Trusted. `navigation.dock` is Passive and `network.fetch` is Active — a
-  // review surface that called them Trusted would misinform on exactly the
-  // fact that decides how alarmed to be.
+// The bug this pins: a granted permission is by definition not "missing",
+// so deriving its tier from the missing list rendered every held row as
+// Trusted. `navigation.dock` is Passive and `network.fetch` is Active — a
+// review surface that called them Trusted would misinform on exactly the
+// fact that decides how alarmed to be.
   expect(permissionTier('navigation.dock')).toBe('passive');
   expect(permissionTier('network.fetch')).toBe('active');
   expect(permissionTier('plugin.server')).toBe('trusted');
-  // Unknown reads as trusted: the cautious answer, never a reassuring one.
+// Unknown reads as trusted: the cautious answer, never a reassuring one.
   expect(permissionTier('some.future.permission')).toBe('trusted');
 
   render(
@@ -164,8 +164,8 @@ test('the hint does not promise immediacy the system cannot deliver (station#382
       onReviewPermissions={vi.fn()}
     />,
   );
-  // The first version said "takes effect immediately", which is false while
-  // a registered provider keeps serving and in-flight work finishes.
+// The first version said "takes effect immediately", which is false while
+// a registered provider keeps serving and in-flight work finishes.
   expect(screen.queryByText(/takes effect immediately/i)).toBeNull();
   expect(
     screen.getByText(/keeps running until the plugin reloads/i),
@@ -173,7 +173,7 @@ test('the hint does not promise immediacy the system cannot deliver (station#382
 });
 
 /**
- * station#4288. Binding a grant to the plugin's content means a permission
+ * archive#4288. Binding a grant to the plugin's content means a permission
  * can stop applying without anyone touching it — so the panel has to say so.
  * A capability that silently vanishes is its own defect.
  */
@@ -212,7 +212,7 @@ test('a grant that predates content binding says what Station cannot tell, witho
   expect(
     screen.getByText(/cannot tell whether this plugin's code has changed/i),
   ).toBeTruthy();
-  // The permission is still held, and still removable.
+// The permission is still held, and still removable.
   expect(
     screen.getByRole('button', {
       name: 'Remove Run server-side plugin code inside Station',

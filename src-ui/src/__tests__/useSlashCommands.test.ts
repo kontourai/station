@@ -115,10 +115,10 @@ describe('useSlashCommands — ACP command source (#149 orchestration cutover)',
     );
   });
 
-  // CAT-R08: the derivation this replaces read the authored record's own
-  // `agent` field and never the agent's own binding list, so attaching a
-  // record to an agent saved a setting that changed nothing. The binding the
-  // editor writes (`agent.skills`) is now the binding the catalog reads.
+ // CAT-: the derivation this replaces read the authored record's own
+// `agent` field and never the agent's own binding list, so attaching a
+// record to an agent saved a setting that changed nothing. The binding the
+// editor writes (`agent.skills`) is now the binding the catalog reads.
   describe('command skills', () => {
     beforeEach(() => {
       useProviderCommandsQueryMock.mockReturnValue({ data: [] });
@@ -194,9 +194,9 @@ describe('useSlashCommands — ACP command source (#149 orchestration cutover)',
       expect(words).not.toContain('/release-check');
     });
 
-    // A clash loser the SERVER disabled does not vanish from Commands: it
-    // stays in the catalog with the server's own diagnostic as its reason,
-    // and never reaches the composer's runnable command list (review M1).
+// A clash loser the SERVER disabled does not vanish from Commands: it
+// stays in the catalog with the server's own diagnostic as its reason,
+ // and never reaches the composer's runnable command list 
     it('lists a server-disabled clash loser in the catalog with its diagnostic, never in commands', () => {
       agents = [{ slug: 'station', name: 'Station', skills: ['ship-local'] }];
       skills = [
@@ -224,7 +224,7 @@ describe('useSlashCommands — ACP command source (#149 orchestration cutover)',
           reason: "'/ship' is already used by the skill 'ship-global'",
         },
       });
-      // Exactly one runnable /ship — the server's winner.
+// Exactly one runnable /ship — the server's winner.
       expect(
         result.current.commands.filter((command) => command.cmd === '/ship'),
       ).toHaveLength(1);

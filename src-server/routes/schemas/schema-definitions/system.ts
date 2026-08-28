@@ -27,7 +27,7 @@ export const sshEnvironmentCreateSchema = z.object({
   hostAlias: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._-]*$/),
   remoteProjectPath: z.string().min(1).max(4096),
   remotePort: z.number().int().min(1).max(65_535).optional(),
-  // station#1133 R2: opt-in managed launch. Omitted entirely defaults to
+  // archive#1133 R2: opt-in managed launch. Omitted entirely defaults to
   // 'attach' (today's behavior, byte-identical).
   launchMode: z.enum(['attach', 'managed']).optional(),
 });
@@ -42,7 +42,7 @@ export const sshEnvironmentProbeSchema = z.object({
   hostAlias: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9._-]*$/),
 });
 
-// Outbound peer credentials (station#1123 slice 2)
+// Outbound peer credentials (archive#1123)
 export const peerCredentialUpsertSchema = z.object({
   environmentId: z.string().min(1).max(200),
   apiBase: z.string().min(1).max(2048),
@@ -51,7 +51,7 @@ export const peerCredentialUpsertSchema = z.object({
   label: z.string().min(1).max(120).optional(),
 });
 
-// Answer share permalinks (station#1423)
+// Answer share permalinks (archive#1423)
 export const answerShareMintSchema = z.object({
   sessionId: z.string().min(1).max(200),
   turnId: z.string().min(1).max(200),
@@ -111,7 +111,7 @@ export const pluginPreviewSchema = z.object({
 });
 
 /**
- * `consent` is the operator's pre-install decision (station#4288): the derived
+ * `consent` is the operator's pre-install decision (archive#4288): the derived
  * permission set they were shown, the digest of the bytes they were shown, and
  * the dependency ids that decision named. It is `optional()` here only so the
  * route can answer the omission with a sentence that says what to do instead
@@ -139,7 +139,7 @@ export const pluginGrantSchema = z.object({
  * `<home>/config/plugin-overrides.json` — `PUT /:name/settings` keeps every
  * undeclared settings key, `PUT /:name/overrides` keeps `disabled` as given —
  * and neither `z.record(z.unknown())` bounded how deeply those values nest.
- * Two consequences, both measured (station#4307 review):
+ * Two consequences, both measured (archive#4307 review):
  *
  * - amplification: `JSON.stringify(…, null, 2)` indents by depth, so a 24 KB
  *   body of nested objects persisted as a 32 MB file (~1336x), re-parsed on

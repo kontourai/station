@@ -31,7 +31,7 @@ const { createAgentToolRoutes } = await import('../agent-tools.js');
  * The route asks the READ-ONLY question — does the registry own this id —
  * rather than loading (and potentially seeding) the whole registry, so the
  * diagnosis path cannot fail with a 500 on the request it exists to explain
- * (station#3158 review).
+ * (archive#3158 review).
  */
 function stubRegistry(defaultAgentIds: string[]) {
   vi.mocked(registryOwnsAgentAtHome).mockImplementation(async (_home, id) =>
@@ -96,7 +96,7 @@ describe('Agent Tool Routes', () => {
     expect(body.data[0].server).toBe('myServer');
   });
 
-  // station#3158 — the three cases below shared one 404 reading "Agent not
+  // archive#3158 — the three cases below shared one 404 reading "Agent not
   // found or not active", which left the caller unable to tell "pick a
   // different agent" from "this one's runtime is down".
   test('GET /:slug/tools reports an agent nothing knows about as not found', async () => {

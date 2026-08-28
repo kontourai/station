@@ -32,7 +32,7 @@ Run the focused browser proof with:
 PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/project-task-room-collaboration.spec.ts --project=chromium --workers=1
 ```
 
-The #2892 synthetic command remains smoke evidence only. Reference performance
+The archive#2892 synthetic command remains smoke evidence only. Reference performance
 is verified only by the named Windows production target and bridge
 described in `interactive-workspace-performance.md`; an absent target or bridge
 is `NOT_VERIFIED`, never a substitute PASS.

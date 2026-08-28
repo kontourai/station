@@ -7,7 +7,7 @@ export type KnowledgeNamespaceBehavior = 'rag' | 'inject';
 
 /**
  * A knowledge root anchored to a NAMED repo of the project's manifest
- * (station#1503 slice 5; `docs/design/portable-project-identity.md` §3.2's
+ * (`docs/design/portable-project-identity.md` §3.2's
  * `{namespaceId, root: {kind: 'repo', repoId, path}}`).
  *
  * This is the producer for a manifest knowledge root that is not

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-// #242 Knowledge port — asserts KnowledgeConnectionView now renders through the
+// archive#242 Knowledge port — asserts KnowledgeConnectionView now renders through the
 // canonical page-layout shell (.page/.page--narrow, not the old bespoke
 // `.knowledge-view` wrapper) and the canonical `Empty` primitive for both
 // empty branches (no bespoke `knowledge-view__empty` className survives).
@@ -99,14 +99,14 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     const header = document.querySelector('.page-frame__header');
     expect(header?.textContent).toContain('Connections');
     expect(header?.textContent).toContain('Knowledge infrastructure');
-    // The title, not the eyebrow, says 'Knowledge infrastructure' —
-    // station#4463 slice 1 retired the breadcrumb-as-eyebrow that restated
-    // it a second time.
+// The title, not the eyebrow, says 'Knowledge infrastructure' —
+ // archive#4463 retired the breadcrumb-as-eyebrow that restated
+// it a second time.
     expect(document.querySelector('.page__label')?.textContent?.trim()).toBe(
       'Connections',
     );
-    // Fix round (arbiter decision #4): unlinked — `/connections` is a
-    // redirect-only resolver, so a click would be a no-op or a sibling jump.
+// Fix round (arbiter decision #4): unlinked — `/connections` is a
+// redirect-only resolver, so a click would be a no-op or a sibling jump.
     expect(document.querySelector('.page__label-link')).toBeNull();
   });
 
@@ -136,11 +136,11 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(window.location.search).toBe('?section=embedding-model');
   });
 
-  // station#settings-revamp slice 5 review finding HIGH 2(b): this
-  // cross-link already routed through the internal `guard` correctly
-  // (`guard(() => navigate(...))`, the pattern the other four cross-link
-  // sites were fixed to match) — this file just never asserted the target or
-  // the dirty-intercept behavior.
+ // archive#settings-revamp 2(b): this
+// cross-link already routed through the internal `guard` correctly
+// (`guard( => navigate(...))`, the pattern the other four cross-link
+// sites were fixed to match) — this file just never asserted the target or
+// the dirty-intercept behavior.
   describe('the "Open Settings → My knowledge store" cross-link', () => {
     it('navigates to /settings with the section param when the page is not dirty', () => {
       render(<KnowledgeConnectionView />);
@@ -191,9 +191,9 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     });
   });
 
-  // Audit CI-R6: the panel resolved only through `/api/connections`, where the
-  // built-in store has no record on a real home — so the section rendered as a
-  // blank box while `/api/knowledge/status` was reporting a working store.
+// Audit : the panel resolved only through `/api/connections`, where the
+// built-in store has no record on a real home — so the section rendered as a
+// blank box while `/api/knowledge/status` was reporting a working store.
   it('renders the built-in vector store from the knowledge-status payload when no connection record backs it', () => {
     knowledgeStatusQueryState = {
       data: {
@@ -234,9 +234,9 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(navigateMock).toHaveBeenCalledWith('/settings?view=knowledge');
   });
 
-  // CI-R5: a zero is the index receipt that matters most — hiding the section
-  // until something had been indexed left the capability copy standing beside
-  // nothing a reader could check.
+// a zero is the index receipt that matters most — hiding the section
+// until something had been indexed left the capability copy standing beside
+// nothing a reader could check.
   it('shows the server index counts even when nothing has been indexed yet', () => {
     knowledgeStatusQueryState = {
       data: {

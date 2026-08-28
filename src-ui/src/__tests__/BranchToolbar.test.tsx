@@ -26,11 +26,11 @@ interface ReposResultLike {
 }
 
 const state = {
-  // The path the most recent useGitStatus call was made against — lets tests
-  // assert which repo the toolbar is currently targeting.
+// The path the most recent useGitStatus call was made against — lets tests
+// assert which repo the toolbar is currently targeting.
   statusPath: null as string | null,
-  // git-status keyed by repo root so different active repos resolve to the
-  // right branch.
+// git-status keyed by repo root so different active repos resolve to the
+// right branch.
   statusByRoot: {} as Record<string, GitStatusResult | null>,
   repos: {
     data: undefined as ReposResultLike | undefined,
@@ -47,8 +47,8 @@ const state = {
     isLoading: false,
     error: null as Error | null,
   },
-  // Query-lifecycle flags for the git-status query itself, independent of
-  // its resolved data — lets tests drive loading/errored states.
+// Query-lifecycle flags for the git-status query itself, independent of
+// its resolved data — lets tests drive loading/errored states.
   status: {
     isLoading: false,
     isError: false,
@@ -208,17 +208,17 @@ describe('BranchToolbar', () => {
     expect(button.disabled).toBe(true);
     const input = screen.getByLabelText('Commit message') as HTMLInputElement;
     expect(input.disabled).toBe(true);
-    // Happy path: a genuinely resolved, genuinely clean tree still reads as
-    // clean — the tri-state fix must not regress this case.
+// Happy path: a genuinely resolved, genuinely clean tree still reads as
+// clean — the tri-state fix must not regress this case.
     expect(input.placeholder).toBe('Working tree clean');
   });
 
   test('a loading git-status query does not claim the tree is clean, and does not disable commit', () => {
-    // The fixture MUST be clean. With a dirty one, `dirtyCount === 0` is false
-    // whatever the query state, so the boolean collapse this test exists to
-    // forbid is unobservable and the test passes against the bug. Verified by
-    // injection: with the default dirty fixture, reverting isClean to
-    // `dirtyCount === 0` left all 14 tests green.
+// The fixture MUST be clean. With a dirty one, `dirtyCount === 0` is false
+// whatever the query state, so the boolean collapse this test exists to
+// forbid is unobservable and the test passes against the bug. Verified by
+// injection: with the default dirty fixture, reverting isClean to
+// `dirtyCount === 0` left all 14 tests green.
     state.statusByRoot = { '/repo': makeStatus('main', false) };
     state.status = { isLoading: true, isError: false, error: null };
     render(<BranchToolbar workingDir="/repo" />);
@@ -228,7 +228,7 @@ describe('BranchToolbar', () => {
     const button = screen.getByRole('button', {
       name: 'Commit changes',
     }) as HTMLButtonElement;
-    // Still gated on having a message to type, not on the unresolved status.
+// Still gated on having a message to type, not on the unresolved status.
     expect(button.disabled).toBe(true);
     fireEvent.change(input, { target: { value: 'wip' } });
     expect(
@@ -241,7 +241,7 @@ describe('BranchToolbar', () => {
   });
 
   test('an errored git-status query does not claim the tree is clean, and does not disable commit', () => {
-    // Clean fixture, for the same reason as the loading case above.
+// Clean fixture, for the same reason as the loading case above.
     state.statusByRoot = { '/repo': makeStatus('main', false) };
     state.status = {
       isLoading: false,
@@ -266,13 +266,13 @@ describe('BranchToolbar', () => {
     expect(pushMutate).toHaveBeenCalledWith({ setUpstream: true });
   });
 
-  // ── Multi-repo awareness ────────────────────────────────────────────────
+// ── Multi-repo awareness ────────────────────────────────────────────────
 
   test('single repo renders a static repo label, no switcher dropdown', () => {
     render(<BranchToolbar workingDir="/repo" />);
-    // The repo label text is present...
+// The repo label text is present...
     expect(screen.getByText('repo')).toBeTruthy();
-    // ...but there is no "Switch repository" combobox.
+//.but there is no "Switch repository" combobox.
     expect(
       screen.queryByRole('button', { name: /Switch repository/ }),
     ).toBeNull();
@@ -297,7 +297,7 @@ describe('BranchToolbar', () => {
     expect(screen.getByRole('menuitemradio', { name: /repo-a/ })).toBeTruthy();
     const repoB = screen.getByRole('menuitemradio', { name: /repo-b/ });
     expect(repoB).toBeTruthy();
-    // Branch names are surfaced in the list.
+// Branch names are surfaced in the list.
     expect(screen.getByText(/develop/)).toBeTruthy();
   });
 
@@ -309,15 +309,15 @@ describe('BranchToolbar', () => {
     };
     render(<BranchToolbar workingDir="/workspace" />);
 
-    // Default (no active file, not workspaceIsRepo) → first repo, repo-a.
+// Default (no active file, not workspaceIsRepo) → first repo, repo-a.
     expect(state.statusPath).toBe('/workspace/repo-a');
 
     fireEvent.click(screen.getByRole('button', { name: /Switch repository/ }));
     fireEvent.click(screen.getByRole('menuitemradio', { name: /repo-b/ }));
 
-    // Active git status now targets repo-b's root.
+// Active git status now targets repo-b's root.
     expect(state.statusPath).toBe('/workspace/repo-b');
-    // And its branch is reflected.
+// And its branch is reflected.
     expect(
       screen
         .getByRole('button', { name: /Current branch/ })
@@ -339,7 +339,7 @@ describe('BranchToolbar', () => {
     );
     expect(state.statusPath).toBe('/workspace/repo-a');
 
-    // Changing the active file to a path under repo-b switches the active repo.
+// Changing the active file to a path under repo-b switches the active repo.
     rerender(
       <BranchToolbar
         workingDir="/workspace"
@@ -357,7 +357,7 @@ describe('BranchToolbar', () => {
     };
     render(<BranchToolbar workingDir="/empty" />);
     expect(screen.getByText(/No git repository in this folder/)).toBeTruthy();
-    // No branch switcher in the empty state.
+// No branch switcher in the empty state.
     expect(screen.queryByRole('button', { name: /Switch branch/ })).toBeNull();
   });
 });

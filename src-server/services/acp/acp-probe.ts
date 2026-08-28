@@ -19,7 +19,7 @@ import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
 export interface EscalatableProcess {
   destroy(): Promise<void>;
   /**
-   * station#3441 HIGH-1: async now -- it does not resolve until it has
+   * archive#3441 HIGH-1: async now -- it does not resolve until it has
    * either confirmed the group is gone (and released the owned-process
    * registry record) or given up waiting (and left the record in place). See
    * `ACPProcess.forceGroupKill()` for why signal delivery alone is not
@@ -29,7 +29,7 @@ export interface EscalatableProcess {
 }
 
 /**
- * station#1863: destroy a process, racing it against a deadline that is
+ * archive#1863: destroy a process, racing it against a deadline that is
  * guaranteed to exceed the destroy escalation (SIGTERM → 1s → SIGKILL → 1s
  * confirm ≈ 2s). On a miss — or a destroy that rejects — ESCALATE to an
  * unconditional group SIGKILL instead of abandoning the operation. The
@@ -67,7 +67,7 @@ export async function destroyProcessWithEscalation(
     // regardless, then let destroy settle so its internal state converges. The
     // settle is bounded: a destroy that cannot converge (e.g. a wedged
     // terminateProcess) must not hold the caller forever after the process is
-    // already dead. Awaited (station#3441 HIGH-1): forceGroupKill() itself
+    // already dead. Awaited (archive#3441 HIGH-1): forceGroupKill() itself
     // now waits to CONFIRM the kill before releasing the registry record, so
     // the record is not gone by the time the second destroy() below runs.
     await process.forceGroupKill();
@@ -108,7 +108,7 @@ const DESTROY_ESCALATION_UPPER_BOUND_MS = 5_000;
 export type ACPProbeInitiator = 'request' | 'background';
 
 /**
- * station#3404: the FIRST-contact budget for the handshake, used only when
+ * archive#3404: the FIRST-contact budget for the handshake, used only when
  * this probe has never completed a successful `initialize`
  * (`lastHandshakeObservedAt === 0`) AND nothing is waiting on it
  * (`initiator === 'background'`). Measured against a real engine
@@ -136,11 +136,11 @@ export type ACPProbeInitiator = 'request' | 'background';
  * that does not hold: the HANDSHAKE is 10,000ms, comfortably under the 20s
  * desktop broker bound and the 30s SDK one, and the remaining 12,000ms is
  * cleanup that only costs anything when a destroy MISSES its deadline — the
- * station#1863 pathology, not the ordinary path, where destroy settles in
+ * archive#1863 pathology, not the ordinary path, where destroy settles in
  * milliseconds. A request that hits both the full handshake budget and a
  * missed cleanup does exceed the 20s desktop bound.
  *
- * A REQUEST is not the same thing as a probe, and station#3404 has to say so:
+ * A REQUEST is not the same thing as a probe, and archive#3404 has to say so:
  * `removeConnection` (PUT / DELETE / an idempotent re-POST) awaits
  * `ACPProbe.dispose()`, which joins whatever probe is in flight — possibly a
  * `'background'` one on the 60,000ms cold budget that no client asked for.
@@ -151,14 +151,14 @@ export type ACPProbeInitiator = 'request' | 'background';
  * dispose plus a ≤22,000ms re-probe inside the serialized
  * agent-configuration queue.
  *
- * station#3448 M-1 correction: this paragraph used to say `retryPendingCleanup`
+ * archive#3448 M-1 correction: this paragraph used to say `retryPendingCleanup`
  * "at the head of a run adds up to another 12,000ms per engine retained from
- * a previous run" (station#3422). Both halves are false now that
+ * a previous run" (archive#3422). Both halves are false now that
  * `retryPendingCleanup` runs fire-and-forget rather than awaited at the head
  * of `runProbe` (see that call site): it is no longer "at the head of a run"
  * in any sense that gates this arithmetic, and it adds NOTHING to what a
  * caller of `probe()` pays, regardless of how many engines are retained or
- * how long their destroys take -- that is the whole point of station#3448.
+ * how long their destroys take -- that is the whole point of archive#3448.
  * See `MAX_CLEANUP_RETRY_ATTEMPTS`'s own docblock for what the retry work
  * still costs in aggregate wall time (unchanged) and who pays it now
  * (nobody waiting on this method's return value).
@@ -169,7 +169,7 @@ export type ACPProbeInitiator = 'request' | 'background';
 const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
 
 /**
- * station#3441: how many times a single survivor's destroy is retried before
+ * archive#3441: how many times a single survivor's destroy is retried before
  * Station gives up on it. `retryPendingCleanup` used to retry forever -- a
  * systematically unkillable engine added one entry per cycle, and every
  * cycle re-attempted every entry still in the set, so cycle N cost roughly
@@ -185,26 +185,25 @@ const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
  * paid in one, and caps how large the set can grow for a single
  * systematically-bad connection instead of growing without limit.
  *
- * station#3441 HIGH-1 disclosure -- the aggregate steady-state cost, measured
- * against the actual code (`R4`, fix-round re-derivation; re-measured again
- * in the second fix round, station#3441 MEDIUM-4 -- see
+ * Disclosure (archive#3441) -- the aggregate steady-state cost, measured
+ * against the actual code (see
  * `owned-process-reaping.test.ts`'s "MEDIUM-4" timing test for the receipt):
  * once a connection has accumulated `MAX_CLEANUP_RETRY_ATTEMPTS - 1` (4)
  * concurrently-retained survivors -- the worst case this bound permits --
  * every probe cycle pays a destroy-and-confirm attempt on each of those 4
- * plus its own new spawn: measured ≈65s of TOTAL work in the #3422-shaped
+ * plus its own new spawn: measured ≈65s of TOTAL work in the archive#3422-shaped
  * hang (destroy never settles at all, so each attempt pays the full
  * `operationTimeoutMs` deadline miss), or ≈5s when destroy() REJECTS QUICKLY
  * but never confirms (no deadline is missed, so each attempt's cost is
  * `ACPProcess.forceGroupKill()`'s own confirm wait alone, ≈1.0-1.2s/attempt).
- * station#3441 bounded that work; it did NOT change who pays for it --
+ * archive#3441 bounded that work; it did NOT change who pays for it --
  * `retryPendingCleanup` was still the first AWAITED statement in `runProbe`,
  * serially, so every one of those seconds landed on whichever caller was
  * awaiting `probe()`, `reconnectACPManagerConnection`'s user-facing Reconnect
- * route included (station#3448, split out from this issue specifically
+ * route included (archive#3448, split out from this issue specifically
  * because the bound above does not by itself remove the tax).
  *
- * station#3448 changed who pays: `retryPendingCleanup` now runs
+ * archive#3448 changed who pays: `retryPendingCleanup` now runs
  * fire-and-forget, concurrently with the rest of `runProbe`, rather than
  * gating it (see that call site and {@link ACPProbe.cleanupRetryFlight}).
  * The wall-clock cost measured above is UNCHANGED -- the same destroy race,
@@ -216,10 +215,8 @@ const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
  * tests for the proof that `probe()` no longer waits on this work, and the
  * "still retried" tests for proof nothing is silently dropped by the move.
  *
- * station#3448 fix-round correction (independent review caught both, before
- * merge): the sentence this replaces claimed survivors are retried "on the
- * SAME cadence (once per probe cycle)". That was never re-derived after
- * decoupling and does not hold: `retryPendingCleanup` joins an already
+ * Survivors are NOT retried "on the SAME cadence (once per probe cycle)":
+ * `retryPendingCleanup` joins an already
  * in-flight pass rather than starting a new one ({@link
  * ACPProbe.cleanupRetryFlight}), so a probe cycle that lands while a pass is
  * still running contributes ZERO additional attempts -- it is absorbed into
@@ -231,8 +228,8 @@ const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
  * be safe on the OLD serialized shape and is not, by itself, safe on this
  * one.
  *
- * station#3448 fix-round correction, second bug (also independent review,
- * same round): `cleanupProbeProcess`'s `onMiss` callback set
+ * Second correction (archive#3448): `cleanupProbeProcess`'s `onMiss`
+ * callback set
  * `this.lastSuccess = false` unconditionally on ANY destroy-race miss --
  * including the ordinary "destroy() rejects quickly but never confirms"
  * mode this docblock measures above, not only a full deadline miss. On the
@@ -253,23 +250,21 @@ const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
  * `lastSuccess` at all, so a background pass, however it interleaves with a
  * concurrent handshake, cannot contaminate this run's result.
  *
- * Abandoning an entry does not kill it, and -- after station#3441 HIGH-1 --
- * this is now an accurate description, not a claim nothing computes: the
+ * Abandoning an entry does not kill it, and that is an accurate
+ * description, not a claim nothing computes: the
  * engine was registered with `spawnOwnedChild` at spawn (acp-process.ts),
  * and `ACPProcess.forceGroupKill()` releases that registry record ONLY once
  * it has independently CONFIRMED the process is gone (never on SIGKILL
- * delivery alone) -- so a survivor abandoned here, whose kill was never
+ * delivery alone, and never merely because an escalation reached it) -- so
+ * a survivor abandoned here, whose kill was never
  * confirmed, still has its record for the host-wide orphan sweep in
  * `process-utils.ts` to find and reclaim once its actual owner (this
- * Station) is gone. Pre-#3441-HIGH-1, the record was deleted unconditionally
- * inside `forceGroupKill()` the moment ANY destroy attempt escalated to it,
- * regardless of whether the kill took effect -- so this sentence was false
- * for every survivor that reached abandonment.
+ * Station) is gone.
  */
 export const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
 
 /**
- * station#3448 HIGH fix-round finding: the "4 concurrently-retained
+ * The "4 concurrently-retained
  * survivors, worst case" claim in {@link MAX_CLEANUP_RETRY_ATTEMPTS}'s own
  * docblock was DERIVED, on the old serialized shape, from an invariant nothing
  * enforced directly -- every cycle retried the WHOLE set to completion before
@@ -280,59 +275,56 @@ export const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
  * depended on: attempts are now consumed at a rate bounded by pass duration,
  * while new entries can arrive at the probe's own (now much faster) cadence,
  * so the set is only stable while `cadence >= MAX_CLEANUP_RETRY_ATTEMPTS x
- * (time per attempt)` -- and nothing enforced that. A/B'd against `origin/
- * main` at a 50ms probe interval (station#3448 fix-round review): `main`
- * stayed flat at 4; this branch, pre-fix, climbed past 20 within 25 cycles --
- * each one a live orphaned engine at roughly #3422's measured ~300MB.
+ * (time per attempt)` -- and nothing enforced that. At a 50ms probe interval
+ * the serialized shape stays flat at 4; without a bound, the set climbs past
+ * 20 within 25 cycles --
+ * each one a live orphaned engine at roughly archive#3422's measured ~300MB.
  *
- * This constant makes the bound structural instead of incidental. Two
- * corrections to earlier drafts of this docblock, both caught by independent
- * review before merge (this repo's own recurring lesson: a docblock written
- * while fixing one thing is exactly where the NEXT false claim gets planted):
+ * This constant makes the bound structural instead of incidental:
  *
  * 1. What actually grows `pendingCleanup`'s size is `runProbe`'s own
  *    `pendingCleanup.set(process, 0)`, called ONCE per spawn, unconditionally,
- *    before `attemptCleanup` ever runs on that entry -- not "the only place
- *    the set's size can grow" being inside `attemptCleanup`, which this
- *    docblock previously claimed. `attemptCleanup` only ever decides whether
- *    an ALREADY-present entry stays (`.set` on an existing key, size
- *    unchanged) or leaves (`.delete`); it cannot make the set larger.
+ *    before `attemptCleanup` ever runs on that entry. `attemptCleanup` only
+ *    ever decides whether an ALREADY-present entry stays (`.set` on an
+ *    existing key, size unchanged) or leaves (`.delete`); it cannot make the
+ *    set larger.
  *
  * 2. The bound `attemptCleanup` enforces is gated on `priorAttempts === 0`
  *    -- it refuses to let a NEW entry's own first retention decision keep it
  *    once `MAX_PENDING_CLEANUP_SIZE` OTHER entries are already retained, but
- *    never evicts an entry ALREADY retained to make room. The first version
- *    of this check applied to every retention decision regardless of
- *    `priorAttempts`, and that measurably inverted the allowance's intent
- *    (see the `- 1` paragraph below): A/B'd against the un-isolated
+ *    never evicts an entry ALREADY retained to make room. Applying the check
+ *    to every retention decision regardless of
+ *    `priorAttempts` measurably inverts the allowance's intent
+ *    (see the `- 1` paragraph below): under the un-isolated
  *    50ms-interval scenario, every one of 21 size-bound abandons had
  *    `otherRetainedCount === 4` WITH the run's own new process also already
  *    a set member (added by `runProbe` before its own `attemptCleanup`
- *    call) -- i.e. size 5, not 4. Applying the check unconditionally meant
- *    the concurrent BACKGROUND pass, re-attempting an already-retained OLDER
+ *    call) -- i.e. size 5, not 4. The concurrent BACKGROUND pass,
+ *    re-attempting an already-retained OLDER
  *    survivor at that exact moment, saw the same "4 others" and evicted THAT
  *    entry mid-retry -- the new arrival was then retained against a set of
  *    3. Net effect measured: a survivor's real attempt count collapsed to
- *    ~2 under saturation (branch: 4,3,2,2,2,...,2,1,1,1 vs main's full
- *    5,5,5,5,5,...,5,4,3,2,1), and {@link MAX_CLEANUP_RETRY_ATTEMPTS} became
+ *    ~2 under saturation (4,3,2,2,2,...,2,1,1,1 against the serialized
+ *    shape's full 5,5,5,5,5,...,5,4,3,2,1), and {@link MAX_CLEANUP_RETRY_ATTEMPTS} became
  *    UNREACHABLE -- 0 of 21 abandonments in that run went through it,
  *    directly contradicting that constant's own "a transiently unkillable
- *    child gets repeated attempts rather than one." Gating on `priorAttempts
- *    === 0` fixes this: re-run at the same 50ms interval, flat at 4, all 16
+ *    child gets repeated attempts rather than one." With the gate on
+ *    `priorAttempts === 0`, at the same 50ms interval: flat at 4, all 16
  *    size-bound abandons at `attempts: 1` (new arrivals refused admission,
  *    nothing already retained evicted), and
  *    {@link MAX_CLEANUP_RETRY_ATTEMPTS} reachable again -- 5 retry-bound
  *    abandons against 0 before.
  *
- *    The per-process distribution does NOT return to main's, and cannot: it
+ *    The per-process distribution does NOT return to the serialized
+ *    shape's, and cannot: it
  *    bifurcates. Admitted entries age to the full 5; entries refused
  *    admission take exactly one attempt (measured
  *    5,5,5,5,1,1,1,1,5,1,...). Total destroy work is unchanged either way
  *    -- 50 attempts across 25 processes, mean 2.0, both before and after --
  *    because the aggregate budget under saturation is throughput-limited by
- *    the decoupling itself. `main` spends 115 attempts on the same scenario
- *    only because it serialises, which is exactly what its ~662ms per
- *    Reconnect buys. What the gate restores is CONSECUTIVENESS, which is
+ *    the decoupling itself. The serialized shape spends 115 attempts on the
+ *    same scenario only because it serialises, which is exactly what its
+ *    ~662ms per Reconnect buys. What the gate restores is CONSECUTIVENESS, which is
  *    the property a transiently unkillable child actually needs: the same
  *    budget concentrated on a bounded working set instead of spread one
  *    attempt at a time across every survivor.
@@ -341,10 +333,10 @@ export const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
  * but the map's momentary size can reach one more -- this constant plus the
  * run's own new process, for the brief window between `runProbe`'s `set`
  * above and that same process's own `attemptCleanup` call deciding its
- * fate. Measured continuously, this branch peaks at 5 whenever a probe is
- * in flight; `main` peaks at 4, since it never holds a not-yet-decided
- * entry in the map at all. "Never exceed this number" was the earlier,
- * disproven claim; what holds is narrower and stated precisely here.
+ * fate. Measured continuously, the decoupled shape peaks at 5 whenever a
+ * probe is in flight; the serialized shape peaks at 4, since it never holds
+ * a not-yet-decided entry in the map at all. "Never exceed this number" is
+ * not the precise claim; what holds is narrower and stated here.
  *
  * `- 1`, not the bound itself: a NEWLY spawned process's own first cleanup
  * attempt (`priorAttempts === 0`, from `runProbe`'s own `finally`) must
@@ -436,14 +428,14 @@ export class ACPProbe {
   cachedConfigOptions: any[] = [];
   cachedCapabilities: any = null;
   /**
-   * #895 wave B: the full initialize agentCapabilities handshake (loadSession,
+   * archive#895 wave B: the full initialize agentCapabilities handshake (loadSession,
    * mcpCapabilities, sessionCapabilities, …), kept alongside the existing
    * `cachedCapabilities` (promptCapabilities-only, back-compat) rather than
    * replacing it — `getCapabilities()` stays as-is for existing callers.
    */
   cachedAgentCapabilities: InitializeResult['agentCapabilities'] | null = null;
   /**
-   * station#1549: the instant of the last SUCCESSFUL `initialize` handshake,
+   * archive#1549: the instant of the last SUCCESSFUL `initialize` handshake,
    * NOT `lastProbeAt`. The two differ exactly where it matters: a failed
    * probe still bumps `lastProbeAt` while deliberately retaining the previous
    * (now stale) capability cache, so stamping evidence with `lastProbeAt`
@@ -459,17 +451,16 @@ export class ACPProbe {
    *
    * `0` means no handshake has ever succeeded.
    *
-   * station#3404: MONOTONIC — set only by a successful handshake, and never
-   * cleared. It used to be reset to `0` on a failure whose predecessor had
-   * also failed (the catch's `else` branch below), which made `> 0` mean "the
+   * archive#3404: MONOTONIC — set only by a successful handshake, and never
+   * cleared. Clearing it on consecutive failures would make `> 0` mean "the
    * last two probes did not both fail" rather than "a handshake has
-   * succeeded". Two consecutive failures then put a long-known connection
-   * back into "never handshaked", and this field now carries two decisions
+   * succeeded": two consecutive failures would put a long-known connection
+   * back into "never handshaked", and this field carries two decisions
    * that read it as first contact: the cold-start budget in `runProbe` and
    * `PROBING` in `acp-manager-view.ts`. A permanently-broken engine that once
-   * handshaked would have gone back onto the 60s cold budget and rendered
+   * handshaked would go back onto the 60s cold budget and render
    * `PROBING` for ~72s on every 5-minute sweep — precisely the
-   * slow-vs-broken confusion #3404 exists to remove, inverted.
+   * slow-vs-broken confusion archive#3404 exists to remove, inverted.
    */
   lastHandshakeObservedAt = 0;
   lastProbeAt = 0;
@@ -495,7 +486,7 @@ export class ACPProbe {
   /** Survivor → destroy attempts already spent on it. See {@link MAX_CLEANUP_RETRY_ATTEMPTS}. */
   private readonly pendingCleanup = new Map<ACPProcess, number>();
   /**
-   * station#3448: dedupes concurrent `retryPendingCleanup()` calls the same
+   * archive#3448: dedupes concurrent `retryPendingCleanup()` calls the same
    * way `probeFlight` dedupes concurrent `probe()` calls. Before this fix,
    * `runProbe` was the ONLY caller of `retryPendingCleanup`, and it awaited
    * it before doing anything else -- so at most one call ran at a time.
@@ -512,7 +503,7 @@ export class ACPProbe {
   private probeFlight: Promise<boolean> | null = null;
   private disposed = false;
   /**
-   * station#3404: aborted when `dispose()` is called, so an in-flight
+   * archive#3404: aborted when `dispose()` is called, so an in-flight
    * handshake can be ABANDONED at once instead of waiting out its remaining
    * budget. `runProbe` only observes `disposed` BETWEEN phases, so without
    * this a dispose landing during a 60s cold `initialize` waited the full 60s
@@ -550,7 +541,7 @@ export class ACPProbe {
     ) => ACPProcess = (options) => new ACPProcess(options),
     private readonly operationTimeoutMs = 10_000,
     /**
-     * station#3526: injectable so a test can observe ONLY the emissions ITS
+     * archive#3526: injectable so a test can observe ONLY the emissions ITS
      * OWN probe instance produces. `acpProbeCleanupRetention` is one of many
      * OpenTelemetry counters `metrics.ts` creates via `meter.createCounter`;
      * in this repo's test environment nothing registers a real OTel
@@ -580,7 +571,7 @@ export class ACPProbe {
      * its `acpProbeCleanupRetention` was still `===` the original).
      * Defaults to the real counter for every production call site and every
      * test that does not need per-instance isolation; a few tests in
-     * `acp-probe.test.ts` (see its station#3526 comment above the telemetry
+     * `acp-probe.test.ts` (see its archive#3526 comment above the telemetry
      * describe) pass their own disjoint `{ add: vi.fn() }` instead.
      */
     private readonly cleanupRetentionRecorder: Pick<
@@ -595,7 +586,7 @@ export class ACPProbe {
   }
 
   /**
-   * station#1088: the ONE directory this probe both spawns the engine CLI in
+   * archive#1088: the ONE directory this probe both spawns the engine CLI in
    * and hands it as the `session/new` cwd.
    *
    * Before this there were two, and they disagreed: the spawn used
@@ -609,7 +600,7 @@ export class ACPProbe {
    * same connection to reuse their harmless empty cwd.
    *
    * `||` and `expandTilde` for the same two reasons the adapter documents
-   * (acp-adapter.ts, #1087): the connection form persists `cwd: ""` for an
+   * (acp-adapter.ts, archive#1087): the connection form persists `cwd: ""` for an
    * untouched field and `spawn` reads `cwd: ''` as "inherit the parent's",
    * and this field is free text that users fill in with a literal `~`.
    * `??` and no expansion were how the probe kept both bugs after the adapter
@@ -625,7 +616,7 @@ export class ACPProbe {
     // from the Connections form and the route schema does not constrain its
     // shape. Unresolved, `spawn` interprets it against Station's own directory
     // — so `cwd: "."` lands the agent in the install root, which is the exact
-    // outcome #1088 is named after, and `".."` walks further out. It also
+    // outcome archive#1088 is named after, and `".."` walks further out. It also
     // reached `session/new`, where a relative path means something different
     // to the agent than it does to Station.
     const configured = this.config.cwd
@@ -662,7 +653,7 @@ export class ACPProbe {
   }
 
   private async runProbe(initiator: ACPProbeInitiator): Promise<boolean> {
-    // station#3404: "first contact" is `lastHandshakeObservedAt === 0` — no
+    // archive#3404: "first contact" is `lastHandshakeObservedAt === 0` — no
     // `initialize` has ever SUCCEEDED — not `lastProbeAt === 0`. Both fields
     // are monotonic (see the field's own note: the reset that used to make
     // this contrast false was removed), so the difference between them is
@@ -686,7 +677,7 @@ export class ACPProbe {
       this.lastHandshakeObservedAt === 0 && initiator === 'background'
         ? COLD_START_OPERATION_TIMEOUT_MS
         : this.operationTimeoutMs;
-    // station#3448: fire-and-forget, NOT awaited. This used to be the first
+    // archive#3448: fire-and-forget, NOT awaited. This used to be the first
     // AWAITED statement in this method, so every caller of `probe()` -- the
     // user-facing Reconnect route included -- paid the full retry cost for
     // every survivor still pending from earlier cycles before a fresh engine
@@ -700,7 +691,7 @@ export class ACPProbe {
     // below exists only so a conforming-but-rejecting override can never
     // produce an unhandled rejection.
     //
-    // station#3448 L-4 disclosure: the awaited call this replaced had its
+    // archive#3448 L-4 disclosure: the awaited call this replaced had its
     // own `try/catch` here, which on a rejection set `lastError = {message,
     // phase: 'cleanup retry'}`, logged 'ACPProbe cleanup retry failed;
     // skipping a new probe', and returned `false` WITHOUT attempting a new
@@ -815,13 +806,12 @@ export class ACPProbe {
         message: probeErrorMessage(err),
         phase: probePhase,
       };
-      // station#3404: "has this connection ever handshaked" is
+      // archive#3404: "has this connection ever handshaked" is
       // `lastHandshakeObservedAt > 0`, NOT `lastSuccess`. `lastSuccess` holds
       // the PREVIOUS run's outcome here (nothing resets it at run entry), so
-      // reading it as "has ever succeeded" made the branch mean "the previous
-      // run also failed" — success, fail, fail took the `else` and discarded a
-      // real handshake observation. The comment below says "never succeeded";
-      // this is now the state that actually derives it.
+      // reading it as "has ever succeeded" would make the branch mean "the
+      // previous run also failed" — success, fail, fail takes the `else` and
+      // discards a real handshake observation.
       if (this.lastHandshakeObservedAt > 0) {
         this.logger.warn('ACPProbe failed; retaining stale cache', {
           err,
@@ -846,8 +836,8 @@ export class ACPProbe {
       // Drop it only once it is actually gone. This is the primary reaping
       // path -- a survivor removed here never reaches retryPendingCleanup at
       // all, which is how a live owner ended up holding engines it had no
-      // remaining reference to (station#3422). Attempt bookkeeping and the
-      // retry bound live in attemptCleanup (station#3441), shared with
+      // remaining reference to (archive#3422). Attempt bookkeeping and the
+      // retry bound live in attemptCleanup (archive#3441), shared with
       // retryPendingCleanup so the two paths cannot drift.
       await this.attemptCleanup(process, 0);
     }
@@ -856,18 +846,18 @@ export class ACPProbe {
   }
 
   /**
-   * station#1863: the destroy path must NOT be silently abandoned. See
+   * archive#1863: the destroy path must NOT be silently abandoned. See
    * {@link destroyProcessWithEscalation} for the mechanism. The deadline is
    * guaranteed above destroy()'s own escalation so a healthy destroy wins; a
    * miss escalates to a group SIGKILL.
    *
-   * `isPrimaryCleanup` -- station#3448 BLOCKING fix-round finding -- gates
+   * `isPrimaryCleanup` gates
    * whether a miss may write `this.lastSuccess = false`. `onMiss` fires on
    * ANY destroy-race miss, including the ordinary "destroy() rejects quickly
    * but never confirms" mode (measured ~1.0-1.2s in {@link
    * MAX_CLEANUP_RETRY_ATTEMPTS}'s own docblock), not only a full deadline
    * miss. `retryPendingCleanupOnce` now drives this concurrently with an
-   * in-flight handshake (station#3448), so a background survivor's miss
+   * in-flight handshake (archive#3448), so a background survivor's miss
    * could otherwise overwrite THIS run's own, independently-derived
    * `lastSuccess` -- flipping a probe that just handshaked successfully to
    * reporting unavailable, with `lastError` left `null` (no catch block runs
@@ -912,7 +902,7 @@ export class ACPProbe {
    * destroys the process regardless, so a hung start/session is reclaimed by
    * `cleanupProbeProcess` rather than by this race.
    *
-   * station#1863: this is why `destroy()` NO LONGER goes through this helper —
+   * archive#1863: this is why `destroy()` NO LONGER goes through this helper —
    * there is no further cleanup after destroy, so abandoning it there leaked
    * the engine. Destroy now uses `cleanupProbeProcess`, which escalates to a
    * group SIGKILL on a miss instead of abandoning.
@@ -938,7 +928,7 @@ export class ACPProbe {
         remainingMs,
       );
     });
-    // station#3404: the third racer collapses the remaining budget the moment
+    // archive#3404: the third racer collapses the remaining budget the moment
     // `dispose()` is called. The probe's result is worthless once its owner is
     // being torn down (the connection is being removed or replaced by a fresh
     // probe), and the caller of `dispose()` is an HTTP request — so waiting
@@ -985,12 +975,12 @@ export class ACPProbe {
   getCapabilities() {
     return this.cachedCapabilities;
   }
-  /** #895 wave B: the full initialize agentCapabilities handshake — evidence only. */
+  /** archive#895 wave B: the full initialize agentCapabilities handshake — evidence only. */
   getAgentCapabilities(): InitializeResult['agentCapabilities'] | null {
     return this.cachedAgentCapabilities;
   }
   /**
-   * station#1549: when the last SUCCESSFUL handshake was observed (epoch ms),
+   * archive#1549: when the last SUCCESSFUL handshake was observed (epoch ms),
    * or `0` when none ever has. Paired with `getAgentCapabilities` so a
    * consumer deriving a `ControlPlaneObservation` can date the evidence
    * honestly instead of stamping it "now" — and so that a handshake carrying
@@ -1004,7 +994,7 @@ export class ACPProbe {
   }
 
   /**
-   * station#3404: whether a probe run is currently in flight. The manager
+   * archive#3404: whether a probe run is currently in flight. The manager
    * view reads this so a connection whose FIRST handshake is still
    * outstanding reports `PROBING` instead of `UNAVAILABLE` — without it, a
    * slow-starting engine that already burnt its first (cold-timed-out) probe
@@ -1016,7 +1006,7 @@ export class ACPProbe {
   }
 
   /**
-   * station#3404: `disposed` alone is only observed BETWEEN handshake phases,
+   * archive#3404: `disposed` alone is only observed BETWEEN handshake phases,
    * so signalling `disposeRequested` is what makes this bounded by cleanup
    * work rather than by whatever budget the in-flight probe happens to be on.
    * The wait that remains is `cleanupProbeProcess`'s
@@ -1039,7 +1029,7 @@ export class ACPProbe {
   }
 
   /**
-   * station#3448: joins an already-in-flight call instead of starting a
+   * archive#3448: joins an already-in-flight call instead of starting a
    * second one -- see {@link ACPProbe.cleanupRetryFlight}'s own note for why
    * that join is needed once `runProbe` stopped awaiting this before
    * spawning. The actual retry loop, and the "does not throw" guarantee that
@@ -1063,11 +1053,11 @@ export class ACPProbe {
    * `destroyProcessWithEscalation`, whose catch/finally absorb every rejection
    * path (the graceful destroy miss is caught, the second destroy is
    * `.catch`-guarded, and the timer is cleared in `finally`), so this method
-   * does not throw. station#1863 M3: the previous `AggregateError` throw was
+   * does not throw. archive#1863 M3: the previous `AggregateError` throw was
    * unreachable dead code; it was removed rather than left as a guard whose
    * rejection path never executes (the repo's founding finding).
    *
-   * station#3441 LOW-3: this claim also depends on `attemptCleanup`'s calls
+   * archive#3441 LOW-3: this claim also depends on `attemptCleanup`'s calls
    * into `ACPProcess.survivesCleanup()` and (via `forceGroupKill()`)
    * `waitUntilProcessGone()` never rejecting either -- the default
    * `probeIdentity` never does, but the option is injectable, and neither of
@@ -1077,7 +1067,7 @@ export class ACPProbe {
    * throw" true of the WHOLE call chain, not just
    * `destroyProcessWithEscalation`'s own local absorption.
    *
-   * station#3422: this set is named for retrying, and used to forget instead.
+   * archive#3422: this set is named for retrying, and used to forget instead.
    * It dropped every entry unconditionally, and `destroyProcessWithEscalation`
    * never throws -- it catches and escalates -- so a process that SURVIVED its
    * own reaping was indistinguishable from one that died, and was removed from
@@ -1086,12 +1076,12 @@ export class ACPProbe {
    * had no remaining reference to any of them.
    *
    * Keep a survivor and try again next cycle, up to {@link
-   * MAX_CLEANUP_RETRY_ATTEMPTS} (station#3441 -- the original fix had no
+   * MAX_CLEANUP_RETRY_ATTEMPTS} (archive#3441 -- the original fix had no
    * cap). The probe runs about once a minute, so a transiently unkillable
    * child gets repeated attempts rather than one, and a permanently
    * unkillable one is abandoned rather than accumulating forever.
    *
-   * station#3448: this loop, and every attempt it drives, now runs
+   * archive#3448: this loop, and every attempt it drives, now runs
    * concurrently with the rest of `runProbe` (see that call site) rather than
    * gating it -- callers of `probe()` observe none of this method's wall time.
    */
@@ -1105,13 +1095,13 @@ export class ACPProbe {
   }
 
   /**
-   * station#3441: the one place that attempts a survivor's destroy again and
+   * archive#3441: the one place that attempts a survivor's destroy again and
    * decides whether to retain it, so `runProbe`'s finally block and
    * `retryPendingCleanup` cannot drift into two different retention rules.
    * `priorAttempts` is the number of destroy attempts already spent on this
    * process (0 for one freshly added by `runProbe`).
    *
-   * station#3441 MEDIUM-1: for a RETRY (`priorAttempts > 0` -- this entry was
+   * archive#3441 MEDIUM-1: for a RETRY (`priorAttempts > 0` -- this entry was
    * carried over from an earlier cycle, so real time has passed since it was
    * last checked), ask identity BEFORE signalling, not only after.
    * `cleanupProbeProcess` signals the pid unconditionally; checking identity
@@ -1125,27 +1115,27 @@ export class ACPProbe {
    * called in the same cycle the process was spawned) does not need this:
    * no cycle boundary has passed for the pid to have been reused across.
    *
-   * station#3448 L-2 disclosure, not fixed here: the identity check above is
+   * archive#3448 L-2 disclosure, not fixed here: the identity check above is
    * a PRE-check, taken once before `cleanupProbeProcess` runs. Inside it,
    * `destroy()` rejecting escalates to `forceGroupKill()`, which signals
    * `-pid` with no re-check of its own -- so between this method's identity
    * check and that signal (destroy's own race window, plus whatever
    * `forceGroupKill` takes to act), the pid could be recycled by an
    * unrelated process and still receive the group-kill. This window existed
-   * before station#3448; what's new is that it now runs CONCURRENTLY with
+   * before archive#3448; what changed is that it runs CONCURRENTLY with
    * `processFactory` spawning this SAME probe's next engine (retries are no
    * longer serialized ahead of a fresh spawn), so the freshly-spawned
    * process is a candidate for that recycled pid in a way it was not when
    * the retry fully completed before the next spawn started. Low
    * probability -- pid reuse within one escalation's own short race window,
-   * landing on this probe's own next spawn specifically -- and undisclosed
-   * until now; not fixed in this fix round.
+   * landing on this probe's own next spawn specifically -- and a
+   * disclosed, unfixed gap.
    *
-   * station#3448 fix-round: `priorAttempts === 0` also selects
+   * `priorAttempts === 0` also selects
    * `isPrimaryCleanup` for {@link ACPProbe.cleanupProbeProcess} -- see that
-   * parameter's own docblock for why the BLOCKING contamination fix depends
-   * on it, and {@link MAX_PENDING_CLEANUP_SIZE} for the HIGH set-size cap
-   * this method also now enforces below.
+   * parameter's own docblock for why the contamination fix depends
+   * on it, and {@link MAX_PENDING_CLEANUP_SIZE} for the set-size cap
+   * this method also enforces below.
    */
   private async attemptCleanup(
     process: ACPProcess,
@@ -1153,7 +1143,7 @@ export class ACPProbe {
   ): Promise<void> {
     if (priorAttempts > 0 && !(await process.survivesCleanup())) {
       this.pendingCleanup.delete(process);
-      // station#3441 LOW-1: this pre-check confirmed the pid is gone (dead,
+      // archive#3441 LOW-1: this pre-check confirmed the pid is gone (dead,
       // or reused by a different process) without ever signalling it -- but
       // an EARLIER attempt's SIGKILL is very plausibly why, and that
       // attempt's own `forceGroupKill()` may not have been the one to
@@ -1176,7 +1166,7 @@ export class ACPProbe {
     }
     if (!(await process.survivesCleanup())) {
       this.pendingCleanup.delete(process);
-      // station#3441 LOW-1: `cleanupProbeProcess` above may have released
+      // archive#3441 LOW-1: `cleanupProbeProcess` above may have released
       // this already (a confirmed `forceGroupKill()`, or a successful
       // `destroy()`) -- `releaseIfConfirmedGone` is idempotent, so a second
       // call here is a no-op in that case. It is NOT a no-op when the
@@ -1198,8 +1188,7 @@ export class ACPProbe {
       this.cleanupRetentionRecorder.add(1, { outcome: 'abandoned' });
       return;
     }
-    // station#3448 HIGH fix-round, corrected in the SAME fix round
-    // (independent review, second pass): gated on `priorAttempts === 0` --
+    // Gated on `priorAttempts === 0` --
     // ONLY a brand-new entry's own first retention decision can grow
     // `pendingCleanup`'s size at all (it is already a member by this point,
     // added in `runProbe` before it was ever attempted -- see that call
@@ -1210,22 +1199,22 @@ export class ACPProbe {
     // bound, it just evicts an already-retained survivor mid-retry instead
     // of refusing the arrival that actually grows the set.
     //
-    // The first version of this check applied unconditionally to every
-    // retention decision, new or retried, and that was measurably wrong:
-    // A/B'd against the un-isolated 50ms-interval scenario, EVERY one of 21
+    // Applying the check unconditionally would be measurably wrong:
+    // under the un-isolated 50ms-interval scenario, EVERY one of 21
     // size-bound abandons had `otherRetainedCount === 4` with the subject
     // ALSO in the set -- i.e. size 5, the run's own new process being the
     // fifth member. The concurrent background pass, re-attempting an
     // ALREADY-RETAINED survivor at that exact moment, saw the same
     // count and evicted THAT older entry mid-retry instead -- the new
     // process was then retained against a set of 3. Net effect: a
-    // survivor's real attempt count collapsed to ~2 (branch:
-    // 4,3,2,2,2,...,2,1,1,1) against main's full 5 (5,5,5,5,5,...,5,4,3,2,1),
+    // survivor's real attempt count collapsed to ~2
+    // (4,3,2,2,2,...,2,1,1,1) against the serialized shape's full 5
+    // (5,5,5,5,5,...,5,4,3,2,1),
     // and `MAX_CLEANUP_RETRY_ATTEMPTS` became unreachable -- 0 of 21
     // abandonments in that run went through it, directly contradicting
     // {@link MAX_CLEANUP_RETRY_ATTEMPTS}'s own "a transiently unkillable
-    // child gets repeated attempts rather than one." Gating on
-    // `priorAttempts === 0` matches the ALLOWANCE's documented intent
+    // child gets repeated attempts rather than one." The gate matches
+    // the ALLOWANCE's documented intent
     // exactly: a newly spawned process's own first attempt can still be
     // refused ADMISSION when the set is already full, but nothing already
     // admitted is evicted to make room for it. See {@link

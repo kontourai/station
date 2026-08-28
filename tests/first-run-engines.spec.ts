@@ -1,5 +1,5 @@
 /**
- * First-run "Which agents do you use?" chapter in the real app (station#3027,
+ * First-run "Which agents do you use?" chapter in the real app (archive#3027,
  * re-placed by the UX audit's RT-02/SHELL-12).
  *
  * The unit suite (`EnginesStep.test.tsx`, `FirstRunHomeChapter.test.tsx`)
@@ -135,7 +135,7 @@ const APP_CONFIG_PATH_SUFFIX = '/config/app';
 const FIRST_RUN_PATH_SUFFIX = '/config/first-run';
 
 /**
- * The whole request body (station#3627). The chapter posts an engine's
+ * The whole request body (archive#3627). The chapter posts an engine's
  * connection id and NOTHING else — no name, no prompt, no draft — because the
  * server resolves the identity and names the Agent from the same registry
  * projection the catalog renders. That is what these specs are asserting when
@@ -330,12 +330,12 @@ function firstRunWrites(writes: Record<string, unknown>[]): FirstRunRecord[] {
 /**
  * The "About you" step's own Skip, and only it.
  *
- * `{ name: 'Skip' }` is a substring match, and since #3656 the shell renders
+ * `{ name: 'Skip' }` is a substring match, and since archive#3656 the shell renders
  * a `Skip to content` control as the document's first focusable element (the
  * tour's `Skip the tour` is a third). A bare name is therefore a strict-mode
  * violation that fires on every load, not a flake. Scoped to the step AND
  * exact, so it names one control for the same reason the step does
- * (station#3877).
+ * (archive#3877).
  */
 function skipAboutYou(page: Page) {
   return page
@@ -440,12 +440,12 @@ test.describe('First-run engines chapter (station#3027)', () => {
     // an app-level overlay that outlives this route.
     const overlay = page.locator('.responsive-surface-overlay');
     await expect(overlay).toBeVisible();
-    // #3656 moved the `main` landmark to the SHELL (`App.tsx`'s
+    // archive#3656 moved the `main` landmark to the SHELL (`App.tsx`'s
     // `#station-main`), so Home renders a `section.home-view` inside it and
     // this assertion matched nothing for months. It is still the same claim —
     // the chapter is a descendant of Home's own route content, not a fixed
     // corner card and not an app-level overlay — expressed against the shell
-    // that exists (station#3877).
+    // that exists (archive#3877).
     await expect(
       page.locator('main.main-content .home-view .first-run-engines'),
     ).toHaveCount(1);
@@ -497,13 +497,13 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await chapter.getByText('Station also works with').click();
     await expect(undetected).toBeVisible();
-    // Since #3843 this note NAMES the machine for a reader on a paired
+    // Since archive#3843 this note NAMES the machine for a reader on a paired
     // device, which every context in this suite is: the runner seeds the
     // operator credential into Connect's vault and a bearer outranks the
     // device-session cookie at the auth boundary. The name is whatever host
     // ran the suite, so this pins the sentence rather than the name — the
     // per-class wording itself is `paired-device-presentation.spec.ts`'s
-    // subject, not this one's (station#3877).
+    // subject, not this one's (archive#3877).
     await expect(undetected).toContainText(
       /Not found on .+\. Agent CLIs run on that computer, so it has to be installed there\./,
     );
@@ -974,8 +974,8 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
   test('a pending home is offered no modal anywhere, not just on Home', async ({
     page,
   }) => {
-    // THE DISCRIMINATING CASE for the `pending` rule, found by fault
-    // injection: wherever the chapter IS on screen the modal is already
+    // THE DISCRIMINATING CASE for the `pending` rule: wherever the chapter
+    // IS on screen the modal is already
     // withheld by the one-overlay rule, so removing the `pending` rule changes
     // nothing a Home-only test can see. Off Home the chapter is unmounted and
     // the launcher is not wanted (this mix is ready), so the modal would take
@@ -989,8 +989,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // A CSS selector, not a role query: a modal that covers the route
     // aria-hides everything beneath it, so a role-based "the page rendered"
     // gate reddens under the very defect this case exists to catch and never
-    // reaches the assertions below — observed exactly that way in this case's
-    // own fault injection. It is also what proves the three absences below
+    // reaches the assertions below. It is also what proves the three absences below
     // are not a blank page reading as a pass. Waiting on the disclosure
     // request instead does not work either: when the rule holds, that request
     // is never made.

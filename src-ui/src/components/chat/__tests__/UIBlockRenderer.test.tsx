@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1399 fix round, H2 (independent review): slice 1 shipped
+* archive#1399, : shipped
  * `attestationState` data with no reader anywhere in the product — nothing
  * inspected it, so an `'unattested'` claiming block rendered identically to
  * an `'attested'` one. This suite proves the minimal visible treatment: a
@@ -28,9 +28,9 @@ describe('UIBlockRenderer — attestation badge (station#1399 fix round, H2)', (
     expect(screen.getByText('Unattested')).toBeTruthy();
   });
 
-  // station#1399 fix round 2, B5 (independent review): the badge carries
-  // the precise meaning of 'attested' — a receipted source DECLARATION
-  // with a bound digest, not "sources verified to exist" — as a tooltip.
+ // archive#1399 fix, : the badge carries
+// the precise meaning of 'attested' — a receipted source DECLARATION
+// with a bound digest, not "sources verified to exist" — as a tooltip.
   test('the Unattested badge carries the precise-meaning tooltip', () => {
     const block: UICardBlock = {
       type: 'card',

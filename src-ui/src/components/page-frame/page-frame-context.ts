@@ -23,26 +23,26 @@ export interface PageHeaderContent {
 }
 
 export interface PageFrameContextValue {
-  /**
-   * The header's right-aligned action cell, or null when the route renders
-   * without a header. A view portals its primary action here instead of
-   * inventing a place for it (SHELL-11: eight of the eight split-pane routes
-   * had their primary action in a list-pane footer, below the fold on short
-   * viewports).
-   */
+/**
+* The header's right-aligned action cell, or null when the route renders
+* without a header. A view portals its primary action here instead of
+* inventing a place for it (: eight of the eight split-pane routes
+* had their primary action in a list-pane footer, below the fold on short
+* viewports).
+*/
   actionsNode: HTMLElement | null;
-  /**
-   * A route-owned mobile detail layer. It is a sibling of the framed page's
-   * ordinary body, so a sheet can escape a route entrance transform without
-   * reaching imperatively into the app shell.
-   */
+/**
+* A route-owned mobile detail layer. It is a sibling of the framed page's
+* ordinary body, so a sheet can escape a route entrance transform without
+* reaching imperatively into the app shell.
+*/
   mobileDetailNode: HTMLElement | null;
-  /**
-   * Which route the header currently belongs to, from
-   * `app-shell/route-identity.ts` — the same rule the route entrance and the
-   * sidebar's pending publisher key off, so "this is a different route" is
-   * decided once for the whole shell.
-   */
+/**
+* Which route the header currently belongs to, from
+* `app-shell/route-identity.ts` — the same rule the route entrance and the
+* sidebar's pending publisher key off, so "this is a different route" is
+* decided once for the whole shell.
+*/
   routeIdentity: string;
   setHeaderOverride: (content: PageHeaderContent | null) => void;
   registerMobileDetailSheet: () => () => void;
@@ -95,9 +95,9 @@ export function usePageHeader(content: PageHeaderContent | null): void {
   const ownsTheHeader = useOwnsTheHeader();
   useLayoutEffect(() => {
     if (!setHeaderOverride) return;
-    // A view the user has left publishes NOTHING rather than its own title:
-    // the frame falls back to the route table's name for the route now on
-    // screen. See `useOwnsTheHeader`.
+// A view the user has left publishes NOTHING rather than its own title:
+// the frame falls back to the route table's name for the route now on
+// screen. See `useOwnsTheHeader`.
     setHeaderOverride(ownsTheHeader ? content : null);
   });
   useLayoutEffect(() => {

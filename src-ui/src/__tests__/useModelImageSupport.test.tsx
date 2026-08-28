@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * station#3344 (review MEDIUM-2). `useModelImageSupport` is the whole reason
+ * archive#3344  `useModelImageSupport` is the whole reason
  * "the Bedrock catalog has no row for this model" stopped meaning "this model
  * cannot see images" — and nothing exercised it directly. Collapsing its
  * three states back to a boolean passed the entire suite, so the tri-state it
@@ -59,9 +59,9 @@ describe('useModelImageSupport', () => {
     catalog.data = [
       { modelId: 'anthropic.claude-vision-v1', inputModalities: ['IMAGE'] },
     ];
-    // A Claude Code / Codex / ACP / Ollama model id: real, and absent from a
-    // catalog that only knows Bedrock. This is the case that used to read as
-    // a refusal.
+// A Claude Code / Codex / ACP / Ollama model id: real, and absent from a
+// catalog that only knows Bedrock. This is the case that used to read as
+// a refusal.
     const { result } = renderHook(() => useModelImageSupport('gpt-5-codex'));
     expect(result.current).toBe('unknown');
   });
@@ -80,11 +80,11 @@ describe('useModelImageSupport', () => {
     expect(result.current).toBe('unknown');
   });
 
-  // The shape the browser fixture actually serves, and the shape any producer
-  // that has not filled the field in serves. `inputModalities` is typed as
-  // required but crosses the wire; reading `.length` off it unchecked threw
-  // inside a hook the composer calls on every render, which blanked the whole
-  // app rather than answering the question wrongly.
+// The shape the browser fixture actually serves, and the shape any producer
+// that has not filled the field in serves. `inputModalities` is typed as
+// required but crosses the wire; reading `.length` off it unchecked threw
+// inside a hook the composer calls on every render, which blanked the whole
+// app rather than answering the question wrongly.
   test("'unknown' when a matched row omits inputModalities entirely", () => {
     catalog.data = [{ modelId: 'model-default' }];
     const { result } = renderHook(() => useModelImageSupport('model-default'));

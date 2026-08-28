@@ -4,7 +4,7 @@
  * union the per-agent file memory store) into the `root:conversations` root,
  * so the K3 index and the `station knowledge search`/`search_knowledge`
  * surfaces cover past conversations exactly like any other knowledge root
- * (station#1879).
+ * (archive#1879).
  *
  * Unlike `default-store.ts`/`obsidian-store.ts`, this adapter never reads or
  * writes a Kit-format file tree at `options.storeRoot` — its canonical source

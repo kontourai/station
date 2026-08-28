@@ -11,7 +11,7 @@ loopback-only Tailscale Serve identity adapter is inside the boundary only as
 pairing-request provenance. Host-confirmed, one-time pairing is
 inside the boundary. Persistent, revocable same-origin browser sessions are the
 mobile continuity baseline; broader reconnect work remains tracked in
-[#303](https://github.com/kontourai/station/issues/303).
+[archive#303](https://github.com/kontourai/station/issues/303).
 
 ## Trust boundary
 
@@ -100,7 +100,7 @@ build details. Its schema is:
 The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
 
-## Credentialed consumers (station#2051)
+## Credentialed consumers (archive#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These
 are the supported request contracts established from the live runtime callers:
@@ -123,7 +123,7 @@ contract omits it); its own nested `capabilities` map is a set of
 proof), not the boolean feature flags below — see
 `StationCompatibility` in `packages/contracts/src/environment-security.ts`.
 
-The top-level `capabilities` (station#1095) is additive and entirely
+The top-level `capabilities` (archive#1095) is additive and entirely
 optional: every key is an optional boolean, and a host may omit the whole
 object. Absence of the object, or of a specific key, always means
 "unsupported" — either the host predates this field, or it never seeded that
@@ -143,12 +143,12 @@ Fresh nonces prevent replay, and a copied environment id cannot authorize an
 endpoint change. Remote endpoint candidates require HTTPS; HTTP is limited to
 strict loopback names and addresses.
 
-## Mutation budget (station#514)
+## Mutation budget (archive#514)
 
 The runtime security middleware applies a shared body-size ceiling and a
 per-principal mutation-rate budget to every authenticated mutation
 (`POST`/`PUT`/`PATCH`/`DELETE`) before route-specific parsing or persistence
-work. This is the shared layer #496's route-local Task field limits sit behind
+work. This is the shared layer archive#496's route-local Task field limits sit behind
 as defence in depth; each product route no longer invents its own limit.
 
 **Body-size.** `Content-Length` is checked first; an oversized request is
@@ -216,7 +216,7 @@ the real signal.
 
 ## Scope model
 
-Pairing is not all-or-nothing (station#1098). Every pairing grant and every
+Pairing is not all-or-nothing (archive#1098). Every pairing grant and every
 device session/credential exchanged from it carries an OAuth-style,
 space-delimited scope string drawn from a fixed vocabulary. The starter set
 was four scopes: `orchestration:read`, `orchestration:operate`,
@@ -230,7 +230,7 @@ out of scope.
 **The default grant is a curated constant, not "every scope."** Three
 populations receive a scope string nobody chose per-device: an offer created
 without an explicit `scope`, a credential migrated from a pre-scoping
-registry, and the operator bootstrap credential. Until station#1398 that
+registry, and the operator bootstrap credential. Until archive#1398 that
 string was computed as "join every known scope," which meant every future
 vocabulary addition silently granted the new scope to all three *and* changed
 the bytes older peers had to parse — and `parsePairingScope` rejects an
@@ -265,7 +265,7 @@ default to full access rather than Standard:
   explicit `scope` is full access (all four scopes), not Standard —
   `DevicePairingService#createOffer`'s default. The pairing UI always sends
   an explicit scope, so this fallback is reached only by a caller bypassing
-  the UI (or a pre-#1098 integration) and exists to keep that path
+  the UI (or a pre-archive#1098 integration) and exists to keep that path
   functioning rather than silently narrowing it.
 - The same-origin "Request access" continuity flow (the short-lived access
   request a browser makes directly from the Station origin, described below)
@@ -296,7 +296,7 @@ grant.
 ### Cross-station reads
 
 An SSH environment's local tunnel (`GET /api/environments/ssh/sessions`,
-station#1097) lets this Station's server process read another, remote
+archive#1097) lets this Station's server process read another, remote
 Station's orchestration session summaries — titles, project slugs, assigned
 agents, and models — for the Home work list's remote-session cards. That
 read is not itself authenticated against the remote station: the tunnel
@@ -338,7 +338,7 @@ that existed then are the faithful reading of that marker. It is deliberately
 *not* re-read as "every capability that exists now" — a migration is a
 faithful translation of an old record, never a re-grant.
 
-### Fleet inference (station#1398)
+### Fleet inference (archive#1398)
 
 `inference:invoke` gates the `/api/inference/**` family: read which local
 models this Station contributes to its owner's fleet, and ask for a model
@@ -376,11 +376,11 @@ Two hardening decisions specific to this family:
   holding a `read-only`/`standard`/`delegation` credential. Same reasoning as
   cross-station reads: tightening now is reversible, discovering the exposure
   later is not.
-  station#2051 resolves the residual tunnel disclosure: this route, like every
+  archive#2051 resolves the residual tunnel disclosure: this route, like every
   protected route, rejects a bare loopback or SSH-forwarded request with
   `401 authentication_required`. The contributed subset remains the only
   credentialed HTTP projection; the un-projected inventory is in-process only.
-- **Historical distinction, retired by station#2051.** `/api/inference/**`
+- **Historical distinction, retired by archive#2051.** `/api/inference/**`
   previously opted out of a generic loopback compatibility floor. The runtime
   now applies the credential requirement to every protected family, including
   IPv4, IPv6, IPv4-mapped loopback, and malformed `Authorization` requests.
@@ -411,7 +411,7 @@ authenticating, from `GET /api/inference/manifest`. Advertising participation
 publicly would let any LAN or tailnet scanner enumerate which of the owner's
 machines have GPUs.
 
-### SSH environment host alias, and the host key that actually gates it (station#1144, revised)
+### SSH environment host alias, and the host key that actually gates it (archive#1144, revised)
 
 `POST /api/environments/ssh` (`SshEnvironmentService#add`, mirrored by the
 `create_ssh_environment` station-control tool) registers a profile that a
@@ -458,8 +458,8 @@ the server's two, and the desktop app's:
   `StrictHostKeyChecking=yes` + `UpdateHostKeys=no` pair, before the `--`
   terminator so `ssh` reads them as its own configuration, and likewise no
   `UserKnownHostsFile` override. This path opens a remote shell and a port
-  forward as directly as the server's does; until sol's D5 delta review it
-  was the one Station SSH surface still inheriting ambient policy, so under
+  forward as directly as the server's does; it was
+  the one Station SSH surface that inherited ambient policy, so under
   `accept-new` it could accept and record an unseen key.
 
 The server's two therefore read the SAME store. The probe used to force
@@ -529,7 +529,7 @@ key the operator *has* already confirmed, a connection attempt to a machine
 they already trust from this one. Probe-driven outbound attempts are bounded
 separately by the admission control described below.
 
-### SSH probe admission control (sol review, D5 finding 4)
+### SSH probe admission control (D5 finding 4)
 
 `POST /api/environments/ssh/probe` starts real `ssh` processes against a
 caller-named host. Unbounded, an authenticated `orchestration:operate`
@@ -571,7 +571,7 @@ exists to prevent. Disclosed test coverage: the real-process test uses
 platform SELECTION is unit-tested with a mocked platform, and no run on a
 real Windows host backs the `taskkill` behaviour itself.
 
-### Historical pairing approval finding (pre-station#2051, station#1490)
+### Historical pairing approval finding (pre-archive#2051, archive#1490)
 
 Pairing **approval** is the one step that converts a position into authority
 that outlives it. Every other step is either public by design (the joiner's own
@@ -579,7 +579,7 @@ request and exchange) or reversible by the operator; a confirmed request is
 exchanged for a device credential that keeps working after the caller's access
 to this machine ends.
 
-Before station#2051 it was reachable on the compatibility floor. A probe then
+Before archive#2051 it was reachable on the compatibility floor. A probe then
 showed that a caller presenting no credential sent `POST
 /.well-known/station/v1/pairing/access-request` (a non-browser client passes
 `isTrustedBrowserPairingOrigin` by sending an allow-listed `Origin` with no
@@ -712,7 +712,7 @@ same credential the CLI does. Note the tense: no such wiring exists today
 (`HostDevicePairingPanel` is mounted from `ConnectionManagerModalContent`, and
 nothing reads a credential from `STATION_HOME`), so this is a feasibility claim
 about unbuilt capability and the cost analysis rests on it being built. That trade is an owner call, recorded in
-`src-server/security/pairing-route-scopes.ts` beside the list, and station#1490
+`src-server/security/pairing-route-scopes.ts` beside the list, and archive#1490
 carries a third option (a first-run enrolment token printed to the terminal
 that started Station) that would remove the browser cost entirely.
 

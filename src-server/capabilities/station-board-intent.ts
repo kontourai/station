@@ -1,6 +1,6 @@
 /**
  * Consent-gated resolve+execute for one board-emitted `ConsoleIntent`
- * (roadmap #586, part of epic #580, S6) — the server-side half of "click-
+ * (roadmap archive#586, part of epic archive#580, S6) — the server-side half of "click-
  * to-act on the Station session routes through capability-descriptor
  * resolution" (epic DoD). Pure function, no HTTP/Hono coupling, so the
  * consent invariant is directly unit-testable; `routes/operating-state.ts`

@@ -101,7 +101,7 @@ tag that gets past Android signing):
 TestFlight can take the first IPA from the pipeline once the App Store Connect
 app record, distribution profile, and API key exist. Add yourself under
 TestFlight → Internal Testing. External groups trigger Beta App Review and
-need #1772.
+need archive#1772.
 
 ## 5. Tag only after secrets exist
 
@@ -120,7 +120,7 @@ failure. Then confirm the build in the consoles.
 
 ## Not this checklist
 
-- Making the GitHub repository public (#1978)
-- Custom `updates.kontourai.io` feed (#2211)
-- Wrapping this process in a Flow (#1769)
-- Apple 4.2 unpaired first-launch for **external** review (#1772)
+- Making the GitHub repository public (archive#1978)
+- Custom `updates.kontourai.io` feed (archive#2211)
+- Wrapping this process in a Flow (archive#1769)
+- Apple 4.2 unpaired first-launch for **external** review (archive#1772)

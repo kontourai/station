@@ -168,7 +168,7 @@ describe('codex-adapter-notifications', () => {
     });
   });
 
-  // station#3442: the Codex app-server reports a genuinely failed turn (e.g.
+  // archive#3442: the Codex app-server reports a genuinely failed turn (e.g.
   // hitting the usage limit mid-turn) through the SAME `turn/completed`
   // notification as a success — the real signal is `turn.status === 'failed'`
   // (protocol: completed | interrupted | failed | inProgress; confirmed via
@@ -215,7 +215,7 @@ describe('codex-adapter-notifications', () => {
     });
   });
 
-  // station#3451 finding 3: `retryEligible` disagreed between the board
+  // archive#3451 finding 3: `retryEligible` disagreed between the board
   // (crude `lifecycleState === 'failed'`) and the run
   // (`classifyAgentRunFailure` reading `unknown` because this event carried
   // no `code`/`retriable`). `turn.status === 'failed'` is codex's own final
@@ -314,7 +314,7 @@ describe('codex-adapter-notifications', () => {
     expect(events[0]).toMatchObject({ finishReason: 'cancelled' });
   });
 
-  // station#3473 fix round: a successful turn/completed ALWAYS marks the
+  // archive#3473 fix round: a successful turn/completed ALWAYS marks the
   // terminal published, so a concurrent stopSession/process-exit synthesis
   // never double-publishes for this turn.
   test('a successful turn/completed marks terminalPublishedForTurnId', () => {
@@ -337,13 +337,13 @@ describe('codex-adapter-notifications', () => {
     expect(record.terminalPublishedForTurnId).toBe('turn-1');
   });
 
-  // station#3451 fix round D8: a LATE turn/completed for turn-1 arriving
+  // archive#3451 fix round D8: a LATE turn/completed for turn-1 arriving
   // while turn-2 is already the active turn must not wipe turn-2's
   // tracking. terminalPublishedForTurnId is still recorded (a true fact
   // about turn-1), but activeTurnId is untouched since it no longer names
   // turn-1.
   //
-  // station#3572(a) (widened, same test): D8 only gated the `activeTurnId`
+  // archive#3572(a) (widened, same test): D8 only gated the `activeTurnId`
   // clear. `activeTurnStartedAt` — turn-2's OWN in-flight start timestamp —
   // used to be cleared unconditionally by turn-1's stale completion two
   // lines below the old D8 guard, so when turn-2 genuinely completed later
@@ -373,7 +373,7 @@ describe('codex-adapter-notifications', () => {
     expect(record.terminalPublishedForTurnId).toBe('turn-1');
   });
 
-  // station#3572(a): the metric-corruption half of the same defect. Before
+  // archive#3572(a): the metric-corruption half of the same defect. Before
   // the fix, the `adapterTurnDuration.record` call ran UNCONDITIONALLY
   // before the identity check even existed, so a stale turn-1 completion
   // recorded a duration sample computed from turn-2's (unrelated) start
@@ -447,7 +447,7 @@ describe('codex-adapter-notifications', () => {
     expect(record.terminalPublishedForTurnId).toBe('turn-1');
   });
 
-  // station#3451 finding B2 (blocking): the `willRetry`-falsy 'error'
+  // archive#3451 finding B2 (blocking): the `willRetry`-falsy 'error'
   // notification arm never marked anything before this fix, even though
   // every downstream consumer (the lifecycle fold, the stall watchdog, the
   // trackEngineTurn telemetry gate, checkpoint capture) already treats a

@@ -4,8 +4,8 @@ import { useWorkspacePaneDockAction } from './WorkspacePaneDockContext';
 
 /**
  * The route's away state while its pane occupies the ambient dock
- * (station#4090 M5). Before this, a route whose pane was docked rendered it
- * AGAIN — two live co-mounted placements of one occurrence (M2's disclosed
+ * (archive#4090). Before this, a route whose pane was docked rendered it
+ * AGAIN — two live co-mounted placements of one occurrence ( disclosed
  * behavior). The away state is honest chrome riding the shared `Empty`
  * primitive: the pane's name, where it is, and one action that removes it
  * from the dock (restoring the dock's baseline occupant, Chat) so the route

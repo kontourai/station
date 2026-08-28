@@ -1,7 +1,7 @@
 /**
- * Station#settings-revamp slice 2 — the device-scope client-settings
- * registry (docs/design/settings-architecture.md §3 "S3. Device" and §6
- * slice 2's companion to slice 1's `settings-registry.ts`).
+ * The device-scope client-settings
+ * registry (docs/design/settings-architecture.md §3 "S3. Device") — the
+ * device-scope companion to `settings-registry.ts`.
  *
  * One definition per setting persisted to the single versioned browser
  * store (`station-device-settings-v1`, `src-ui/src/lib/device-settings-store.ts`).
@@ -67,7 +67,7 @@ export interface InboxSectionsState {
 }
 
 /**
- * kontourai/station#3314: the project sidebar's "Open chats" and "Drafts"
+ * kontourai/station-archive#3314: the project sidebar's "Open chats" and "Drafts"
  * sections — each independently collapsible AND removable from the sidebar
  * altogether. Boolean fields on purpose (not a tri-state enum), so the
  * device-settings store's shared composite boolean-field validator covers
@@ -81,12 +81,10 @@ export interface SidebarSectionsState {
 }
 
 /**
- * station#settings-revamp slice 3 (#1359 store convergence, epic #1269,
- * see #1272's recorded scope addition): the keyboard-shortcut override
+ * The keyboard-shortcut override
  * shape, moved here from the app-side `shortcutPreferences.ts` so the
  * registry can declare it as a first-class device setting instead of a
- * field inside the parallel `station.device-settings` root #1359 shipped
- * while slice 2 was in review.
+ * field inside the parallel legacy `station.device-settings` JSON root.
  */
 export type ShortcutModifier = 'cmd' | 'ctrl' | 'shift' | 'alt';
 
@@ -112,8 +110,8 @@ export interface ModelPickerPreferences {
 }
 
 /**
- * Chat dock placement (station#settings-revamp slice 4,
- * docs/design/settings-architecture.md §3 S4 "Chat/session"). Mirrors
+ * Chat dock placement
+ * (docs/design/settings-architecture.md §3 S4 "Chat/session"). Mirrors
  * `DockMode` in `src-ui/src/types.ts` exactly (same literal union) — kept as
  * its own alias here rather than importing across the contracts/src-ui
  * boundary, matching this module's dependency-free contract.
@@ -121,7 +119,7 @@ export interface ModelPickerPreferences {
 export type ChatDockMode = 'left' | 'bottom' | 'right';
 
 /**
- * station#2652: how far the person got through the three-chapter first run.
+ * How far the person got through the three-chapter first run.
  *
  * Device-scope on purpose: "have I been shown the tour on this machine" is a
  * property of this browser/app install, exactly like
@@ -137,7 +135,7 @@ export type ChatDockMode = 'left' | 'bottom' | 'right';
 export type FirstRunChapter =
   | 'connect'
   /**
-   * station#3027: "which agents do you use?" — the installed-engine
+   * archive#3027: "which agents do you use?" — the installed-engine
    * checklist, between Connect (which guarantees a reachable server) and
    * About you (so the tour lands on a picker with something in it).
    */
@@ -168,22 +166,22 @@ export interface DeviceSettings {
   diffWrap: boolean;
   inboxOpen: boolean;
   inboxSections: InboxSectionsState;
-  /** station#3314: sidebar "Open chats"/"Drafts" collapse + removal state. */
+  /** archive#3314: sidebar "Open chats"/"Drafts" collapse + removal state. */
   sidebarSections: SidebarSectionsState;
   projectSidebarCollapsed: boolean;
   onboardingSetupDismissed: boolean;
   shortcutOverrides: ShortcutOverrides;
   skillShortcuts: SkillShortcuts;
   modelPickerPreferences: ModelPickerPreferences;
-  /** Show model reasoning steps inline in chat messages (station#settings-revamp slice 4). */
+  /** Show model reasoning steps inline in chat messages. */
   chatShowReasoning: boolean;
-  /** Allow expanding tool calls to view arguments/results (station#settings-revamp slice 4). */
+  /** Allow expanding tool calls to view arguments/results. */
   chatShowToolDetails: boolean;
   /**
    * Chat message font size in px. `null` means "follow the Station-configured
    * default" (`AppConfig.defaultChatFontSize`) — a number is stored only once
-   * the user explicitly adjusts it in-chat (station#settings-revamp slice 4).
-   * Never had a prior key: pre-slice-4 font size lived only in a `?fontSize=`
+   * the user explicitly adjusts it in-chat.
+   * Never had a prior key: font size previously lived only in a `?fontSize=`
    * URL param and was never persisted.
    */
   chatFontSize: number | null;
@@ -195,25 +193,25 @@ export interface DeviceSettings {
   dockSlotPlacement: ChatDockMode;
   /**
    * Mobile haptic feedback for stream growth, copy, pairing success, and
-   * destructive confirms (station#1954). Desktop/web hosts ignore this;
+   * destructive confirms (archive#1954). Desktop/web hosts ignore this;
    * default on so a fresh mobile install feels alive without a settings hunt.
    */
   hapticsEnabled: boolean;
   /**
-   * station#2652: chapter/step reached in the guided first run on this device.
+   * archive#2652: chapter/step reached in the guided first run on this device.
    * Never had a prior key — the guided first run is new.
    */
   firstRunProgress: FirstRunProgress;
   /**
-   * station#3313: show the Developer surface (logs, system, telemetry,
+   * archive#3313: show the Developer surface (logs, system, telemetry,
    * memory, archive) in this device's sidebar and command palette. Gates
    * navigation advertisement only — /developer deep links keep working when
    * off. Never had a prior key: Developer was previously always visible.
    */
   developerToolsEnabled: boolean;
   /**
-   * station#4525: the chat dock's own remembered project binding. Owned by
-   * the persistent `DockShell`/`useDockShellChrome` (station#4484), not by
+   * archive#4525: the chat dock's own remembered project binding. Owned by
+   * the persistent `DockShell`/`useDockShellChrome` (archive#4484), not by
    * the Chat occupant that remounts on every occupant switch — persisting it
    * here (mirroring `chatDockHeight`/`chatDockWidth`) is what makes the
    * binding survive an occupant switch, a new unbound chat, and a reload,
@@ -242,14 +240,14 @@ export interface DeviceSettingDefinition<
    * Normally unique per setting — the migration reads this key's raw string
    * value and parses it per `descriptor` (`parsePriorValue`). Two settings
    * MAY share one `priorStorageKey` when both declare `priorRead` below
-   * (station#settings-revamp slice 3 #1359 convergence: `shortcutOverrides`
+   * (archive#1359 store convergence: `shortcutOverrides`
    * and `modelPickerPreferences` both migrate from the single
-   * `station.device-settings` JSON root #1359 shipped) — the shared key is
+   * legacy `station.device-settings` JSON root) — the shared key is
    * then read once, `JSON.parse`d, and each sharer extracts its own field
    * from the parsed root via `priorRead` instead of the generic
    * raw-string-at-its-own-key path.
    *
-   * Optional (station#settings-revamp slice 4): a setting that never had a
+   * Optional: a setting that never had a
    * pre-unification localStorage key of its own (it was previously either
    * unpersisted, e.g. `chatShowReasoning`/`chatShowToolDetails`/
    * `chatFontSize`, or URL-param-only, e.g. `dockSlotPlacement`) omits this field
@@ -337,8 +335,8 @@ const SHORTCUT_MODIFIERS: readonly ShortcutModifier[] = [
 
 /**
  * Mirrors the validation `shortcutPreferences.ts` (pre-convergence) ran on
- * every written binding. Exported (station#settings-revamp slice 3 review
- * finding 2) so `src-ui/src/lib/device-settings-store.ts`'s `importEnvelope`
+ * every written binding. Exported
+ * so `src-ui/src/lib/device-settings-store.ts`'s `importEnvelope`
  * shape validation can reuse the SAME structural check instead of a
  * parallel one — `shortcutOverrides` previously had no shape entry in that
  * module's `COMPOSITE_BOOLEAN_FIELDS`-driven validator, so an imported
@@ -372,7 +370,7 @@ export function normalizePriorShortcutBinding(
  * bindings` field (or its pre-versioned prototype location,
  * `shortcutBindings`) — mirrors the pre-convergence
  * `shortcutPreferences.ts#readShortcutOverrides` read-compat, with one
- * deliberate difference (slice 3 review nit): the pre-convergence
+ * deliberate difference: the pre-convergence
  * `normalizeBinding` lowercased a single-character `key` on write;
  * `normalizePriorShortcutBinding` does not. This is safe to skip because
  * every consumer that compares/displays a binding's key already does its
@@ -401,7 +399,7 @@ function priorReadShortcutOverrides(
 
 /**
  * Exported for the same reason as `normalizePriorShortcutBinding` above
- * (slice 3 review finding 2) — `device-settings-store.ts`'s
+ * — `device-settings-store.ts`'s
  * `importEnvelope` reuses this to sanitize each `modelPickerPreferences`
  * array field instead of a parallel de-dup/filter implementation. Note this
  * function ALWAYS returns a valid (possibly empty) array — it is a
@@ -573,7 +571,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Sidebar sections',
     description:
       'Collapsed and removed state of the sidebar Open chats and Drafts sections.',
-    // station#3314 — new sections state; never had a pre-unification key.
+    // archive#3314 — new sections state; never had a pre-unification key.
     defaultValue: DEFAULT_SIDEBAR_SECTIONS,
   }),
   defineDeviceSetting({
@@ -615,7 +613,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'First run',
-    // station#2652. Persisted as `{ chapter, tourStepId? }`. Records only how
+    // archive#2652. Persisted as `{ chapter, tourStepId? }`. Records only how
     // far the guided first run got on this device; the About-you ANSWERS are
     // server-scope (`AppConfig.userProfile`) because the model reads them.
     description: 'Guided first-run progress on this device.',
@@ -640,8 +638,8 @@ export const DEVICE_SETTINGS_REGISTRY = [
     priorRead: priorReadModelPickerPreferences,
     defaultValue: DEFAULT_MODEL_PICKER_PREFERENCES,
   }),
-  // station#settings-revamp slice 4 (docs/design/settings-architecture.md
-  // §3 S4 "Chat/session", §6 slice 4): ChatSettingsPanel's reasoning/tool-
+  // ChatSettingsPanel's (docs/design/settings-architecture.md
+  // §3 S4 "Chat/session") reasoning/tool-
   // detail/font/dock-mode prefs move to device scope. None of the four ever
   // had a pre-unification localStorage key (reasoning/tool-details reset on
   // every reload via plain `useState`; font size and dock mode lived only in
@@ -652,7 +650,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     descriptor: { kind: 'boolean' },
     label: 'Show reasoning',
     description: 'Display model reasoning steps in chat messages.',
-    // Confirmed against the pre-slice-4 useChatDockState.ts:
+    // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
     defaultValue: true,
   }),
@@ -662,7 +660,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     descriptor: { kind: 'boolean' },
     label: 'Show tool details',
     description: 'Allow expanding tool calls to view arguments and results.',
-    // Confirmed against the pre-slice-4 useChatDockState.ts:
+    // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
     defaultValue: true,
   }),
@@ -685,7 +683,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Dock position',
     description:
       'Remembered dock-slot placement preference when this device offers a choice.',
-    // Confirmed against the pre-slice-4 navigation-store.ts's
+    // Matches the prior `navigation-store.ts`'s
     // `getDefaultNavigationState`/`parseUrl` default: 'bottom'.
     defaultValue: 'bottom',
   }),
@@ -696,7 +694,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Haptic feedback',
     description:
       'Light selection pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms. Mobile native shells only.',
-    // station#1954: default on; desktop/web no-op via capability gate.
+    // archive#1954: default on; desktop/web no-op via capability gate.
     defaultValue: true,
   }),
   defineDeviceSetting({
@@ -706,7 +704,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Enable developer tools',
     description:
       'Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette on this device. Deep links to /developer keep working either way.',
-    // station#3313: developer surfaces are opt-in; which navigation entries a
+    // archive#3313: developer surfaces are opt-in; which navigation entries a
     // device shows is that device's preference, so this never round-trips to
     // the server.
     defaultValue: false,
@@ -718,7 +716,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Chat dock project',
     description:
       'The project the chat dock header is currently bound to, independent of whichever chat is on screen.',
-    // station#4525: new device setting — the dock's project badge previously
+    // archive#4525: new device setting — the dock's project badge previously
     // derived entirely, and unpersisted, from the active chat session.
     defaultValue: null,
   }),
@@ -753,7 +751,7 @@ export function extractPriorDeviceSettingsRoot(
  * declare `priorRead` (see its doc comment): those may legitimately share
  * one key, since each extracts its own field from the shared parsed root
  * instead of consuming the whole raw value. Entries with no `priorStorageKey`
- * at all (station#settings-revamp slice 4: a setting that was never
+ * at all (a setting that was never
  * persisted pre-unification) are excluded rather than contributing an
  * `undefined` entry.
  */

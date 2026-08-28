@@ -40,7 +40,7 @@ export interface HomeWorkLanes {
 
 /**
  * Derives the three Home lanes (active / snoozed / settled) plus a
- * position-stable order for the active lane (AC1).
+* position-stable order for the active lane.
  *
  * `identityAliasRef`, `terminalSinceRef`, `orderRef`, and `wokeAtRef` are
  * mutated during render rather than via `setState`. That is safe here
@@ -65,10 +65,10 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   const identityAliasRef = useRef(new Map<string, string>());
   const terminalSinceRef = useRef<Map<string, number> | null>(null);
   if (terminalSinceRef.current === null) {
-    // Lazy ref init (React-sanctioned: safe to read/assign `ref.current`
-    // during render for a one-time initializer). Seeded from
-    // `terminal-since-store.ts` so a reload doesn't re-anchor the linger
-    // clock for items that were already terminal (AC3 fix, review finding).
+// Lazy ref init (React-sanctioned: safe to read/assign `ref.current`
+// during render for a one-time initializer). Seeded from
+// `terminal-since-store.ts` so a reload doesn't re-anchor the linger
+// clock for items that were already terminal.
     terminalSinceRef.current = new Map(
       Object.entries(
         readTerminalSince(
@@ -81,10 +81,10 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   const orderRef = useRef<string[]>([]);
   const wokeAtRef = useRef(new Map<string, number>());
   const prevSnoozedIdsRef = useRef(new Set<string>());
-  /** Ids an explicit `wake()` call is about to remove from the snoozed lane.
-   * The render-time diff below cannot otherwise tell that transition apart
-   * from a natural TTL lapse (both just look like "left the snoozed set"),
-   * and an explicit wake should dismiss silently rather than show a pill. */
+/** Ids an explicit `wake` call is about to remove from the snoozed lane.
+* The render-time diff below cannot otherwise tell that transition apart
+* from a natural TTL lapse (both just look like "left the snoozed set"),
+* and an explicit wake should dismiss silently rather than show a pill. */
   const explicitWakeRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -92,8 +92,8 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
     return () => clearInterval(id);
   }, []);
 
-  // Persist terminal-since after every render so a reload can seed the
-  // ref above from real anchors instead of re-anchoring to "now" (AC3).
+// Persist terminal-since after every render so a reload can seed the
+// ref above from real anchors instead of re-anchoring to "now".
   useEffect(() => {
     writeTerminalSince(Object.fromEntries(terminalSinceRef.current ?? []));
   });
@@ -103,20 +103,20 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
     [snoozeMap],
   );
 
-  // Resolve each item's stable identity BEFORE anything else keys off it —
-  // `laneItems[i].id` may differ from `items[i].id` in a future render even
-  // for "the same" row (conversationId promotion, task correlation forming);
-  // `.stableId` is what stays constant (review finding, AC1 fix).
+// Resolve each item's stable identity BEFORE anything else keys off it —
+// `laneItems[i].id` may differ from `items[i].id` in a future render even
+// for "the same" row (conversationId promotion, task correlation forming);
+// `.stableId` is what stays constant.
   const laneItems = withStableIds(items, identityAliasRef.current);
   const presentIds = new Set(laneItems.map((item) => item.id));
 
   for (const item of laneItems) {
     if (isTerminalLifecycle(item.lifecycleLabel)) {
       if (!terminalSinceRef.current.has(item.id)) {
-        // An item already arrives with the source's terminal update time.
-        // Persisted anchors can be pruned once they no longer affect the
-        // settled classification, so never recreate an old terminal item at
-        // "now" after that pruning (or on a fresh browser/store).
+// An item already arrives with the source's terminal update time.
+// Persisted anchors can be pruned once they no longer affect the
+// settled classification, so never recreate an old terminal item at
+// "now" after that pruning (or on a fresh browser/store).
         terminalSinceRef.current.set(
           item.id,
           Math.min(item.updatedAt || now, now),
@@ -137,9 +137,9 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
     terminalSince: terminalSinceRef.current,
   });
 
-  // "Woke from snooze" pill: any id that was in the snoozed lane last time
-  // this hook ran and is not this time (natural lapse or an explicit
-  // `wake()`) gets a pill for WOKE_PILL_WINDOW_MS.
+// "Woke from snooze" pill: any id that was in the snoozed lane last time
+// this hook ran and is not this time (natural lapse or an explicit
+// `wake`) gets a pill for WOKE_PILL_WINDOW_MS.
   const currentSnoozedIds = new Set(partition.snoozed.map((item) => item.id));
   for (const id of prevSnoozedIdsRef.current) {
     if (!currentSnoozedIds.has(id) && presentIds.has(id)) {
@@ -181,8 +181,8 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
       setSnoozeMap(writeSnooze(id, wakeAt, Date.now()));
     },
     wake: (id: string) => {
-      // An explicit wake dismisses silently rather than showing "woke from
-      // snooze" for something the user just un-snoozed themselves.
+// An explicit wake dismisses silently rather than showing "woke from
+// snooze" for something the user just un-snoozed themselves.
       wokeAtRef.current.delete(id);
       explicitWakeRef.current.add(id);
       setSnoozeMap(clearSnooze(id, Date.now()));

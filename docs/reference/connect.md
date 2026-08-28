@@ -45,7 +45,7 @@ environment identity after a validated handshake.
 `SavedConnection.capabilities` (`EnvironmentCapabilities` above) is a
 client-local summary derived from the handshake's `transports` block — not
 the same thing as the raw handshake document's own optional `capabilities`
-field (station#1095), which is a server-advertised map of named boolean
+field (archive#1095), which is a server-advertised map of named boolean
 feature flags (e.g. `sshEnvironments`, `webPushNotifications`) used for
 feature detection across a rolling client/server upgrade. See
 [docs/security/remote-access-threat-model.md](../security/remote-access-threat-model.md#surface-matrix)
@@ -111,7 +111,7 @@ coordinator's own multi-endpoint polling loop driven end-to-end by a live
 semantics) is deliberately out of scope for this first adoption to avoid
 regressing the proven polling behavior; a per-environment supervisor
 *registry* (one instance per environment, reusable beyond health polling) is
-tracked separately (#1096).
+tracked separately (archive#1096).
 
 ### `StorageAdapter`
 
@@ -363,7 +363,7 @@ without authorization. It then uses the saved credential for protected HTTP
 and fetch-SSE requests and the versioned first application frame for terminal
 and voice WebSockets. A `401` returns the connection to its masked
 credential-required recovery state. Reconnect/session continuity beyond this
-credential recovery is tracked in #303.
+credential recovery is tracked in archive#303.
 
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.

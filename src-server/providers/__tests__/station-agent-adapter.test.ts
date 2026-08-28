@@ -103,7 +103,7 @@ describe('mapStationAgentStreamEvent — tool-result relay (station#3113, #3117)
     });
   });
 
-  // #3117's original complaint: the relay used to substitute its OWN
+  // archive#3117's original complaint: the relay used to substitute its OWN
   // hardcoded 'Station agent tool failed' literal, discarding whatever the
   // engine adapter decided was safe to say. It must no longer do that —
   // it forwards exactly what arrives, since the engine adapter is the one
@@ -267,7 +267,7 @@ describe('StationAgentAdapter', () => {
   });
 
   test('declares image-input so the orchestration capability gate accepts image attachments', () => {
-    // station#1885: the defect was that the gate refused what the UI offered.
+    // archive#1885: the defect was that the gate refused what the UI offered.
     // Pinning the declaration guards against a regression that reintroduces
     // the disagreement (capability declared ⟺ affordance offered/accepted).
     const adapter = new StationAgentAdapter({
@@ -622,7 +622,7 @@ describe('StationAgentAdapter', () => {
             conversationId: 'task-1',
             userId: 'user-1',
             model: 'sonnet',
-            // station#1288: a modelId turn must carry the provider-fallback
+            // archive#1288: a modelId turn must carry the provider-fallback
             // carrier or /chat's model-override guard 400s (no resolved
             // provider connection).
             providerManagedFallback: true,
@@ -769,7 +769,7 @@ describe('StationAgentAdapter', () => {
     expect(body.input).not.toContain('[Timezone:');
   });
 
-  // station#1288: `/chat`'s model-override guard (chat-model-override.ts)
+  // archive#1288: `/chat`'s model-override guard (chat-model-override.ts)
   // 400s any request carrying `options.model` without a resolved provider
   // connection, and `chat-request-preparation.ts` only resolves one when
   // `options.providerManagedFallback` is set. This relay is the only caller
@@ -1141,7 +1141,7 @@ describe('StationAgentAdapter', () => {
     ).rejects.toThrow('Unknown Station agent: removed-agent');
   });
 
-  // #1071: /api/agents/:slug/chat rejections carry a specific, actionable
+  // archive#1071: /api/agents/:slug/chat rejections carry a specific, actionable
   // reason in their JSON error body (e.g. which config to fix); swallowing it
   // leaves the user with only a generic string.
   test('threads the /chat rejection reason into the thrown error and the runtime.error event (#1071)', async () => {
@@ -1228,7 +1228,7 @@ describe('StationAgentAdapter', () => {
     });
   });
 
-  // station#1885 review HIGH: the mutation-budget middleware's 413 body is an
+  // archive#1885 review HIGH: the mutation-budget middleware's 413 body is an
   // OBJECT (`{ error: { code: 'request_too_large', limit_bytes } }`), not a
   // string. `readChatRejectionReason` used to read `body.error` through
   // `stringField`, which returns undefined for an object, so the user got the
@@ -1405,7 +1405,7 @@ describe('StationAgentAdapter', () => {
       ).resolves.toBeUndefined();
     });
 
-    // station#1885: the mutation-budget middleware (and the security
+    // archive#1885: the mutation-budget middleware (and the security
     // middleware) emit STRUCTURED error bodies — `{ error: { code, ... } }` —
     // not string errors. `stringField` silently dropped objects, so a 413
     // surfaced as the generic fallback. These pin the object-shape read.
@@ -1434,7 +1434,7 @@ describe('StationAgentAdapter', () => {
 
     test('still reads a plain string error alongside the structured shape', async () => {
       // The route's own 409s carry `{ error: "specific reason" }` — the
-      // object-body fix must not regress the original #1071 string path.
+      // object-body fix must not regress the original archive#1071 string path.
       await expect(
         readChatRejectionReason(
           new Response(
@@ -1446,7 +1446,7 @@ describe('StationAgentAdapter', () => {
     });
   });
 
-  // #796: the UI starts a Station agent session without a model — the model
+  // archive#796: the UI starts a Station agent session without a model — the model
   // is resolved only when a turn is sent. Only `session.configured` carries a
   // model into the read model and the persisted session row, so a settled
   // model that is never republished lives in adapter memory alone and a
@@ -1529,7 +1529,7 @@ describe('StationAgentAdapter', () => {
     ]);
   });
 
-  // station#1071: the /chat route's own reason (a specific, actionable 409
+  // archive#1071: the /chat route's own reason (a specific, actionable 409
   // body) used to be discarded in favor of a generic message. Both the
   // thrown error (surfaced to HTTP callers of /api/orchestration/commands)
   // and the published runtime.error event (surfaced to the UI/CLI) must
@@ -1605,7 +1605,7 @@ describe('StationAgentAdapter', () => {
     );
   });
 
-  // station#1207 review round 1, HIGH 2 — the actual production trigger
+  // archive#1207 review round 1, HIGH 2 — the actual production trigger
   // under `managed-chat-orchestration`: before this fix, a silent stall on
   // the inner /chat bridge stream (server crash, dropped connection, no
   // error event) meant `reader.read()` inside `consumeChatStream` never
@@ -1677,7 +1677,7 @@ describe('StationAgentAdapter', () => {
       );
     });
 
-    // station#1207 review round 2, item 2: the sibling case to the stall
+    // archive#1207 review round 2, item 2: the sibling case to the stall
     // test above — a HEALTHY long-running tool call (delegateTask sub-agent
     // or a slow MCP/shell tool) that legitimately produces zero `data:`
     // frames for well over the stall timeout, with only server-emitted

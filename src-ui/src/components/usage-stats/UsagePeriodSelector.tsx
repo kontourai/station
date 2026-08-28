@@ -1,7 +1,7 @@
 import { USAGE_PERIOD_OPTIONS, type UsagePeriod } from './period';
 
 /**
- * The period control for the usage panel (station#3093). A plain button
+ * The period control for the usage panel (archive#3093). A plain button
  * group rather than tabs: it filters figures in place, it does not switch
  * panes. The `-toolbar` class suffix opts its buttons into the inventory-wide
  * mobile wrap + 44px touch-target floor in index.css.
@@ -20,7 +20,7 @@ export function UsagePeriodSelector({
      * buttons tell assistive tech the wrong thing about that — while native
      * radios provide the single tab stop, arrow-key roving focus, and checked
      * state for free. Same pattern and rationale as HomeVariantSwitcher
-     * (station#3191); the a11y ratchet holds this rule at zero.
+     * (archive#3191); the a11y ratchet holds this rule at zero.
      */
     <fieldset className="usage-period-toolbar">
       <legend className="usage-period-legend">Usage period</legend>

@@ -465,7 +465,7 @@ function claimCapability(input: {
 
 /**
  * Opens one scope-bound durable consumer without exposing cursor or owner keys.
- * Registration policy and grants remain a separate #1525 Adapter.
+ * Registration policy and grants remain a separate archive#1525 Adapter.
  */
 export function openOperationalEventConsumer(input: {
   coordinator: OperationalEventDeliveryCoordinator;

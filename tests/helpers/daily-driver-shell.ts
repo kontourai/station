@@ -11,7 +11,7 @@ import {
 
 /**
  * Shared browser shell for the daily-driver scenario and switching specs
- * (station#3307): a deterministic engine-shaped backend behind the real UI
+ * (archive#3307): a deterministic engine-shaped backend behind the real UI
  * product path (composer → `POST /api/orchestration/chat` dispatch →
  * orchestration SSE → transcript). The dispatch handler accumulates
  * per-conversation history so a reply function can prove context carry-over,
@@ -346,7 +346,7 @@ export async function seedDailyDriverShell(
       // Both canonical HTTP spellings reach the same durable Conversation
       // resolver in product wiring. The semantic route is continuation when
       // the request carries an existing conversationId; URL spelling is not
-      // the capability (#3912 review).
+      // the capability (archive#3912 review).
       const routeKind = predecessor ? 'continue' : 'start';
       const sessionId = predecessor
         ? `${conversationId}:session:${existing.length}`

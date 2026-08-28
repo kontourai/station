@@ -79,7 +79,7 @@ async function nextEvent(
 }
 
 /**
- * station#3451 finding L3: an exhaustive arity assertion — drains every
+ * archive#3451 finding L3: an exhaustive arity assertion — drains every
  * currently-queued event rather than reading only the first N via
  * `nextEvent`. Mirrors `codex-adapter.test.ts`'s helper of the same name.
  * Resolves once 100ms passes with nothing new (the queue's `next()` resolves
@@ -253,7 +253,7 @@ describe('CodexAdapterTransport', () => {
     expect(terminateProcess).toHaveBeenCalledTimes(2);
   });
 
-  // station#3473 path 1: a process death must not leave a turn with no
+  // archive#3473 path 1: a process death must not leave a turn with no
   // turn-scoped terminal event — synthesize one before session.exited.
   test('a natural exit with an unresolved turn synthesizes runtime.error before session.exited', async () => {
     const transport = new CodexAdapterTransport(
@@ -292,7 +292,7 @@ describe('CodexAdapterTransport', () => {
     expect(record.activeTurnId).toBeUndefined();
   });
 
-  // station#3451 fix round: the exit-handler counterpart of the stopSession
+  // archive#3451 fix round: the exit-handler counterpart of the stopSession
   // race test in codex-adapter.test.ts — a process exit while a
   // turn/interrupt RPC is in flight must not ALSO synthesize a duplicate
   // terminal for the turn that RPC targeted.
@@ -316,7 +316,7 @@ describe('CodexAdapterTransport', () => {
 
     // Dispatch (but never resolve) a turn/interrupt, mirroring
     // interruptTurn's own in-flight RPC. The 4th (tracking-only) argument is
-    // station#3451 fix round D2 — required for `rejectPendingRpcRequests` to
+    // archive#3451 fix round D2 — required for `rejectPendingRpcRequests` to
     // recognize this interrupt as targeting the CURRENT active turn.
     const interruptRequest = transport
       .sendRequest(
@@ -344,7 +344,7 @@ describe('CodexAdapterTransport', () => {
     ).toHaveLength(0);
   });
 
-  // station#3451 fix round D3: a third teardown door that was never
+  // archive#3451 fix round D3: a third teardown door that was never
   // enumerated — `ChildProcess` 'error' also fires for a stdin WRITE
   // failure after the process has started (sendRequest writes to stdin on
   // every RPC, including turn/start and turn/interrupt), not just spawn
@@ -418,7 +418,7 @@ describe('CodexAdapterTransport', () => {
     });
   });
 
-  // station#3473 path 2: `stopSession` reached without a prior
+  // archive#3473 path 2: `stopSession` reached without a prior
   // `interruptTurn` (a hard session close) must also synthesize the missing
   // turn terminal.
   test('stopSession with an unresolved turn synthesizes runtime.error before session.exited', async () => {
@@ -674,7 +674,7 @@ describe('CodexAdapterTransport', () => {
   });
 });
 
-// #896 wave 2: CODEX_HOME spawn seam — pure env-layering helper (no
+// archive#896 wave 2: CODEX_HOME spawn seam — pure env-layering helper (no
 // spawning), mirrors the claude-adapter's app-home env layering contract.
 describe('codexSpawnEnv', () => {
   test('layers the override onto a full process.env spread', () => {

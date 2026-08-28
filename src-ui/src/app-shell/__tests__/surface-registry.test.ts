@@ -8,15 +8,15 @@ import {
 
 describe('SurfaceRegistry', () => {
   test('drives the exact sidebar and command-palette inventories from one authority', () => {
-    // station#3313 (Settings IA, option A): Settings holds a System slot;
-    // Feature Previews is a Settings section (palette deep link only); the
-    // Developer surfaces advertise only with the developer-tools flag on.
-    //
-    // UX audit RT-13 / SHELL-08: Agents, Connections and Activity lead as a
-    // flat `primary` band. The order below is also the assertion that
-    // `primary` sorts FIRST — sections used to be ordered by
-    // `String.localeCompare`, under which 'primary' would have landed between
-    // 'customize' and 'system' and put the top-level band in the middle.
+// archive#3313 (Settings IA, option A): Settings holds a System slot;
+// Feature Previews is a Settings section (palette deep link only); the
+// Developer surfaces advertise only with the developer-tools flag on.
+//
+ // / : Agents, Connections and Activity lead as a
+// flat `primary` band. The order below is also the assertion that
+// `primary` sorts FIRST — sections used to be ordered by
+// `String.localeCompare`, under which 'primary' would have landed between
+// 'customize' and 'system' and put the top-level band in the middle.
     expect(
       APP_SURFACE_REGISTRY.getSidebar().map((surface) => surface.id),
     ).toEqual([
@@ -56,9 +56,9 @@ describe('SurfaceRegistry', () => {
       'guidance-skills',
       'registry',
       'connections',
-      // 6-OPS-32: Notifications and Profile are top-level destinations that
-      // ⌘K could not reach at all — "notif" and "prof" each returned zero
-      // results in a palette carrying 72 entries.
+// 6-: Notifications and Profile are top-level destinations that
+// ⌘K could not reach at all — "notif" and "prof" each returned zero
+// results in a palette carrying 72 entries.
       'notifications',
       'plugins',
       'activity',
@@ -255,10 +255,10 @@ describe('SurfaceRegistry', () => {
     },
   );
 
-  // Playbooks are Skills. The palette entry that named the retired concept is
-  // gone; the one that replaced it keeps the retired words as KEYWORDS, so
-  // someone who learned "playbooks" still finds the surface while reading the
-  // one noun that survives.
+// Playbooks are Skills. The palette entry that named the retired concept is
+// gone; the one that replaced it keeps the retired words as KEYWORDS, so
+// someone who learned "playbooks" still finds the surface while reading the
+// one noun that survives.
   test('the retired Playbooks palette entry is replaced by Commands', () => {
     const palette = APP_SURFACE_REGISTRY.getPalette().map(
       (surface) => surface.id,

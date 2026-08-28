@@ -45,35 +45,35 @@ import {
 interface ChatMessageListProps {
   activeSession: ChatSession;
   fontSize: number;
-  /** Discrete dock/viewport height used to re-anchor before the resized frame paints. */
+/** Discrete dock/viewport height used to re-anchor before the resized frame paints. */
   layoutHeight?: number;
   showReasoning: boolean;
   showToolDetails: boolean;
-  /** Override rendering for specific messages. Return a ReactNode to replace default, or null to use MessageBubble. */
+/** Override rendering for specific messages. Return a ReactNode to replace default, or null to use MessageBubble. */
   renderOverride?: (msg: ChatMessage, idx: number) => React.ReactNode | null;
   emptyState?: React.ReactNode;
-  /**
-   * station#1301 slice 1: when provided, the background-tasks banner below
-   * becomes a real tap target opening the Background tasks sheet instead of
-   * a passive status line. Omitted call sites (e.g. a test render with no
-   * dock chrome around it) keep the original inert banner.
-   */
+/**
+* archive#1301: when provided, the background-tasks banner below
+* becomes a real tap target opening the Background tasks sheet instead of
+* a passive status line. Omitted call sites (e.g. a test render with no
+* dock chrome around it) keep the original inert banner.
+*/
   onOpenBackgroundTasks?: () => void;
-  /**
-   * "via <Station>" row attribution (station#2585) — threaded from a call
-   * site that resolves the active saved Station.
-   * Omitted call sites (including existing tests) simply render no owner
-   * chip on message rows.
-   */
+/**
+* "via <Station>" row attribution (archive#2585) — threaded from a call
+* site that resolves the active saved Station.
+* Omitted call sites (including existing tests) simply render no owner
+* chip on message rows.
+*/
   owner?: OwnerAttribution | null;
-  /** Display-only human accountability, shown in completed-turn provenance. */
+/** Display-only human accountability, shown in completed-turn provenance. */
   accountableHuman?: string | null;
-  /**
-   * The host renders its own Summarize entry point (a gear opening
-   * `ChatSettingsPanel`), so `SessionSummaryCard` may demote its inline button
-   * (#3310). Defaults to false: a host that does not claim one keeps the
-   * button rather than silently losing the affordance.
-   */
+/**
+* The host renders its own Summarize entry point (a gear opening
+* `ChatSettingsPanel`), so `SessionSummaryCard` may demote its inline button
+ * (archive#3310). Defaults to false: a host that does not claim one keeps the
+* button rather than silently losing the affordance.
+*/
   hasSettingsEntryPoint?: boolean;
   onForkFromTurn?: (source: ForkTurnSource) => void;
 }
@@ -139,10 +139,10 @@ function ChatMessageListComponent({
   );
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
 
-  // Dock snap changes are known synchronously by the parent. Handle that
-  // discrete resize in a layout effect instead of relying solely on the
-  // browser's later ResizeObserver delivery, which can arrive after a native
-  // scroll event has already moved the transcript.
+// Dock snap changes are known synchronously by the parent. Handle that
+// discrete resize in a layout effect instead of relying solely on the
+// browser's later ResizeObserver delivery, which can arrive after a native
+// scroll event has already moved the transcript.
   useLayoutEffect(() => {
     const el = messagesContainerRef.current;
     if (!el || layoutHeight === undefined) return;
@@ -181,15 +181,15 @@ function ChatMessageListComponent({
   );
 
   const messages = activeSession.messages || EMPTY_MESSAGES;
-  // station#3300: the turn fold, not the session flags — a settled turn must
-  // not reconstruct its own streaming row after resume. See the doc comment
-  // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
-  // derivation for THIS row specifically.
+// archive#3300: the turn fold, not the session flags — a settled turn must
+// not reconstruct its own streaming row after resume. See the doc comment
+// on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
+// derivation for THIS row specifically.
   const isStreaming = isTurnStreamLive(activeSession);
 
-  // The dock supplies the bounded event-window projection. This component
-  // owns only that projection's one scroll surface, so it cannot create a
-  // second event reader.
+// The dock supplies the bounded event-window projection. This component
+// owns only that projection's one scroll surface, so it cannot create a
+// second event reader.
   const transcriptRows = useMemo(() => {
     const projected = projectTranscriptMessages(
       activeSession.id,
@@ -218,16 +218,16 @@ function ChatMessageListComponent({
     }
   })();
 
-  // A command-palette transcript result carries the stable runtime message id
-  // in the location hash. Re-run when messages arrive, rather than trusting a
-  // timer after opening an older session; the asynchronous bounded window may
-  // not have committed on that timer tick.
+// A command-palette transcript result carries the stable runtime message id
+// in the location hash. Re-run when messages arrive, rather than trusting a
+// timer after opening an older session; the asynchronous bounded window may
+// not have committed on that timer tick.
   useLayoutEffect(() => {
-    // The DOM target can only exist after the projected message count changes.
+// The DOM target can only exist after the projected message count changes.
     void messages.length;
     if (!requestedMessageRowId) return;
-    // Disable tail-follow before the child virtualizer receives the anchor.
-    // Otherwise its normal new-message policy could undo the reveal.
+// Disable tail-follow before the child virtualizer receives the anchor.
+// Otherwise its normal new-message policy could undo the reveal.
     isUserScrolledUpRef.current = true;
     setIsUserScrolledUp(true);
     const target = Array.from(
@@ -240,17 +240,17 @@ function ChatMessageListComponent({
   }, [messages, requestedMessageRowId]);
   const agent = agents.find((a) => a.slug === activeSession.agentSlug);
 
-  // Keep the view pinned to the bottom as content grows (new messages, live
-  // streaming) unless the user has scrolled up. A layout effect writes scrollTop
-  // before paint so there is no visible jump; rAF covers late layout (images,
-  // markdown reflow) without fighting the browser via a 0ms timeout.
+// Keep the view pinned to the bottom as content grows (new messages, live
+// streaming) unless the user has scrolled up. A layout effect writes scrollTop
+// before paint so there is no visible jump; rAF covers late layout (images,
+// markdown reflow) without fighting the browser via a 0ms timeout.
   const lastMessage = messages[messages.length - 1];
   const streamingTick = isStreaming
     ? (lastMessage?.contentParts?.length ?? 0)
     : 0;
-  // messages.length / streamingTick / isStreaming are growth triggers — not read
-  // in the body but they must re-pin the scroll as content streams in.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional triggers
+// messages.length / streamingTick / isStreaming are growth triggers — not read
+// in the body but they must re-pin the scroll as content streams in.
+// biome-ignore lint/correctness/useExhaustiveDependencies: intentional triggers
   useLayoutEffect(() => {
     const el = messagesContainerRef.current;
     if (!el || isUserScrolledUp) return;
@@ -270,15 +270,15 @@ function ChatMessageListComponent({
     isStreaming,
   ]);
 
-  // A reader who requested earlier history keeps the same visible row when
-  // the projection prepends it. Height correction follows the same anchor
-  // contract through the ResizeObserver below; native anchoring is disabled
-  // in CSS so there is exactly one owner for both adjustments.
+// A reader who requested earlier history keeps the same visible row when
+// the projection prepends it. Height correction follows the same anchor
+// contract through the ResizeObserver below; native anchoring is disabled
+// in CSS so there is exactly one owner for both adjustments.
   useLayoutEffect(() => {
-    // This projection change is the prepend/row-growth trigger.
+// This projection change is the prepend/row-growth trigger.
     void transcriptRows;
-    // The virtualizer owns keyed row+offset preservation for long transcripts.
-    // A DOM anchor here can point at a recycled node and fight that correction.
+// The virtualizer owns keyed row+offset preservation for long transcripts.
+// A DOM anchor here can point at a recycled node and fight that correction.
     if (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
     const el = messagesContainerRef.current;
     if (!el || !isUserScrolledUpRef.current || !visibleAnchorRef.current) {
@@ -288,12 +288,12 @@ function ChatMessageListComponent({
     visibleAnchorRef.current = captureChatScrollAnchor(el);
   }, [messages.length, transcriptRows]);
 
-  // Container resize is the important keyboard/composer path. Keep a reader's
-  // scrollTop stable; only an already-pinned conversation follows the bottom.
-  // A composer auto-resize can fire on every keystroke even when its
-  // rendered height doesn't actually change; only re-anchor once the size
-  // delta clears a small threshold so pure jitter can't reintroduce the
-  // scroll-yank this anchor logic exists to prevent.
+// Container resize is the important keyboard/composer path. Keep a reader's
+// scrollTop stable; only an already-pinned conversation follows the bottom.
+// A composer auto-resize can fire on every keystroke even when its
+// rendered height doesn't actually change; only re-anchor once the size
+// delta clears a small threshold so pure jitter can't reintroduce the
+// scroll-yank this anchor logic exists to prevent.
   useLayoutEffect(() => {
     const el = messagesContainerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -327,10 +327,10 @@ function ChatMessageListComponent({
       Math.abs(target.clientHeight - previousClientHeight) >=
         RESIZE_REANCHOR_THRESHOLD_PX;
     lastClientHeightRef.current = target.clientHeight;
-    // A dock/keyboard resize can dispatch `scroll` before ResizeObserver gets
-    // its turn. Preserve the reader's prior intent during that event: an
-    // already-pinned transcript stays pinned, while an intentionally scrolled
-    // transcript is restored by the observer from its captured anchor.
+// A dock/keyboard resize can dispatch `scroll` before ResizeObserver gets
+// its turn. Preserve the reader's prior intent during that event: an
+// already-pinned transcript stays pinned, while an intentionally scrolled
+// transcript is restored by the observer from its captured anchor.
     if (resized) {
       if (!isUserScrolledUpRef.current) {
         target.scrollTop = target.scrollHeight;
@@ -338,15 +338,15 @@ function ChatMessageListComponent({
       }
       return;
     }
-    // Programmatic positioning, measurement correction, and viewport resize
-    // also produce trusted browser scroll events, so trust alone cannot mark
-    // reader intent. Only wheel/touch/pointer input arms the next scroll.
+// Programmatic positioning, measurement correction, and viewport resize
+// also produce trusted browser scroll events, so trust alone cannot mark
+// reader intent. Only wheel/touch/pointer input arms the next scroll.
     if (!userScrollIntentRef.current) return;
     userScrollIntentRef.current = false;
     setScrollAnchorVersion((version) => version + 1);
-    // Resize animations can emit a scroll event between two ResizeObserver
-    // frames. Treat a small transient gap as still pinned so a dock/keyboard
-    // transition cannot be mistaken for deliberate reader navigation.
+// Resize animations can emit a scroll event between two ResizeObserver
+// frames. Treat a small transient gap as still pinned so a dock/keyboard
+// transition cannot be mistaken for deliberate reader navigation.
     const isAtBottom =
       target.scrollHeight - target.scrollTop - target.clientHeight <= 32;
     isUserScrolledUpRef.current = !isAtBottom;
@@ -369,12 +369,12 @@ function ChatMessageListComponent({
     setStreamingContentRevision((revision) => revision + 1);
   }, []);
 
-  // Derived sessions may re-materialize message objects when unrelated chat UI
-  // state changes (for example, each composer keystroke). Object identity is
-  // therefore not a message identity: using a WeakMap here caused every row to
-  // remount and replay its entry animation while the user typed. Prefer an
-  // upstream id when present, then use persisted fields plus the stable list
-  // position as a collision-safe fallback.
+// Derived sessions may re-materialize message objects when unrelated chat UI
+// state changes (for example, each composer keystroke). Object identity is
+// therefore not a message identity: using a WeakMap here caused every row to
+// remount and replay its entry animation while the user typed. Prefer an
+// upstream id when present, then use persisted fields plus the stable list
+// position as a collision-safe fallback.
   const messageAnchorKey = (msg: ChatMessage) => {
     const originSessionId = msg.sessionId ?? activeSession.id;
     const upstreamId = (msg as ChatMessage & { id?: string }).id;
@@ -411,9 +411,9 @@ function ChatMessageListComponent({
     return renderDefaultMessage(msg, idx);
   };
 
-  // Work activities render inline, inside the message row, in reading order
-  // (see `projectTranscriptMessages`'s doc comment) — there is no separate
-  // fold/work row kind any more.
+// Work activities render inline, inside the message row, in reading order
+// (see `projectTranscriptMessages`'s doc comment) — there is no separate
+// fold/work row kind any more.
   const renderTranscriptRow = (row: TranscriptRow) => {
     const messageId = (row.message as ChatMessage & { id?: string }).id;
     return (
@@ -434,25 +434,25 @@ function ChatMessageListComponent({
     [agent],
   );
 
-  // station#1424 review fix (S3, then round 3 NEW-1): the streaming row's
-  // identity/owner attribution is resolved from the CURRENT live agent
-  // binding — honest while this turn is actually executing. The engine chip
-  // is deliberately NOT threaded here: it briefly asserted an engine
-  // identity while streaming and then retracted it the instant the row
-  // converted to a persisted `MessageBubble`. No surface may assert an
-  // engine identity it's going to take back.
-  // station#1434 made the persisted row's chip real (it reads the turn's own
-  // provenance envelope), and this row still shows none — deliberately. The
-  // envelope is assembled from the turn's TERMINAL event, so while the turn
-  // is still streaming there is no per-turn record to read; the only source
-  // available here is the live binding this comment already rules out. The
-  // resulting transition is additive (nothing claimed, then a fact once it
-  // is observed), never a retraction — pinned by
-  // `MessageAttribution.streamingParity.test.tsx`.
-  // station#1424 review fix (round 3 NEW-6): falls back to the session's own
-  // threaded `agentName` (never blank) when `agents.find` misses — e.g. the
-  // agent was deleted after this session started — so the row still reads
-  // as attributable instead of silently dropping the identity text.
+// archive#1424 fix (then): the streaming row's
+// identity/owner attribution is resolved from the CURRENT live agent
+// binding — honest while this turn is actually executing. The engine chip
+// is deliberately NOT threaded here: it briefly asserted an engine
+// identity while streaming and then retracted it the instant the row
+// converted to a persisted `MessageBubble`. No surface may assert an
+// engine identity it's going to take back.
+// archive#1434 made the persisted row's chip real (it reads the turn's own
+// provenance envelope), and this row still shows none — deliberately. The
+// envelope is assembled from the turn's TERMINAL event, so while the turn
+// is still streaming there is no per-turn record to read; the only source
+// available here is the live binding this comment already rules out. The
+// resulting transition is additive (nothing claimed, then a fact once it
+// is observed), never a retraction — pinned by
+// `MessageAttribution.streamingParity.test.tsx`.
+ // archive#1424 fix : falls back to the session's own
+// threaded `agentName` (never blank) when `agents.find` misses — e.g. the
+// agent was deleted after this session started — so the row still reads
+// as attributable instead of silently dropping the identity text.
   const streamingAttributionAgent = useMemo(() => {
     const name = agent?.name ?? activeSession.agentName;
     return name ? { name } : null;
@@ -568,19 +568,19 @@ function ChatMessageListComponent({
                 />
               </div>
             )}
-            {/* Backgrounded provider tasks outlive the assistant turn: the
+{/* Backgrounded provider tasks outlive the assistant turn: the
                 session is honestly idle, but work continues. Keep a live
                 affordance so the chat never looks done while it isn't. */}
             {!isStreaming &&
               (activeSession.backgroundTasks?.length ?? 0) > 0 &&
               (onOpenBackgroundTasks ? (
-                // station#1301 slice 1 (review LOW fix): a `<button>` cannot
-                // also carry `role="status"` (an interactive element and a
-                // live region are mutually exclusive ARIA roles) — a visually
-                // hidden sibling carries the exact live-region semantics the
-                // plain `<div>` below has, so the wording still auto-announces
-                // as it changes, while the button itself stays the one
-                // accessible interactive element (name via `aria-label`).
+ // archive#1301: a `<button>` cannot
+// also carry `role="status"` (an interactive element and a
+// live region are mutually exclusive ARIA roles) — a visually
+// hidden sibling carries the exact live-region semantics the
+// plain `<div>` below has, so the wording still auto-announces
+// as it changes, while the button itself stays the one
+// accessible interactive element (name via `aria-label`).
                 <>
                   <button
                     type="button"

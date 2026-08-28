@@ -144,8 +144,8 @@ const ConsoleBoardView = lazy(() =>
     default: module.ConsoleBoardView,
   })),
 );
-// The standalone placement of the Activity Workspace Pane (epic
-// station#4142 M3) — the pane path to the sessions surface, never the
+// The standalone placement of the Activity Workspace Pane (
+// archive#4142) — the pane path to the sessions surface, never the
 // surface directly.
 const ActivityView = lazy(() =>
   import('../views/ActivityView').then((module) => ({
@@ -185,29 +185,29 @@ interface AppViewContentProps {
 }
 
 export function AppViewContent(props: AppViewContentProps) {
-  // One rule for what counts as a different route, shared by the entrance and
-  // the pending publisher so they can never disagree about it. See
-  // `routeIdentity` for what is and is not part of a route's identity.
+// One rule for what counts as a different route, shared by the entrance and
+// the pending publisher so they can never disagree about it. See
+// `routeIdentity` for what is and is not part of a route's identity.
   const routeKey = routeIdentity(props.currentView);
   const surfaceKey = routeSurfaceIdentity(props.currentView);
-  // The surface the sidebar would highlight for this view — the same
-  // `getSurfaceForView` resolution `ProjectSidebarNav` uses, so the row marked
-  // pending is by construction the row that will be marked active.
+// The surface the sidebar would highlight for this view — the same
+// `getSurfaceForView` resolution `ProjectSidebarNav` uses, so the row marked
+// pending is by construction the row that will be marked active.
   const pendingSurfaceId =
     APP_SURFACE_REGISTRY.getSurfaceForView(props.currentView)?.id ?? null;
-  // Resolved ONCE and handed to both consumers: the frame that renders the
-  // header, and the boundary that renders the body while the route's chunk is
-  // in flight. Two calls would be two chances to disagree about what the
-  // arriving page looks like — which is the whole of #3660.
+// Resolved ONCE and handed to both consumers: the frame that renders the
+// header, and the boundary that renders the body while the route's chunk is
+// in flight. Two calls would be two chances to disagree about what the
+ // arriving page looks like — which is the whole of archive#3660.
   const frameSpec = resolvePageFrame(props.currentView);
   return (
-    // The frame is the outermost thing a route renders, above the boundary
-    // and above Suspense: the page keeps its header while its chunk loads and
-    // while its error state is on screen, so a failed route still tells you
-    // which page failed (SHELL-06's companion — the route error used to be
-    // the entire screen). The frame takes the section surface identity so a
-    // Connections list/edit pair can preserve its detail root; the boundary
-    // below keeps the exact route identity for errors and pending state.
+// The frame is the outermost thing a route renders, above the boundary
+// and above Suspense: the page keeps its header while its chunk loads and
+// while its error state is on screen, so a failed route still tells you
+// which page failed ('s companion — the route error used to be
+// the entire screen). The frame takes the section surface identity so a
+// Connections list/edit pair can preserve its detail root; the boundary
+// below keeps the exact route identity for errors and pending state.
     <PageFrame spec={frameSpec} routeIdentity={surfaceKey}>
       <RouteViewBoundary
         routeKey={routeKey}
@@ -216,7 +216,7 @@ export function AppViewContent(props: AppViewContentProps) {
           <RoutePendingSkeleton view={props.currentView} spec={frameSpec} />
         }
       >
-        {/* The entrance lives here, at the one seam every route passes through,
+{/* The entrance lives here, at the one seam every route passes through,
             instead of on `.page` — which eight split-pane routes never render.
             `key` remounts it on an actual surface transition; Connections
             list/edit routes intentionally share a section surface. */}
@@ -364,17 +364,17 @@ function AppViewContentBody({
     );
   }
   if (currentView.type === 'project-new') {
-    // On a cold load the root path resolves to 'project-new' (the no-lastProject
-    // fallback) before the projects query settles, briefly flashing the New
-    // Project modal until the projects-aware redirect routes to the default
-    // project. Wait until we actually know no projects exist.
-    //
-    // SHELL-13: this used to be `FullScreenLoader` — Station's boot splash,
-    // logo and cycling "Negotiating with the cloud..." phrases — rendered from
-    // INSIDE an authenticated shell, so opening /projects/new tore down the
-    // sidebar, toolbar and dock for the length of one list read. A full-screen
-    // loader is a pre-shell affordance; a route that is already inside the
-    // shell fills its own region and leaves the chrome alone.
+// On a cold load the root path resolves to 'project-new' (the no-lastProject
+// fallback) before the projects query settles, briefly flashing the New
+// Project modal until the projects-aware redirect routes to the default
+// project. Wait until we actually know no projects exist.
+//
+// this used to be `FullScreenLoader` — Station's boot splash,
+// logo and cycling "Negotiating with the cloud..." phrases — rendered from
+// INSIDE an authenticated shell, so opening /projects/new tore down the
+// sidebar, toolbar and dock for the length of one list read. A full-screen
+// loader is a pre-shell affordance; a route that is already inside the
+// shell fills its own region and leaves the chrome alone.
     if (projectsLoading) {
       return <SkeletonList count={3} label="Loading your projects" />;
     }
@@ -471,7 +471,7 @@ function AppViewContentBody({
  * `project-new` is the one genuinely-first-run coincidence (zero connections
  * AND zero projects): the first-run `SetupLauncher` already covers the full
  * screen with its own backdrop, so stacking `NewProjectModal` behind it is a
- * second, redundant overlay (#191 R3). Suppressing it here only changes
+ * second, redundant overlay (archive#191). Suppressing it here only changes
  * behavior for this view; a later, non-blocking banner (e.g. the user's only
  * connection gets disabled mid-session on some other view) is untouched and
  * still renders its normal content underneath.

@@ -53,12 +53,12 @@ export function AgentEditorEngineSelection({
   agentConnections: ConnectionConfig[];
   engineKind: EngineKind;
   onEngineKindChange: (kind: EngineKind) => void;
-  /**
-   * The selectable Station-engine connection to bind when "Use a model
-   * connection" is chosen, or `''` when none is ready. Passing the id keeps
-   * the model catalogue reachable (`runtimeCatalogVisibleModels`); `''` is
-   * the persisted Station shape when there is nothing ready to name.
-   */
+/**
+* The selectable Station-engine connection to bind when "Use a model
+* connection" is chosen, or `''` when none is ready. Passing the id keeps
+* the model catalogue reachable (`runtimeCatalogVisibleModels`); `''` is
+* the persisted Station shape when there is nothing ready to name.
+*/
   stationConnectionId: string;
 }) {
   const boundConnectionId = form.execution.agentConnectionId;
@@ -73,10 +73,10 @@ export function AgentEditorEngineSelection({
   const bindEngine = (value: string) => {
     setForm((current: AgentFormData) => {
       if (!value) {
-        // Station is represented by the ABSENCE of a connection, never by a
-        // managed-runtime connection id: that id is one Station-engine
-        // connection among several, while the record's meaning is simply
-        // "Station's own engine runs this".
+// Station is represented by the ABSENCE of a connection, never by a
+// managed-runtime connection id: that id is one Station-engine
+// connection among several, while the record's meaning is simply
+// "Station's own engine runs this".
         return {
           ...current,
           execution: { ...current.execution, agentConnectionId: '' },
@@ -89,7 +89,7 @@ export function AgentEditorEngineSelection({
           ...current.execution,
           agentConnectionId: value,
           modelConnectionId: '',
-          // §3.2: engine-owned values reset to the new engine's defaults.
+ // §3.2: engine-owned values reset to the new engine's defaults.
           runtimeOptions: changed ? {} : current.execution.runtimeOptions,
           modelOptions: changed ? {} : current.execution.modelOptions,
         },
@@ -97,15 +97,15 @@ export function AgentEditorEngineSelection({
     });
   };
 
-  /**
-   * The built-in Station Agent's engine is NOT an Agent field.
-   * `AppConfig.builtinAgentEngineConnectionId` owns it, resolved per boot
-   * against live readiness, and the record deliberately never carries the
-   * result (`docs/design/agent-engine-unification.md` §7.1.1, station#3662
-   * delta H3). A picker here would have written a value no reader consults
-   * and the write boundary drops — an engine choice that silently does
-   * nothing. So this states where the setting lives instead of offering one.
-   */
+/**
+* The built-in Station Agent's engine is NOT an Agent field.
+* `AppConfig.builtinAgentEngineConnectionId` owns it, resolved per boot
+* against live readiness, and the record deliberately never carries the
+ * result (`docs/design/agent-engine-unification.md` §7.1.1, archive#3662
+ * delta). A picker here would have written a value no reader consults
+* and the write boundary drops — an engine choice that silently does
+* nothing. So this states where the setting lives instead of offering one.
+*/
   if (isStationAgentIdentity(form.slug)) {
     return (
       <div className="editor-field">
@@ -137,7 +137,7 @@ export function AgentEditorEngineSelection({
             Change it in Settings
           </button>
         </span>
-        {/* #3728 review (MEDIUM): omitting the PICKER here is the
+{/* archive#3728: omitting the PICKER here is the
             documented decision; omitting the capability summary was not —
             this was the one editor case that named an engine without
             explaining it. Read-only, from the runtime-resolved binding. */}
@@ -192,10 +192,10 @@ export function AgentEditorEngineSelection({
             disabled={locked}
             onChange={() => {
               onEngineKindChange('cli');
-              // Do NOT auto-bind the first CLI: DESIGN.md §4 makes choosing
-              // one an explicit step, and Create stays disabled until it is
-              // made. Binding here would let a person create an agent on an
-              // engine they never named.
+ // Do NOT auto-bind the first CLI: DESIGN.md §4 makes choosing
+// one an explicit step, and Create stays disabled until it is
+// made. Binding here would let a person create an agent on an
+// engine they never named.
               bindEngine('');
             }}
           />
@@ -240,7 +240,7 @@ export function AgentEditorEngineSelection({
                 />
                 <span>
                   <strong>{connection.name}</strong>
-                  {/* The SERVER's readiness sentence (#3649 evidence), not
+ {/* The SERVER's readiness sentence (archive#3649 evidence), not
                       the evidence KIND — "Catalog: Live" is internal
                       vocabulary (Y5). */}
                   <small>
@@ -267,7 +267,7 @@ export function AgentEditorEngineSelection({
         </div>
       )}
 
-      {/* station#3722 slice 2: the two-row capability summary for the engine
+{/* archive#3722: the two-row capability summary for the engine
           this agent is actually bound to. The MODEL branch resolves to the
           Station matrix EXPLICITLY (#3728 review, LOW): "Use a model
           connection" means Station's own engine, and during the transient

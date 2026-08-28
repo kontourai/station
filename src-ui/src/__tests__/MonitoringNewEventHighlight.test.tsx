@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3658 delta2 review, MEDIUM-2 and MEDIUM-3 — the two view-side
+ * archive#3658, and — the two view-side
  * consequences of placing events by timestamp instead of prepending them.
  */
 
@@ -105,11 +105,11 @@ describe('Monitoring new-event highlight (delta2 MEDIUM-3)', () => {
     expect(highlighted(container)).toEqual([]);
   });
 
-  /*
-   * The count-based effect highlighted indices `prevLength → length`, so a
-   * late row inserted BEFORE an existing one highlighted the old last row
-   * instead of the one that actually arrived.
-   */
+/*
+* The count-based effect highlighted indices `prevLength → length`, so a
+* late row inserted BEFORE an existing one highlighted the old last row
+* instead of the one that actually arrived.
+*/
   test('a late arrival inserted mid-list highlights itself, not the last row', async () => {
     monitoring.events = [
       row('10:00', '2026-08-21T10:00:00.000Z'),
@@ -120,7 +120,7 @@ describe('Monitoring new-event highlight (delta2 MEDIUM-3)', () => {
       expect(container.querySelectorAll('.log-entry')).toHaveLength(2),
     );
 
-    // 10:02 arrives late and is placed between them.
+// 10:02 arrives late and is placed between them.
     monitoring.events = [
       row('10:00', '2026-08-21T10:00:00.000Z'),
       row('10:02', '2026-08-21T10:02:00.000Z'),
@@ -132,10 +132,10 @@ describe('Monitoring new-event highlight (delta2 MEDIUM-3)', () => {
     expect(highlighted(container)[0]).toContain('10:02');
   });
 
-  /*
-   * At the retention cap every arrival replaces a row without changing
-   * `length`, so a count-based effect highlighted nothing at all.
-   */
+/*
+* At the retention cap every arrival replaces a row without changing
+* `length`, so a count-based effect highlighted nothing at all.
+*/
   test('an arrival at the retention cap is still highlighted', async () => {
     const base = Date.parse('2026-08-21T00:00:00.000Z');
     const full = Array.from({ length: 1000 }, (_, index) =>
@@ -147,7 +147,7 @@ describe('Monitoring new-event highlight (delta2 MEDIUM-3)', () => {
       expect(container.querySelectorAll('.log-entry')).toHaveLength(1000),
     );
 
-    // One arrives; the oldest falls off. Length is unchanged.
+// One arrives; the oldest falls off. Length is unchanged.
     monitoring.events = [
       ...full.slice(1),
       row('arrival', new Date(base + 1_000_000).toISOString()),
@@ -182,8 +182,8 @@ describe('Monitoring auto-follow (delta2 MEDIUM-2)', () => {
     ];
     act(() => rerender(<MonitoringViewWithBoundary />));
 
-    // Auto Follow is on by default; the new row is below the viewport and the
-    // scroll button stays suppressed, so the view has to follow it.
+// Auto Follow is on by default; the new row is below the viewport and the
+// scroll button stays suppressed, so the view has to follow it.
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   });
 });

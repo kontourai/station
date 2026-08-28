@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#2651: every streaming-aliveness primitive MUST declare an explicit
+ * archive#2651: every streaming-aliveness primitive MUST declare an explicit
  * universal reduced-motion primitive. Shimmer is removed and sweep becomes
  * static; the other animation durations are clamped by tokens.css.
  */

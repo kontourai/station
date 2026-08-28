@@ -7,7 +7,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 
 const sessionId = 'unsent-session';
 
-// station#3706: this surface is the only durable place a refused follow-up's
+// archive#3706: this surface is the only durable place a refused follow-up's
 // text still exists — every affordance is about getting the text back OUT.
 describe('UnsentMessages', () => {
   beforeEach(() => {
@@ -28,9 +28,9 @@ describe('UnsentMessages', () => {
           id: 'row-2',
           content: 'a second one',
           reason: 'Refused twice.',
-          // Same millisecond as row-1 on purpose: identity is `id`, and a
-          // dismiss must not take its same-timestamp neighbour with it
-          // (#3706 review MEDIUM).
+// Same millisecond as row-1 on purpose: identity is `id`, and a
+// dismiss must not take its same-timestamp neighbour with it
+ // (archive#3706).
           at: 111,
         },
       ],
@@ -60,9 +60,9 @@ describe('UnsentMessages', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText('a second one')).toBeTruthy();
-    // No resend affordance exists: the refusal was permanent for this
-    // conversation, and a Retry would re-offer the exact send that was
-    // refused.
+// No resend affordance exists: the refusal was permanent for this
+// conversation, and a Retry would re-offer the exact send that was
+// refused.
     expect(screen.queryByRole('button', { name: /retry|resend/i })).toBeNull();
   });
 
@@ -98,7 +98,7 @@ describe('UnsentMessages', () => {
     await screen.findByRole('button', { name: 'Copied' });
 
     expect(writeText).toHaveBeenCalledWith('the refused follow-up');
-    // Copying must not consume the record — the row stays until Dismiss.
+// Copying must not consume the record — the row stays until Dismiss.
     expect(currentRecords()).toHaveLength(2);
   });
 
@@ -116,11 +116,11 @@ describe('UnsentMessages', () => {
     );
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[0]);
-    // Give the rejected promise a tick to settle.
+// Give the rejected promise a tick to settle.
     await Promise.resolve();
 
     expect(screen.queryByRole('button', { name: 'Copied' })).toBeNull();
-    // The text itself is still on screen, so nothing is lost.
+// The text itself is still on screen, so nothing is lost.
     expect(screen.getByText('the refused follow-up')).toBeTruthy();
   });
 

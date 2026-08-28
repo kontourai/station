@@ -14,27 +14,27 @@ import { useHomeWorkLanes } from './useHomeWorkLanes';
 export type HomeViewModel = ReturnType<typeof useHomeViewModel>;
 
 export interface HomeSurfaceProps {
-  /** The shared Home model. This renders it; it does not own it. */
+/** The shared Home model. This renders it; it does not own it. */
   model: HomeViewModel;
-  /** Best safe project continuation, or null when there is nothing to resume. */
+/** Best safe project continuation, or null when there is nothing to resume. */
   continuation: HomeViewNavigation | null;
   onNavigate: (view: NavigationView) => void;
-  /**
-   * Home has no `PageFrame` (`page-frame-registry.ts` maps `home: null`), so
-   * there is no page-header action cell for `WorkspacePaneDockAction` to
-   * join the way Activity's does (`PageFrameActions`). This is Home's own
-   * top-of-content action slot instead: rendered beside the intro rather
-   * than stacked above it, so it no longer collides with the `Your work`
-   * eyebrow (2026-08-26 audit F6). Optional so a test rendering `HomeSurface`
-   * directly is not forced to supply one.
-   */
+/**
+* Home has no `PageFrame` (`page-frame-registry.ts` maps `home: null`), so
+* there is no page-header action cell for `WorkspacePaneDockAction` to
+* join the way Activity's does (`PageFrameActions`). This is Home's own
+* top-of-content action slot instead: rendered beside the intro rather
+* than stacked above it, so it no longer collides with the `Your work`
+* eyebrow. Optional so a test rendering `HomeSurface`
+* directly is not forced to supply one.
+*/
   topAction?: ReactNode;
 }
 
 const ACTIVITY_HEADING_ID = 'home-activity-heading';
 
 /**
- * The one Home (station#3122's experiment, concluded).
+ * The one Home (archive#3122's experiment, concluded).
  *
  * Reading order: name the question, offer the ways in, show where the work
  * has been, then the work itself. The first two sections are what Home has
@@ -56,14 +56,14 @@ export function HomeSurface({
   onNavigate,
   topAction,
 }: HomeSurfaceProps) {
-  // Derived ONCE, here, and handed down. `HomeRecentWorkSection` used to
-  // derive its own; a second `useHomeWorkLanes` instance carries its own
-  // snooze snapshot, so the counts and the list they caption could disagree
-  // about what is snoozed.
+// Derived ONCE, here, and handed down. `HomeRecentWorkSection` used to
+// derive its own; a second `useHomeWorkLanes` instance carries its own
+// snooze snapshot, so the counts and the list they caption could disagree
+// about what is snoozed.
   const lanes = useHomeWorkLanes(model.workItems);
-  // Lanes, not raw `workItems`: `partitionHomeWorkItems` hides a snoozed
-  // item, and reading `workItems` directly here would put every snoozed row
-  // back into the chart the counts beside it say is empty.
+// Lanes, not raw `workItems`: `partitionHomeWorkItems` hides a snoozed
+// item, and reading `workItems` directly here would put every snoozed row
+// back into the chart the counts beside it say is empty.
   const visible = [
     ...lanes.active,
     ...lanes.recentlyFinished,
@@ -137,13 +137,13 @@ export function HomeSurface({
  * SLUG are different facts:
  *
  * - the row's items must agree on one slug (`HeatRow.projectSlug`), and that
- *   slug must exist in the configured project catalog — `/projects/<slug>`
- *   for a slug no project answers to is not a destination;
+*   slug must exist in the configured project catalog — `/projects/<slug>`
+*   for a slug no project answers to is not a destination;
  * - the row's visible label must be exactly that project's slug or name.
- *   `projectLabel` also carries `sessionProjectLabel`'s caveats — "beacon
- *   (unverified name match)" — and a session can hold a delegated project
- *   slug alongside a different local one. Linking a caveated label to the
- *   local project would answer a question the label explicitly says is open.
+*   `projectLabel` also carries `sessionProjectLabel`'s caveats — "beacon
+*   (unverified name match)" — and a session can hold a delegated project
+*   slug alongside a different local one. Linking a caveated label to the
+*   local project would answer a question the label explicitly says is open.
  *
  * The destination itself is verified: `{type:'project', slug}` renders
  * `ProjectPage`, whose Live work section filters sessions through
@@ -154,10 +154,10 @@ function projectOpener(
   model: HomeViewModel,
   onNavigate: (view: NavigationView) => void,
 ): (row: HeatRow) => (() => void) | null {
-  // While the catalog is still loading this is empty and no row links. That
-  // is the intended answer, not a placeholder: nothing has yet confirmed the
-  // project exists. (`useProjectsQuery` is untyped in the SDK, so the two
-  // fields this decision reads are named here rather than inferred as `any`.)
+// While the catalog is still loading this is empty and no row links. That
+// is the intended answer, not a placeholder: nothing has yet confirmed the
+// project exists. (`useProjectsQuery` is untyped in the SDK, so the two
+// fields this decision reads are named here rather than inferred as `any`.)
   const projects: { slug: string; name?: string }[] = model.projects ?? [];
   return (row) => {
     if (!row.projectSlug) return null;

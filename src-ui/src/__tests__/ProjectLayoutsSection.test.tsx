@@ -86,8 +86,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     return 'unknown';
   },
   StationHttpError: sdkMocks.StationHttpError,
-  // Project Page embeds the pane catalog; its capability query is outside
-  // this layout-selection fixture's scope.
+// Project Page embeds the pane catalog; its capability query is outside
+// this layout-selection fixture's scope.
   useServerCapabilitiesQuery: () => ({ data: undefined }),
 }));
 
@@ -726,7 +726,7 @@ describe('catalog application MRU tracking', () => {
   });
 });
 
-// #801: the project page renders as soon as the *project* query settles, so a
+// archive#801: the project page renders as soon as the *project* query settles, so a
 // layouts fetch still in flight reached this section as an empty array and
 // stated "No layouts yet" for a project that has layouts.
 describe('ProjectLayoutsSection loading window (#801)', () => {
@@ -780,9 +780,9 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
     expect(screen.getByText('Coding')).toBeTruthy();
   });
 
-  // react-query clears `isLoading` once a query settles into error, so without
-  // an explicit error branch a failed fetch reads as "No layouts yet" — the
-  // same confident-emptiness defect, reached from the error path (#801 review).
+// react-query clears `isLoading` once a query settles into error, so without
+// an explicit error branch a failed fetch reads as "No layouts yet" — the
+ // same confident-emptiness defect, reached from the error path (archive#801).
   test('states a failure as a failure rather than as emptiness', () => {
     const onRetry = vi.fn();
     render(

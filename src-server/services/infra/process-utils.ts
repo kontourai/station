@@ -216,7 +216,7 @@ export function forceKillProcess(proc: ChildProcess): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// station#1863: owned-process reaping.
+// archive#1863: owned-process reaping.
 //
 // A child spawned with `detached: true` survives the parent that created it —
 // that is deliberate (a group kill reaps the grandchild through it). But it is
@@ -300,7 +300,7 @@ export function resolveOwnedProcessOwner(
 }
 
 /**
- * station#1863 BLOCKING 2: the registry directory is a host-wide, predictable
+ * archive#1863 BLOCKING 2: the registry directory is a host-wide, predictable
  * path. Anything that can drop a file into it before the next boot gets an
  * arbitrary group-SIGKILL executed by Station at sweep time (see BLOCKING 1:
  * an unvalidated enginePid negated into a group kill). So the directory MUST
@@ -320,7 +320,7 @@ export type RegistryTrustReason =
   | { kind: 'too-permissive'; mode: number };
 
 /**
- * Pure trust evaluation over a stat-like object, extracted (station#1863 fix
+ * Pure trust evaluation over a stat-like object, extracted (archive#1863 fix
  * round 3) so the foreign-owner refusal branch — which cannot be exercised
  * against a real foreign-owned directory without root, yet gates an arbitrary
  * group-SIGKILL — is unit-testable. The directory is trustworthy only when it
@@ -474,7 +474,7 @@ export function forgetOwnedProcess(
 
 /**
  * A `probeExactProcessIdentity`-shaped function. Extracted as a type alias so
- * the sweep can accept a test seam (station#1863 fix round 3) without changing
+ * the sweep can accept a test seam (archive#1863 fix round 3) without changing
  * its production behavior.
  */
 export type ProcessIdentityProbe = (pid: number) => ExactProcessIdentityProbe;
@@ -516,7 +516,7 @@ export interface OwnedProcessSweepResult {
 }
 
 /**
- * station#1863 BLOCKING 1: validate an engine pid BEFORE negating it into a
+ * archive#1863 BLOCKING 1: validate an engine pid BEFORE negating it into a
  * negative-group `process.kill(-pid, …)`. Without this guard, `enginePid: 0`
  * SIGKILLs Station's own process group (`-0 === 0`), `enginePid: 1` SIGKILLs
  * every process the user may signal, and a negative pid signals an arbitrary
@@ -551,7 +551,7 @@ function isKillableEnginePid(pid: unknown): pid is number {
  * because a missed reclaim is acceptable and a wrong kill is not. Both
  * directions of pid reuse (owner and engine) are covered by birth comparison.
  *
- * Registry trust (station#1863 BLOCKING 2): the sweep refuses to read a
+ * Registry trust (archive#1863 BLOCKING 2): the sweep refuses to read a
  * directory that is not owned by us or whose mode is broader than 0700, so a
  * foreign-planted record cannot weaponize the kill.
  *
@@ -567,10 +567,10 @@ export async function sweepOrphanedOwnedProcesses(
     env?: NodeJS.ProcessEnv;
     log?: (message: string, data?: unknown) => void;
     /**
-     * Test seam (station#1863 fix round 3): override the identity probe so the
+     * Test seam (archive#1863 fix round 3): override the identity probe so the
      * fail-closed 'unavailable' branch — unreachable against a real process
      * whose fingerprint is always readable on the test host, yet is exactly the
-     * branch that matters under the ENOSPC/high-load conditions #1863 targets —
+     * branch that matters under the ENOSPC/high-load conditions archive#1863 targets —
      * can be exercised behaviourally. Defaults to the real
      * {@link probeExactProcessIdentity}; production callers never pass it.
      */
@@ -726,7 +726,7 @@ export interface SpawnOwnedChildOptions {
  * cleanup. The child is its own process-group leader (POSIX), so a negative-pid
  * signal reaps the whole tree including any re-execed grandchild.
  *
- * This is the shared primitive #1865's other spawning sites are waiting on:
+ * This is the shared primitive archive#1865's other spawning sites are waiting on:
  * the registration + sweep are engine-agnostic, so a Codex process, a terminal
  * subprocess, or any other long-lived child can adopt it without a per-site
  * copy.

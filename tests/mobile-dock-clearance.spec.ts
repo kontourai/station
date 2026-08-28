@@ -3,7 +3,7 @@ import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
- * station#3902 — the chat dock is shell chrome (`App.tsx`), so no route can
+ * archive#3902 — the chat dock is shell chrome (`App.tsx`), so no route can
  * reserve space for it, and every route needs the space reserved anyway.
  *
  * `/connections/models/new` is the subject because it is the route the phone

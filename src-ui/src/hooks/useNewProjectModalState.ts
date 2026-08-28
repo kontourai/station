@@ -25,7 +25,7 @@ interface ProjectsQueryResult {
  * its 409 — so the modal and the route cannot describe the same collision
  * differently.
  *
- * This one reads the CACHE, so it is advisory and never blocks (review HIGH):
+ * This one reads the CACHE, so it is advisory and never blocks :
  * `['projects']` stays fresh for five minutes and the app disables both
  * refetch-on-mount and refetch-on-focus, so an entry deleted by another device,
  * the CLI, or another tab survives here long after the name became free. A veto
@@ -46,9 +46,9 @@ function useCachedSlugConflictNotice(
     projects.map((project) => project.slug),
   );
   if (!conflict) return undefined;
-  // Deliberately NOT `describeProjectSlugConflict`: that sentence states a
-  // conflict as fact and names the free slug to move to. This one says only
-  // what a possibly-stale cache can support.
+// Deliberately NOT `describeProjectSlugConflict`: that sentence states a
+// conflict as fact and names the free slug to move to. This one says only
+// what a possibly-stale cache can support.
   return `A project called '${resolvedName}' may already exist. Station checks with the server when you create it.`;
 }
 
@@ -66,8 +66,8 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     draft.normalizedDirectory || undefined,
     { enabled: isOpen && directoryLikelyExists },
   );
-  // Shares the `['projects']` cache the sidebar already holds, so opening the
-  // modal usually costs no request at all.
+// Shares the `['projects']` cache the sidebar already holds, so opening the
+// modal usually costs no request at all.
   const projects = useProjectsQuery({ enabled: isOpen }) as ProjectsQueryResult;
   const nameAdvisory = useCachedSlugConflictNotice(
     draft.derivedSlug,
@@ -75,16 +75,16 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     projects.isSuccess ? projects.data : undefined,
   );
 
-  /**
-   * The only client-side check allowed to refuse a submission: it re-reads the
-   * project list from the server first, so the veto is a fresh fact rather than
-   * a cache entry. Returns the sentence to show, or `null` to let the POST go.
-   *
-   * Every uncertain outcome resolves to `null` — a refetch that threw, or that
-   * answered with anything other than a list, tells us nothing, and the server's
-   * own 409 (same helper, same sentence) is the correct place for the answer to
-   * come from when the client cannot know.
-   */
+/**
+* The only client-side check allowed to refuse a submission: it re-reads the
+* project list from the server first, so the veto is a fresh fact rather than
+* a cache entry. Returns the sentence to show, or `null` to let the POST go.
+*
+* Every uncertain outcome resolves to `null` — a refetch that threw, or that
+* answered with anything other than a list, tells us nothing, and the server's
+* own 409 (same helper, same sentence) is the correct place for the answer to
+* come from when the client cannot know.
+*/
   async function verifySlugAvailability(candidate: {
     name: string;
     slug: string;

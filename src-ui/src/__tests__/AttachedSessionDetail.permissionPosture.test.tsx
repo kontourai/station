@@ -23,10 +23,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   createAdoptOrchestrationSessionIntent: () => ({
     idempotencyKey: '55555555-5555-4555-8555-555555555555',
   }),
-  // An already-bound starter is the branch that continues through
-  // `adoptOrchestrationSession`, which is the call every test below drives.
-  // Answered here rather than stood up: no server exists in this file, and a
-  // real read would only decide which continuation path runs.
+// An already-bound starter is the branch that continues through
+// `adoptOrchestrationSession`, which is the call every test below drives.
+// Answered here rather than stood up: no server exists in this file, and a
+// real read would only decide which continuation path runs.
   getStarterWork: async () => ({
     state: 'bound' as const,
     binding: {
@@ -89,9 +89,9 @@ function renderAttached({
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  // The real provider, not a stub: the component calls `useToast()` at its top
-  // (AttachedSessionDetail.tsx), which throws outside a provider — so a render
-  // without one fails before any assertion in this file runs.
+// The real provider, not a stub: the component calls `useToast` at its top
+// (AttachedSessionDetail.tsx), which throws outside a provider — so a render
+// without one fails before any assertion in this file runs.
   return render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
@@ -135,10 +135,10 @@ function renderAttached({
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {
   test('every assistant row is annotated "Read only" — this view only ever shows a read-only-attached session', () => {
     renderAttached();
-    // The user turn (from the prompt) never gets the badge.
+// The user turn (from the prompt) never gets the badge.
     const userRole = screen.getByText('You');
     expect(userRole.textContent).toBe('You');
-    // The assistant turn does.
+// The assistant turn does.
     const assistantRole = screen.getByText('Assistant', { exact: false });
     expect(assistantRole.textContent).toContain('Assistant');
     expect(assistantRole.textContent).toContain('Read only');
@@ -156,16 +156,16 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     expect(screen.getByText('external:claude:raw-thread-id')).toBeTruthy();
   });
 
-  /**
-   * station#3227 C3. This heading was an INLINE copy of `sessionTitle`'s
-   * first and last branches — `displayTitle?.trim() || `${displayProvider}
-   * session`` — with the middle one missing. The case above could never
-   * notice, because a session with no delegation takes the same branch in
-   * both versions. An attached session that DOES carry a delegated task id
-   * was the whole divergence: this pane said "Claude Code session" while the
-   * list it was opened from said "Worker task · adopt review", for one
-   * session, one click apart.
-   */
+/**
+* archive#3227. This heading was an INLINE copy of `sessionTitle`'s
+* first and last branches — `displayTitle?.trim || `${displayProvider}
+* session`` — with the middle one missing. The case above could never
+* notice, because a session with no delegation takes the same branch in
+* both versions. An attached session that DOES carry a delegated task id
+* was the whole divergence: this pane said "Claude Code session" while the
+* list it was opened from said "Worker task · adopt review", for one
+* session, one click apart.
+*/
   test('a delegated attached session is named by its task, as the list names it', () => {
     renderAttached({
       session: { delegation: { taskId: 'task:adopt-review' } },
@@ -201,8 +201,8 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     expect(
       screen.getByText('This transcript is read-only and safe.'),
     ).toBeTruthy();
-    // The stream's SSE state says nothing about the REST adoption channel
-    // (sol review of #2630, finding 1) — the recovery action stays enabled.
+// The stream's SSE state says nothing about the REST adoption channel
+// (archive#2630) — the recovery action stays enabled.
     expect(
       screen
         .getByRole('button', { name: 'Continue in Station' })
@@ -212,12 +212,12 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     expect(screen.getByText('Session history transport failed.')).toBeTruthy();
   });
 
-  /**
-   * station#3426. The generic "retrying automatically" copy was false for a
-   * credential rejection (nothing is retrying) and for an exhausted
-   * capability re-probe (nothing is retrying, but it isn't a rejection
-   * either). These pin the three honest states the fold now derives.
-   */
+/**
+* archive#3426. The generic "retrying automatically" copy was false for a
+* credential rejection (nothing is retrying) and for an exhausted
+* capability re-probe (nothing is retrying, but it isn't a rejection
+* either). These pin the three honest states the fold now derives.
+*/
   test('names the cause when the live stream stopped for good on a credential rejection', () => {
     renderAttached({
       connected: false,
@@ -307,7 +307,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
         "This Station needs an update before it can show this session's history.",
       ),
     ).toBeTruthy();
-    // Retrying cannot cure an incompatible host (sol finding 2).
+ // Retrying cannot cure an incompatible host (sol).
     expect(
       screen.queryByText(
         "Station isn't responding right now — retrying automatically.",

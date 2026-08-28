@@ -65,19 +65,19 @@ import {
 } from './settings/VoiceFeaturesSection';
 
 /**
- * station#settings-revamp slice 3: three registry-driven scope sections
+ * archive#settings-revamp: three registry-driven scope sections
  * (docs/design/settings-architecture.md §5) replace the single flat nav —
- * Station (S1), Defaults (S2), This device (S3). Leaf section DOM ids are
+* Station, Defaults, This device. Leaf section DOM ids are
  * unchanged from pre-slice-3 (`useSectionNavigation` deep links and
  * existing tests key off them); only the top-level nav/page grouping
  * restructures. `station-config` is the one new leaf (the previously
  * hidden Station fields — see StationConfigSection.tsx). "My knowledge
- * store" (station#settings-revamp slice 5: renamed from "Knowledge Store" to
+ * store" (archive#settings-revamp: renamed from "Knowledge Store" to
  * disambiguate from the project-scoped and infrastructure-scoped Knowledge
- * surfaces, docs/design/settings-architecture.md §3 S5) stays its own
+ * surfaces, docs/design/settings-architecture.md §3) stays its own
  * top-level card outside every scope group.
  */
-// Ordered by what a person came here to do (station#1826): the sections with
+// Ordered by what a person came here to do (archive#1826): the sections with
 // controls first (Station configuration, System, Shared answers), then the
 // read-mostly surfaces (Station host status, the Diagnostics bundle). A
 // settings page should open with what you change, not what an engineer
@@ -131,8 +131,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   );
   const [isSplitSaving, setIsSplitSaving] = useState(false);
   const saveInFlightRef = useRef(false);
-  // When each key was last written from this form, so a server snapshot can be
-  // compared against our own writes key by key rather than wholesale.
+// When each key was last written from this form, so a server snapshot can be
+// compared against our own writes key by key rather than wholesale.
   const savedAtRef = useRef<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const diagnosticsBundle = useMutation({
@@ -185,10 +185,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     nonce: 0,
   }));
 
-  // NavigationStore dispatches popstate for both browser navigation and an
-  // in-app same-route query navigation. Keep a separate request state so a
-  // second palette selection for the same mounted Settings view is still a
-  // new reveal, rather than an ignored equal active-section state update.
+// NavigationStore dispatches popstate for both browser navigation and an
+// in-app same-route query navigation. Keep a separate request state so a
+// second palette selection for the same mounted Settings view is still a
+// new reveal, rather than an ignored equal active-section state update.
   useEffect(() => {
     const syncHighlight = () =>
       setHighlightRequest((previous) => ({
@@ -224,8 +224,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       );
       return;
     }
-    // A target owns its section. Clear only the local search filter (drafts
-    // stay untouched) and heal a mismatched view before waiting for its row.
+// A target owns its section. Clear only the local search filter (drafts
+// stay untouched) and heal a mismatched view before waiting for its row.
     setSearchQuery('');
     const requestedView = new URLSearchParams(window.location.search).get(
       'view',
@@ -243,9 +243,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     let done = false;
     const focusOwner = document.activeElement;
     const focusTarget = (target: HTMLElement) => {
-      // Leaf controls are preferred when they are editable. Buttons are
-      // intentionally excluded: a deep link must not choose a destructive or
-      // otherwise surprising action merely because it is first in a row.
+// Leaf controls are preferred when they are editable. Buttons are
+// intentionally excluded: a deep link must not choose a destructive or
+// otherwise surprising action merely because it is first in a row.
       const control = [
         ...target.querySelectorAll<HTMLElement>(
           'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"]',
@@ -260,8 +260,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       );
       const destination = control ?? target;
       destination.focus({ preventScroll: true });
-      // Browsers may reject a focus target that has become hidden/disabled
-      // during the reveal. The labeled catalog row is always the safe fallback.
+// Browsers may reject a focus target that has become hidden/disabled
+// during the reveal. The labeled catalog row is always the safe fallback.
       if (document.activeElement !== destination) {
         target.focus({ preventScroll: true });
       }
@@ -270,8 +270,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const target = document.getElementById(highlight);
       if (!target || done) return false;
       done = true;
-      // Defaults intentionally begins closed. A deep link owns revealing the
-      // declared target, not an arbitrary first button inside the section.
+// Defaults intentionally begins closed. A deep link owns revealing the
+// declared target, not an arbitrary first button inside the section.
       target.closest('details')?.setAttribute('open', '');
       target.scrollIntoView?.({
         block: 'center',
@@ -279,10 +279,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           ? 'auto'
           : 'smooth',
       });
-      // Delayed mount must not pull focus away from a person who began typing
-      // somewhere else while the target was becoming available. The palette's
-      // input is still the owner during its normal close/restore hand-off, so
-      // the destination may claim focus in that ordinary case.
+// Delayed mount must not pull focus away from a person who began typing
+// somewhere else while the target was becoming available. The palette's
+// input is still the owner during its normal close/restore hand-off, so
+// the destination may claim focus in that ordinary case.
       if (
         document.activeElement === focusOwner ||
         document.activeElement === document.body ||
@@ -333,18 +333,18 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     };
   }, [highlightRequest, isMobile, locale]);
 
-  // Reconciling the server snapshot with the form is a question about *time*,
-  // not about values: a just-invalidated query can still hold the pre-save
-  // payload, and a value comparison cannot tell that apart from the server
-  // genuinely changing away and back. React Query's `dataUpdatedAt` is the
-  // fetch generation — it advances on every successful fetch even when the
-  // payload is identical — so it answers both.
-  //
-  // A snapshot is adopted only while the form is clean; one that arrives while
-  // the user has unsaved drafts is *remembered*, not consumed, and adopted the
-  // moment the form becomes clean. Keys this form wrote after that snapshot was
-  // fetched keep the local value (the snapshot predates the write); every other
-  // key takes server truth, so an external edit is never hidden.
+// Reconciling the server snapshot with the form is a question about *time*,
+// not about values: a just-invalidated query can still hold the pre-save
+// payload, and a value comparison cannot tell that apart from the server
+// genuinely changing away and back. React Query's `dataUpdatedAt` is the
+// fetch generation — it advances on every successful fetch even when the
+// payload is identical — so it answers both.
+//
+// A snapshot is adopted only while the form is clean; one that arrives while
+// the user has unsaved drafts is *remembered*, not consumed, and adopted the
+// moment the form becomes clean. Keys this form wrote after that snapshot was
+// fetched keep the local value (the snapshot predates the write); every other
+// key takes server truth, so an external edit is never hidden.
   const adoptedUpdatedAtRef = useRef(configUpdatedAt);
   const unadoptedSnapshotRef = useRef<{
     config: AppConfig;
@@ -402,9 +402,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const { serverConfig, droppedDeviceKeys } =
         await parseImportedSettingsFile(file);
       setConfig({ ...config, ...serverConfig });
-      // station#settings-revamp slice2 review finding 2: an invalid device
-      // value is dropped (not silently merged, not a hard failure) — surface
-      // that it happened rather than absorbing it without a trace.
+// archive#settings-revamp: an invalid device
+// value is dropped (not silently merged, not a hard failure) — surface
+// that it happened rather than absorbing it without a trace.
       setError(
         droppedDeviceKeys.length > 0
           ? `Imported, but ${droppedDeviceKeys.length} device setting${droppedDeviceKeys.length === 1 ? '' : 's'} had an invalid value and kept its current value instead.`
@@ -483,9 +483,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             ? { logLevel: logLevelOutcome.value.value }
             : {}),
         };
-        // Stamp each written key so a server snapshot fetched *before* this
-        // write cannot silently roll it back, while one fetched after it still
-        // wins — see the reconciliation effect above.
+// Stamp each written key so a server snapshot fetched *before* this
+// write cannot silently roll it back, while one fetched after it still
+// wins — see the reconciliation effect above.
         const writtenAt = Date.now();
         for (const key of Object.keys(written)) {
           savedAtRef.current[key] = writtenAt;
@@ -532,9 +532,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
   if (!configData) {
     return (
-      // The page header is the frame's (SHELL-11) and is already on screen
-      // above this body; the section nav and C2's error-is-not-loading fork
-      // stay exactly as they are.
+// The page header is the frame's  and is already on screen
+ // above this body; the section nav and error-is-not-loading fork
+// stay exactly as they are.
       <div className="settings">
         {highlightNotice}
         <SettingsSectionNav
@@ -542,13 +542,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           hrefForSection={hrefForSection}
           navigateToSection={navigateToSection}
         />
-        {/*
+{/*
           Review M2: this branch used to be the skeleton alone, and
           `useConfigSnapshot` discarded the query error — so a failed initial
           config read left Settings drawing "still loading" forever. Error is
           not loading. The header and section nav above stay put either way
           (6-OPS-23): the frame a page owns is known before its data is.
-        */}
+*/}
         {configError ? (
           <ErrorState
             title="Unable to load settings"
@@ -574,7 +574,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     <>
       <div className="settings">
         {highlightNotice}
-        {/* station#1826: the three-card "This device / Station / Defaults"
+{/* archive#1826: the three-card "This device / Station / Defaults"
             legend is gone. It restated the taxonomy the grouped nav below
             already shows, in implementation vocabulary, and treated
             "Defaults" (a precedence rule) as a peer of two storage
@@ -593,7 +593,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           </div>
         )}
 
-        {/* ── Section Nav ── */}
+{/* ── Section Nav ── */}
         <input
           type="text"
           className="settings__search"
@@ -608,7 +608,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           navigateToSection={navigateToSection}
         />
 
-        {/* ── Station scope ── */}
+{/* ── Station scope ── */}
         <section
           aria-label="Station settings"
           className="settings__scope-group"
@@ -642,11 +642,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             </>
           )}
 
-          {/* station#3313: previews persist on the Station (PUT
+{/* archive#3313: previews persist on the Station (PUT
               /api/feature-previews/:id), so the section lives in this scope. */}
           {sectionVisible('feature-previews') && <FeaturePreviewsSection />}
 
-          {/* station#1423: answer permalinks the operator has minted. Station
+{/* archive#1423: answer permalinks the operator has minted. Station
               scope because the shares live on this Station and every client
               of it sees the same list. */}
           {sectionVisible('answer-shares') && <AnswerSharesSection />}
@@ -700,7 +700,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           )}
         </section>
 
-        {/* ── Defaults scope ── */}
+{/* ── Defaults scope ── */}
         <section
           aria-label="Defaults settings"
           className="settings__scope-group"
@@ -728,7 +728,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           )}
         </section>
 
-        {/* ── This device scope ── */}
+{/* ── This device scope ── */}
         <section
           aria-label="This device settings"
           className="settings__scope-group"
@@ -770,7 +770,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 description="Toggle between light and dark mode."
                 control={<ThemeToggle />}
               />
-              {/* #3314: the restore path for a section removed via the
+ {/* archive#3314: the restore path for a section removed via the
                   sidebar's own × affordance. */}
               <PageRow
                 {...settingsRow('sidebar-sections')}
@@ -864,7 +864,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           )}
         </section>
 
-        {/* ── My knowledge store (stays its own top-level card) ──
+{/* ── My knowledge store (stays its own top-level card) ──
             The caption keeps the persistence fact the removed scope legend
             used to carry for knowledge (station#1826 delivery review, M2):
             this card sits outside every scope group, so without its own
@@ -927,7 +927,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
 /**
  * The settings section rail, extracted so it can render BEFORE the config
- * read settles (6-OPS-23).
+ * read settles (6-).
  *
  * Every link here is derived from the static `SETTINGS_SECTIONS` catalog and
  * from the URL — none of it waits on `/api/config/app`. Rendering it only in
@@ -935,9 +935,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * title and three grey blocks: the page's whole navigable shape was known the
  * whole time and withheld anyway.
  *
- * station#4463 slice 2: this used to render its own all-caps `STATION` /
+* archive#4463: this used to render its own all-caps `STATION` /
  * `DEFAULTS` / `THIS DEVICE` group-label `<span>`s inline in the same row as
- * the section links — the shell audit named this a bug (two label
+ * the section links — the named this a bug (two label
  * vocabularies colliding in one control), and the fix is not to relabel it
  * but to remove it: every scope group's content already opens with its own
  * caption ("Saved to this Station — every client sees the same values.",
@@ -949,7 +949,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
  * `SectionNav`, not `Tabs`: these are real, deep-linkable URL sections
  * (`?view=`) navigated via `useSectionNavigation`'s `hrefForSection`, not an
  * in-place tab widget — see `components/SectionNav.tsx`'s docblock for why
- * that distinction is load-bearing (station#4463 slice 2 review).
+* that distinction is load-bearing (archive#4463).
  */
 /** Exported for `SettingsSectionNav.test.tsx` — the nav's shape is worth testing directly, independent of the many hooks a full `SettingsView` render would require mocking. */
 export function settingsSectionNavItems(
@@ -960,11 +960,11 @@ export function settingsSectionNavItems(
     const groupSections = SETTINGS_SECTIONS.filter(
       (section) => section.group === group,
     );
-    // A divider marks a boundary BETWEEN two groups — never after the last
-    // group's last item, which matches the original markup: Knowledge
-    // rendered outside every `.settings__nav-group` wrapper, so the CSS
-    // sibling-divider (`.settings__nav-group + .settings__nav-group`) never
-    // fired between "This device" and Knowledge.
+// A divider marks a boundary BETWEEN two groups — never after the last
+// group's last item, which matches the original markup: Knowledge
+// rendered outside every `.settings__nav-group` wrapper, so the CSS
+// sibling-divider (`.settings__nav-group +.settings__nav-group`) never
+// fired between "This device" and Knowledge.
     const isLastGroup = groupIndex === NAV_GROUPS.length - 1;
     return groupSections.map((section, index) => ({
       key: section.id,

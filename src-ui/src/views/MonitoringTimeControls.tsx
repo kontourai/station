@@ -168,7 +168,7 @@ export function MonitoringTimeControls(props: MonitoringTimeControlsProps) {
         type="button"
         onClick={props.onToggleLiveMode}
         className={`live-mode-toggle ${props.isLiveMode ? 'active' : ''}`}
-        // 6-OPS-34: one toolbar, three toggle conventions — `Auto Follow`
+        // 6-: one toolbar, three toggle conventions — `Auto Follow`
         // exposed `aria-pressed`, LIVE and the event filters exposed a CSS
         // class and nothing else, so their state was invisible to anything
         // that is not a pair of eyes.

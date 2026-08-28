@@ -22,7 +22,7 @@ export interface DialogProps {
    * Footer controls, rendered in a `ResponsiveSurfaceActions` row. Omit for a
    * dialog whose body commits (the New Chat picker: clicking a row starts the
    * chat) — but prefer a footer: a dialog with no visible commit was the
-   * single most confusing surface in the audit (SHELL-02, and the New Chat
+   * single most confusing surface in the audit (and the New Chat
    * row of the view-but-can't-act inventory).
    */
   footer?: ReactNode;
@@ -58,7 +58,7 @@ export interface DialogProps {
  * scroll-safe body, and a footer action row.
  *
  * The audit opened four dialogs in one session and found four different
- * systems (SHELL-02): New Project had an eyebrow, sentence-case labels and a
+ * systems : New Project had an eyebrow, sentence-case labels and a
  * dark-outlined `Create`; Add Job had UPPERCASE labels and a teal-filled
  * primary; Delete Job had a red primary and NO close X — and those last two
  * open from the same table row. Source-side that was 20 distinct `*-modal__*`

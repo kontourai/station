@@ -43,7 +43,7 @@ export interface InterruptedTurnRecoveryDeps {
 }
 
 /**
- * station#4080 slice 1: the narrow FileMemory seam
+ * archive#4080: the narrow FileMemory seam
  * `consumeInterruptedTurnBoundaries` needs — the same three operations
  * `routes/chat/conversations.ts`'s `readConversationMessages` uses to decide
  * whether a session's transcript lives in this store at all. `getMessages`'s
@@ -71,7 +71,7 @@ export interface InterruptedTurnMemoryAdapter {
 }
 
 /**
- * station#4080 slice 1: `options.limit` bounds the RESULT
+ * archive#4080: `options.limit` bounds the RESULT
  * `resolveConversationTranscriptSource`'s `getMessages` call returns — the
  * underlying `FileMemoryAdapter.getMessages` (`readStoredMessages`) reads
  * the conversation's whole JSONL file and slices the last `limit` entries
@@ -95,7 +95,7 @@ export interface InterruptedTurnMemoryAdapter {
 const INTERRUPTED_TURN_MEMORY_SCAN_LIMIT = 5;
 
 /**
- * station#4080 slice 1 (review round 1, H2 core reshape; review round 2,
+ * archive#4080 (review round 1, H2 core reshape; review round 2,
  * follow-up 1: delegates to the shared `resolveConversationTranscriptSource`
  * rather than re-deriving its own copy of the lookup). Occupancy is decided
  * by the SAME two-step FileMemory lookup `readConversationMessages` uses —
@@ -129,7 +129,7 @@ async function resolveFileMemoryOccupancy(
 }
 
 /**
- * Boot-time interrupted-turn recovery (epic #4024 slice 13, station#4080).
+ * Boot-time interrupted-turn recovery (epic archive#4024, archive#4080).
  *
  * Owns no state: one method, driven once per boot, fire-and-forget from
  * `initialize()`'s third un-awaited tail. Four deps. The scope is
@@ -152,7 +152,7 @@ export class InterruptedTurnRecovery {
   constructor(private readonly deps: InterruptedTurnRecoveryDeps) {}
 
   /**
-   * station#4080 slice 1: consumes this process's own boot-time findings
+   * archive#4080: consumes this process's own boot-time findings
    * from `EventStore.takeInterruptedTurnBoundaries()` — dead-owner
    * `accepted`/`indeterminate` `orchestration_turn_boundaries` rows, i.e.
    * turns that were in flight when their owning process died (a `kill -9`

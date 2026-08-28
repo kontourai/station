@@ -51,9 +51,9 @@ export function RegistryView({
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
     initialTab ?? 'agents',
   );
-  // The URL is authoritative: Back/Forward (or any in-app navigation that
-  // changes /registry/:tab while this view stays mounted) must re-sync the
-  // rendered tab — initializer-only state desyncs on popstate (#2678 review).
+// The URL is authoritative: Back/Forward (or any in-app navigation that
+// changes /registry/:tab while this view stays mounted) must re-sync the
+ // rendered tab — initializer-only state desyncs on popstate (archive#2678).
   useEffect(() => {
     setActiveTab(initialTab ?? 'agents');
   }, [initialTab]);
@@ -239,9 +239,9 @@ export function RegistryView({
       </button>
     </div>
   ) : null;
-  // Elevation is keyed to the ACTIVE refusal: once consent is granted, the
-  // stale 'remote-isolation' status can linger until the reload completes,
-  // and the enabled-override row must not jump above the catalog then.
+// Elevation is keyed to the ACTIVE refusal: once consent is granted, the
+// stale 'remote-isolation' status can linger until the reload completes,
+// and the enabled-override row must not jump above the catalog then.
   const remoteIsolationActive =
     pluginRegistryStatus.failure === 'remote-isolation' &&
     !remoteBundlesAllowed;

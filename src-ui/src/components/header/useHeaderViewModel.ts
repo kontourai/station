@@ -46,10 +46,10 @@ export function useHeaderViewModel({
 
   function handleHelpPrompt(prompt: string) {
     setShowHelp(false);
-    // station#1004 review MED: thread the header's current project identity
-    // (if any) so a project-owned agent is never picked from the global
-    // context — the same A3 rule ChatDockTabBar's selection already
-    // applies.
+ // archive#1004 MED: thread the header's current project identity
+// (if any) so a project-owned agent is never picked from the global
+// context — the same A3 rule ChatDockTabBar's selection already
+// applies.
     const chatTarget = selectFirstChatTarget({
       agents,
       agentConnections,

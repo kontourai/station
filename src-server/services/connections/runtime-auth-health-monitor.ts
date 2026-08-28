@@ -93,7 +93,7 @@ const MAX_PROVIDER_ID_LENGTH = 256;
 const MAX_RUNTIME_EVENT_ID_LENGTH = 512;
 const MAX_RUNTIME_MESSAGE_LENGTH = 4_096;
 const MAX_RUNTIME_CODE_LENGTH = 256;
-// station#3587 (renamed from SUCCESSFUL_FINISH_REASONS, which conflated two
+// archive#3587 (renamed from SUCCESSFUL_FINISH_REASONS, which conflated two
 // questions under one name): this set answers ONLY "is this `finishReason` a
 // recognized, well-formed vocabulary member" — never "does this prove the
 // provider authenticated" or "should this clear a recorded failure". Those
@@ -113,15 +113,15 @@ const MAX_RUNTIME_CODE_LENGTH = 256;
 // threw before ever reaching the `clear()` decision — a well-formed event
 // used to trip a diagnostic that exists to catch genuinely invalid input.
 //
-// station#3545 (found during #3509's review, narrowed by #3545, closed here)
+// archive#3545 (found during archive#3509's review, narrowed by archive#3545, closed here)
 // traced the dominant population of this gap through
 // `AiSdkLLMProvider.createStream` never setting a `finishReason` at all,
 // which `normalizeFinishReason` collapsed to `'other'` — so EVERY successful
-// Bedrock turn hit this exclusion. #3545 fixed the producer; the residual
+// Bedrock turn hit this exclusion. archive#3545 fixed the producer; the residual
 // this set used to still reject is every terminal that legitimately reports
 // `'other'`: content-filtered generations, ai-sdk `'unknown'` reasons, a
 // mid-stream ai-sdk failure translated through `mapAiSdkFinishReason`'s
-// default arm (station#3586), and ACP `refusal`/`max_turn_requests`. Adding
+// default arm (archive#3586), and ACP `refusal`/`max_turn_requests`. Adding
 // `'other'` here stops the false "malformed" diagnostic for all of them —
 // it does NOT grant any of them clear authority; see
 // `PROVIDER_PROVEN_FINISH_REASONS` for that question, still answered "no".
@@ -133,17 +133,17 @@ const WELL_FORMED_FINISH_REASONS = new Set([
   'other',
 ]);
 
-// station#3509 fix round MEDIUM 2: the clear-authority question above is
+// archive#3509 fix round MEDIUM 2: the clear-authority question above is
 // deliberately an ALLOWLIST, not `WELL_FORMED_FINISH_REASONS` minus
 // `'cancelled'`/`'other'` — the full record of that decision (and of
-// station#3545/#3587's history behind it) now lives with the set itself in
-// `providers/finish-reason-authority.ts`, because station#3485 gave the
+// archive#3545/#3587's history behind it) now lives with the set itself in
+// `providers/finish-reason-authority.ts`, because archive#3485 gave the
 // identical clear-authority question a second consumer (session-scoped
 // `runtime.error` supersession in the event store). One set, one decision
 // point: adding a member there grants both authorities, explicitly.
 
 /**
- * station#3509 fix round FIX 2: extracted so the fail-closed rejection path
+ * archive#3509 fix round FIX 2: extracted so the fail-closed rejection path
  * is executed by a real unit test today, not just proven by code reading.
  * The five currently-reachable `finishReason` values (`stop`/`tool-calls`/
  * `max-tokens`/`cancelled`/`other`) cannot exercise this predicate's
@@ -152,7 +152,7 @@ const WELL_FORMED_FINISH_REASONS = new Set([
  * `WELL_FORMED_FINISH_REASONS` before a `turn.completed` ever reaches
  * `onServerEvent` — so this is proven directly, mirroring
  * `resolveTurnCompletionOutcome` in `turn-completion-notifications.ts`
- * ("Exported for unit coverage without standing up an EventBus"). station#3587
+ * ("Exported for unit coverage without standing up an EventBus"). archive#3587
  * closed the disclosure this docblock used to carry: `'other'` is now a real,
  * currently-reachable fifth vocabulary member that DOES reach this call
  * inside `onServerEvent` (a well-formed `turn.completed` with
@@ -184,7 +184,7 @@ interface AuthenticationRuntimeError extends CanonicalRuntimeEventBase {
   code?: string;
 }
 
-// station#3587: renamed from `SuccessfulTerminalRuntimeEvent` — `'cancelled'`
+// archive#3587: renamed from `SuccessfulTerminalRuntimeEvent` — `'cancelled'`
 // and now `'other'` are well-formed members whose completion is not
 // evidence of success (see `PROVIDER_PROVEN_FINISH_REASONS`), so "Successful"
 // was never an accurate name for the whole union this type carries.
@@ -431,7 +431,7 @@ export class RuntimeAuthHealthMonitor {
     if (!event || event.provider === 'acp') return;
 
     if (event.method === 'turn.completed') {
-      // station#3509 fix round FIX 3 (station#3587: now also covers
+      // archive#3509 fix round FIX 3 (archive#3587: now also covers
       // `'other'`): `WELL_FORMED_FINISH_REASONS` answers "is this malformed"
       // and `clearsRuntimeAuthHealth`/`PROVIDER_PROVEN_FINISH_REASONS`
       // answers a DIFFERENT question, "does it prove the provider
@@ -440,7 +440,7 @@ export class RuntimeAuthHealthMonitor {
       // cancelling a turn is not evidence the provider authenticated; it
       // says nothing about credential state at all. An `'other'` terminal —
       // content-filtered, an ai-sdk `'unknown'` reason, a mid-stream failure
-      // translated through `mapAiSdkFinishReason` (station#3586) — is
+      // translated through `mapAiSdkFinishReason` (archive#3586) — is
       // exactly as uninformative: "the provider reported something we do not
       // specifically recognize" is not evidence of a successful
       // authenticated exchange either. Clearing on either anyway would let a
@@ -453,7 +453,7 @@ export class RuntimeAuthHealthMonitor {
       // MEDIUM 2) so a future member of `WELL_FORMED_FINISH_REASONS` does not
       // silently inherit clear authority. A cancelled or `'other'` turn is
       // accepted as well-formed but is otherwise a no-op here: no throw, no
-      // clear, no streak reset — station#3587's fix is precisely that this
+      // clear, no streak reset — archive#3587's fix is precisely that this
       // branch is now REACHED for `'other'` instead of `onServerEvent`
       // throwing before it ever got here.
       if (clearsRuntimeAuthHealth(event.finishReason)) {

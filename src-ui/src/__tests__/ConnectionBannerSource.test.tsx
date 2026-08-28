@@ -105,14 +105,14 @@ afterEach(() => {
 });
 
 describe('ConnectionBannerSource → BannerHost — version drift', () => {
-  /**
-   * station#3297 part 3 — transient reachability never banners.
-   *
-   * The owner's words: "kinda getting tired of the big banners for offline —
-   * need more subtle yet noticeable UI ... or better use the connection
-   * indicator". A remote host that is briefly not answering needs no decision
-   * from anyone; the indicator carries it and costs no vertical space.
-   */
+/**
+ * archive#3297 — transient reachability never banners.
+*
+* The owner's words: "kinda getting tired of the big banners for offline —
+* need more subtle yet noticeable UI... or better use the connection
+* indicator". A remote host that is briefly not answering needs no decision
+* from anyone; the indicator carries it and costs no vertical space.
+*/
   it.each([
     'unreachable',
     'timeout',
@@ -123,8 +123,8 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     'never banners a transient %s failure, however long it lasts',
     async (reason) => {
       connectionStatus.reason = reason;
-      // Well past the old 3-probe threshold: duration is not what made the
-      // old rule fire wrongly, the reason was.
+// Well past the old 3-probe threshold: duration is not what made the
+// old rule fire wrongly, the reason was.
       connectionStatus.failureStreak = 12;
       activeConnection = {
         id: 'conn-1',
@@ -151,8 +151,8 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
   ] as const)(
     'banners %s on the first probe, because it needs a decision',
     async (reason) => {
-      // No streak at all: a decision does not get more true by being repeated,
-      // and withholding it is withholding the one thing the reader can act on.
+// No streak at all: a decision does not get more true by being repeated,
+// and withholding it is withholding the one thing the reader can act on.
       connectionStatus.reason = reason;
       connectionStatus.failureStreak = 1;
       activeConnection = {
@@ -184,13 +184,13 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/isn't the one this device paired with/);
-    // The remedy is NOT on the visible line.
+// The remedy is NOT on the visible line.
     expect(alert.textContent).not.toMatch(/may have been reset or reinstalled/);
 
-    // station#4470b (review round): the toggle's own label no longer
-    // encodes expanded/collapsed state ("More"/"Less" read as a second
-    // collapse affordance beside the card's own chevron) — it stays
-    // "Details" throughout, and `aria-expanded` alone carries the state.
+// archive#4470b: the toggle's own label no longer
+// encodes expanded/collapsed state ("More"/"Less" read as a second
+// collapse affordance beside the card's own chevron) — it stays
+// "Details" throughout, and `aria-expanded` alone carries the state.
     const details = screen.getByRole('button', { name: 'Details' });
     expect(details.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(details);
@@ -205,23 +205,23 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     ).toBe('true');
   });
 
-  /**
-   * station#4470d — the pairing-identity-mismatch banner's own detail text
-   * ("Pair again, or remove this connection") named two remedies the CTA row
-   * never offered: the only action was "Try now", which cannot recover a
-   * host whose identity genuinely changed. Every action the banner renders
-   * must actually perform what it is named for — a dead "Pair again" would
-   * be worse than "Try now" — so this asserts each one drives the real
-   * mechanism (the same pairing-flow event `authentication-failed` above
-   * uses, and the same `removeConnection` primitive the connections modal's
-   * own remove control calls), not just that a click handler exists.
-   */
+/**
+* archive#4470d — the pairing-identity-mismatch banner's own detail text
+* ("Pair again, or remove this connection") named two remedies the CTA row
+* never offered: the only action was "Try now", which cannot recover a
+* host whose identity genuinely changed. Every action the banner renders
+* must actually perform what it is named for — a dead "Pair again" would
+* be worse than "Try now" — so this asserts each one drives the real
+* mechanism (the same pairing-flow event `authentication-failed` above
+* uses, and the same `removeConnection` primitive the connections modal's
+* own remove control calls), not just that a click handler exists.
+*/
   it('offers exactly pairing and removal for an identity mismatch — no retry', async () => {
-    // station#4470 review round (H2): a third action ("Try now") does not
-    // fit this banner collapsed at 390px (BannerHost.collapsed-controls
-    // test proves it against the real, cascade-resolved layout); the owner
-    // named exactly two remedies for this reason, so retry is dropped
-    // entirely rather than demoted to a tertiary.
+// archive#4470: a third action ("Try now") does not
+// fit this banner collapsed at 390px (BannerHost.collapsed-controls
+// test proves it against the real, cascade-resolved layout); the owner
+// named exactly two remedies for this reason, so retry is dropped
+// entirely rather than demoted to a tertiary.
     connectionStatus.reason = 'identity-mismatch';
     connectionStatus.failureStreak = 1;
     activeConnection = {
@@ -238,8 +238,8 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
 
       const alert = await screen.findByRole('alert');
       const actions = alert.querySelectorAll('.banner-host__action');
-      // Visible text stays short ("Remove"); the accessible name (M1) is
-      // the full sentence, asserted via `getByRole` below.
+ // Visible text stays short ("Remove"); the accessible name is
+// the full sentence, asserted via `getByRole` below.
       expect([...actions].map((node) => node.textContent)).toEqual([
         'Pair again',
         'Remove',
@@ -257,16 +257,16 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     }
   });
 
-  /**
-   * station#4470 review round (H2/M1) + micro-round (M2/L1): removing the
-   * active connection is destructive, so it takes two deliberate taps — the
-   * same MECHANISM PairedDeviceList.tsx's inline revoke confirm already
-   * uses: an explicit Confirm and an explicit Cancel (not just a relabeled
-   * single button), which only ever render once the banner is force-
-   * expanded (so the confirm is never hidden behind a collapsed 52px bar).
-   * A second tap within the arm-debounce window is ignored, not treated as
-   * the confirming tap (L1).
-   */
+/**
+* archive#4470 + : removing the
+* active connection is destructive, so it takes two deliberate taps — the
+* same MECHANISM PairedDeviceList.tsx's inline revoke confirm already
+* uses: an explicit Confirm and an explicit Cancel (not just a relabeled
+* single button), which only ever render once the banner is force-
+* expanded (so the confirm is never hidden behind a collapsed 52px bar).
+* A second tap within the arm-debounce window is ignored, not treated as
+* the confirming tap.
+*/
   describe('the two-step "Remove" confirm', () => {
     beforeEach(() => {
       connectionStatus.reason = 'identity-mismatch';
@@ -295,8 +295,8 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
           name: 'Confirm removing this connection',
         });
         expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
-        // "Pair again" survives armed — three actions, all reachable, since
-        // arming only ever presents this row expanded.
+// "Pair again" survives armed — three actions, all reachable, since
+// arming only ever presents this row expanded.
         expect(screen.getByRole('button', { name: 'Pair again' })).toBeTruthy();
 
         act(() => {
@@ -310,11 +310,11 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
       }
     });
 
-    /**
-     * L1 — a fast double-tap on the same screen location must arm, not
-     * arm-then-remove in one gesture: the second (synthetic) tap lands on
-     * "Confirm" where "Remove" used to be, within the debounce window.
-     */
+/**
+* a fast double-tap on the same screen location must arm, not
+* arm-then-remove in one gesture: the second (synthetic) tap lands on
+* "Confirm" where "Remove" used to be, within the debounce window.
+*/
     it('ignores a confirm tap within 300ms of arming, then removes a later one', async () => {
       vi.useFakeTimers();
       try {
@@ -328,7 +328,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
           name: 'Confirm removing this connection',
         });
 
-        // Tap 1: within the debounce window (no time advanced at all).
+// Tap 1: within the debounce window (no time advanced at all).
         fireEvent.click(confirmButton);
         expect(removeConnection).not.toHaveBeenCalled();
         expect(
@@ -337,7 +337,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
           }),
         ).toBeTruthy();
 
-        // Tap 2: within the window, but close to its edge.
+// Tap 2: within the window, but close to its edge.
         act(() => {
           vi.advanceTimersByTime(200);
         });
@@ -348,7 +348,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
         );
         expect(removeConnection).not.toHaveBeenCalled();
 
-        // Tap 3: past the window — a deliberate, separate confirming tap.
+// Tap 3: past the window — a deliberate, separate confirming tap.
         act(() => {
           vi.advanceTimersByTime(101);
         });
@@ -426,12 +426,12 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
       }
     });
 
-    /**
-     * M2(a) — an armed confirm has to stay VISIBLE to be cancellable. A
-     * collapsed banner still renders its actions row (station#4470 H2), so
-     * arming from collapsed force-expands the card; Cancel restores
-     * collapsed since arming is what changed it.
-     */
+/**
+ * (a) — an armed confirm has to stay VISIBLE to be cancellable. A
+ * collapsed banner still renders its actions row (archive#4470), so
+* arming from collapsed force-expands the card; Cancel restores
+* collapsed since arming is what changed it.
+*/
     it('force-expands a collapsed banner on arm, and restores collapsed on cancel', async () => {
       renderChrome();
       const alert = await screen.findByRole('alert');
@@ -462,19 +462,19 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
       expect(alert.className).not.toMatch(/banner-host__item--collapsed/);
     });
 
-    /**
-     * station#4470 delta review (M1) — the collapse chevron was gated only
-     * on the card's exit animation (BannerHost.tsx), never on this banner's
-     * armed state. Arming from an already-EXPANDED banner leaves
-     * `forcedExpandRef` false (arming did not need to force anything open),
-     * so nothing in the previous round stopped a reader from then tapping
-     * the chevron and landing the three-action armed row COLLAPSED — the
-     * exact H2 overflow (message clipped to 0px, Cancel/dismiss pushed
-     * outside the clipped card) this whole feature exists to avoid, live
-     * for up to the 5s auto-disarm. Collapsing while armed now disarms:
-     * the reader lands on the safe, established two-action collapsed shape
-     * instead.
-     */
+/**
+ * archive#4470 — the collapse chevron was gated only
+* on the card's exit animation (BannerHost.tsx), never on this banner's
+* armed state. Arming from an already-EXPANDED banner leaves
+* `forcedExpandRef` false (arming did not need to force anything open),
+* so nothing in the previous round stopped a reader from then tapping
+* the chevron and landing the three-action armed row COLLAPSED — the
+ * exact overflow (message clipped to 0px, Cancel/dismiss pushed
+* outside the clipped card) this whole feature exists to avoid, live
+* for up to the 5s auto-disarm. Collapsing while armed now disarms:
+* the reader lands on the safe, established two-action collapsed shape
+* instead.
+*/
     it('disarms (rather than staying armed-and-collapsed) when the chevron collapses an armed, already-expanded banner', async () => {
       renderChrome();
       const alert = await screen.findByRole('alert');
@@ -505,11 +505,11 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
   });
 
   it('occupies no space until there is something to say', () => {
-    // This previously asserted the opposite — that the rail stays mounted and
-    // empty — which is the behavior that pushed project and chat content down
-    // by 104px on mobile (station#2268). The rail was justified as keeping the
-    // header's touch targets stable, but the header is a separate preceding
-    // row and never moved.
+// This previously asserted the opposite — that the rail stays mounted and
+// empty — which is the behavior that pushed project and chat content down
+// by 104px on mobile (archive#2268). The rail was justified as keeping the
+// header's touch targets stable, but the header is a separate preceding
+// row and never moved.
     const { container } = render(<BannerHost connectionSlot />);
 
     expect(screen.queryByTestId('banner-host')).toBeNull();
@@ -532,7 +532,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
       bannerStore.clear();
     });
 
-    // And it goes away again rather than leaving the rail behind.
+// And it goes away again rather than leaving the rail behind.
     expect(screen.queryByTestId('banner-host')).toBeNull();
   });
 
@@ -582,13 +582,13 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     expect(connectionStatus.recheck).toHaveBeenCalledOnce();
   });
 
-  /**
-   * The one reachability failure that IS a decision: a loopback address
-   * reached from something other than the machine hosting it can never
-   * resolve, so retrying is not a remedy and a different address is. The
-   * 3-probe streak still gates it (#2630), which is what keeps it off a dev
-   * server that is merely restarting.
-   */
+/**
+* The one reachability failure that IS a decision: a loopback address
+* reached from something other than the machine hosting it can never
+* resolve, so retrying is not a remedy and a different address is. The
+ * 3-probe streak still gates it (archive#2630), which is what keeps it off a dev
+* server that is merely restarting.
+*/
   it('still banners a loopback address that cannot resolve from here', async () => {
     connectionStatus.reason = 'unreachable';
     connectionStatus.failureStreak = 3;
@@ -639,8 +639,8 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
 
     renderChrome();
 
-    // On the machine that hosts it, loopback is the correct address and this
-    // is an ordinary outage — so there is nothing to decide, and no banner.
+// On the machine that hosts it, loopback is the correct address and this
+// is an ordinary outage — so there is nothing to decide, and no banner.
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
@@ -687,9 +687,9 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
   });
 
   it('does not mistake a DNS name beginning with 127 for loopback', async () => {
-    // The discrimination this pins is now stronger than it was: getting it
-    // wrong no longer just adds a stray sentence, it invents a whole banner
-    // for an ordinary outage.
+// The discrimination this pins is now stronger than it was: getting it
+// wrong no longer just adds a stray sentence, it invents a whole banner
+// for an ordinary outage.
     connectionStatus.reason = 'unreachable';
     connectionStatus.failureStreak = 3;
     activeConnection = {
@@ -735,10 +735,10 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     );
   });
 
-  // This suite keeps the real connectionFailureCopy implementation via
-  // importOriginal above. Calling it with awaiting-approval would throw because
-  // that reason deliberately has no failure-copy entry, so a passing render
-  // proves the guard remains in front of the real function.
+// This suite keeps the real connectionFailureCopy implementation via
+// importOriginal above. Calling it with awaiting-approval would throw because
+// that reason deliberately has no failure-copy entry, so a passing render
+// proves the guard remains in front of the real function.
   it('renders nothing for a healthy host awaiting approval', async () => {
     connectionStatus.reason = 'awaiting-approval';
 
@@ -785,11 +785,11 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
     );
   });
 
-  /**
-   * station#3297 part 4 — the remedy, offered. "Try now" was the only action
-   * on a rejected credential, and it is the one thing that provably cannot
-   * fix one.
-   */
+/**
+ * archive#3297 — the remedy, offered. "Try now" was the only action
+* on a rejected credential, and it is the one thing that provably cannot
+* fix one.
+*/
   it('offers pairing first for a rejected credential, and recheck second', async () => {
     connectionStatus.reason = 'authentication-failed';
     connectionStatus.blocked = true;
@@ -826,7 +826,7 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
     renderChrome();
 
     const alert = await screen.findByRole('alert');
-    // The exact string a phone was shown while its host answered 401.
+// The exact string a phone was shown while its host answered 401.
     expect(alert.textContent).not.toMatch(
       /off, asleep, or on another network|Can't reach/,
     );

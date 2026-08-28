@@ -155,10 +155,10 @@ describe('NewProjectModal starter layout picker', () => {
     applyProjectLayoutMock.mockReset();
     applyProjectLayoutMock.mockResolvedValue({});
     validateDirectoryMock.mockReset();
-    // The shape a SUCCESSFUL `useFileSystemBrowseQuery` refetch actually
-    // returns: a settled query carries `data`. `{error: null}` alone is the
-    // shape of a refetch that answered nothing, which is a failure to check —
-    // not a folder that exists.
+// The shape a SUCCESSFUL `useFileSystemBrowseQuery` refetch actually
+// returns: a settled query carries `data`. `{error: null}` alone is the
+// shape of a refetch that answered nothing, which is a failure to check —
+// not a folder that exists.
     validateDirectoryMock.mockResolvedValue({
       error: null,
       data: { entries: [] },
@@ -607,18 +607,18 @@ describe('NewProjectModal copy density and layout browser placement (station#182
   test('item 3: states the working-directory-first behavior once, not three times, and keeps the non-obvious facts as field-level hints', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
-    // The old three-line intro paragraph is gone.
+// The old three-line intro paragraph is gone.
     expect(screen.queryByText(/Start with the workspace folder/)).toBeNull();
-    // The redundant "instruction-as-heading" card title is gone.
+// The redundant "instruction-as-heading" card title is gone.
     expect(screen.queryByText('Working directory first')).toBeNull();
-    // Its own two-line restatement of the same ordering is gone too.
+// Its own two-line restatement of the same ordering is gone too.
     expect(
       screen.queryByText(/Point Station at the folder you actually want/),
     ).toBeNull();
 
-    // The two genuinely non-obvious behaviors survive as a short hint
-    // attached to the field they concern (Project identity: the name and
-    // icon), not as a preamble read before any input exists.
+// The two genuinely non-obvious behaviors survive as a short hint
+// attached to the field they concern (Project identity: the name and
+// icon), not as a preamble read before any input exists.
     const identityField = screen
       .getByLabelText('Project identity')
       .closest('.editor-field') as HTMLElement;
@@ -636,8 +636,8 @@ describe('NewProjectModal copy density and layout browser placement (station#182
   test('item 4: the layout browser swaps in as the modal body — Create is not present while browsing, and the browser is never appended after it', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
-    // Before browsing: exactly one dialog, Create present, no browser markup
-    // anywhere in the document.
+// Before browsing: exactly one dialog, Create present, no browser markup
+// anywhere in the document.
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     expect(
       document.querySelector('.new-project-layout-browser__actions'),
@@ -645,11 +645,11 @@ describe('NewProjectModal copy density and layout browser placement (station#182
 
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
 
-    // The defect this fixes: the old nested-dialog implementation kept the
-    // project form (and its Create button) mounted underneath, with the
-    // browse panel appended after it. A genuine swap removes the form
-    // entirely while browsing — there is no "primary action" for this step
-    // other than the browser's own trailing action.
+// The defect this fixes: the old nested-dialog implementation kept the
+// project form (and its Create button) mounted underneath, with the
+// browse panel appended after it. A genuine swap removes the form
+// entirely while browsing — there is no "primary action" for this step
+// other than the browser's own trailing action.
     expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
     expect(document.querySelector('.new-project-modal__form')).toBeNull();
 
@@ -657,17 +657,17 @@ describe('NewProjectModal copy density and layout browser placement (station#182
       name: /Browse installed layouts/,
     });
     const backButton = screen.getByRole('button', { name: 'Back to project' });
-    // Structural proof, not just presence: the actions row is the LAST
-    // direct child of the dialog panel — nothing renders after it (the
-    // reported bug: "it adds content to the bottom after the create
-    // button").
+// Structural proof, not just presence: the actions row is the LAST
+// direct child of the dialog panel — nothing renders after it (the
+// reported bug: "it adds content to the bottom after the create
+// button").
     expect(panel.lastElementChild).toBe(backButton.closest('div'));
     expect(panel.lastElementChild?.contains(backButton)).toBe(true);
 
     fireEvent.click(backButton);
 
-    // Restores the same modal — no second dialog was ever created — with
-    // Create last again and no trailing content after its actions row.
+// Restores the same modal — no second dialog was ever created — with
+// Create last again and no trailing content after its actions row.
     const restoredPanel = screen.getByRole('dialog', { name: 'New Project' });
     expect(restoredPanel).toBe(panel);
     const createButton = screen.getByRole('button', { name: 'Create' });
@@ -717,7 +717,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
 
-    // Back on the draft form — not closed, and the draft survived.
+// Back on the draft form — not closed, and the draft survived.
     expect(onCloseMock).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'New Project' })).toBeTruthy();
     expect(
@@ -805,23 +805,23 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
   test('HIGH: returning from the layout browser moves focus into the form instead of leaving it on document.body', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
-    // Forward transition already lands focus on the browser's own heading —
-    // establishing that document.body is not simply the jsdom default.
+// Forward transition already lands focus on the browser's own heading —
+// establishing that document.body is not simply the jsdom default.
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { name: 'Browse installed layouts' }),
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to project' }));
 
-    // This test's own top-of-file mock replaces `PathAutocomplete` with a
-    // bare `<input>` carrying no autofocus behavior of its own, so it cannot
-    // exercise the real-app effect-ordering race the production comment
-    // documents (a `useLayoutEffect` here loses to `PathAutocomplete`'s own
-    // deeper passive `useEffect`, verified live in a real browser — fixed by
-    // matching effect types so this ancestor's callback runs after). What
-    // this test CAN and does prove: focus deliberately lands on an explicit,
-    // owned target — never `document.body` — regardless of what any
-    // descendant field does.
+// This test's own top-of-file mock replaces `PathAutocomplete` with a
+// bare `<input>` carrying no autofocus behavior of its own, so it cannot
+// exercise the real-app effect-ordering race the production comment
+// documents (a `useLayoutEffect` here loses to `PathAutocomplete`'s own
+// deeper passive `useEffect`, verified live in a real browser — fixed by
+// matching effect types so this ancestor's callback runs after). What
+// this test CAN and does prove: focus deliberately lands on an explicit,
+// owned target — never `document.body` — regardless of what any
+// descendant field does.
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { name: 'New Project' }),
@@ -876,7 +876,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       target: { value: 'Audit Alpha' },
     });
 
-    // Cache-only: a warning the user can proceed past, never a veto.
+// Cache-only: a warning the user can proceed past, never a veto.
     const advisory = await screen.findByRole('status');
     expect(advisory.textContent).toBe(
       "A project called 'Audit Alpha' may already exist. Station checks with the server when you create it.",
@@ -889,13 +889,13 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
 
     fireEvent.click(create);
 
-    // The refreshed list agrees, so now it is a refusal — the confirmed
-    // sentence, with the free slug, and no POST.
+// The refreshed list agrees, so now it is a refusal — the confirmed
+// sentence, with the free slug, and no POST.
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe(
       "A project called 'Audit Alpha' already exists. The slug 'audit-alpha-3' is available.",
     );
-    // The old 409 sentence, which described storage rather than the name.
+// The old 409 sentence, which described storage rather than the name.
     expect(alert.textContent).not.toContain('storage changed');
     expect(
       (
@@ -912,16 +912,16 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
     );
   });
 
-  /**
-   * Review HIGH. `['projects']` stays fresh for five minutes with refetch on
-   * mount and on focus disabled, so a project deleted by another device, the
-   * CLI, or another tab lingers in this cache. Vetoing on it would refuse a
-   * legitimate name for minutes and never attempt the POST — the only
-   * authority on whether the slug is taken.
-   */
+/**
+* `['projects']` stays fresh for five minutes with refetch on
+* mount and on focus disabled, so a project deleted by another device, the
+* CLI, or another tab lingers in this cache. Vetoing on it would refuse a
+* legitimate name for minutes and never attempt the POST — the only
+* authority on whether the slug is taken.
+*/
   test('a stale cached conflict never blocks a name the server says is free', async () => {
     projectsQueryState.data = auditAlphaProjects;
-    // The project was deleted elsewhere; the refreshed read is the truth.
+// The project was deleted elsewhere; the refreshed read is the truth.
     projectsRefetchMock.mockResolvedValue({ data: [] });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
@@ -1002,11 +1002,11 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
     await waitFor(() => expect(createProjectMock).toHaveBeenCalled());
   });
 
-  /**
-   * 4-HOME-008: this was a silent no-op — the browse 404 was thrown from a
-   * place nothing rendered, so Create stayed enabled, no POST was issued and
-   * no message appeared anywhere in the modal.
-   */
+/**
+* 4-HOME-008: this was a silent no-op — the browse 404 was thrown from a
+* place nothing rendered, so Create stayed enabled, no POST was issued and
+* no message appeared anywhere in the modal.
+*/
   test('reports a nonexistent working directory against the field and issues no POST', async () => {
     validateDirectoryMock.mockResolvedValue({
       error: new Error('Folder not found'),
@@ -1075,11 +1075,11 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
     expect(createProjectMock).not.toHaveBeenCalled();
   });
 
-  /**
-   * SHELL-01: the 6-8s window where Create looked ignored is what invited the
-   * double submit. The directory check is the first await on the submit path,
-   * so pending state must already be showing while it runs.
-   */
+/**
+* the 6-8s window where Create looked ignored is what invited the
+* double submit. The directory check is the first await on the submit path,
+* so pending state must already be showing while it runs.
+*/
   test('shows pending state on Create while the directory check is in flight', async () => {
     let release: (value: { error: null; data: unknown }) => void = () => {};
     validateDirectoryMock.mockReturnValue(

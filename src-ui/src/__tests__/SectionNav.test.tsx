@@ -1,14 +1,14 @@
 /**
  * @vitest-environment jsdom
  *
- * The shared scroll-spy / URL-section navigation primitive (station#4463
- * slice 2 fix round). Real `<a aria-current="location">` anchors in a `nav`
+ * The shared scroll-spy / URL-section navigation primitive (archive#4463
+*). Real `<a aria-current="location">` anchors in a `nav`
  * landmark — NOT `role="tab"` — covering the review's contract: no arrow-key
- * activation (that reproduced HIGH-2's history-push/focus-steal defect on
+ * activation (that reproduced history-push/focus-steal defect on
  * an earlier version that treated this the same as `Tabs`), a modifier
- * click bails out before `preventDefault` (MED-3), and `dividerAfter` draws
+ * click bails out before `preventDefault`, and `dividerAfter` draws
  * a real presentational element rather than a border modifier on the item
- * itself (MED-2).
+* itself.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
@@ -78,7 +78,7 @@ describe('SectionNav', () => {
       screen.getByRole('link', { name: 'Charlie' }),
     );
     expect(onNavigate).toHaveBeenCalledWith('c');
-    // `fireEvent.click` returns `false` when `preventDefault` was called.
+// `fireEvent.click` returns `false` when `preventDefault` was called.
     expect(clickReturned).toBe(false);
   });
 
@@ -94,13 +94,13 @@ describe('SectionNav', () => {
           onNavigate={onNavigate}
         />,
       );
-      // Record whether the COMPONENT prevented the default, then prevent it
-      // ourselves at the window (bubble runs target-first, so the component's
-      // handler has already decided by the time this listener sees the
-      // event). Without this catcher, the un-prevented anchor click proceeds
-      // into jsdom's not-implemented navigation, which passes the test but
-      // fails the vitest PROCESS (exit 1 with 0 failed tests) — the exact
-      // exit-vs-tally mismatch ci:fast's diagnostics reconciliation rejects.
+// Record whether the COMPONENT prevented the default, then prevent it
+// ourselves at the window (bubble runs target-first, so the component's
+// handler has already decided by the time this listener sees the
+// event). Without this catcher, the un-prevented anchor click proceeds
+// into jsdom's not-implemented navigation, which passes the test but
+// fails the vitest PROCESS (exit 1 with 0 failed tests) — the exact
+// exit-vs-tally mismatch ci:fast's diagnostics reconciliation rejects.
       let componentPrevented: boolean | null = null;
       const catcher = (event: MouseEvent) => {
         componentPrevented = event.defaultPrevented;
@@ -115,8 +115,8 @@ describe('SectionNav', () => {
         window.removeEventListener('click', catcher);
       }
       expect(onNavigate).not.toHaveBeenCalled();
-      // Not prevented by the component — the browser's native
-      // "open in new tab/window" default wins.
+// Not prevented by the component — the browser's native
+// "open in new tab/window" default wins.
       expect(componentPrevented).toBe(false);
     },
   );
@@ -152,7 +152,7 @@ describe('SectionNav', () => {
     const dividers = container.querySelectorAll('.section-nav__divider');
     expect(dividers).toHaveLength(1);
     expect(dividers[0].getAttribute('aria-hidden')).toBe('true');
-    // The divider is a sibling of the links, not a class on the link itself.
+// The divider is a sibling of the links, not a class on the link itself.
     expect(
       screen
         .getByRole('link', { name: 'Alpha' })

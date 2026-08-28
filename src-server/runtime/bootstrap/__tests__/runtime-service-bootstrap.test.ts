@@ -109,7 +109,7 @@ describe('createRuntimeServiceBundle', () => {
       providerAdapterLaunchabilitySource,
     );
     expect(createACPManager).toHaveBeenCalled();
-    // #1403: the ACPManager receives Station home as the authority beneath
+    // archive#1403: the ACPManager receives Station home as the authority beneath
     // which probes prepare private connection-scoped workspaces.
     const acpManagerArgs = createACPManager.mock
       .calls[0] as unknown as unknown[];
@@ -202,7 +202,7 @@ describe('createRuntimeServiceBundle', () => {
     expect(getConnection).toHaveBeenCalledWith('claude-runtime');
   });
 
-  // K2 (#200 Wave 2): `knowledgeStoreProvider` is an ADDITIVE field on the bundle —
+  // K2 (archive#200 Wave 2): `knowledgeStoreProvider` is an ADDITIVE field on the bundle —
   // no existing field's shape changed (AC4 `k2-compat-path-unchanged`'s "no changed
   // return shapes" clause) — constructed unconditionally (see the module's own
   // comment for the sync-constructor/async-flag timing rationale), with zero I/O
@@ -273,11 +273,11 @@ describe('createRuntimeServiceBundle', () => {
     );
   });
 
-  // station#1499: the manifest sidecar only shrinks the legacy
+  // archive#1499: the manifest sidecar only shrinks the legacy
   // `workingDirectory`-only path if EVERY new project gets one, which means the
   // default ProjectService the runtime actually builds must carry a manifest
   // store. Without this assertion the wiring could be dropped and every test
-  // that constructs ProjectService by hand would still pass — the #1302
+  // that constructs ProjectService by hand would still pass — the archive#1302
   // "designed but dead" shape.
   test('wires a ProjectManifestStore into the default ProjectService', () => {
     const bundle = createRuntimeServiceBundle(

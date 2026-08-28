@@ -66,7 +66,7 @@ describe('FlowMcpUiEvidenceBridge', () => {
       'run-1',
       expect.objectContaining({
         command: 'mcp-ui:survey-mcp/render',
-        // station#4237: the call ran inside the MCP server, so there is no
+        // archive#4237: the call ran inside the MCP server, so there is no
         // process exit code and no duration Station could have measured. The
         // passing claim derives from the observed fact instead — the approved
         // call returned a result rather than throwing.

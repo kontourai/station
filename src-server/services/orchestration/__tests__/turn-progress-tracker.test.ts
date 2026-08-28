@@ -8,8 +8,8 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 /**
- * Unit contract for the collaborator extracted in epic #4024 slice 1
- * (#4116). The service-level turn-stall describe exercises the seam through
+ * Unit contract for the collaborator extracted in epic archive#4024
+ * (archive#4116). The service-level turn-stall describe exercises the seam through
  * the service; these pin the two module obligations nothing there covers
  * (seam map follow-up N5): `forgetThread` must clear the pinned window so a
  * stale window never applies to the thread's NEXT session, and `dispose`

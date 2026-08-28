@@ -4,7 +4,7 @@ import { readSnoozes, writeSnooze } from '../utils/activity-snooze-store';
 let ActiveChatsStore: typeof import('../contexts/active-chats-store').ActiveChatsStore;
 
 /** A real in-memory `localStorage` double — the outer `beforeEach`'s stub is
- * a no-op (`getItem: () => null`), which cannot observe a migration. */
+* a no-op (`getItem: => null`), which cannot observe a migration. */
 class MemoryLocalStorage {
   private values = new Map<string, string>();
   getItem(key: string) {
@@ -68,8 +68,8 @@ describe('ActiveChatsStore', () => {
       'agent:1': {
         input: '',
         attachments: [],
-        // #4151 made hydrateActiveChats derive this unconditionally — an
-        // empty array is a real value the exact snapshot must carry (#4222).
+ // archive#4151 made hydrateActiveChats derive this unconditionally — an
+ // empty array is a real value the exact snapshot must carry (archive#4222).
         attachmentStages: [],
         queuedMessages: [],
         inputHistory: ['/resume'],
@@ -98,16 +98,16 @@ describe('ActiveChatsStore', () => {
     });
   });
 
-  // station#1795: initChat stamps the real creation time through the
-  // store's own clock, not a literal 0 — the floor `latestChatTimestamp`
-  // (home-view-model.ts) needs for a chat with no messages yet.
+// archive#1795: initChat stamps the real creation time through the
+// store's own clock, not a literal 0 — the floor `latestChatTimestamp`
+// (home-view-model.ts) needs for a chat with no messages yet.
   test("initChat stamps a fresh chat with the store clock's current time as createdAt", () => {
-    // A distinct injected clock, deliberately DIFFERENT from the fake system
-    // time above it: proves the store threads its own `now()` into
-    // `createDefaultChatState` rather than relying on that function's own
-    // `Date.now()` default parameter (which would silently agree with the
-    // real/faked system clock and mask a regression where the store forgot
-    // to pass its clock through).
+// A distinct injected clock, deliberately DIFFERENT from the fake system
+// time above it: proves the store threads its own `now` into
+// `createDefaultChatState` rather than relying on that function's own
+// `Date.now` default parameter (which would silently agree with the
+// real/faked system clock and mask a regression where the store forgot
+// to pass its clock through).
     vi.setSystemTime(new Date('2020-01-01T00:00:00Z'));
     const injectedNow = Date.parse('2026-08-02T12:00:00Z');
     const store = new ActiveChatsStore({
@@ -206,8 +206,8 @@ describe('ActiveChatsStore', () => {
       conversationId: 'conv-3',
     });
     store.updateChat('agent:3', { queuedMessages: ['a', 'b', 'c'] });
-    // Drain whatever init/update already scheduled so the assertion below
-    // isolates reorder's own (lack of) persist scheduling.
+// Drain whatever init/update already scheduled so the assertion below
+// isolates reorder's own (lack of) persist scheduling.
     vi.runAllTimers();
     setItemSpy.mockClear();
 
@@ -221,14 +221,14 @@ describe('ActiveChatsStore', () => {
       'c',
       'a',
     ]);
-    // Subscribers still re-render on reorder...
+// Subscribers still re-render on reorder...
     expect(listener).toHaveBeenCalledTimes(1);
 
-    // ...and, since UX audit T3 made the queue persisted content, reorder now
-    // schedules a write like its sibling remove/edit/clear mutators. This
-    // assertion previously pinned the opposite, which was correct only while
-    // the queue was session-local: a reload otherwise restores an order the
-    // user has already changed.
+//.and, since made the queue persisted content, reorder now
+// schedules a write like its sibling remove/edit/clear mutators. This
+// assertion previously pinned the opposite, which was correct only while
+// the queue was session-local: a reload otherwise restores an order the
+// user has already changed.
     vi.runAllTimers();
     expect(setItemSpy).toHaveBeenCalledTimes(1);
     expect(String(setItemSpy.mock.calls[0]?.[1])).toContain('"b","c","a"');
@@ -291,10 +291,10 @@ describe('ActiveChatsStore', () => {
     ]);
   });
 
-  // station#1311 review (MEDIUM fix): a snooze set while a brand-new chat's
-  // `HomeWorkItem.id` still reads as its local store key (no conversationId
-  // yet) must not silently detach the moment `assignConversationId` flips
-  // the canonical id over to the server-assigned conversationId.
+// archive#1311 a snooze set while a brand-new chat's
+// `HomeWorkItem.id` still reads as its local store key (no conversationId
+// yet) must not silently detach the moment `assignConversationId` flips
+// the canonical id over to the server-assigned conversationId.
   test('assignConversationId migrates an existing snooze from the pre-promotion store key to the new conversationId', () => {
     vi.stubGlobal('localStorage', new MemoryLocalStorage());
     const now = Date.now();
@@ -315,8 +315,8 @@ describe('ActiveChatsStore', () => {
     expect(snoozes['draft:1']).toBeUndefined();
   });
 
-  // No live snooze under the old key: assignConversationId must not
-  // fabricate one under the new key either.
+// No live snooze under the old key: assignConversationId must not
+// fabricate one under the new key either.
   test('assignConversationId is a no-op for snoozing when nothing was snoozed under the old key', () => {
     vi.stubGlobal('localStorage', new MemoryLocalStorage());
     const now = Date.now();
@@ -337,7 +337,7 @@ describe('ActiveChatsStore', () => {
   });
 });
 
-// UX audit T3 review (HIGH): the previous round's test called
+// review : the previous round's test called
 // `serializeActiveChats`/`hydrateActiveChats` DIRECTLY, which bypasses the
 // store's persistence decision entirely — so it passed while enqueueing a
 // follow-up called `notify(false)` and scheduled no write at all. These drive
@@ -407,12 +407,12 @@ describe('ActiveChatsStore queued follow-up retention (UX audit T3)', () => {
     );
   });
 
-  // #3706 review (BLOCKING 1): a Dismiss writes ONLY `unsentMessages`, and
-  // that field was missing from mergeChatUpdates' shouldPersist list — so the
-  // dismiss scheduled no storage write and a dismissed row RESURRECTED on
-  // reload. Driven through the real store because that is the only layer the
-  // defect was observable at (the direct serialize/hydrate tests passed
-  // throughout, same as the T3 note above).
+// archive#3706: a Dismiss writes ONLY `unsentMessages`, and
+// that field was missing from mergeChatUpdates' shouldPersist list — so the
+// dismiss scheduled no storage write and a dismissed row RESURRECTED on
+// reload. Driven through the real store because that is the only layer the
+// defect was observable at (the direct serialize/hydrate tests passed
+ // throughout, same as the note above).
   test('recording and dismissing an unsent record both persist', () => {
     const storage = new MemoryStorage();
     const store = storeWith(storage);
@@ -429,7 +429,7 @@ describe('ActiveChatsStore queued follow-up retention (UX audit T3)', () => {
         ?.unsentMessages,
     ).toHaveLength(2);
 
-    // The dismiss: exactly what UnsentMessages.tsx writes — this field alone.
+// The dismiss: exactly what UnsentMessages.tsx writes — this field alone.
     store.updateChat('agent:q', {
       unsentMessages: [
         { id: 'u-2', content: 'second refused', reason: 'Refused.', at: 2 },
@@ -513,9 +513,9 @@ describe('ActiveChatsStore queued follow-up retention (UX audit T3)', () => {
     expect(store.getSnapshot()['agent:q']?.queuedMessages).toHaveLength(1);
   });
 
-  // UX audit T3 review round 3 (MEDIUM): the latch was store-wide, so a write
-  // that failed while no chat held a queue consumed it, and every queue
-  // created afterwards stayed silent until some write happened to succeed.
+ // 3 : the latch was store-wide, so a write
+// that failed while no chat held a queue consumed it, and every queue
+// created afterwards stayed silent until some write happened to succeed.
   test('a queue created after the first refused write is still told', () => {
     const refusing = {
       getItem: () => null,
@@ -524,7 +524,7 @@ describe('ActiveChatsStore queued follow-up retention (UX audit T3)', () => {
       },
     };
     const store = new ActiveChatsStore({ storage: refusing });
-    // The first refused write happens with NO queue anywhere.
+// The first refused write happens with NO queue anywhere.
     store.initChat('agent:q', {
       agentSlug: 'claude',
       agentName: 'Claude Code',
@@ -536,7 +536,7 @@ describe('ActiveChatsStore queued follow-up retention (UX audit T3)', () => {
       (store.getSnapshot()['agent:q']?.ephemeralMessages ?? []).length,
     ).toBe(0);
 
-    // Only now does this chat acquire a queue.
+// Only now does this chat acquire a queue.
     store.updateChat('agent:q', { queuedMessages: ['unsaved follow-up'] });
     vi.advanceTimersByTime(400);
 
@@ -611,7 +611,7 @@ describe('ActiveChatsStore queued follow-up retention (UX audit T3)', () => {
 });
 
 /**
- * station#3782/#3765. `?chat=` and sessionStorage must name the SAME chat, so
+ * archive#3782/archive#3765. `?chat=` and sessionStorage must name the SAME chat, so
  * the id the dock stamps and the id the serializer persists come from one
  * derivation rather than from two call sites that each pick a fallback.
  */
@@ -647,8 +647,8 @@ describe('activeChatDurableId', () => {
     expect(
       activeChatDurableId('claude:1787505679249', { conversationId: '' }),
     ).toBe('claude:1787505679249');
-    // The unpromoted chat is deliberately NOT persisted: a durable identity is
-    // what makes it restorable, and it does not have one yet.
+// The unpromoted chat is deliberately NOT persisted: a durable identity is
+// what makes it restorable, and it does not have one yet.
     expect(
       serializeActiveChats({
         'claude:1787505679249': { agentSlug: 'claude', messages: [] },

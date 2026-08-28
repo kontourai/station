@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { deriveShareUiOrigin } from '../utils/shareUiOrigin';
 
 /**
- * The mint affordance beside an answer (station#1423).
+ * The mint affordance beside an answer (archive#1423).
  *
  * The claims worth pinning are honesty claims: the button mints for the turn
  * the ENVELOPE names (not a prop, not a position); a clipboard write that
@@ -87,7 +87,7 @@ describe('ShareAnswerButton', () => {
 
       render(<ShareAnswerButton provenance={envelope()} uiOrigin={uiOrigin} />);
       const button = screen.getByRole('button');
-      // station#2652 redesign: `aria-disabled`, not `disabled` — the control
+      // archive#2652 redesign: `aria-disabled`, not `disabled` — the control
       // stays reachable so activating it can explain WHY sharing is
       // unavailable (the explanation below only appears on that activation,
       // instead of printing under every answer forever).

@@ -15,7 +15,7 @@ import {
 import { ACCENT_PRESETS } from '../views/settings/AccentColorPicker';
 
 /**
- * station#3392. A control filled with the accent and painted with a foreground
+ * archive#3392. A control filled with the accent and painted with a foreground
  * that is not derived FROM that accent is a colour pair nothing computes. On
  * the shipped dark brand (`#5ce0c6`) white measures 1.62:1; `--text-on-accent`,
  * the brand's own declared contrast partner, measures 12.35:1.

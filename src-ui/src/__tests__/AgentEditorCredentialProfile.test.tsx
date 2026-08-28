@@ -57,10 +57,10 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
     isError = false;
   });
 
-  // Review round 2 (Codex) proved the loading/error branch could be DELETED
-  // with this suite staying green, because nothing here ever set those flags.
-  // Loading and a failed request must never read as "this engine has no
-  // accounts" — for a pinned agent OR an unpinned one.
+// proved the loading/error branch could be DELETED
+// with this suite staying green, because nothing here ever set those flags.
+// Loading and a failed request must never read as "this engine has no
+// accounts" — for a pinned agent OR an unpinned one.
   test('loading is its own state, not an absent capability', () => {
     isLoading = true;
     const { container } = render(
@@ -101,8 +101,8 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
     expect(screen.getByText(/pins work-account/i)).toBeTruthy();
   });
 
-  // An engine with no app-home channel has no accounts to choose between.
-  // A dropdown there could only ever mislead.
+// An engine with no app-home channel has no accounts to choose between.
+// A dropdown there could only ever mislead.
   test('renders nothing for an engine with no credential-profile concept', () => {
     recovery = null;
     const { container } = render(
@@ -115,8 +115,8 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  // agent-engine-unification.md §5: a capability the engine cannot deliver is
-  // an authoring-time validation state, never a silent drop.
+ // agent-engine-unification.md §5: a capability the engine cannot deliver is
+// an authoring-time validation state, never a silent drop.
   test('surfaces a pin authored against an engine that cannot deliver it', () => {
     recovery = null;
     render(
@@ -142,7 +142,7 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
         locked={false}
       />,
     );
-    // The unpinned option states the resolved outcome, not a blank.
+// The unpinned option states the resolved outcome, not a blank.
     expect(
       screen.getByText("Uses the connection's account (work-account)."),
     ).toBeTruthy();
@@ -150,8 +150,8 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
     expect(screen.getByText('personal-account')).toBeTruthy();
   });
 
-  // "No pin" must be one representable state, not an empty string that later
-  // reads as a profile named "".
+// "No pin" must be one representable state, not an empty string that later
+// reads as a profile named "".
   test('clearing the selection unsets the ref rather than storing an empty string', () => {
     recovery = withProfiles([{ ref: 'work-account' }], 'work-account');
     let next: AgentFormData | undefined;
@@ -194,9 +194,9 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
     expect(next?.execution.credentialProfileRef).toBe('personal-account');
   });
 
-  // A pin whose profile was deleted must stay selectable — saving an unrelated
-  // edit cannot silently discard it — and must say it will not resolve. The
-  // session fails closed rather than running on another account.
+// A pin whose profile was deleted must stay selectable — saving an unrelated
+// edit cannot silently discard it — and must say it will not resolve. The
+// session fails closed rather than running on another account.
   test('keeps an unenrolled pin selectable and says it will not resolve', () => {
     recovery = withProfiles([{ ref: 'personal-account' }], 'personal-account');
     render(

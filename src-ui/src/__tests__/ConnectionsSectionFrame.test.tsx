@@ -32,16 +32,16 @@ const navigate = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   useConnectionsQuery: () => ({ data: state.connections }),
-  // station#3747: the Models count reads the model INVENTORY route, the same
-  // one the Models list reads, rather than the full projection plus a
-  // client-side membership filter.
+// archive#3747: the Models count reads the model INVENTORY route, the same
+// one the Models list reads, rather than the full projection plus a
+// client-side membership filter.
   useModelConnectionsQuery: () => ({ data: state.modelConnections }),
   useAgentConnectionsQuery: () => ({ data: state.engines }),
   useIntegrationsQuery: () => ({ data: state.tools }),
   useGlobalKnowledgeStatusQuery: () => ({ data: state.knowledge }),
   useSshEnvironmentsQuery: () => ({ data: state.ssh }),
-  // The Computers count now comes from the same fold the body renders
-  // (sol review finding 5), so the frame reaches this adapter too.
+// The Computers count now comes from the same fold the body renders
+ //so the frame reaches this adapter too.
   sshEnvironmentsToKnownEnvironments: (views: { profile: { id: string } }[]) =>
     views.map((view) => ({
       schemaVersion: 1,
@@ -102,11 +102,11 @@ describe('ConnectionsSectionFrame', () => {
   });
 
   test('the Models count is the Models list, read from the same route', () => {
-    // "Models 1" once appeared beside a Models section reading "No model
-    // connections yet", because the count read `/api/connections` (which
-    // carries the built-in vector store) while the list read
-    // `/api/connections/models`. station#3747 made that route LLM-capable by
-    // contract and pointed the count at it, so the two cannot disagree.
+// "Models 1" once appeared beside a Models section reading "No model
+// connections yet", because the count read `/api/connections` (which
+// carries the built-in vector store) while the list read
+// `/api/connections/models`. archive#3747 made that route LLM-capable by
+// contract and pointed the count at it, so the two cannot disagree.
     state.connections = [
       {
         id: 'lancedb-builtin',
@@ -155,12 +155,12 @@ describe('ConnectionsSectionFrame', () => {
   });
 
   test('a never-probed tool server is not an attention state; a failed probe is', () => {
-    // station#4463 slice 2 review: assert the TAB's accessible name, not a
-    // nested `role="status"` — that role is not reliably exposed as its own
-    // accessible object inside an interactive `role="tab"` button by real
-    // assistive tech (jsdom does not model that pruning, so the old
-    // assertion passed while describing a lie). `Tabs` composes the
-    // attention text into the tab's own `aria-label` instead.
+// archive#4463: assert the TAB's accessible name, not a
+// nested `role="status"` — that role is not reliably exposed as its own
+// accessible object inside an interactive `role="tab"` button by real
+// assistive tech (jsdom does not model that pruning, so the old
+// assertion passed while describing a lie). `Tabs` composes the
+// attention text into the tab's own `aria-label` instead.
     state.tools = [{ id: 'station-docs', connected: false }];
     const { rerender } = render(
       <ConnectionsSectionFrame sectionId="tools">

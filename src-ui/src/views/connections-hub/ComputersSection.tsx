@@ -1,22 +1,22 @@
 /**
  * Computers — one list, one row shape, for every computer this Station knows
- * (lane design §4; audit CI-R9, CI-R13, CI-R14, CI-R21).
+* (lane design §4).
  *
  * It replaces `KnownEnvironmentsSection` + `SshEnvironmentsSection`, which
  * rendered two lists with two card grammars — and, because both folded the
  * same SSH profiles, listed an SSH computer twice. The fold below is the one
- * station#1096 built (identity merge across paired/manual/SSH); what changed
+ * archive#1096 built (identity merge across paired/manual/SSH); what changed
  * is that a folded SSH row now carries the server's phase state and its
  * connect/stop action rather than a second, weaker copy of it.
  *
  * Rules this section keeps:
  * - Every row: name · kind chip · one server-derived state · one action.
  * - Loading is the shared `SkeletonList`, never a "Loading environments…"
- *   string (CI-R21); a failed read is `ErrorState` + Retry, never an empty
- *   list pretending there is nothing to show.
+* string ; a failed read is `ErrorState` + Retry, never an empty
+*   list pretending there is nothing to show.
  * - No state word this client invented: a paired connection is "Authorized"
- *   or "Not authorized" from its own credential state, never "Ready" (which
- *   on this page means evidenced and currently reachable).
+*   or "Not authorized" from its own credential state, never "Ready" (which
+*   on this page means evidenced and currently reachable).
  */
 
 import { useConnections } from '@kontourai/station-connect';
@@ -99,8 +99,8 @@ function SshForwardState({
     transport: forward.transport,
     launcherError,
     launcherUnknown,
-    // station#3711: derived in sshForwardState, not here — a caller-side
-    // ternary is exactly the shape that regressed to `isSuccess`-as-boolean.
+// archive#3711: derived in sshForwardState, not here — a caller-side
+// ternary is exactly the shape that regressed to `isSuccess`-as-boolean.
     probe: deriveSshForwardProbeState(instance),
   });
   return (
@@ -120,11 +120,11 @@ function SshForwardState({
 export function ComputersSection() {
   const isMobile = useIsMobile();
   const { connections } = useConnections();
-  // An SSH forward is bound to this Station's loopback device. Showing that
-  // URL on a phone implies the phone can open it, though its own 127.0.0.1 is
-  // a different machine. This only changes a row's DETAIL text, never the row
-  // set — which is why the rail can share the same derivation without knowing
-  // anything about viewport.
+// An SSH forward is bound to this Station's loopback device. Showing that
+// URL on a phone implies the phone can open it, though its own 127.0.0.1 is
+// a different machine. This only changes a row's DETAIL text, never the row
+// set — which is why the rail can share the same derivation without knowing
+// anything about viewport.
   const hideEndpoint = useCallback(
     (endpointUrl: string, kind: string) =>
       isMobile &&
@@ -138,10 +138,10 @@ export function ComputersSection() {
   const { rows, environments, sshEnvironments, isLoading, isError, refetch } =
     useComputerRows({ hideEndpoint });
   const registry = knownEnvironmentRegistry();
-  // station#settings-revamp slice 5: outbound peer credentials' one UI home,
-  // read-only — the CLI stays the whole provisioning mechanism. `GET
-  // /api/environments/peers` is `access:manage`-gated for a REMOTE caller, so
-  // a non-operator browser session can 403; render this only on success.
+ // archive#settings-revamp: outbound peer credentials' one UI home,
+// read-only — the CLI stays the whole provisioning mechanism. `GET
+// /api/environments/peers` is `access:manage`-gated for a REMOTE caller, so
+// a non-operator browser session can 403; render this only on success.
   const peerCredentialsQuery = usePeerCredentialsQuery();
   const connect = useConnectSshEnvironmentMutation();
   const disconnect = useDisconnectSshEnvironmentMutation();
@@ -247,7 +247,7 @@ export function ComputersSection() {
 
   return (
     <>
-      {/* The shared page wrapper: this is a single-subject section (design §3),
+ {/* The shared page wrapper: this is a single-subject section (design §3),
           so it takes page-layout's own width and padding rhythm rather than
           bleeding to the frame's edges. */}
       <div className="page page--narrow connections-computers">
@@ -265,7 +265,7 @@ export function ComputersSection() {
             }
           />
         ) : rows.length === 0 ? (
-          /* empty-state action: the frame's "Add computer" is adjacent. */
+/* empty-state action: the frame's "Add computer" is adjacent. */
           <Empty
             variant="compact"
             label="No other computers yet"
@@ -319,13 +319,13 @@ export function ComputersSection() {
                     {row.state.detail}
                   </span>
                 )}
-                {/*
+{/*
                   Deviation from "exactly one action per row", disclosed: an SSH
                   computer this section can now CREATE must also be removable,
                   or the creator becomes the next view-but-can't-act dead end.
                   The row's action cell still holds exactly one control; removal
                   is a low-emphasis link inside the row body.
-                */}
+*/}
                 {row.sshEnvironmentId && (
                   <button
                     type="button"
@@ -350,14 +350,14 @@ export function ComputersSection() {
 
         {peerCredentialsQuery.isSuccess &&
           (peerCredentialsQuery.data.length === 0 ? (
-            /*
-             * CI-R13: this was a card with a second empty-state grammar whose
-             * only content was a CLI command the reader could not act on.
-             * `POST /api/environments/peers` exists, but provisioning means
-             * obtaining a bearer from the OTHER Station, which the CLI owns
-             * end to end — so the honest UI action is to hand over the exact
-             * command, in the same row shape as everything else here.
-             */
+/*
+* this was a card with a second empty-state grammar whose
+* only content was a CLI command the reader could not act on.
+* `POST /api/environments/peers` exists, but provisioning means
+* obtaining a bearer from the OTHER Station, which the CLI owns
+* end to end — so the honest UI action is to hand over the exact
+* command, in the same row shape as everything else here.
+*/
             <PageRow
               className="connections-computers__row"
               label="Outbound peer credentials"

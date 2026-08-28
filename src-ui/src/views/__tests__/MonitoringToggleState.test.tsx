@@ -8,7 +8,7 @@ import { MonitoringTimeControls } from '../MonitoringTimeControls';
 import { EVENT_TYPE_GROUPS } from '../monitoring-utils';
 
 /**
- * 6-OPS-34, measured on the audited build: one toolbar carrying three toggle
+ * 6-, measured on the audited build: one toolbar carrying three toggle
  * conventions. `Auto Follow` exposed `aria-pressed="true"→"false"`, while
  * LIVE and the five event filters (AGENT / TOOL / REASONING / PLANNING /
  * HEALTH) exposed no pressed state at all — their only state was the CSS

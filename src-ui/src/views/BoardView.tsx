@@ -25,9 +25,9 @@ function widgetsByTab(widgets: readonly BoardWidget[]) {
 }
 
 /**
- * station#4079 slice 1 — the board face: pinned provenance-bound UI blocks
- * (station#1399) laid out in an ordinal grid per tab, reusing `UIBlockRenderer`
- * verbatim (it already renders attestation badges from #1399 — see the
+ * archive#4079 — the board face: pinned provenance-bound UI blocks
+ * (archive#1399) laid out in an ordinal grid per tab, reusing `UIBlockRenderer`
+ * verbatim (it already renders attestation badges from archive#1399 — see the
  * design comment: "no third render authority"). Reached by URL only this
  * slice (no sidebar item — `page-frame-registry.ts` frames it `null`, a
  * workspace-shaped surface that owns its own identity header, same family

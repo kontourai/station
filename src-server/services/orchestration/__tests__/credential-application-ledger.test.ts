@@ -51,10 +51,10 @@ async function constructCredentialStore(databasePath: string): Promise<void> {
   const [code] = await once(child, 'exit');
   if (code !== 0) {
     // Every constructor must complete. This briefly tolerated a loser exiting
-    // with STATION_EVENT_STORE_INTEGRITY_UNAVAILABLE (station#3145), because
+    // with STATION_EVENT_STORE_INTEGRITY_UNAVAILABLE (archive#3145), because
     // a peer's DDL invalidated its cached schema mid-integrity-check and the
     // startup gate declined to assert integrity it could not check. That
-    // whole failure mode is gone: station#3219 removed the per-boot integrity
+    // whole failure mode is gone: archive#3219 removed the per-boot integrity
     // check entirely, so there is no startup check left to contend on and a
     // loser is not an expected outcome here. Do not re-add tolerance — it
     // would make this test, whose entire point is contention, unable to

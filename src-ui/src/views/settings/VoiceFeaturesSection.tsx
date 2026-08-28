@@ -56,9 +56,9 @@ function MobilePairingSection() {
   const { activeConnection } = useConnections();
   const serverPort = (() => {
     try {
-      // #198: resolve against the current page as the base so a relative
-      // or empty `activeConnection.url` never throws — parity with the
-      // hardened `TerminalPanel.tsx`/`deriveVoiceWsUrl` pattern elsewhere.
+ // archive#198: resolve against the current page as the base so a relative
+// or empty `activeConnection.url` never throws — parity with the
+// hardened `TerminalPanel.tsx`/`deriveVoiceWsUrl` pattern elsewhere.
       const url = new URL(
         activeConnection?.url || window.location.origin,
         window.location.href,
@@ -101,7 +101,7 @@ function MobilePairingSection() {
 }
 
 // The `key` literals here trip gitleaks' generic-api-key rule, and the
-// .gitleaks.toml allowlist for this file only masks identifiers matching
+//gitleaks.toml allowlist for this file only masks identifiers matching
 // ^[a-z][A-Za-z0-9]{2,40}Enabled$ — a new key NOT ending in `Enabled` will
 // fail the secret scan until that regex is widened alongside it.
 const FEATURE_META: Array<{
@@ -350,8 +350,8 @@ export function VoiceFeaturesSection() {
 }
 
 /**
- * `guard` is `SettingsView.tsx`'s own `useUnsavedGuard` guard (review
- * finding, slice 5 HIGH 1) — the "View the notifications inbox" cross-link
+ * `guard` is `SettingsView.tsx`'s own `useUnsavedGuard` guard (
+ * finding, 1) — the "View the notifications inbox" cross-link
  * below must route through it like every other navigation trigger on a page
  * with dirty state.
  */

@@ -480,9 +480,9 @@ describe('buildHomeWorkItems', () => {
           provider: 'codex',
           status: 'ready',
           lifecycleState: 'running',
-          // Since #1069 "Running" means a turn is in flight, not merely that a
-          // runtime attached. This fixture's subject is label ordering, so it
-          // now carries the turn fold that makes it genuinely running.
+ // Since archive#1069 "Running" means a turn is in flight, not merely that a
+// runtime attached. This fixture's subject is label ordering, so it
+// now carries the turn fold that makes it genuinely running.
           hasActiveTurn: true,
           createdAt: '2026-01-01',
           updatedAt: '2026-01-03',
@@ -532,9 +532,9 @@ describe('buildHomeWorkItems', () => {
       ] as any,
     });
 
-    // The claim is WHICH model survives the restore, so it is asserted on the
-    // id. `modelLabel` is a derivation of that id (station#3391) and reads as
-    // a name, not as the internal selector.
+// The claim is WHICH model survives the restore, so it is asserted on the
+// id. `modelLabel` is a derivation of that id (archive#3391) and reads as
+// a name, not as the internal selector.
     expect(item?.model).toBe('claude-fable-5');
     expect(item?.modelLabel).toBe('Fable 5');
   });
@@ -584,12 +584,12 @@ describe('buildHomeWorkItems', () => {
         },
       ] as any,
     });
-    // station#3227 A2: was `'Delegated Review'`. Home's private copy stripped
-    // the `task:` prefix with its own regex and then Title-Cased the result;
-    // `sessionTitle` (which the sessions list and project page already read)
-    // keeps the id's own casing behind an explicit "Worker task ·" prefix, so
-    // the reader can tell a task id from a human-written title. The
-    // no-raw-id assertion below is the load-bearing one and is unchanged.
+// archive#3227 A2: was `'Delegated Review'`. Home's private copy stripped
+// the `task:` prefix with its own regex and then Title-Cased the result;
+// `sessionTitle` (which the sessions list and project page already read)
+// keeps the id's own casing behind an explicit "Worker task ·" prefix, so
+// the reader can tell a task id from a human-written title. The
+// no-raw-id assertion below is the load-bearing one and is unchanged.
     expect(task.title).toBe('Worker task · delegated review');
     expect(task.title).not.toMatch(/runtime|task:/i);
   });
@@ -613,12 +613,12 @@ describe('buildHomeWorkItems', () => {
         },
       ] as any,
     });
-    // station#3227 A2/A4: was `'kiro task'`. The title is the ENGINE's name
-    // now, not the assigned agent's — `sessionTitle` names the engine that
-    // ran the session, and `agentLabel` (asserted immediately below, and
-    // rendered as its own field on every Home row that shows an agent) is
-    // still where the agent's identity lives. No information leaves the row;
-    // it stops being said twice, differently, in two places.
+// archive#3227 A2/A4: was `'kiro task'`. The title is the ENGINE's name
+// now, not the assigned agent's — `sessionTitle` names the engine that
+// ran the session, and `agentLabel` (asserted immediately below, and
+// rendered as its own field on every Home row that shows an agent) is
+// still where the agent's identity lives. No information leaves the row;
+// it stops being said twice, differently, in two places.
     expect(task.title).toBe('Custom engine session');
     expect(task.agentLabel).toBe('kiro');
     expect(`${task.title} ${task.agentLabel}`).not.toMatch(/opaque/i);
@@ -651,9 +651,9 @@ describe('buildHomeWorkItems', () => {
     expect(tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ title: 'codex Chat' }),
-        // station#3227 A2: was `'codex task'` — see the engine-vs-agent note
-        // above. `agentLabel` still pins the slug, which is what this test
-        // is actually about (no raw runtime id reaches either field).
+// archive#3227 A2: was `'codex task'` — see the engine-vs-agent note
+// above. `agentLabel` still pins the slug, which is what this test
+// is actually about (no raw runtime id reaches either field).
         expect.objectContaining({
           title: 'Codex session',
           agentLabel: 'codex',
@@ -780,8 +780,8 @@ describe('buildHomeWorkItems', () => {
 });
 
 describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
-  // Shape copied from a live read-model row on the brian-media dogfood
-  // instance, where 13 of 24 sessions rendered "Running" indefinitely.
+// Shape copied from a live read-model row on the brian-media dogfood
+// instance, where 13 of 24 sessions rendered "Running" indefinitely.
   const attachedButIdle = {
     threadId: 'codex:1784515865925',
     provider: 'codex',
@@ -840,11 +840,11 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Completed');
   });
 
-  // station#1296: a sticky `pendingReview` (a resolution that bypassed the
-  // normal respond/stop path) must never outrank a session that has actually
-  // completed — this is the UI half of the fix; the server half stops
-  // `pendingReview` from surviving a terminal transition in the first place
-  // (session-lifecycle-service.test.ts).
+// archive#1296: a sticky `pendingReview` (a resolution that bypassed the
+// normal respond/stop path) must never outrank a session that has actually
+// completed — this is the UI half of the fix; the server half stops
+// `pendingReview` from surviving a terminal transition in the first place
+// (session-lifecycle-service.test.ts).
   test('a completed session never reads Needs attention even with a sticky pendingReview', () => {
     const [item] = buildHomeWorkItems({
       chats: {},
@@ -875,8 +875,8 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Stopped');
   });
 
-  // A genuinely failed run is terminal and must never borrow the actionable
-  // label reserved for approval/input/review/blocked work.
+// A genuinely failed run is terminal and must never borrow the actionable
+// label reserved for approval/input/review/blocked work.
   test('a failed session reads Failed', () => {
     const [item] = buildHomeWorkItems({
       chats: {},
@@ -886,13 +886,13 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Failed');
   });
 
-  // station#1296 independent-review fault injection: `status` (transport)
-  // and `lifecycleState` (event-fold outcome) are independent — a crashed
-  // runtime (lifecycleState 'failed' via runtime.error) commonly also has
-  // its connection torn down (status 'closed') once the process exits. The
-  // completed/closed branch checked `status === 'closed'` on its own,
-  // regardless of lifecycleState, so this exact combination previously
-  // read "Completed" instead of "Needs attention".
+// archive#1296: `status` (transport)
+// and `lifecycleState` (event-fold outcome) are independent — a crashed
+// runtime (lifecycleState 'failed' via runtime.error) commonly also has
+// its connection torn down (status 'closed') once the process exits. The
+// completed/closed branch checked `status === 'closed'` on its own,
+// regardless of lifecycleState, so this exact combination previously
+// read "Completed" instead of "Needs attention".
   test('a failed session with a closed transport status reads Failed, never Completed', () => {
     const [item] = buildHomeWorkItems({
       chats: {},
@@ -954,8 +954,8 @@ describe('orchestration display identity', () => {
       ] as any,
     });
 
-    // station#3227 A2: was `'Review History'` (Home's Title-Casing of the
-    // task id). Same canonical form as the delegated-title test above.
+// archive#3227 A2: was `'Review History'` (Home's Title-Casing of the
+// task id). Same canonical form as the delegated-title test above.
     expect(item.title).toBe('Worker task · review history');
     expect(item.cwdLabel).toBeUndefined();
   });
@@ -990,8 +990,8 @@ describe('chat items borrow the session turn fold (#1074 review finding)', () =>
       agents: [{ slug: 'agent', name: 'Agent' }] as any,
       sessions: [attachedSession] as any,
     });
-    // Pre-fix this merged to 'Running': the chat copy said Running (ungated
-    // process status) and moreImportantLifecycle prefers the higher priority.
+// Pre-fix this merged to 'Running': the chat copy said Running (ungated
+// process status) and moreImportantLifecycle prefers the higher priority.
     expect(item.lifecycleLabel).toBe('Ready');
   });
 
@@ -1073,10 +1073,10 @@ describe('chat items borrow the session turn fold (#1074 review finding)', () =>
 test('a present-but-uncorrelated conversationId never borrows another session fold', () => {
   const items = buildHomeWorkItems({
     chats: {
-      // Store key collides with a real, unrelated session's threadId while the
-      // chat's own conversationId correlates with nothing. The merge keys on
-      // conversationId, so this chat is never paired with that session — its
-      // label must not borrow that session's fold either.
+// Store key collides with a real, unrelated session's threadId while the
+// chat's own conversationId correlates with nothing. The merge keys on
+// conversationId, so this chat is never paired with that session — its
+// label must not borrow that session's fold either.
       'thread-unrelated': {
         conversationId: 'conv-not-a-session',
         title: 'Uncorrelated chat',
@@ -1102,8 +1102,8 @@ test('a present-but-uncorrelated conversationId never borrows another session fo
       },
     ] as any,
   });
-  // Both items exist and are NOT merged (different ids) — assert the chat's
-  // own label, not whichever sorted first.
+// Both items exist and are NOT merged (different ids) — assert the chat's
+// own label, not whichever sorted first.
   const chatItem = items.find((item) => item.kind === 'chat');
   expect(chatItem?.id).toBe('conv-not-a-session');
   expect(chatItem?.lifecycleLabel).toBe('Running');
@@ -1145,10 +1145,10 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
     };
   }
 
-  // AC3: the local-first invariant. Omitting `remoteEnvironments` and
-  // passing its default `[]` explicitly must produce byte-identical output
-  // to each other, and to what this exact input produced before remote
-  // support existed (a plain local orchestration item, untouched).
+ // the local-first invariant. Omitting `remoteEnvironments` and
+// passing its default `[]` explicitly must produce byte-identical output
+// to each other, and to what this exact input produced before remote
+// support existed (a plain local orchestration item, untouched).
   test('AC3: omitting remoteEnvironments and passing [] both leave the local-only result unchanged', () => {
     const withoutField = buildHomeWorkItems(localOnlyInputs() as any);
     const withEmptyArray = buildHomeWorkItems({
@@ -1167,9 +1167,9 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
     expect(withoutField[0].environmentLabel).toBeUndefined();
   });
 
-  // AC1: a two-station fixture — one local session, one connected remote
-  // environment's session — merges into one list, the remote item carrying
-  // environment provenance for the badge.
+ // a two-station fixture — one local session, one connected remote
+// environment's session — merges into one list, the remote item carrying
+// environment provenance for the badge.
   test('AC1: merges a connected remote environment session into the list with provenance', () => {
     const items = buildHomeWorkItems({
       ...localOnlyInputs(),
@@ -1191,8 +1191,8 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       environmentId: 'env-a',
       environmentLabel: 'Brian media',
     });
-    // The local item is untouched by the merge — no provenance fields leak
-    // onto it.
+// The local item is untouched by the merge — no provenance fields leak
+// onto it.
     const localItem = items.find((task) => task.kind === 'orchestration');
     expect(localItem?.environmentId).toBeUndefined();
     expect(localItem?.environmentLabel).toBeUndefined();
@@ -1207,7 +1207,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
         {
           environmentId: 'env-a',
           environmentName: 'Brian media',
-          // Deliberately the SAME threadId as LOCAL_SESSION.
+// Deliberately the SAME threadId as LOCAL_SESSION.
           sessions: [{ ...LOCAL_SESSION }] as any,
         },
       ],
@@ -1221,11 +1221,11 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
   });
 
   test('R3: one unreachable environment (absent from remoteEnvironments) never removes or blocks another connected environment or the local list', () => {
-    // The aggregator (server-side) already drops unreachable environments
-    // from `remoteEnvironments` entirely (see
-    // `remote-session-reader.test.ts`) — this proves the client-side merge
-    // is equally indifferent to a shorter-than-expected remote list; it
-    // never blocks on, or requires, every known environment answering.
+// The aggregator (server-side) already drops unreachable environments
+// from `remoteEnvironments` entirely (see
+// `remote-session-reader.test.ts`) — this proves the client-side merge
+// is equally indifferent to a shorter-than-expected remote list; it
+// never blocks on, or requires, every known environment answering.
     const items = buildHomeWorkItems({
       ...localOnlyInputs(),
       remoteEnvironments: [
@@ -1234,8 +1234,8 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
           environmentName: 'Reachable box',
           sessions: [REMOTE_SESSION],
         },
-        // 'env-unreachable' is simply absent — exactly what the server
-        // aggregator returns for a connected-but-timed-out environment.
+// 'env-unreachable' is simply absent — exactly what the server
+// aggregator returns for a connected-but-timed-out environment.
       ],
     } as any);
 
@@ -1250,14 +1250,14 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
 });
 
 describe('station#1795: a chat with no messages yet is not epoch-0', () => {
-  // Regression for the reported bug: a brand-new chat has neither
-  // `messages` nor `ephemeralMessages` populated and no `streamingMessage`,
-  // so `latestChatTimestamp`'s reduce used to bottom out at its literal `0`
-  // seed — sorting the chat dead last (behind every item with a real,
-  // however old, timestamp) and rendering it in "Earlier" stamped "20668d"
-  // (days since 1970). station#1295 already fixed the case where a chat
-  // HAS a message with no usable timestamp; this covers the genuinely
-  // message-less case that fix does not reach.
+// Regression for the reported bug: a brand-new chat has neither
+// `messages` nor `ephemeralMessages` populated and no `streamingMessage`,
+// so `latestChatTimestamp`'s reduce used to bottom out at its literal `0`
+// seed — sorting the chat dead last (behind every item with a real,
+// however old, timestamp) and rendering it in "Earlier" stamped "20668d"
+// (days since 1970). archive#1295 already fixed the case where a chat
+// HAS a message with no usable timestamp; this covers the genuinely
+// message-less case that fix does not reach.
   test('a chat with no messages sorts by its own creation time, not epoch 0', () => {
     const createdAt = Date.parse('2026-08-02T12:00:00Z');
     const tasks = buildHomeWorkItems({
@@ -1279,9 +1279,9 @@ describe('station#1795: a chat with no messages yet is not epoch-0', () => {
 
     const fresh = tasks.find((task) => task.title === 'Untouched chat');
     expect(fresh?.updatedAt).toBe(createdAt);
-    // A real (however old) message timestamp is still an epoch-ms value
-    // dwarfed by any 2020s+ createdAt, so the fresh, message-less chat
-    // must sort ahead of it rather than dead last at 0.
+// A real (however old) message timestamp is still an epoch-ms value
+// dwarfed by any 2020s+ createdAt, so the fresh, message-less chat
+// must sort ahead of it rather than dead last at 0.
     expect(tasks[0].title).toBe('Untouched chat');
   });
 
@@ -1302,14 +1302,14 @@ describe('station#1795: a chat with no messages yet is not epoch-0', () => {
 });
 
 describe('station#1295: chat recency is no longer derived from a 0 timestamp', () => {
-  // Regression for the exact reported bug: no normal write path stamped
-  // `ChatMessage.timestamp`, so `latestChatTimestamp` reduced to 0 for a
-  // perfectly healthy chat — sorting it dead last (behind every item with a
-  // real, however old, timestamp) and making it un-eligible for "Just
-  // finished" (see mobile-activity-groups.ts's window check). Prior
-  // fixtures in this file hardcode plausible stamps (`messages: [{
-  // timestamp: 20 }]`); this one goes through the real write path
-  // (`buildOutgoingUserMessage`) instead of a hand-picked value.
+// Regression for the exact reported bug: no normal write path stamped
+// `ChatMessage.timestamp`, so `latestChatTimestamp` reduced to 0 for a
+// perfectly healthy chat — sorting it dead last (behind every item with a
+// real, however old, timestamp) and making it un-eligible for "Just
+// finished" (see mobile-activity-groups.ts's window check). Prior
+// fixtures in this file hardcode plausible stamps (`messages: [{
+// timestamp: 20 }]`); this one goes through the real write path
+// (`buildOutgoingUserMessage`) instead of a hand-picked value.
   test('a chat whose only message came from the real send path sorts ahead of an old real-timestamp item', () => {
     const { messages } = buildOutgoingUserMessage(undefined, 'hi');
     const tasks = buildHomeWorkItems({
@@ -1333,15 +1333,15 @@ describe('station#1295: chat recency is no longer derived from a 0 timestamp', (
     const old = tasks.find((task) => task.title === 'Old chat');
     expect(fresh?.updatedAt).toBeGreaterThan(0);
     expect(fresh?.updatedAt ?? 0).toBeGreaterThan(old?.updatedAt ?? 0);
-    // The recency comparator sorts descending by updatedAt, so the fresh
-    // chat must lead the list, not sort dead last as it would at 0.
+// The recency comparator sorts descending by updatedAt, so the fresh
+// chat must lead the list, not sort dead last as it would at 0.
     expect(tasks[0].title).toBe('Fresh chat');
   });
 
-  // station#1295: streaming bumps recency even though `streamingMessage`
-  // itself carries no timestamp and hasn't been appended to `messages` yet
-  // (finalize does that) — without this, a chat streaming RIGHT NOW could
-  // still sort behind one that merely finished a while ago.
+// archive#1295: streaming bumps recency even though `streamingMessage`
+// itself carries no timestamp and hasn't been appended to `messages` yet
+// (finalize does that) — without this, a chat streaming RIGHT NOW could
+// still sort behind one that merely finished a while ago.
   test('an actively streaming chat sorts ahead of an older finished chat', () => {
     const tasks = buildHomeWorkItems({
       chats: {
@@ -1369,11 +1369,11 @@ describe('station#1295: chat recency is no longer derived from a 0 timestamp', (
 });
 
 /**
- * station#1783 (ADR 0012 residual) — the Home lane family.
+ * archive#1783 (ADR 0012 residual) — the Home lane family.
  *
  * `orchestrationLifecycleLabel` folded a dead session's sticky
  * `pendingReview`/`needs_input` to `'Needs attention'`, which
- * `lifecycle-priority.ts` ranks TOP. Since station#1791 retired the
+ * `lifecycle-priority.ts` ranks TOP. Since archive#1791 retired the
  * boot-time cancellation write, nothing ever moved it off, so one dead
  * session pinned the top of Home — and of the lane placement and the mobile
  * Active group derived from the same label — indefinitely.
@@ -1405,7 +1405,7 @@ describe('Failed rows carry their reason (station#3688)', () => {
       },
     });
     expect(item.lifecycleLabel).toBe('Failed');
-    // The persisted, user-shaped refusal outranks the raw send error.
+// The persisted, user-shaped refusal outranks the raw send error.
     expect(item.failureNotice).toBe(
       'This conversation was started without a workspace.',
     );
@@ -1489,9 +1489,9 @@ describe('Failed rows carry their reason (station#3688)', () => {
     expect(item.failureNotice).toBe('Stopped by request.');
   });
 
-  // #3724 review (BLOCKING): the iff must survive the chat+session MERGE —
-  // the spread used to carry the chat side's notice regardless of which
-  // side's label won.
+// archive#3724: the iff must survive the chat+session MERGE —
+// the spread used to carry the chat side's notice regardless of which
+// side's label won.
   test('merge: an errored chat under a winning non-Failed label sheds its notice', () => {
     const session: OrchestrationSessionSummary = {
       threadId: 'conv-1',
@@ -1520,7 +1520,7 @@ describe('Failed rows carry their reason (station#3688)', () => {
       agents: [],
       sessions: [session],
     });
-    // 'Needs attention' outranks 'Failed' in the merge.
+// 'Needs attention' outranks 'Failed' in the merge.
     expect(item.lifecycleLabel).toBe('Needs attention');
     expect(item.failureNotice).toBeUndefined();
   });
@@ -1556,10 +1556,10 @@ describe('Failed rows carry their reason (station#3688)', () => {
     expect(item.failureNotice).toBe('refused by the send path');
   });
 
-  // The discriminating case injection proved missing: a BLOCKED session
-  // carries a blockedReason too, and its label is not Failed. An unbound
-  // derivation (the #1783 B1b shape — computed without the label gate) puts
-  // failure prose under a non-Failed chip; this is the test that reddens it.
+// The discriminating case injection proved missing: a BLOCKED session
+// carries a blockedReason too, and its label is not Failed. An unbound
+ // derivation (the archive#1783 shape — computed without the label gate) puts
+// failure prose under a non-Failed chip; this is the test that reddens it.
   test('iff, session side: a blocked (non-failed) session with a blockedReason carries no failure notice', () => {
     const base: OrchestrationSessionSummary = {
       threadId: 'thread-blocked',
@@ -1593,11 +1593,11 @@ describe('Home lifecycle label answerability (station#1783)', () => {
     observedAt: '2026-08-03T12:04:03.000Z',
   } as const;
 
-  // Fully typed, with NO cast. `as never` is a stronger exemption than the
-  // `as OrchestrationSessionSummary` removed earlier in this branch — it
-  // disables structural checking outright, so station#1778's required member
-  // would not be enforced for this fixture at all. Review caught that the
-  // "no casts survive" claim was false while these two remained.
+// Fully typed, with NO cast. `as never` is a stronger exemption than the
+// `as OrchestrationSessionSummary` removed earlier in this branch — it
+// disables structural checking outright, so archive#1778's required member
+// would not be enforced for this fixture at all. Review caught that the
+// "no casts survive" claim was false while these two remained.
   function build(
     session: Partial<OrchestrationSessionSummary>,
   ): HomeWorkItem[] {
@@ -1644,16 +1644,16 @@ describe('Home lifecycle label answerability (station#1783)', () => {
     expect(item.unanswerableNotice).toBeUndefined();
   });
 
-  /**
-   * REVIEW BLOCKING B1b. `turn.completed` folds a session to `completed`, and
-   * recovery skips already-closed sessions at boot — so after any restart
-   * every ordinary finished conversation is detached and takes the
-   * `past_resume` arm. This is not an edge case; it is the steady state of
-   * the whole inventory. The first version computed the notice
-   * unconditionally, so each of those rows rendered `✓ Done` with
-   * "Unanswerable by the serving Station (the session cannot resume)"
-   * underneath it.
-   */
+/**
+*`turn.completed` folds a session to `completed`, and
+* recovery skips already-closed sessions at boot — so after any restart
+* every ordinary finished conversation is detached and takes the
+* `past_resume` arm. This is not an edge case; it is the steady state of
+* the whole inventory. The first version computed the notice
+* unconditionally, so each of those rows rendered `✓ Done` with
+* "Unanswerable by the serving Station (the session cannot resume)"
+* underneath it.
+*/
   test('a terminal session still reads Completed — the finished branch wins', () => {
     const [item] = build({
       lifecycleState: 'completed',
@@ -1671,8 +1671,8 @@ describe('Home lifecycle label answerability (station#1783)', () => {
   });
 
   test('the notice is bound to the label — iff, both directions', () => {
-    // A notice without the label contradicts the row; a label without the
-    // notice is the bare adjective the negative arm's basis exists to prevent.
+// A notice without the label contradicts the row; a label without the
+// notice is the bare adjective the negative arm's basis exists to prevent.
     const cases: Partial<OrchestrationSessionSummary>[] = [
       {},
       { answerability: observation },
@@ -1695,9 +1695,9 @@ describe('Home lifecycle label answerability (station#1783)', () => {
   });
 
   test('an idle detached session is NOT relabelled — no request is waiting', () => {
-    // The field answers a question about an OPEN REQUEST. With nothing
-    // awaiting a response there is no request to be unanswerable about, so
-    // consulting it here would be the session-scoped read review blocked.
+// The field answers a question about an OPEN REQUEST. With nothing
+// awaiting a response there is no request to be unanswerable about, so
+// consulting it here would be the session-scoped read review blocked.
     const [item] = build({
       lifecycleState: 'running',
       pendingReview: false,
@@ -1769,13 +1769,13 @@ describe('identity slugs reach the rows that display them', () => {
     expect(item.projectSlug).toBeUndefined();
   });
 
-  /**
-   * The merge used to base the row on the chat copy and drop the session
-   * copy's slugs. Harmless while nothing read them; once the row draws an
-   * icon it meant a merged row lost its agent for no reason the user could
-   * see. The two copies describe one conversation, so the session's record
-   * is the same identity, not a second guess at it.
-   */
+/**
+* The merge used to base the row on the chat copy and drop the session
+* copy's slugs. Harmless while nothing read them; once the row draws an
+* icon it meant a merged row lost its agent for no reason the user could
+* see. The two copies describe one conversation, so the session's record
+* is the same identity, not a second guess at it.
+*/
   test('a merged row falls back to the session copy for a slug the chat lacks', () => {
     const [item] = buildHomeWorkItems({
       chats: {

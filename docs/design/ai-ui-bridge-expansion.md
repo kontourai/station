@@ -90,7 +90,7 @@ Plus, per project rules: OTel instrumentation for the new operations (e.g. `stat
 
 ## 5. Recommended phasing
 
-1. **Phase 1 — `code` block + `render_component`.** ✅ **Shipped** (#36, #38). Cheapest win; proved the agent-facing affordance end to end with zero new deps. `render_component` rides the builtin vended-tool seam (see §3b investigation).
+1. **Phase 1 — `code` block + `render_component`.** ✅ **Shipped** (archive#36, archive#38). Cheapest win; proved the agent-facing affordance end to end with zero new deps. `render_component` rides the builtin vended-tool seam (see §3b investigation).
 2. **Phase 2 — `form` block + UI-state capture.** ✅ **Shipped.** The interactive phase: a host-rendered `form` block with required-field validation, and the state-capture seam — on submit the values re-enter the conversation as a **new user turn** carrying a human-readable summary + a tagged `__stationFormSubmission` JSON payload (the `formatFormSubmission` helper). Re-entry reuses the existing chat send path (`useSendMessage` → `POST /api/agents/:slug/chat`) via a `UIBlockActionsContext` provided at `ChatMessageList` — **no new server endpoint**. `render_component` was extended to emit `form` blocks too. Covered by unit tests + a live e2e (render → required-guard → submit → tagged turn sent → form locks).
 3. **Phase 3 — `chart` block.** Last, gated on the charting-dependency decision. Defer until a tenant actually needs a chart; trust panels mostly don't.
 

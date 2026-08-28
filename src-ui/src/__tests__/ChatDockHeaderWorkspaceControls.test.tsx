@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * kontourai/station#3309: the tab strip (`ChatDockTabBar`) is retired on
+ * archive#3309: the tab strip (`ChatDockTabBar`) is retired on
  * desktop and its controls fold into `ChatDockHeader` behind the optional
  * `workspaceControls` prop. These tests carry forward the strip's pinned
- * contracts (station#1064 slice B: the chevron-affordance names and the
+ * contracts (archive#1064: the chevron-affordance names and the
  * Background-tasks button behavior) against their new host, and pin the new
  * one-bar rule: no controls while the pane is collapsed.
  */

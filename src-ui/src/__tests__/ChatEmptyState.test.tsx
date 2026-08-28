@@ -11,7 +11,7 @@ const navigate = vi.fn();
 
 // Minimal `AgentData`-shaped fixtures — only the fields `agentEngineDescriptor`
 // (utils/engine.ts) reads. Defaults to `[]` so an agent slug the fixture list
-// doesn't mention resolves to "unknown", matching the pre-station#1193
+// doesn't mention resolves to "unknown", matching the pre-archive#1193
 // slug-only behavior for the common ordinary-Station-agent case.
 let currentAgents: Array<{
   slug: string;
@@ -25,8 +25,8 @@ let currentAgents: Array<{
 }> = [];
 
 // True in every test unless a test explicitly puts the agent catalog into
-// its still-loading state (station#1193 review finding 2) — mirrors
-// `useAgentsLoaded()`'s real "resolved successfully at least once" signal.
+// its still-loading state (archive#1193) — mirrors
+// `useAgentsLoaded`'s real "resolved successfully at least once" signal.
 let currentAgentsLoaded = true;
 
 vi.mock('../hooks/useSystemStatus', () => ({
@@ -138,8 +138,8 @@ describe('ChatEmptyState', () => {
   });
 
   test('does not show a setup CTA while prerequisite discovery is still pending', () => {
-    // The pending snapshot is an all-false placeholder; it must not read as
-    // "no chat configured" until discovery settles (chat-dock-maximize-readiness).
+// The pending snapshot is an all-false placeholder; it must not read as
+// "no chat configured" until discovery settles (chat-dock-maximize-readiness).
     currentStatus = createStatus({ prerequisitesState: 'pending' });
 
     render(<ChatEmptyState agentSlug="dev-agent" agentName="Dev Agent" />);
@@ -229,11 +229,11 @@ describe('ChatEmptyState', () => {
     expect(screen.queryByTestId('chat-empty-state-unconfigured')).toBeNull();
   });
 
-  // station#1193 (epic #1191, slice A): a user-authored agent bound to an external
-  // engine fell through and wrongly showed "needs a model connection"
-  // (observed live on the dogfood). The fix resolves the agent's real engine
-  // (`agentEngineDescriptor`, the same resolver the engine chip uses) instead
-  // of guessing from id shape.
+// archive#1193: a user-authored agent bound to an external
+// engine fell through and wrongly showed "needs a model connection"
+// (observed live on the dogfood). The fix resolves the agent's real engine
+// (`agentEngineDescriptor`, the same resolver the engine chip uses) instead
+// of guessing from id shape.
   describe('engine-agnostic readiness gate for user-authored agents (station#1193)', () => {
     test('does not show "needs a model connection" for a user-authored agent bound to an external engine', () => {
       currentStatus = createStatus({
@@ -280,12 +280,12 @@ describe('ChatEmptyState', () => {
       ).toBeTruthy();
     });
 
-    // station#1193 review finding 2: `useAgents()` alone cannot tell "still
-    // loading" from "durably empty" — both read as `[]`. Without gating on
-    // `useAgentsLoaded()`, a cold load where `status` resolves first would
-    // read a genuine external-engine-bound agent as unresolved and flash the
-    // wrong "needs a model connection" copy for one render before
-    // self-correcting once the catalog lands.
+// archive#1193: `useAgents` alone cannot tell "still
+// loading" from "durably empty" — both read as `[]`. Without gating on
+// `useAgentsLoaded`, a cold load where `status` resolves first would
+// read a genuine external-engine-bound agent as unresolved and flash the
+// wrong "needs a model connection" copy for one render before
+// self-correcting once the catalog lands.
     test('does not flash "needs a model connection" while the agent catalog is still loading', () => {
       currentStatus = createStatus({
         recommendation: RUNTIME_ONLY_RECOMMENDATION,

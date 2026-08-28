@@ -95,9 +95,9 @@ export function CoreUpdateLaunchCheck({
   const [latest, setLatest] = useState<NativeUpdateFeed | null>(null);
   const [attempt, setAttempt] = useState(0);
   const { data: desktopStatus } = useCoreUpdateStatusQuery(apiBase ?? '', {
-    // Mobile packages use the immutable, provenance-pinned release feed below.
-    // Every other shell asks its selected Station, sharing the exact query key
-    // that Settings consumes so opening the review surface does not re-probe.
+// Mobile packages use the immutable, provenance-pinned release feed below.
+// Every other shell asks its selected Station, sharing the exact query key
+// that Settings consumes so opening the review surface does not re-probe.
     enabled: !isMobile,
     staleTime: 5 * 60 * 1000,
   });
@@ -107,12 +107,12 @@ export function CoreUpdateLaunchCheck({
     setAttempt((value) => value + 1);
   }, []);
   useEffect(() => {
-    // `attempt` is an explicit retry generation, not remote state.
+// `attempt` is an explicit retry generation, not remote state.
     void attempt;
     if (!isMobile) return;
-    // A build with no update feed has not failed a check — it was built
-    // without an update channel, which is correct for a dev/debug build.
-    // Reporting that state as build identity is #2211; it is not an alert.
+// A build with no update feed has not failed a check — it was built
+// without an update channel, which is correct for a dev/debug build.
+ // Reporting that state as build identity is archive#2211; it is not an alert.
     if (!feedUrl || !providerOrigin || !installedVersion) return;
     let feed: URL;
     let trustedOrigin: string;
@@ -161,10 +161,10 @@ export function CoreUpdateLaunchCheck({
     return () => controller.abort();
   }, [attempt, channel, feedUrl, installedVersion, isMobile, providerOrigin]);
 
-  // Update state is chrome, so it presents through the one banner slot the
-  // shell owns rather than its own markup outside the safe-area layout. An
-  // update is never more urgent than reaching the host, so it sits in the
-  // lowest band and stays dismissible.
+// Update state is chrome, so it presents through the one banner slot the
+// shell owns rather than its own markup outside the safe-area layout. An
+// update is never more urgent than reaching the host, so it sits in the
+// lowest band and stays dismissible.
   useEffect(() => {
     if (!failure) {
       bannerStore.dismiss(BANNER_IDS.updateCheck);
@@ -214,9 +214,9 @@ export function CoreUpdateLaunchCheck({
           availableDesktopStatus.remoteHash ??
           desktopUpdateMessage(availableDesktopStatus),
         dismissible: true,
-        // Settings owns the install-specific truth: git pull, verified
-        // self-update, or reinstall guidance. The launch banner only claims
-        // that an update exists and never advertises an unavailable action.
+// Settings owns the install-specific truth: git pull, verified
+// self-update, or reinstall guidance. The launch banner only claims
+// that an update exists and never advertises an unavailable action.
         actions: [
           {
             label: 'Review update',

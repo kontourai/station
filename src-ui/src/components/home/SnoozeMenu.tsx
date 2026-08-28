@@ -14,7 +14,7 @@ export interface SnoozeMenuProps {
 }
 
 /**
- * Agent-rhythm snooze presets (design (b), station#1099): In 1 hour / This
+ * Agent-rhythm snooze presets (design (b), archive#1099): In 1 hour / This
  * evening / Tomorrow 9am / Next week Mon 9am.
  *
  * Reuses `ResponsiveDialogHeader` and `composer-actions-menu__list`/
@@ -22,7 +22,7 @@ export interface SnoozeMenuProps {
  * already share (see the note above `.composer-mode-sheet__option` in
  * index.css) — so this menu adds zero new CSS. Loaded via `React.lazy` from
  * HomeView: the presets menu opens rarely enough that its weight does not
- * belong in the entry bundle (AC4).
+* belong in the entry bundle.
  */
 export default function SnoozeMenu({
   itemTitle,

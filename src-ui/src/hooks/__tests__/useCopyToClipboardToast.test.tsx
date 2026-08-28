@@ -4,7 +4,7 @@
  * The toast wording is asserted here as literal text, once. The two call-site
  * tests assert against the exported constants, so without this file a change to
  * either sentence would go unnoticed — including a regression to the
- * unconditional "Copied to clipboard" station#3341 removed.
+ * unconditional "Copied to clipboard" archive#3341 removed.
  */
 
 import { renderHook } from '@testing-library/react';

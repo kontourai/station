@@ -347,7 +347,7 @@ export interface GitPullRestartInput {
   newHash: string;
   /**
    * Full 40-char sha — must reach the child's STATION_BUILD_SHA env so the
-   * watchdog can verify BUILD IDENTITY, not just liveness (station#1903
+   * watchdog can verify BUILD IDENTITY, not just liveness (archive#1903
    * review finding 1): a 200 from a stale respawned old build, or from any
    * other process that happens to answer on this port, must not read as a
    * healthy new server.
@@ -363,7 +363,7 @@ export interface GitPullRestartInput {
 }
 
 /**
- * Spawns the new server, then spawns a DETACHED watchdog (station#1903) that
+ * Spawns the new server, then spawns a DETACHED watchdog (archive#1903) that
  * does not need the port and can therefore keep running after this process
  * exits — the exit itself is what frees the port for the new server to
  * bind, so this process cannot stay alive to verify anything on its own.
@@ -376,7 +376,7 @@ export interface GitPullRestartInput {
  *
  * Extracted from the route handler and injected with `spawnFn`/`exitFn` so
  * it is directly unit-testable without a real 500ms timer or a real
- * `process.exit` call (station#1903 tests).
+ * `process.exit` call (archive#1903 tests).
  */
 export function performGitPullRestart(input: GitPullRestartInput): void {
   const serverEnv: Record<string, string> = {
@@ -495,14 +495,14 @@ export function createSystemUpdateRoutes(
   // the stamp's sha against the head of its channel ref. The remote being
   // unreachable is a disclosed warning (`remoteUnreachable` + `message`),
   // never an `error` — the SDK throws on `error`, which is exactly how "Not a
-  // git repository" used to eat the whole surface (station#1624).
+  // git repository" used to eat the whole surface (archive#1624).
   const desktopBundleUpdateStatus = async (
     provenance: Extract<
       ReturnType<typeof resolveInstallProvenance>,
       { installKind: 'desktop-bundle' }
     >,
   ) => {
-    // Git-based self-update (station#1624): when this bundle's recorded
+    // Git-based self-update (archive#1624): when this bundle's recorded
     // source checkout is present and proves the same repository identity,
     // "apply" means running that checkout's own installer instead of asking
     // the user to reinstall by hand.
@@ -755,7 +755,7 @@ export function createSystemUpdateRoutes(
     // Applying an update is git-pull + rebuild, which only a source checkout
     // can do — except a desktop bundle whose verified source checkout is on
     // this machine, which self-updates by running that checkout's installer
-    // (station#1624). Everything else refuses cleanly instead of letting
+    // (archive#1624). Everything else refuses cleanly instead of letting
     // resolveGitInfo throw "Not a git repository" into a 500.
     const provenance = resolveInstallProvenance(
       dirname(fileURLToPath(import.meta.url)),
@@ -873,7 +873,7 @@ export function createSystemUpdateRoutes(
       // genuinely initiated — both already true at this point. It does NOT
       // mean the update succeeded: whether the new server ever answers a
       // request is unknown until the detached watchdog above verifies it,
-      // well after this response has been sent (station#1903). The message
+      // well after this response has been sent (archive#1903). The message
       // says what happened, not what will happen.
       return c.json({
         success: true,

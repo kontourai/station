@@ -27,7 +27,7 @@ export interface TurnProvenanceSidecarDeps {
 
 /**
  * Turn-provenance envelopes for the sibling slot beside a canonical event
- * (station#1410; epic #4024 C2 sub-cut).
+ * (archive#1410; epic archive#4024 C2 sub-cut).
  *
  * Extracted from the C2 ingest/publish spine, which is otherwise CLOSED BY
  * INSPECTION — see the map's §II.3 C2 closure section for why the spine
@@ -53,7 +53,7 @@ export class TurnProvenanceSidecar {
   constructor(private readonly deps: TurnProvenanceSidecarDeps) {}
 
   /**
-   * station#1410: the completed turn's provenance envelope, for the sibling
+   * archive#1410: the completed turn's provenance envelope, for the sibling
    * slot beside the canonical event. Empty for every other event.
    *
    * Canonical events remain authoritative. The live path folds this turn
@@ -146,7 +146,7 @@ export class TurnProvenanceSidecar {
   }
 
   /**
-   * station#1410 (D2): the same sidecar for a REPLAYED frame.
+   * archive#1410 (D2): the same sidecar for a REPLAYED frame.
    *
    * A client that was disconnected while a turn completed resumes through the
    * `/events` replay branch, which re-emits persisted events from the cursor.

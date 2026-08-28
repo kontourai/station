@@ -26,7 +26,7 @@ import {
 } from './helpers/orchestration';
 
 /**
- * Daily-driver qualification scenario producer (station#3307).
+ * Daily-driver qualification scenario producer (archive#3307).
  *
  * Browser-layer evidence for the three declared-but-previously-unimplemented
  * scenarios: `conversation-agreement`, `transcript-stability`, and
@@ -37,7 +37,7 @@ import {
  * (`scripts/daily-driver-scenario-qualification.mjs`) ingests.
  *
  * `liveness-settlement` resumes by re-navigating the same tab, and the resumed
- * page really does carry station#3300's precondition — the persisted chat
+ * page really does carry archive#3300's precondition — the persisted chat
  * keeps `orchestrationStatus: 'running'` (confirmed in sessionStorage at the
  * moment the assertions run) while `orchestrationTurnOpen`/`status`, which
  * are not persisted, come back unset over a transcript whose turn has already
@@ -48,19 +48,19 @@ import {
  * rehydrate path drops the chat as dead and the resumed page renders "No
  * active session" with the composer text demoted to an unsent draft.
  *
- * WHAT THIS SCENARIO NETS, both halves probe-proven against the genuine
- * pre-station#3330 bundle (7badaad75):
- * - station#3299 — the banner-ownership arbitration. Without it,
+ * WHAT THIS SCENARIO NETS, both halves proven against a build carrying the
+ * genuine defects archive#3330 fixed:
+ * - archive#3299 — the banner-ownership arbitration. Without it,
  *   `failureRenderings` reds: "the recorded cause appeared 2 times".
- * - station#3300 — the settled-turn suppression. Without it,
+ * - archive#3300 — the settled-turn suppression. Without it,
  *   `liveRowsAfterResume` reds: "a settled turn must not reconstruct a
  *   live-work row after a resume; 1 live row(s) rendered" — the settled
  *   answer with a live "Working…" row beneath it, the reported symptom.
- *   Note for whoever probes this next: a single-symbol revert of
+ *   Note for whoever reproduces this next: a single-symbol revert of
  *   `isTurnStreamLive` alone into a HEAD tree does NOT reproduce it, so the
- *   suppression is over-determined across the files station#3330 moved
- *   together. Probe this one against the historical bundle, not by reverting
- *   one derivation.
+ *   suppression is over-determined across the files archive#3330 moved
+ *   together. Reproduce this one against a historical bundle, not by
+ *   reverting one derivation.
  *
  * The resume's power comes from the fixture prerequisites above: without the
  * session read-model entry the resumed page has no chat at all, and the
@@ -131,7 +131,7 @@ const FAILURE_THREADS: Record<string, string> = {
 };
 
 /**
- * The exact raw text station#3299 found rendered to users as a headline. It
+ * The exact raw text archive#3299 found rendered to users as a headline. It
  * is a browser/parser internal, so the product must not present it as the
  * explanation — and it must present the failure ONCE.
  */
@@ -297,7 +297,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
     test(`liveness-settlement (${path.profile}): a settled turn stays settled across a resume, and one failure renders once`, async ({
       page,
     }, testInfo) => {
-      // station#3769: a failure replayed from the durable event window is a
+      // archive#3769: a failure replayed from the durable event window is a
       // visible failure surface, so the banner defers to it exactly as it does
       // to the live `[CHAT_ERROR]` marker — the projection stamps
       // `runtimeError: true` on the row it writes and `rendersAsFailureSurface`
@@ -307,7 +307,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       const failureThread = FAILURE_THREADS[path.profile]!;
       const settledAnswer = `Settled answer for ${path.profile}.`;
       // The serving Station's own session record: empty until the failure
-      // phase, then the failed session station#3213's banner exists for.
+      // phase, then the failed session archive#3213's banner exists for.
       // Typed against the SDK's own summary rather than a bag of fields: a
       // rename on the server's serializer then breaks typecheck here instead
       // of leaving this scenario green on a shape the product stopped
@@ -328,7 +328,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         },
       });
 
-      // ── station#3300 precondition: open a turn, persist 'running', and
+      // ── archive#3300 precondition: open a turn, persist 'running', and
       // let it settle unseen so the resume restores a stale live flag ──
       await openScenarioChat(page, settleThread);
       const transcript = transcriptLocator(page);
@@ -354,7 +354,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       await expect(page.locator('.streaming-message')).toHaveCount(1, {
         timeout: 10_000,
       });
-      // The station#3300 precondition, built exactly: `orchestrationStatus`
+      // The archive#3300 precondition, built exactly: `orchestrationStatus`
       // reaches sessionStorage as 'running' while the turn is open, and the
       // turn then settles while this app cannot see it — so the reload
       // restores a stale 'running' flag over a transcript whose turn is
@@ -381,7 +381,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
           provider: path.provider,
           // The serving Station still believes this session is running: the
           // turn settled after its last lifecycle write. That is the shape
-          // station#3300 was reported against — a resumed page whose stale
+          // archive#3300 was reported against — a resumed page whose stale
           // 'running' flag has nothing to correct it.
           lifecycleState: 'running',
           status: 'running',
@@ -461,7 +461,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       ).toBe(0);
       await expectSettled(page, 10_000);
 
-      // ── station#3299: one failure, one surface, in product words ──
+      // ── archive#3299: one failure, one surface, in product words ──
       sessionReadModel = [
         {
           threadId: failureThread,

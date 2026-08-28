@@ -1454,7 +1454,7 @@ test.describe('Connections CRUD', () => {
     await page.goto('/connections/knowledge');
     // The view renders inside `ConnectionsSectionFrame`'s own
     // `PageHeaderScope`, so the frame's header wins: eyebrow `Connections`
-    // (station#4463 slice 1 fix round: unlinked parent-context text, not a
+    // (archive#4463: unlinked parent-context text, not a
     // breadcrumb trail and not a link — `/connections` is a redirect-only
     // resolver, so a click would be a no-op or a sibling jump), H1
     // `Knowledge`. Nothing on the page says "Knowledge infrastructure" any

@@ -14,9 +14,9 @@ const registry = vi.hoisted(() => ({
     | ((props: unknown) => React.ReactElement)
     | (() => never)
     | null,
-  /** Live inventory manifest by plugin name; null = not installed. */
+/** Live inventory manifest by plugin name; null = not installed. */
   manifest: null as { version: string } | null,
-  /** When set, replaces the default getTrustedLayout behavior per call. */
+/** When set, replaces the default getTrustedLayout behavior per call. */
   getTrustedLayoutImpl: null as (() => unknown) | null,
   getTrustedLayoutCalls: [] as unknown[][],
 }));
@@ -149,8 +149,8 @@ describe('a granted Home that renders', () => {
         onRevoke={() => undefined}
       />,
     );
-    // Both the selection presence check and the dispatch-time recheck must
-    // pass the granted contribution, never just the renderer name.
+// Both the selection presence check and the dispatch-time recheck must
+// pass the granted contribution, never just the renderer name.
     expect(registry.getTrustedLayoutCalls.length).toBeGreaterThan(0);
     for (const call of registry.getTrustedLayoutCalls) {
       expect(call[0]).toBe('third-party-home-surface');
@@ -175,14 +175,14 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
       />,
     );
     consoleError.mockRestore();
-    // Never a blank root: the floor renders...
+// Never a blank root: the floor renders...
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
-    // ...with a truthful reason derived from the actual error...
+//.with a truthful reason derived from the actual error...
     const notice = screen.getByRole('status');
     expect(notice.textContent).toContain('Third-party Home');
     expect(notice.textContent).toContain('exploded during mount');
-    // ...and a way to retry or step off the grant, instead of a reload that
-    // re-enters the same failure.
+//.and a way to retry or step off the grant, instead of a reload that
+// re-enters the same failure.
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Keep the built-in Home' }),
@@ -222,7 +222,7 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
       'exploded on update',
     );
 
-    // The failure was transient: retry re-mounts the granted Pane.
+// The failure was transient: retry re-mounts the granted Pane.
     throwNow = false;
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(screen.getByTestId('plugin-home')).toBeTruthy();
@@ -267,10 +267,10 @@ describe('a granted Home whose renderer is unavailable', () => {
   });
 
   test('a declared sandboxed MCP alternative is never mounted at Home (owner decision, station#3122)', () => {
-    // The host offers no sandboxed capabilities, so a granted descriptor's
-    // mcp-tool-ui alternative must resolve exactly as if it were not there:
-    // the unavailability reason, not a sandboxed mount and not the
-    // renderer-not-admitted arm.
+// The host offers no sandboxed capabilities, so a granted descriptor's
+// mcp-tool-ui alternative must resolve exactly as if it were not there:
+// the unavailability reason, not a sandboxed mount and not the
+// renderer-not-admitted arm.
     registry.trustedLayout = null;
     const withMcpAlternative = {
       ...contributedHome,
@@ -330,7 +330,7 @@ describe('a granted Home whose renderer is unavailable', () => {
       />,
     );
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
-    // "Missing" is a claim nothing has derived yet — no notice.
+// "Missing" is a claim nothing has derived yet — no notice.
     expect(screen.queryByRole('status')).toBeNull();
   });
 
@@ -354,10 +354,10 @@ describe('a granted Home whose renderer is unavailable', () => {
   };
 
   test('falls to the declared standard-data rung when the installed plugin’s CODE failed to load', () => {
-    // The case the rung exists for: the plugin is still installed (this
-    // registry generation listed it and tried to load it), only its bundle
-    // failed. Inert declared data renders, with the same provenance bar and
-    // way back.
+// The case the rung exists for: the plugin is still installed (this
+// registry generation listed it and tried to load it), only its bundle
+// failed. Inert declared data renders, with the same provenance bar and
+// way back.
     registry.trustedLayout = null;
     registry.manifest = null; // a failed bundle registers no manifest
     registry.loadStatus = {
@@ -380,10 +380,10 @@ describe('a granted Home whose renderer is unavailable', () => {
   });
 
   test('the standard-data rung does NOT outlive the grant: an uninstalled plugin lands on the floor', () => {
-    // The rung's own selection check compares two STORED snapshots, so
-    // without this gate it would keep rendering after an uninstall — the
-    // exact contradiction the independent review proved from this file's
-    // earlier revision. Now: no live inventory evidence, no rung.
+// The rung's own selection check compares two STORED snapshots, so
+// without this gate it would keep rendering after an uninstall — the
+// exact contradiction the independent review proved from this file's
+// earlier revision. Now: no live inventory evidence, no rung.
     registry.trustedLayout = null;
     registry.manifest = null;
     render(
@@ -437,9 +437,9 @@ describe('recovery covers selection and resolution, not just the granted render 
   });
 
   test('a throw during trusted-layout RESOLUTION lands the same way', () => {
-    // First call (selection's presence check) succeeds; the dispatch-time
-    // recheck throws — the boundary must still catch it, because both run
-    // inside `GrantedHomeSelection` under the boundary.
+// First call (selection's presence check) succeeds; the dispatch-time
+// recheck throws — the boundary must still catch it, because both run
+// inside `GrantedHomeSelection` under the boundary.
     let calls = 0;
     registry.getTrustedLayoutImpl = () => {
       calls += 1;
@@ -466,9 +466,9 @@ describe('recovery covers selection and resolution, not just the granted render 
 
   test('an adversarial thrown VALUE cannot break recovery inside the recovery path', () => {
     registry.trustedLayout = () => {
-      // A throw value whose String() itself throws — `describeThrow` must
-      // still produce a bounded description rather than throwing out of
-      // `getDerivedStateFromError`.
+// A throw value whose String itself throws — `describeThrow` must
+// still produce a bounded description rather than throwing out of
+// `getDerivedStateFromError`.
       throw {
         toString() {
           throw new Error('describe me and I throw again');
@@ -510,7 +510,7 @@ describe('a widened projection is a new grant', () => {
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
     const notice = screen.getByRole('status');
     expect(notice.textContent).toContain('the approval did not cover');
-    // Derived from the projection type's own description of the field.
+// Derived from the projection type's own description of the field.
     expect(notice.textContent).toContain('Session, chat, and task titles');
   });
 });

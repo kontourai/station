@@ -347,7 +347,7 @@ export class DeltaCoalescer {
    *
    * A delivery made synchronously from `offer` is NOT one of those. Its caller
    * is `consumeAdapterEvents`, whose catch already classifies a SQLITE_BUSY as
-   * store contention (station#3304): it counts
+   * store contention (archive#3304): it counts
    * `orchestrationStoreContentionObserved`, publishes a `runtime.error` naming
    * the locked store so the operator can find the second Station process, and
    * restarts the stream. Deltas are the bulk of a turn and so the likeliest

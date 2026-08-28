@@ -47,9 +47,9 @@ describe('toastStore.show', () => {
 });
 
 /**
- * station#4512 review (B2) — `duration: 0` is the store's own "sticky,
+ * archive#4512 — `duration: 0` is the store's own "sticky,
  * no auto-dismiss" contract (`showToolApproval` never schedules a timeout
- * at all). `show()`'s NEW-toast path used to schedule `setTimeout(dismiss,
+* at all). `show`'s NEW-toast path used to schedule `setTimeout(dismiss,
  * duration)` unconditionally, so `duration: 0` dismissed the toast on the
  * very next macrotask — faster than the 5-second default it was meant to
  * opt out of. A reviewer proved this with a direct probe; these pin the

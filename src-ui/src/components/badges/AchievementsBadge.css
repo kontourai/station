@@ -54,7 +54,7 @@
 }
 
 .achievement-card-unlocked {
-  /* Same defect as .achievements-count above: an undefined token plus a
+  /* Same defect as.achievements-count above: an undefined token plus a
      stray opacity suffix, so an unlocked card rendered with no fill and no
      border at all — visually identical to a locked one minus the greyscale
      icon. --success-bg / --success-border are the tint and its edge. */

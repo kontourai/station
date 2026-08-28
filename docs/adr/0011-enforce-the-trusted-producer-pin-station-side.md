@@ -105,7 +105,7 @@ The alternative the map sketched — calling `evidenceMatchesExpectation(entry,
 expectation, config, enteredAt)` with a hand-computed `enteredAt` — was not
 taken: `currentGateVisit`, which derives `enteredAt` from the transition
 history, is **not exported** by Flow. Reproducing it would mirror an unexported
-internal (see #290's disclosed follow-up: file the upstream export request at
+internal (see archive#290's disclosed follow-up: file the upstream export request at
 mirror-creation time, or do not mirror). Running `evaluateGate` gets the same
 visit scoping through the published surface and cannot fall out of step with
 it.

@@ -4,7 +4,7 @@
  * Usage:
  *   <ReactMarkdown components={markdownComponents}>...</ReactMarkdown>
  *
- * station#3354 — highlighting is async and worker-backed: the Shiki call runs
+ * archive#3354 — highlighting is async and worker-backed: the Shiki call runs
  * in the highlight worker pool (loaded via dynamic import, so the worker
  * bootstrap stays out of the entry bundle) and the block renders a plain
  * <pre> until the HTML arrives. Streaming callers additionally render an
@@ -28,7 +28,7 @@ function extractLang(className?: string): string | undefined {
 /**
  * Requests worker-backed highlighting for a CLOSED code block. Resolves null
  * while pending and stays null on failure — the caller's plain <pre> is the
- * honest rendering in both cases (station#3354: a wedged worker times out
+ * honest rendering in both cases (archive#3354: a wedged worker times out
  * and is recycled by the client, so pending is always bounded).
  */
 function useHighlightedHtml(code: string, lang?: string): string | null {

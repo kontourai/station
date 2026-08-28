@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3168: this hook previously also exposed `handleStreamEvent` (the
+ * archive#3168: this hook previously also exposed `handleStreamEvent` (the
  * dead AI-SDK-style stream-event dispatcher removed in the same change —
  * see useStreamingMessage.ts's header comment). These tests covered its
  * `type: 'error'` classification branch and were removed with it; the

@@ -4,7 +4,7 @@ import {
 } from '../../routes/system/build-provenance.js';
 
 /**
- * Process-level crash logging (station#1895, logging slice 1 review round 2).
+ * Process-level crash logging (archive#1895, logging slice 1 review round 2).
  *
  * Factored out of `src-server/index.ts` so the REAL wiring — not a
  * hand-written replica — is what the crash-integration test exercises, and

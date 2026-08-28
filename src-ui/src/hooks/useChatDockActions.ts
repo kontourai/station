@@ -42,11 +42,11 @@ export interface OpenConversationOptions {
   providerOptions?: Record<string, unknown>;
   providerId?: string;
   providerType?: string;
-  /** Fetch the deterministic copied transcript of a newly replay-seeded fork. */
+/** Fetch the deterministic copied transcript of a newly replay-seeded fork. */
   hydrateMessages?: boolean;
-  /** Cancels only client hydration/focus; server idempotency owns request retry. */
+/** Cancels only client hydration/focus; server idempotency owns request retry. */
   signal?: AbortSignal;
-  /** Synchronous route commit immediately before focus; false cancels reentry. */
+/** Synchronous route commit immediately before focus; false cancels reentry. */
   beforeFocus?: () => boolean;
 }
 
@@ -65,22 +65,22 @@ export function useChatDockActions({
   const focusSession = useCallback(
     (sessionId: string, revealDock = true) => {
       setActiveSessionId(sessionId);
-      // station#3782: the chat's durable identity, never `null` — focusing a
-      // chat that has not been promoted to a conversation yet must still leave
-      // `?chat=` pointing at something the dock can resolve (its session id,
-      // which `useChatDockActiveChatSync` matches on).
+// archive#3782: the chat's durable identity, never `null` — focusing a
+// chat that has not been promoted to a conversation yet must still leave
+// `?chat=` pointing at something the dock can resolve (its session id,
+// which `useChatDockActiveChatSync` matches on).
       setActiveChat(
         activeChatDurableId(
           sessionId,
           sessions.find((session) => session.id === sessionId),
         ),
       );
-      // Restore the dock's last stated maximize preference, not the
-      // momentarily-live `isDockMaximized` — a round trip through a closed
-      // dock (e.g. following a delegated task into `/activity`) always
-      // clears the URL's `maximize` flag by design, so reading the live
-      // value here would silently drop a maximized dock back to normal size
-      // on return instead of restoring it.
+// Restore the dock's last stated maximize preference, not the
+// momentarily-live `isDockMaximized` — a round trip through a closed
+// dock (e.g. following a delegated task into `/activity`) always
+// clears the URL's `maximize` flag by design, so reading the live
+// value here would silently drop a maximized dock back to normal size
+// on return instead of restoring it.
       if (revealDock) setDockState(true, lastDockMaximized);
       updateChat(sessionId, { hasUnread: false });
     },
@@ -180,11 +180,11 @@ export function useChatDockActions({
       options: OpenConversationOptions = {},
     ) => {
       if (options.signal?.aborted) return false;
-      // #801 review: report whether the conversation could actually be
-      // opened. Its owning agent can legitimately no longer exist — deleting
-      // an agent leaves its conversations on disk — and a silent no-op here
-      // strands the caller's `activeChat` pointing at a chat that will never
-      // render.
+ // archive#801: report whether the conversation could actually be
+// opened. Its owning agent can legitimately no longer exist — deleting
+// an agent leaves its conversations on disk — and a silent no-op here
+// strands the caller's `activeChat` pointing at a chat that will never
+// render.
       const agent = agents.find((a) => a.slug === agentSlug);
       if (!agent) return false;
 
@@ -199,18 +199,18 @@ export function useChatDockActions({
       }
 
       const agentExecution = resolveAgentExecution(agent);
-      // Reopening with no known model must seed NO model, not the agent
-      // default. `resolveAgentExecution` fills `model` from the agent's own
-      // default, so the composer showed that until an orchestration snapshot
-      // corrected it — and a send inside that window dispatched
-      // `override: <agent default>`, a model the user never chose for this
-      // conversation. On an engine that cannot take a per-turn override that
-      // is an error for someone else's choice; on one that can, it silently
-      // switches the model mid-conversation and the per-turn provenance
-      // faithfully records a switch the user never made (station#3165).
-      //
-      // Unset is honest: resolveTurnModel treats a missing model as
-      // engine-selected and sends no override at all.
+// Reopening with no known model must seed NO model, not the agent
+// default. `resolveAgentExecution` fills `model` from the agent's own
+// default, so the composer showed that until an orchestration snapshot
+// corrected it — and a send inside that window dispatched
+// `override: <agent default>`, a model the user never chose for this
+// conversation. On an engine that cannot take a per-turn override that
+// is an error for someone else's choice; on one that can, it silently
+// switches the model mid-conversation and the per-turn provenance
+// faithfully records a switch the user never made (archive#3165).
+//
+// Unset is honest: resolveTurnModel treats a missing model as
+// engine-selected and sends no override at all.
       const reopenedExecution = reopenedSessionExecution(
         agentExecution,
         options.acceptedModel ?? options.model,
@@ -253,11 +253,11 @@ export function useChatDockActions({
         options.conversationUpdatedAt,
         options.hydrateMessages,
       );
-      // station#1312 review: `null` means the conversation's messages
-      // failed to fetch (agent exists, but the fetch 404'd/errored) —
-      // `useOpenConversation` already tore the just-created tab back down.
-      // Report failure the same way a missing agent does, rather than
-      // silently landing on a permanently empty tab.
+ // archive#1312: `null` means the conversation's messages
+// failed to fetch (agent exists, but the fetch 404'd/errored) —
+// `useOpenConversation` already tore the just-created tab back down.
+// Report failure the same way a missing agent does, rather than
+// silently landing on a permanently empty tab.
       if (sessionId === null) return false;
       if (options.signal?.aborted) {
         removeChat(sessionId);

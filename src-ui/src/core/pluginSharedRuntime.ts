@@ -2,24 +2,24 @@
  * Plugin shared-module runtime bridge.
  *
  * Dynamically loaded plugin bundles are built with these packages marked
- * external; their `require()` shim resolves them from
+ * external; their `require` shim resolves them from
  * `window.__station_ai_shared` at load time (see `packages/shared/src/build.ts`).
  *
  * The bridge is split in two on purpose:
  *
- * - `installPluginSharedRuntime()` publishes React, React Query and `debug`
+ * - `installPluginSharedRuntime` publishes React, React Query and `debug`
  *   eagerly. It is synchronous, so anything reading
  *   `window.__station_ai_shared` right after boot sees those immediately. They
  *   stay here because the app genuinely ships them in the first-paint bundle,
  *   so publishing the same live namespace costs nothing.
- * - `ensurePluginSharedRuntimeReady()` fills in everything a plugin needs that
+ * - `ensurePluginSharedRuntimeReady` fills in everything a plugin needs that
  *   first paint does not — the SDK barrel namespace and `UserDetailModal`
  *   alongside the SDK client, voice SDK, `zod`, and `dompurify`. They are
  *   fetched on demand and awaited by `PluginRegistry` before the first plugin
- *   bundle is injected, so no plugin can observe the deferral: the `require()`
+ *   bundle is injected, so no plugin can observe the deferral: the `require`
  *   shim only runs once a bundle executes, which is strictly after that await.
  *
- * The SDK moved to the on-demand half in station#883/#2751, and that IS a
+ * The SDK moved to the on-demand half in archive#883/#2751, and that IS a
  * plugin-API change rather than a silent optimization — hence the readiness
  * handle below. `import * as SDK` materializes the *whole* barrel namespace, so
  * every export was live whether or not the app imported it: 43 SDK modules the
@@ -33,7 +33,7 @@
  *
  * What a caller must now do: anything reading a shared module from the page
  * itself — rather than from inside a plugin bundle — awaits
- * `window.__station_ai_shared_ready()` first. That handle is the contract; a
+ * `window.__station_ai_shared_ready` first. That handle is the contract; a
  * bare synchronous read of `__station_ai_shared['@kontourai/station-sdk']` is
  * no longer guaranteed, because with no plugins installed nothing else would
  * ever trigger the load.
@@ -88,7 +88,7 @@ export const loadStationSdkClient = () =>
  * Resolve the shared modules first paint does not need (the SDK barrel and
  * `UserDetailModal`, plus the SDK client, voice SDK, `zod`, `dompurify`) into
  * the bridge. Idempotent and memoized — call it before injecting any plugin
- * bundle, or via `window.__station_ai_shared_ready()` from the page.
+ * bundle, or via `window.__station_ai_shared_ready` from the page.
  */
 export function ensurePluginSharedRuntimeReady(): Promise<void> {
   onDemandModules ??= (async () => {

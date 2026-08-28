@@ -36,8 +36,8 @@ export function trackLastChosenModel(
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   } catch {
-    // Storage may be unavailable (quota, private browsing) — this memory
-    // is best-effort and must never throw out of a caller's click handler.
+// Storage may be unavailable (quota, private browsing) — this memory
+// is best-effort and must never throw out of a caller's click handler.
   }
 }
 
@@ -54,7 +54,7 @@ export function clearLastChosenModel(bindingKey: string): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   } catch {
-    // Best-effort, same as trackLastChosenModel.
+// Best-effort, same as trackLastChosenModel.
   }
 }
 

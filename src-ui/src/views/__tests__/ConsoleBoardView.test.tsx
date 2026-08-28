@@ -75,7 +75,7 @@ function renderView() {
 }
 
 /**
- * These tests render the whole M4a chain deliberately — the route host
+ * These tests render the whole chain deliberately — the route host
  * (`ConsoleBoardView`, slug→id occurrence + renderer selection), the one
  * mounter (`BoardWorkspacePane`, canonical check + identity + shell
  * bindings), and the packaged surface (`@kontourai/station-board-pane`'s
@@ -99,21 +99,21 @@ describe('ConsoleBoardView', () => {
     refetchProjects.mockClear();
   });
 
-  /**
-   * D8's route guard. The notice is the load-bearing half: it used to be
-   * handed to `navigate` as a second argument, which is the destination's
-   * QUERY STRING — no surface reads a `notice` key, so a reader was moved
-   * off the route they asked for without a word. Asserting the banner is
-   * what makes that regression visible again.
-   */
+/**
+ * route guard. The notice is the load-bearing half: it used to be
+* handed to `navigate` as a second argument, which is the destination's
+* QUERY STRING — no surface reads a `notice` key, so a reader was moved
+* off the route they asked for without a word. Asserting the banner is
+* what makes that regression visible again.
+*/
   test('a project with no Builder run is redirected, and the notice travels with it', () => {
     hasBuilderRun = false;
     queryResult = { data: { processes: [] }, isLoading: false, error: null };
     renderView();
 
-    // The adapter's redirect resolves through the shared target→route
-    // mapping, which always passes an explicit params object; `{}` writes no
-    // query fields, exactly as omitting the argument did.
+// The adapter's redirect resolves through the shared target→route
+// mapping, which always passes an explicit params object; `{}` writes no
+// query fields, exactly as omitting the argument did.
     expect(hoisted.navigate).toHaveBeenCalledWith('/projects/demo', {});
     const banner = bannerStore
       .getSnapshot()
@@ -136,8 +136,8 @@ describe('ConsoleBoardView', () => {
   test('renders a loading skeleton while the OperatingState query is pending', () => {
     queryResult = { data: undefined, isLoading: true, error: null };
     const { container } = renderView();
-    // The project eyebrow moved to the page header (4-HOME-016); what this
-    // view renders while pending is the skeleton and nothing else.
+// The project eyebrow moved to the page header (4-HOME-016); what this
+// view renders while pending is the skeleton and nothing else.
     expect(container.querySelector('.skeleton')).not.toBeNull();
     expect(container.querySelector(`.${PAGE_HEADER_CLASS}`)).toBeNull();
   });
@@ -297,7 +297,7 @@ describe('ConsoleBoardView — the receipt is stated once (station#3776)', () =>
       </PageFrame>,
     );
 
-    // BoardView's own `.board-receipt` states it, once.
+// BoardView's own `.board-receipt` states it, once.
     expect(screen.getAllByText('1 item in flight')).toHaveLength(1);
     expect(
       document.querySelector('.page-frame__header')?.textContent,
@@ -333,12 +333,12 @@ describe('ConsoleBoardView — the Board names its columns on a phone (station#3
     );
     expect(strip).not.toBeNull();
     const tabs = strip?.querySelectorAll('[role="tab"]') ?? [];
-    // Every stage BoardView lays out, including the ones the scroller hides.
+// Every stage BoardView lays out, including the ones the scroller hides.
     expect(tabs.length).toBe(
       container.querySelectorAll('.board-columns > *').length,
     );
-    // The counts are the Kit's own projection, so the strip cannot claim a
-    // column is empty while a card sits in it.
+// The counts are the Kit's own projection, so the strip cannot claim a
+// column is empty while a card sits in it.
     const total = [...tabs].reduce(
       (sum, tab) => sum + Number(tab.querySelector('span')?.textContent ?? 0),
       0,
@@ -387,10 +387,10 @@ describe('ConsoleBoardView — the pane path (epic station#4142 M4a)', () => {
     expect(screen.getByText('The Board is unavailable')).toBeTruthy();
   });
 
-  // station#771 fix round (review HIGH): a settled projects-read failure
-  // with no cached data used to render the SAME "This host has no Project
-  // with that slug." an actually-missing slug shows — a fabricated negative
-  // fact. It must say the read failed and offer a retry instead.
+// archive#771: a settled projects-read failure
+// with no cached data used to render the SAME "This host has no Project
+// with that slug." an actually-missing slug shows — a fabricated negative
+// fact. It must say the read failed and offer a retry instead.
   test('a projects-query failure with no cached data renders an error state with retry, not the fabricated "no Project" claim', () => {
     projectsQueryResult = {
       data: undefined,

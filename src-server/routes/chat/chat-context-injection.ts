@@ -5,7 +5,7 @@ import {
 import type { ChatMessage } from './chat-request-preparation.js';
 
 /**
- * station#2649: the per-turn context-injection receipt, built by the `/chat`
+ * archive#2649: the per-turn context-injection receipt, built by the `/chat`
  * execution engine AT DISPATCH from the exact strings it composes into the
  * model input — never reconstructed later. `chat-request-preparation.ts`
  * records each block as it builds the corresponding string;
@@ -31,7 +31,7 @@ export function approxInjectedTokens(text: string): number {
 
 /**
  * The user message's model-facing text part — the one an applier writes into,
- * and whose absence IS the silent drop (station#2743).
+ * and whose absence IS the silent drop (archive#2743).
  *
  * This lives here, in the lower-level module, so the appliers in
  * `chat-context.ts` and the token measurement below resolve the same part
@@ -58,7 +58,7 @@ function modelFacingText(input: string | ChatMessage[]): string {
 
 /**
  * Approximate tokens a composition step ADDED to the model input, measured
- * as the byte delta between the text before and after it ran (station#2649).
+ * as the byte delta between the text before and after it ran (archive#2649).
  *
  * Used for ambient context, where Station writes a wrapper around the user's
  * text rather than a standalone block: the delta counts the bytes Station

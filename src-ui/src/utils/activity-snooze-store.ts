@@ -1,5 +1,5 @@
 /**
- * Shared "not now" storage for Home work items (station#1099).
+ * Shared "not now" storage for Home work items (archive#1099).
  *
  * One localStorage-backed map, keyed by `HomeWorkItem.id`, so snoozing an
  * item from the mobile chat-dock inbox (`mobile-activity-groups.ts`, which
@@ -7,7 +7,7 @@
  * from the desktop Home view (`home-lane-model.ts`) observe the same state —
  * there is exactly one snooze, not two surfaces disagreeing about it.
  *
- * OD1 (station#1099): this stays client-local/per-browser rather than a
+ * OD1 (archive#1099): this stays client-local/per-browser rather than a
  * server-side Task field. Home's work list merges three item kinds (Task,
  * chat, orchestration session) and only Tasks have durable server identity;
  * a server field would only cover one of the three kinds, producing
@@ -31,8 +31,8 @@ export function readSnoozes(now: number): SnoozeMap {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return {};
     }
-    // Lapsed entries are dropped on read so the store cannot grow without
-    // bound and a stale snooze never outlives its window.
+// Lapsed entries are dropped on read so the store cannot grow without
+// bound and a stale snooze never outlives its window.
     return Object.fromEntries(
       Object.entries(parsed as Record<string, unknown>).filter(
         (entry): entry is [string, number] =>
@@ -49,7 +49,7 @@ export function writeSnooze(id: string, until: number, now: number): SnoozeMap {
   try {
     localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    /* ignore — snooze is a convenience, not state worth failing over */
+/* ignore — snooze is a convenience, not state worth failing over */
   }
   return next;
 }
@@ -60,19 +60,19 @@ export function clearSnooze(id: string, now: number): SnoozeMap {
   try {
     localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    /* ignore */
+/* ignore */
   }
   return next;
 }
 
 /**
- * station#1311 review (MEDIUM fix): a chat's `HomeWorkItem.id` is
+* archive#1311 a chat's `HomeWorkItem.id` is
  * `conversationId || storeKey` — before a brand-new chat's first send
  * assigns a server `conversationId`, `id` reads as the local store key, and
  * a snooze set during that window is written under it. The moment
  * `assignConversationId` flips the canonical id over to the conversationId,
  * a snooze still keyed by the old store key would silently stop matching
- * (station#1295's original report). Call this at the exact promotion point
+ * (archive#1295's original report). Call this at the exact promotion point
  * (`ActiveChatsStore.assignConversationId`) to carry any live snooze over to
  * the new key — a single localStorage read/write, and a no-op when nothing
  * is snoozed under `oldId` or when the ids already match.
@@ -92,7 +92,7 @@ export function migrateSnoozeKey(
   try {
     localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(current));
   } catch {
-    /* ignore — snooze is a convenience, not state worth failing over */
+/* ignore — snooze is a convenience, not state worth failing over */
   }
   return current;
 }

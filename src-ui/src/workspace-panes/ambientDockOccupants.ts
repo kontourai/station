@@ -31,7 +31,7 @@ import { workspacePaneHostSuppliableContexts } from '@kontourai/station-contract
  * occupant picker can consume the same derivation without a module cycle;
  * both live in the ambient host's lazy chunk.
  *
- * That claim is load-bearing, not decorative (station#4460 review M4): a
+ * That claim is load-bearing, not decorative (archive#4460): a
  * prior version of the occupant-picker fix let `ChatDockHeader.tsx` — part
  * of the EAGER entry path via `ChatDock.tsx` → `App.tsx` — import
  * `DockOccupantPicker` directly, which dragged this module (and all three
@@ -51,9 +51,9 @@ export const AMBIENT_DOCK_RENDERABLE_PANES: readonly {
   {
     descriptor: WORKSPACE_CHAT_PANE_DESCRIPTOR,
     isCanonicalInstance: isCanonicalWorkspaceChatPaneInstance,
-    // Non-null assertion for the same reason `createAmbientChatDockPaneDocument`
-    // throws: both inputs are code-owned constants, so a failure is a build
-    // that shipped an invalid built-in, not a runtime condition.
+// Non-null assertion for the same reason `createAmbientChatDockPaneDocument`
+// throws: both inputs are code-owned constants, so a failure is a build
+// that shipped an invalid built-in, not a runtime condition.
     canonicalInstance: () => createWorkspaceChatPaneInstance()!,
   },
   {
@@ -74,7 +74,7 @@ export const AMBIENT_DOCK_RENDERABLE_PANES: readonly {
  * occupant picker's list: the occurrence must be the CANONICAL one of a pane
  * this host can render, and that pane's declared modes must be satisfiable by
  * the ambient scope — the SAME `workspacePaneModesSatisfiableBy` fold the
- * offered dock action runs. Until M3 the admission was a hand-written
+ * offered dock action runs. Until the admission was a hand-written
  * chat-or-home union beside that fold: a list that had to be edited per pane,
  * and whose edit could disagree with what the action offered (the
  * label-vs-derivation shape). Now a pane added to the render table without a

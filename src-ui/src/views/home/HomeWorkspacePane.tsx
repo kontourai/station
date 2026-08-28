@@ -14,18 +14,18 @@ import type { HomeViewNavigation } from './useHomeViewModel';
  * descriptor is inert data, and a host handing a renderer a live model
  * through it would make every contributed Pane's data surface a property of
  * the declaration rather than of the grant. Home's model therefore reaches
- * its renderer the same way `useNavigation()` and `useProjectLayoutQuery()`
+* its renderer the same way `useNavigation` and `useProjectLayoutQuery`
  * reach the Project built-ins: through context owned by the route that has
  * the data, read by the renderer that needs it.
  *
- * This is also where the trust question in station#3122 stage 3 lands: a
+ * This is also where the trust question in archive#3122 lands: a
  * contributed Home renderer must not receive this value. It is scoped to the
  * built-in renderer's module rather than exported as an app-wide context so
  * that reaching it is a deliberate act, not an ambient one.
  */
 export interface HomeWorkspacePaneBinding {
   model: HomeViewModel;
-  /** Best safe project continuation, or null when there is nothing to resume. */
+/** Best safe project continuation, or null when there is nothing to resume. */
   continuation: HomeViewNavigation | null;
   onNavigate: (view: NavigationView) => void;
 }

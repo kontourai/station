@@ -144,7 +144,7 @@ export function configureRuntimeHttp({
   app.use('*', async (c, next) => {
     const start = Date.now();
     await next();
-    // station#1848: a streaming handler returns its Response as soon as the
+    // archive#1848: a streaming handler returns its Response as soon as the
     // headers and the body stream exist — the body then writes for however
     // long the connection lives. `Date.now() - start` is therefore
     // time-to-headers here, not request duration, and printing it in the same
@@ -287,7 +287,7 @@ function isInteractiveWorkspacePerformanceDiagnostic(c: {
 
 /**
  * The code the AUTH-failure limiter answers with, distinct from the mutation
- * budget's `rate_limited` (station#3903).
+ * budget's `rate_limited` (archive#3903).
  *
  * Both used to say `rate_limited`, and they are not the same fact. This one is
  * only ever reached after `maxFailures` REJECTED CREDENTIALS from one peer
@@ -418,7 +418,7 @@ function configureRuntimeSecurity(
         : undefined;
     const credential = bearerCredential ?? cookieCredential;
 
-    // station#2051: TCP loopback is a transport position, not authority. In
+    // archive#2051: TCP loopback is a transport position, not authority. In
     // particular, an SSH local forward is indistinguishable from an operator
     // browser at this layer. The sole no-bearer/device-session exception is
     // the exact Station-owned internal/MCP attestation: it requires the per-boot internal
@@ -506,7 +506,7 @@ function configureRuntimeSecurity(
           authority,
         );
       }
-      // Scoped pairing (station#1098) is not optional: `resolveGrantedScope`
+      // Scoped pairing (archive#1098) is not optional: `resolveGrantedScope`
       // is a required field on `RuntimeHttpSecurityOptions` precisely so
       // this check always runs for a valid credential — no call site can
       // silently revert to pre-scoping auth by omitting the resolver.
@@ -549,7 +549,7 @@ function configureRuntimeSecurity(
       limiter.clear(limiterKey);
       // Published for the narrow class of rule this table cannot express —
       // one that depends on the request BODY as well as the caller's scope
-      // (station#1398 §5.4's fleet-contribution guard on `PUT /config/app`).
+      // (archive#1398 §5.4's fleet-contribution guard on `PUT /config/app`).
       // The cast is the one seam between Hono's per-router `Variables` typing
       // and a middleware that runs above every router;
       // `setGrantedPairingScope` is the only writer.
@@ -557,7 +557,7 @@ function configureRuntimeSecurity(
         c as unknown as PairingScopeContextStore,
         grantedScope,
       );
-      // station#514: derive the budget principal from the server-verified
+      // archive#514: derive the budget principal from the server-verified
       // credential, never from a caller-supplied header. The budget key
       // follows the credential VALUE, so the same secret is the same budget
       // whether it arrived as a bearer token or a device-session cookie — a
@@ -608,7 +608,7 @@ function configureRuntimeSecurity(
     return c.json({ error: { code: 'authentication_required' } }, 401);
   });
 
-  // ── station#514: authenticated mutation budget ──
+  // ── archive#514: authenticated mutation budget ──
   // Runs AFTER the auth middleware (which publishes the budget principal) and
   // BEFORE any route handler. Rejects oversized bodies (413) and rate-limited
   // principals (429) before the handler can parse the body or persist state.

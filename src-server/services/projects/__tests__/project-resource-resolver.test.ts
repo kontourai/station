@@ -27,7 +27,7 @@ import {
 import { ProjectResourceResolver } from '../project-resource-resolver.js';
 
 /**
- * station#1594 made `ResourceResolutionResult` a discriminated union, so
+ * archive#1594 made `ResourceResolutionResult` a discriminated union, so
  * `result.path` and `result.reason` are no longer readable without narrowing —
  * every read below was a compile error until it went through one of these.
  * That is the migration story working, and it is worth stating: before the
@@ -253,10 +253,10 @@ describe('resolveProjectResource — the upgrade path from an install predating 
       workingDirectory: gone,
     });
     const result = await makeResolver(harness).resolveProjectResource('acme');
-    // The whole point of station#1594: this is NOT the same fact as the
+    // The whole point of archive#1594: this is NOT the same fact as the
     // seeded `default` project above. That one has nothing recorded
     // (`unbound`); this one has a record whose path is gone (`missing`), and
-    // the session-cwd seam owes them OPPOSITE behavior (#1023 vs #791).
+    // the session-cwd seam owes them OPPOSITE behavior (archive#1023 vs archive#791).
     expect(result.state).toBe('missing');
     expect(result.state === 'missing' && result.record).toBe(
       'working-directory',
@@ -371,7 +371,7 @@ describe('resolveProjectResource — bindings (§3.6)', () => {
     rmSync(checkout, { recursive: true, force: true });
     const result = await resolver.resolveProjectResource('acme');
     expect(result.state).toBe('missing');
-    // station#1594: `missing` names WHICH record declared the dead path — a
+    // archive#1594: `missing` names WHICH record declared the dead path — a
     // binding row here, the compat `workingDirectory` in the test above. The
     // repair prompt and the surface that owns it differ.
     expect(result.state === 'missing' && result.record).toBe('binding');
@@ -964,7 +964,7 @@ describe('resolveProjectResource — the working-directory fallback is identity-
       remoteReader(['git@github.com:someone-else/fork.git']),
     ).resolveProjectResource('acme');
     expect(result.state).toBe('drifted');
-    // station#1594: `path` — the ANSWER slot — stays `bound`-only. The
+    // archive#1594: `path` — the ANSWER slot — stays `bound`-only. The
     // directory the resolver DID observe is reported in the separately named
     // observation slot, so a caller asking the weaker directory-question can
     // use it and a caller asking the repo-question structurally cannot.
@@ -1005,7 +1005,7 @@ describe('resolveProjectResource — the working-directory fallback is identity-
     }).resolveProjectResource('acme');
     expect(result.state).toBe('stale');
     expect('path' in result).toBe(false);
-    // station#1594: existence was checked and PASSED before the git check ran.
+    // archive#1594: existence was checked and PASSED before the git check ran.
     // Withholding the directory here is what 404'd every `.flow`-reading route
     // on a host with no `git` (the slice-3b S2 revert).
     expect(result.state === 'stale' && result.unverifiedPath).toBe(checkout);
@@ -1071,7 +1071,7 @@ function createRestartHarness(home: string): Harness {
   };
 }
 
-// ── station#1503 slice 5 — multi-repo ──────────────────────────────────────
+// ── archive#1503 — multi-repo ──────────────────────────────────────
 
 describe('resolveProjectResource — multi-repo (station#1503, §10 slice 5)', () => {
   test('resolves a NAMED SECONDARY repo through its own binding, not the primary’s', async () => {

@@ -1,6 +1,6 @@
 /**
  * The accent override and the foreground that has to stay legible on it
- * (station#3305 review finding 3).
+ * (archive#3305).
  *
  * `--text-on-accent` is a static alias of `--k-brand-contrast` — the contrast
  * partner of the BUILT-IN brand, `#ffffff` under `[data-theme="light"]` and

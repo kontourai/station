@@ -35,7 +35,7 @@ const silentLogger = { info: vi.fn(), warn: vi.fn() };
 /**
  * A `station` record as an OLDER build left it — carrying an engine binding.
  *
- * It has to be written to disk directly: since station#3662 delta H3 the
+ * It has to be written to disk directly: since archive#3662 delta H3 the
  * write boundary strips `execution.agentConnectionId` for this one identity
  * (`AppConfig.builtinAgentEngineConnectionId` owns it), so `createAgent`
  * cannot produce the state these heal tests exist to heal. Writing the file
@@ -258,7 +258,7 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     // All-absent detection: attempt 1 does zero registry I/O, so the run is
     // deterministically INSIDE the 600s delay when the abort lands — a
     // broken abort listener cannot hide behind the outer loop guard (the
-    // #1575 verifier proved the previous shape never reached the listener).
+    // archive#1575 verifier proved the previous shape never reached the listener).
     const detect = vi.fn(async () => false);
 
     const startedAt = Date.now();

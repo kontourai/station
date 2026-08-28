@@ -85,7 +85,7 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
 
   return (
     <>
-      {/* empty-state action: creation and filter reset are adjacent */}
+{/* empty-state action: creation and filter reset are adjacent */}
       <SplitPaneLayout
         paneId={AGENTS_PANE_ID}
         label="agents"
@@ -106,12 +106,12 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
         listEmptyTitle={
           agentsLoadFailed ? 'Couldn’t load agents' : 'No agents yet'
         }
-        // station#4463 slice 2 fix round (H2b): when the list is genuinely
-        // empty (no filter active), authoredAgents.length is always 0 too, so
-        // the detail pane's create-first-run card is always showing beside
-        // this — and its description was the exact same sentence. The card
-        // is the trusted surface for "how to get started"; the list keeps
-        // only the title, so there is one owner of the guidance.
+// archive#4463: when the list is genuinely
+// empty (no filter active), authoredAgents.length is always 0 too, so
+// the detail pane's create-first-run card is always showing beside
+// this — and its description was the exact same sentence. The card
+// is the trusted surface for "how to get started"; the list keeps
+// only the title, so there is one owner of the guidance.
         listEmptyDescription={
           agentsLoadFailed
             ? 'Check the Station connection, then try this page again.'

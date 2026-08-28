@@ -37,7 +37,7 @@ describe('FS Routes', () => {
     expect(body.data.path).toBe('/tmp');
   });
 
-  // station#3158 — the four cases below used to share one 404 reading "Path
+  // archive#3158 — the four cases below used to share one 404 reading "Path
   // not found or permission denied", which told a user on the project-creation
   // folder picker to check two unrelated things and gave the remedy for
   // neither. Each asserts its own cause; passing three of four is a fail.
@@ -61,7 +61,7 @@ describe('FS Routes', () => {
   test('GET /browse treats EPERM as permission denied too', async () => {
     // EPERM is the Windows spelling of the very case this split exists to
     // name, and deleting `case 'EPERM'` reddened nothing — the weakest point
-    // in the suite (station#3158 review). The guard runs on Windows CI.
+    // in the suite (archive#3158 review). The guard runs on Windows CI.
     vi.mocked(readdir).mockRejectedValueOnce(errnoError('EPERM'));
     const res = await createFsRoutes().request('/browse?path=/tmp');
     expect(res.status).toBe(403);

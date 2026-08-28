@@ -9,7 +9,7 @@ import {
 } from '../denial-message.js';
 
 /**
- * The exact hostile name shape station#3210's second comment measured through
+ * The exact hostile name shape archive#3210's second comment measured through
  * `normalizeToolName`: 492 characters in, 492 out, newlines preserved,
  * backticks preserved. Built here rather than pasted so the assertions can
  * name the pieces they are looking for.
@@ -76,7 +76,7 @@ describe('toolNameForDenialMessage (station#3210 part 1)', () => {
   });
 
   /**
-   * station#3210 LOW-4. The denial message is the ONLY place the user learns
+   * archive#3210 LOW-4. The denial message is the ONLY place the user learns
    * WHICH tool was blocked, and the ASCII-only allowlist reduced a
    * non-Latin-script name to a single `?`, leaving `Tool '?' was denied.` —
    * a denial nobody can act on. The safety properties come from the
@@ -162,7 +162,7 @@ describe('boundQuotedDenialText (station#3210 part 2)', () => {
   });
 
   /**
-   * station#3210 MED-2. Stripping the C0/C1 range read as "the control
+   * archive#3210 MED-2. Stripping the C0/C1 range read as "the control
    * characters" while leaving the invisible half of the class untouched:
    * U+202E RIGHT-TO-LEFT OVERRIDE, U+200B ZERO WIDTH SPACE and U+00AD SOFT
    * HYPHEN all passed through byte for byte. The RLO is the one that matters

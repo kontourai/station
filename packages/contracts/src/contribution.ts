@@ -1,5 +1,5 @@
 /**
- * station#1500 slice 2.5 of epic #1425 — the SCOPED contribution contract
+ * The SCOPED contribution contract
  * (`docs/design/portable-project-identity.md` §4.2, §4.3, §9 OQ-11).
  *
  * > **contribution = (Station, scope) → named resources**
@@ -55,7 +55,7 @@
  *
  * §11 flagged that whether the fleet's four decisions "survive contact with a
  * non-model resource axis — execution for a repo has a *binding* behind it,
- * which a model connection does not" was unproven until this slice. All four
+ * which a model connection does not" was an open question. All four
  * survive. The one that had to WIDEN rather than carry over unchanged is
  * decision 3's clock: a model connection's observation is the inventory's single
  * `observedAt`, while execution's observation is a PER-BINDING `verifiedAt`, one
@@ -464,9 +464,9 @@ export type ContributionParticipation =
    * distinction IS carried, in `diagnostics[]` as
    * `contribution-unavailable-resource` vs `contribution-source-unreadable`,
    * and because a fifth state would have to be named before any consumer exists
-   * to route on it. If slice 6's router ever needs to retry an unreadable
-   * source and not a dead one, that is the moment to split — from a consumer's
-   * need, not from symmetry.
+ * to route on it. If a future consumer needs to retry an unreadable
+ * source and not a dead one, that is the moment to split — from a consumer's
+ * need, not from symmetry.
    */
   | 'contributed-unavailable';
 
@@ -679,9 +679,9 @@ void _projectionFieldsAreExhaustive;
  * that sends it disagrees with this contract about who attributes what, and
  * quietly stripping the field would leave that disagreement unreported.
  *
- * **This list has independent power, and that took a fault injection to
- * establish.** The first revision checked it inside a boolean predicate that
- * ALSO enforced the exact key set — so deleting the whole identity check left
+ * **This list has independent power, and it must keep it.**
+ * Folding it into a boolean predicate that ALSO enforced the exact key set
+ * would mean deleting the whole identity check left
  * every test green, because an identity field is an unknown field too. A
  * guardrail whose rejection path is unreachable is decoration, and a named
  * constant that computes nothing beyond what a neighbouring check already
@@ -789,8 +789,8 @@ export interface ContributionSourceClock {
  *
  * ## This is the WHOLE-PROJECTION clock, not the per-resource one
  *
- * Deliberately stated because two docblocks in this module disagreed about it
- * (review M3) and slice 6 mints the reader that settles it:
+ * Deliberately stated precisely, because two docblocks in this module once
+ * disagreed about it:
  *
  * - **Per-resource** (§6.1's `project-contribution` constraint, which asks
  *   about ONE repo): the answer is {@link ContributedExecution.verifiedAt},

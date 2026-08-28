@@ -16,7 +16,7 @@ const wait = (milliseconds: number) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 /**
- * The Home role's production grant surface (station#3122 stage 3), following
+ * The Home role's production grant surface (archive#3122), following
  * `PermissionManager.requestTrustedApproval`'s isolated-review-page flow:
  * this button only OPENS a request — the consent itself happens on a
  * server-rendered page (which names the pane, the plugin, its version, and
@@ -37,9 +37,9 @@ export function WorkspaceHomeRoleSection({
   const [pendingPaneId, setPendingPaneId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const flightRef = useRef(0);
-  // station#3677 PR 3: on a Tauri host the review happens in native OS
-  // chrome instead of the popup — a WebView cannot open the distinct-origin
-  // consent page at all on some targets (mobile decisively).
+// archive#3677: on a Tauri host the review happens in native OS
+// chrome instead of the popup — a WebView cannot open the distinct-origin
+// consent page at all on some targets (mobile decisively).
   const reviewNatively = useNativeConsentBroker();
 
   const pluginCandidates = (candidates.data ?? []).filter(
@@ -52,11 +52,11 @@ export function WorkspaceHomeRoleSection({
       const flight = flightRef.current;
       setError(null);
       setPendingPaneId(paneId);
-      // The popup opens BEFORE the network call: window.open must run inside
-      // the click's transient activation, and a slow request can outlive that
-      // window on strict browsers (#3720 review). On any later failure the
-      // blank popup is closed rather than stranded. The native path opens no
-      // popup at all — the review is an OS dialog the native host draws.
+// The popup opens BEFORE the network call: window.open must run inside
+// the click's transient activation, and a slow request can outlive that
+ // window on strict browsers (archive#3720). On any later failure the
+// blank popup is closed rather than stranded. The native path opens no
+// popup at all — the review is an OS dialog the native host draws.
       const reviewWindow = reviewNatively
         ? null
         : window.open(
@@ -74,10 +74,10 @@ export function WorkspaceHomeRoleSection({
           paneId,
         });
         if (reviewNatively) {
-          // The native host reviews and decides with its OWN local-grant
-          // credential; the outcome is the server-settled status. Nothing in
-          // this webview context can approve — the server refuses every
-          // credential a JS context can hold.
+// The native host reviews and decides with its OWN local-grant
+// credential; the outcome is the server-settled status. Nothing in
+// this webview context can approve — the server refuses every
+// credential a JS context can hold.
           const outcome = await reviewNatively(request.id);
           if (outcome.status !== 'ok') {
             throw new Error(
@@ -89,9 +89,9 @@ export function WorkspaceHomeRoleSection({
             throw new Error('Could not open a Home role request');
           }
           const reviewTarget = new URL(request.reviewUrl, apiBase);
-          // The server mints a fixed-scheme URL on the consent origin; this
-          // check is the client refusing to navigate the popup anywhere else
-          // if that invariant ever breaks (mirrors PermissionManager).
+// The server mints a fixed-scheme URL on the consent origin; this
+// check is the client refusing to navigate the popup anywhere else
+// if that invariant ever breaks (mirrors PermissionManager).
           if (
             reviewTarget.protocol !== 'http:' &&
             reviewTarget.protocol !== 'https:'

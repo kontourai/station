@@ -11,7 +11,7 @@ export function isFlowRunUngated(binding: FlowRunBinding): boolean {
 
 /**
  * One phrase describing what a bound Flow run has actually evaluated
- * (station#189 S1).
+ * (archive#189).
  *
  * The Flow-gated chip and the transcript's attach marker used to say only
  * that a run existed. An operator reads that as "the delivery is being
@@ -26,10 +26,10 @@ export function describeFlowRunFreshness(
   const freshness = binding.freshness;
   if (!freshness) return null;
 
-  // `gateOutcomeCount` is Flow's per-gate-id outcome record, which it REPLACES
-  // on re-evaluation — so it counts distinct gates with an outcome, not how
-  // many times anything ran. Phrased as "N gate outcomes" for that reason;
-  // "evaluated N times" would be a number the data cannot support.
+// `gateOutcomeCount` is Flow's per-gate-id outcome record, which it REPLACES
+// on re-evaluation — so it counts distinct gates with an outcome, not how
+// many times anything ran. Phrased as "N gate outcomes" for that reason;
+// "evaluated N times" would be a number the data cannot support.
   const state = !(freshness.gateOutcomeCount > 0)
     ? 'never evaluated'
     : freshness.lastEvaluatedAt
@@ -37,8 +37,8 @@ export function describeFlowRunFreshness(
       : `${freshness.gateOutcomeCount} gate outcomes, time unrecorded`;
 
   if (!isFlowRunUngated(binding)) return state;
-  // No backticks: this renders as browser text, where a literal backtick reads
-  // as a stray character rather than as code (the CLI pane keeps them).
+// No backticks: this renders as browser text, where a literal backtick reads
+// as a stray character rather than as code (the CLI pane keeps them).
   return binding.currentStep
     ? `${state} — no gate on step ${binding.currentStep}`
     : `${state} — no gate on the current step`;

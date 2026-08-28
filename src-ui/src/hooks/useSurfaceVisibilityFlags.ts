@@ -5,7 +5,7 @@ import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 
 /**
  * The enabled-flags set that `SurfaceRegistry.getSidebar`/`getPalette` filter
- * `previewFlag`-gated surfaces against (station#3313).
+ * `previewFlag`-gated surfaces against (archive#3313).
  *
  * Two sources compose into one set:
  * - enabled server feature previews (their ids, from /api/feature-previews) —

@@ -23,7 +23,7 @@ import {
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 
-// station#1205: this file's new real-service ownership-gate suite imports
+// archive#1205: this file's new real-service ownership-gate suite imports
 // the real `OrchestrationService`, which (via `EventStore`) touches several
 // other `telemetry/metrics.js` instruments beyond `sseOps`. That module is
 // "safe to import even when no SDK is configured — all instruments become
@@ -169,7 +169,7 @@ function hostedAuthority(tenant: 'alpha' | 'bravo') {
   );
 }
 
-// station#3583 review round (LOW-4): `gatedChannelLeakProbe` returns the
+// archive#3583 review round (LOW-4): `gatedChannelLeakProbe` returns the
 // exact secret substring `gatedChannelFixture` embeds in a genuine payload
 // field for every channel, and the AC2c sweep below asserts it is absent
 // from the stream. Without this, the sweep's only channel-specific
@@ -414,7 +414,7 @@ describe('Event Routes (SSE)', () => {
     expect(payload).not.toContain('bravo-live');
   });
 
-  // station#3583: `canRelayNotificationEvent`/`canRelayApprovalEvent`'s own
+  // archive#3583: `canRelayNotificationEvent`/`canRelayApprovalEvent`'s own
   // opening branch — `if (!authority) return canReadNotificationEvent ===
   // undefined` — has a fail-closed half (authority missing AND a filter IS
   // wired -> deny) that nothing above this point exercises. Every existing
@@ -461,7 +461,7 @@ describe('Event Routes (SSE)', () => {
     });
   });
 
-  // station#3583: same gap, `canRelayApprovalEvent`'s fail-closed half.
+  // archive#3583: same gap, `canRelayApprovalEvent`'s fail-closed half.
   describe('APPROVAL relay fail-closed on missing authority (station#3583)', () => {
     test('no-authority-wired SSE denies APPROVAL_OPENED when a filter is wired (fail-closed on unknown mode)', async () => {
       const bus = new EventBus();
@@ -495,7 +495,7 @@ describe('Event Routes (SSE)', () => {
     });
   });
 
-  // station#3567 fix round FIX 1: `UI_NAVIGATE`'s payload (`{path}`) carries
+  // archive#3567 fix round FIX 1: `UI_NAVIGATE`'s payload (`{path}`) carries
   // no destination identity at all, so there is no per-event predicate to
   // test (unlike notification/approval above) — the whole decision is
   // personal-vs-hosted, and BOTH directions need their own proof: a gate
@@ -504,7 +504,7 @@ describe('Event Routes (SSE)', () => {
   // prove delivery through a branch production never takes (it always wires
   // one — `runtime-routes.ts`). So the personal-mode case below supplies a
   // REAL personal-mode `SessionReadAuthority`, not an omitted dependency —
-  // doubly so since station#3567 second fix round FIX 2 removed the
+  // doubly so since archive#3567 second fix round FIX 2 removed the
   // fail-open `!authority` branch: undefined authority now denies.
   describe('UI_NAVIGATE: personal mode delivers, hosted mode denies (station#3567 fix round FIX 1)', () => {
     function personalAuthority(userId: string) {
@@ -557,7 +557,7 @@ describe('Event Routes (SSE)', () => {
       expect(payload).not.toContain('private-target');
     });
 
-    // station#3567 second fix round FIX 2: fail-CLOSED, not fail-open, when
+    // archive#3567 second fix round FIX 2: fail-CLOSED, not fail-open, when
     // authority is unknown. Before this fix,
     // `if (!authority) return true` treated missing authority as clearance —
     // the only relay predicate on this route that did. This test proves the
@@ -591,21 +591,21 @@ describe('Event Routes (SSE)', () => {
     });
   });
 
-  // station#1205: `/events` (this file's `createEventRoutes`) is a broadcast
+  // archive#1205: `/events` (this file's `createEventRoutes`) is a broadcast
   // route with no user-identity concept, sharing one `EventBus` with the
   // gated `/api/orchestration/events` route. `SERVER_EVENTS.ORCHESTRATION_EVENT`
   // carries per-session content (`request.opened` payloads with
   // `requestId`/`title`, etc.) that the gated route filters through
   // `canUserReadSession` — this route must never relay that event type at
-  // all, so it can't reopen the same hole a third time (#1164, #1197 were
+  // all, so it can't reopen the same hole a third time (archive#1164, archive#1197 were
   // the first two instances on the gated route itself).
   describe('never relays ORCHESTRATION_EVENT (station#1205, station#3567)', () => {
-    // station#3567: AC2 used to iterate `SERVER_EVENTS` minus a hand-picked
+    // archive#3567: AC2 used to iterate `SERVER_EVENTS` minus a hand-picked
     // exclusion list and assert the remainder ARE forwarded — a positive
     // assertion that only caught the denylist and this list drifting apart.
     // A brand-new session-scoped channel with no denylist entry and no
     // exclusion-list entry sat entirely outside its awareness and stayed
-    // GREEN while broadcasting verbatim. (station#3567 fix round FIX 4: this
+    // GREEN while broadcasting verbatim. (archive#3567 fix round FIX 4: this
     // comment used to cite a specific pass count from that probe — dropped,
     // not re-derived, because it never matched this suite's actual test
     // count at any commit and the claim it supports — that the old
@@ -644,19 +644,19 @@ describe('Event Routes (SSE)', () => {
       )
       .map(([name]) => name);
 
-    // station#3583: the structural half. A channel that gains its own
+    // archive#3583: the structural half. A channel that gains its own
     // `isXEvent`/`canRelayXEvent` gate immediately leaves `gatedScopedNames`
     // above (and therefore the AC2b sweep) — that's by design, the dedicated
     // gate is stricter. But nothing REPLACES that coverage unless someone
     // deliberately writes both-directions tests for the new gate, and a
     // forgotten pair is silent: the channel simply never appears in any
-    // assertion again. `UI_NAVIGATE` demonstrated this live during #3582's
+    // assertion again. `UI_NAVIGATE` demonstrated this live during archive#3582's
     // fix round (reverting its fail-open branch reddened nothing, because it
     // had already dropped out of the sweep), and the notification/approval
-    // families had never been in the sweep at all (#3583) because they've
+    // families had never been in the sweep at all (archive#3583) because they've
     // had dedicated gates since they were written.
     //
-    // station#3583 review round: a first version of this test used a
+    // archive#3583 review round: a first version of this test used a
     // hand-maintained checklist Set (channel names "on record" as having a
     // proven test elsewhere) instead of proving denial itself, and named
     // only 3 of these 7 channels' *own* fail-closed test even though it
@@ -705,7 +705,7 @@ describe('Event Routes (SSE)', () => {
         expect(payload).toContain('"marker":"before"');
         expect(payload).toContain('"marker":"after"');
         expect(payload, name).not.toContain(`event: ${name}`);
-        // station#3583 review round (LOW-4): makes the fixture load-bearing
+        // archive#3583 review round (LOW-4): makes the fixture load-bearing
         // — proves the payload's actual secret content never reaches the
         // stream, not merely that this event name's own frame doesn't
         // (which the check above already covers independent of payload).
@@ -748,7 +748,7 @@ describe('Event Routes (SSE)', () => {
       }
     });
 
-    // station#3567's probe, generalized: a synthetic scoped channel with no
+    // archive#3567's probe, generalized: a synthetic scoped channel with no
     // dedicated gate must be denied, not just the three named at the time of
     // the fix. Proves the mechanism, not a memorized list of channel names —
     // and would catch the NEXT scoped channel that is added, since it is
@@ -784,7 +784,7 @@ describe('Event Routes (SSE)', () => {
       expect(payload).toContain('"marker":"before"');
       expect(payload).toContain('"marker":"after"');
       for (const name of ungatedScopedNames) {
-        // station#3567 fix round FIX 5: this used to assert
+        // archive#3567 fix round FIX 5: this used to assert
         // `.not.toContain(`"${name}"`)`, which reads as checking the SSE
         // frame's own `event: <name>` line — but that line is emitted
         // UNQUOTED (hono's `writeSSE` writes `event: ${message.event}` with
@@ -838,7 +838,7 @@ describe('Event Routes (SSE)', () => {
       ).toBe(false);
     });
 
-    // station#3525 fix round (BLOCKING): probe-proven — before this fix,
+    // archive#3525 fix round (BLOCKING): probe-proven — before this fix,
     // this exact payload (another user's session identity) was relayed
     // verbatim on this unauthenticated route.
     test('internal-stop-redispatch-failed signals never cross the identity-free broadcast route', async () => {
@@ -884,7 +884,7 @@ describe('Event Routes (SSE)', () => {
       ).toBe(false);
     });
 
-    // Real-service harness (station#1164/#1197 pattern, reused per #1205's
+    // Real-service harness (archive#1164/#1197 pattern, reused per archive#1205's
     // instruction): a minimal-but-real `ProviderAdapterShape` feeds a real
     // `OrchestrationService` backed by a real `EventStore`, which persists
     // and then emits `SERVER_EVENTS.ORCHESTRATION_EVENT` on a real

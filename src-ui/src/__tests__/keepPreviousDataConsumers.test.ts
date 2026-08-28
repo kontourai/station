@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#3169. `packages/sdk/src/query-core.ts`'s docblock declares the
+ * archive#3169. `packages/sdk/src/query-core.ts`'s docblock declares the
  * real invariant: a hook that surfaces `keepPreviousData` (defaults it on,
  * or merely accepts a caller's `true`) is a defect UNLESS the component
  * calling it either branches on `isPlaceholderData` to mark the held render,
@@ -81,8 +81,8 @@ function optedInHookNames(): string[] {
 interface CallSite {
   file: string;
   hook: string;
-  /** True if this call site marks the hold via `isPlaceholderData`, or
-   * explicitly opts out via `keepPreviousData: false`. */
+/** True if this call site marks the hold via `isPlaceholderData`, or
+* explicitly opts out via `keepPreviousData: false`. */
   covered: boolean;
 }
 
@@ -124,13 +124,13 @@ function findCallSites(file: string, hookNames: Set<string>): CallSite[] {
       const hook = node.expression.text;
       let covered = false;
 
-      // 1. Explicit opt-out: `keepPreviousData: false` in the config arg.
+// 1. Explicit opt-out: `keepPreviousData: false` in the config arg.
       const lastArg = node.arguments[node.arguments.length - 1];
       if (lastArg && ts.isObjectLiteralExpression(lastArg)) {
         if (objectLiteralOptsOut(lastArg)) covered = true;
       }
 
-      // 2. Destructured `isPlaceholderData` at the call's own declaration.
+// 2. Destructured `isPlaceholderData` at the call's own declaration.
       let bindingIdentifier: string | undefined;
       const decl = node.parent;
       if (
@@ -145,10 +145,10 @@ function findCallSites(file: string, hookNames: Set<string>): CallSite[] {
         }
       }
 
-      // 3. Fallback: the whole result is bound to a name (not destructured
-      // at the call site) and `<name>.isPlaceholderData` is read anywhere
-      // else in the file — e.g. `const readiness = useReadinessQuery(...);
-      // ...readiness.isPlaceholderData`.
+// 3. Fallback: the whole result is bound to a name (not destructured
+// at the call site) and `<name>.isPlaceholderData` is read anywhere
+// else in the file — e.g. `const readiness = useReadinessQuery(...);
+//.readiness.isPlaceholderData`.
       if (!covered && bindingIdentifier) {
         const memberAccess = new RegExp(
           `\\b${bindingIdentifier}\\.isPlaceholderData\\b`,
@@ -167,15 +167,15 @@ function findCallSites(file: string, hookNames: Set<string>): CallSite[] {
 describe('keepPreviousData consumers mark the held render (station#3169)', () => {
   test('every call site of an opted-in hook marks isPlaceholderData or opts out', () => {
     const hookNames = new Set(optedInHookNames());
-    // Sanity: fails loudly (not silently vacuous) if the SDK scan finds
-    // nothing, e.g. because the relative path above ever drifts.
+// Sanity: fails loudly (not silently vacuous) if the SDK scan finds
+// nothing, e.g. because the relative path above ever drifts.
     expect(hookNames.size).toBeGreaterThan(0);
 
     const uncovered: CallSite[] = [];
     for (const file of sourceFiles(UI_SRC)) {
       const source = readFileSync(file, 'utf8');
-      // Cheap pre-filter: skip files that couldn't possibly call one of the
-      // hooks, so the AST walk only runs where it matters.
+// Cheap pre-filter: skip files that couldn't possibly call one of the
+// hooks, so the AST walk only runs where it matters.
       if (![...hookNames].some((name) => source.includes(name))) continue;
       for (const site of findCallSites(file, hookNames)) {
         if (!site.covered) uncovered.push(site);

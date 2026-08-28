@@ -1,5 +1,5 @@
 /**
- * station#1499 slice 2 — `resolveProjectResource`, the one function the rest
+ * archive#1499 — `resolveProjectResource`, the one function the rest
  * of the codebase should call for "where is this project's code on this
  * machine" (`docs/design/portable-project-identity.md` §3.5, §3.6, §5).
  *
@@ -62,7 +62,7 @@
  *    `working-directory`) and the path it declared; falling back to
  *    `project.workingDirectory` from a dead binding would repair a broken
  *    binding by pointing somewhere the operator never chose.
- *    station#1594 widened the state to cover the compat branch's declared
+ *    archive#1594 widened the state to cover the compat branch's declared
  *    `workingDirectory` too, because §5 makes that the compat-era binding and
  *    a declared-but-gone directory is the same fact with the same repair —
  *    see decision 9.
@@ -93,7 +93,7 @@
  *    (`orchestration-service.ts:625,646`).
  *
  * 9. **The two axes are REPORTED, not just folded into a label**
- *    (station#1594, slice 3c-pre). Every result here is derived from two
+ *    (archive#1594, slice 3c-pre). Every result here is derived from two
  *    independent facts — whether anything on this Station DECLARES a
  *    realization, and what was OBSERVED at the declared place — and the
  *    contract now carries both rather than only the derived state:
@@ -117,7 +117,7 @@
  * that was DENIED and says "it is asserted, never inferred", and this slice
  * performs no authenticated operation that can be denied. It emits
  * `not-portable` nowhere either: §3.6 defines that as "a `local-only` resource
- * authored by SOMEONE ELSE", and until #1392 introduces membership every
+ * authored by SOMEONE ELSE", and until archive#1392 introduces membership every
  * manifest this Station reads is its own. A local-only resource with no local
  * realization is reported as `unbound` with a reason that says exactly that.
  *
@@ -127,16 +127,16 @@
  * resource with nothing to clone, so the reason carries the real repair
  * ("Point it at a directory, or leave it as a purely organizational scope").
  * CLOSED: §3.6 also had no state for "a declared working directory that is
- * gone" — that was station#1594, and decision 9's split landed it as `missing`
+ * gone" — that was archive#1594, and decision 9's split landed it as `missing`
  * with `record: 'working-directory'`. Note for slice 3c:
  * `resolveStartSessionCwd` deliberately treats a directory-less project as a
  * valid organizational scope, so a naive "not `bound` → error" mapping would
- * regress a documented contract (#1023). The flip maps `unbound` to `$HOME`
- * and `missing` to the fail-closed throw (#791) — only expressible because
+ * regress a documented contract (archive#1023). The flip maps `unbound` to `$HOME`
+ * and `missing` to the fail-closed throw (archive#791) — only expressible because
  * they are now different states.
  *
  * 10. **The working-directory substitute stands in for AT MOST ONE
- *    resource** (station#1503, slice 5). §5 makes `workingDirectory` the
+ *    resource** (archive#1503, slice 5). §5 makes `workingDirectory` the
  *    pre-manifest binding, and one declared directory can realize one repo. A
  *    multi-resource manifest therefore uses it only for THE primary; every
  *    other unbound resource is `unbound`, never verified against the primary's
@@ -196,7 +196,7 @@ import {
  *
  * Defined in `@kontourai/station-contracts/project-identity` and re-exported
  * here: the settings surface must recognise this id in order not to print it
- * (station#1502 fix round, LOW-5), and two independent spellings of a
+ * (archive#1502 fix round, LOW-5), and two independent spellings of a
  * transient internal id is exactly the drift that gap warns about.
  */
 export { localProjectResourceId };
@@ -308,7 +308,7 @@ export class ProjectResourceResolver {
       });
     }
 
-    // station#1503 slice 5 — the working-directory substitute stands in for AT MOST ONE
+    // archive#1503 — the working-directory substitute stands in for AT MOST ONE
     // resource, and it is the primary.
     //
     // §5 makes `workingDirectory` the pre-manifest binding: ONE declared
@@ -328,7 +328,7 @@ export class ProjectResourceResolver {
     // resource inherits the directory. That is fail-closed in the only
     // direction available: the alternative is picking one, which is the coin
     // flip presented as fact that decision 2 refuses.
-    // Gated on MORE THAN ONE resource, deliberately (station#1503 review, L10).
+    // Gated on MORE THAN ONE resource, deliberately (archive#1503 review, L10).
     // A single-resource manifest whose sole resource declares `role:
     // 'secondary'` still inherits the working directory here, even though
     // `selectPrimaryResource` refuses to call it the primary. That is
@@ -383,14 +383,14 @@ export class ProjectResourceResolver {
     // Decision 8.
     const absolute = resolvePath(expandTilde(workingDirectory));
     if (!existsSync(absolute)) {
-      // station#1594 — THIS is `missing`, not `unbound`. §5 makes the declared
+      // archive#1594 — THIS is `missing`, not `unbound`. §5 makes the declared
       // `workingDirectory` the compat-era binding ("workingDirectory stays
       // authoritative during compat"), so a declared directory that is gone is
       // a recorded realization that failed live verification at existence —
       // the same fact as a dead binding row, with the same repair. Reporting
       // it as `unbound` conflated it with "nothing is recorded here", which
-      // the session-cwd seam treats OPPOSITELY: #1023 requires a project with
-      // no directory to terminate at `$HOME`, and #791 requires a project
+      // the session-cwd seam treats OPPOSITELY: archive#1023 requires a project with
+      // no directory to terminate at `$HOME`, and archive#791 requires a project
       // whose directory is gone to fail closed naming the project and the
       // path. One state could not serve both.
       return {
@@ -433,7 +433,7 @@ export class ProjectResourceResolver {
       return {
         state: 'stale',
         resourceId: resource.id,
-        // station#1594: the observation, not the answer. Existence was checked
+        // archive#1594: the observation, not the answer. Existence was checked
         // and passed on BOTH branches before this point — the binding branch
         // at the `existsSync` above, the compat branch at
         // `resolveThroughWorkingDirectory` — so the resolver holds a real
@@ -463,7 +463,7 @@ export class ProjectResourceResolver {
       return {
         state: 'drifted',
         resourceId: resource.id,
-        // station#1594: the directory is real and was observed; what could not
+        // archive#1594: the directory is real and was observed; what could not
         // be confirmed is WHOSE repository lives in it. A consumer asking the
         // repo-question must not use this; a consumer asking only "where is
         // this project's directory" legitimately may. Naming the slot
@@ -485,7 +485,7 @@ export class ProjectResourceResolver {
  * on the write side and must describe its result the same way. It had
  * re-implemented the description with a bare `[${joined}]`, which printed a
  * blank `[]` for a directory that is not a repository at all — regressing this
- * finding one module over (station#1502 fix round, HIGH-4).
+ * finding one module over (archive#1502 fix round, HIGH-4).
  */
 export function describeCheckoutRemotes(
   rawRemotes: { name: string; url: string }[],

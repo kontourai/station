@@ -174,7 +174,7 @@ export class WorkflowSidecarService {
           ...(state.work_item_refs
             ? { workItemRefs: state.work_item_refs }
             : {}),
-          // station#189 S4: the run-correlation envelope is the only join key
+          // archive#189 S4: the run-correlation envelope is the only join key
           // a session Station did not start can be matched on, so the list
           // projection has to carry it — a summary without it forces callers
           // back to per-task reads or, worse, to guessing.
@@ -212,7 +212,7 @@ export class WorkflowSidecarService {
 
   /**
    * Read a task's `trust.bundle` (the session evidence store owned by
-   * @kontourai/flow-agents' sidecar CLI, roadmap #753); `null` when the file
+   * @kontourai/flow-agents' sidecar CLI, roadmap archive#753); `null` when the file
    * does not exist — the same "no signal available" meaning
    * `readHandoff`/`listTasks` already use for an absent sidecar. Unlike
    * `state.json`/`handoff.json`, the installed package ships no JSON Schema

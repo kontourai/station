@@ -162,12 +162,12 @@ registerCommand(
         agentQueries.stats(chatState.agentSlug, chatState.conversationId),
       );
 
-      // Cache honesty (station#4196): this section renders the SAME wire
+      // Cache honesty (archive#4196): this section renders the SAME wire
       // payload ConversationStatsModal renders, so it goes through the same
       // shared derivations — a summed or "(uncached)" figure appears only
       // when the provider's declared inclusivity backs it, cache rows render
       // only when reported, and an absent figure renders as a dash, never an
-      // invented zero (station#3201). Dynamically imported to keep the
+      // invented zero (archive#3201). Dynamically imported to keep the
       // shared usage modules out of the eager entry bundle.
       const [
         {

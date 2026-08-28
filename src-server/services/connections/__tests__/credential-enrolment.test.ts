@@ -7,7 +7,7 @@ import {
 } from '../credential-enrolment.js';
 
 /**
- * station#3549. The status outputs below are the LIVE strings each CLI emits,
+ * archive#3549. The status outputs below are the LIVE strings each CLI emits,
  * captured on macOS against a real and an empty config home:
  *
  *   claude auth status  -> {"loggedIn":true,"authMethod":"claude.ai","email":…}

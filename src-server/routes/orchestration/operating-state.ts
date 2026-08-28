@@ -1,6 +1,6 @@
 /**
- * Console `OperatingState` + board-intent routes (roadmap #586, part of
- * epic #580, S6). Mounted at `/api/projects/:slug/operating-state`, mirroring
+ * Console `OperatingState` + board-intent routes (roadmap archive#586, part of
+ * epic archive#580, S6). Mounted at `/api/projects/:slug/operating-state`, mirroring
  * `routes/work-items.ts`'s project-scoped route seam.
  */
 import type { ConsoleAction } from '@kontourai/console-core';

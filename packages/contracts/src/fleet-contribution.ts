@@ -1,13 +1,13 @@
 /**
- * Station#1398 slice 1 — Station-as-contributor opt-in and the
+ * Station-as-contributor opt-in and the
  * contributed-subset manifest (`docs/design/inference-fleet.md` §3.1, §4.2,
- * §11 slice 1).
+ * §11).
  *
  * An operator marks specific LOCAL model connections as contributed to their
  * own fleet. This module owns the persisted opt-in shape
  * ({@link FleetContributionConfig}, an `AppConfig` field registered in
  * `settings-registry.ts`) and the wire shape of the projection a paired
- * consumer will read in slice 2 ({@link FleetContributionManifest}).
+ * consumer reads ({@link FleetContributionManifest}).
  *
  * Three design decisions are load-bearing and were made against the design
  * doc rather than for convenience:
@@ -18,9 +18,9 @@
  *    below is copied verbatim from a {@link LaunchableModelRecord} — none is
  *    computed, defaulted, or asserted here.
  * 2. **`toolSurface` is carried, and genuinely OPTIONAL on the wire
- *    (station#1430 closed the producer gap this point used to explain;
- *    station#1430 review, M-1, corrected the field to actually be optional
- *    in the type, not just in prose).** Before #1430, the source record's
+ *    (archive#1430 closed the producer gap this point used to explain and
+ *    corrected the field to actually be optional
+ *    in the type, not just in prose).** Before archive#1430, the source record's
  *    `toolSurface` was `null` for every model connection because no provider
  *    populated `supportsTools`, so the column was omitted rather than shipped
  *    as a placeholder that reads as an observation. Now that at least one
@@ -29,7 +29,7 @@
  *    capability column — `null` still means "unknown," `[]` still means
  *    "known: no tool support," exactly the meaning `launchable-model-
  *    inventory.ts` already gives it. This is additive: a peer running a
- *    pre-#1430 build simply omits the key from its manifest JSON, so
+ *    pre-1430 build simply omits the key from its manifest JSON, so
  *    {@link FleetContributedModel.toolSurface} is typed `?:` — a consumer
  *    reading a peer's manifest must handle the key being absent, not assume
  *    every field this Station's own projection happens to always set is
@@ -41,7 +41,7 @@
  *    modalities) and `null` there honestly means "unknown," not "no" — it
  *    predates the peer-facing manifest, so it stayed required rather than
  *    being retrofitted optional; a future field-addition tripwire (mirroring
- *    slice 1's code-vocabulary one) is worth considering so the next
+ *    the manifest's code-vocabulary one) is worth considering so the next
  *    additive field doesn't need a review round to catch the same class of
  *    mistake.
  * 3. **No `environmentId`.** A manifest fetched from a peer is attributed by
@@ -124,7 +124,7 @@ export type FleetContributionParticipation =
  * deliberately absent and why.
  */
 export interface FleetContributedModel {
-  /** The source record's id — the join key slice 2's serve route addresses. */
+  /** The source record's id — the join key the serve route addresses. */
   id: string;
   /** The local model connection that launches it. */
   connectionId: string;

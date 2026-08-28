@@ -61,11 +61,11 @@ carry one:
 - [tauri#15671](https://github.com/tauri-apps/tauri/issues/15671) — with the
   service holding the process alive, swiping the app from recents and relaunching
   gives a blank webview. Filed against tauri 2.11.5 / wry 0.55.1 / tao 0.35.3,
-  which is exactly what Station builds. A fix exists in unmerged PR #15678.
+  which is exactly what Station builds. A fix exists in unmerged PR archive#15678.
 
 Shipping it would trade "notifications do not arrive while backgrounded" for
 "the app is broken after you swipe it away" — a worse defect, and one the user
-hits without doing anything unusual. Revisit when #11609 has a fix.
+hits without doing anything unusual. Revisit when archive#11609 has a fix.
 
 ## 5. Even in the foreground, native HTTP cannot resolve DNS
 
@@ -91,13 +91,13 @@ the platform, not by `getaddrinfo`.
 ## Status: the watch is landed and dormant
 
 `notification_watch_start` / `notification_watch_stop` exist and are tested, and
-**nothing calls them** — the live blocker is #917 (the FCM/APNs dependency
+**nothing calls them** — the live blocker is archive#917 (the FCM/APNs dependency
 decision). The dormant call site is commented in
 `src-ui/src/contexts/ApiBaseContext.tsx` so switching it on is a visible,
 small change rather than an archaeology exercise.
 
-(Historical: #3088 corrected this record after a backlog sweep closed the
-original tracking issue with no code change. #3088 is itself now closed, so
+(Historical: archive#3088 corrected this record after a backlog sweep closed the
+original tracking issue with no code change. archive#3088 is itself now closed, so
 it must not be cited here as live tracking — that would repeat the very
 defect it was filed for.)
 
@@ -110,10 +110,10 @@ defect it was filed for.)
 | Force-quit / swiped away | **no** |
 | Device rebooted, app never opened | **no** |
 
-Everything below the first row needs FCM on Android and APNs on iOS (#917).
+Everything below the first row needs FCM on Android and APNs on iOS (archive#917).
 The native capability report therefore returns `remote-push: unsupported`
 instead of allowing the presence of the local-notification plugin or dormant
-watch to be mistaken for wake-capable delivery. #1225 remains open until #917
+watch to be mistaken for wake-capable delivery. archive#1225 remains open until archive#917
 selects and provisions both the mobile applications and server send
 credentials; repository code cannot manufacture those provider identities.
 

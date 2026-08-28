@@ -19,17 +19,17 @@ export interface ResolveHomeSurfaceInput {
   connectionStatus: ConnectionStatus;
   /**
    * The typed failure reason from the same `useConnectionStatus` snapshot as
-   * `connectionStatus` (station#3711). Carried through so the renderer can use
+   * `connectionStatus` (archive#3711). Carried through so the renderer can use
    * the per-reason copy that already exists (`connectionFailureCopy`) instead
    * of collapsing every non-connected state into the word "offline" — an
    * authentication rejection and a version mismatch are not network states.
    */
   connectionFailureReason: ConnectionFailureReason | null;
-  /** `useProjectsQuery()`'s `isLoading` — whether the projects list has ever loaded. */
+  /** `useProjectsQuery`'s `isLoading` — whether the projects list has ever loaded. */
   projectsLoading: boolean;
-  /** `useProjectsQuery()`'s `isError` — a fetch failure, not an empty list. */
+  /** `useProjectsQuery`'s `isError` — a fetch failure, not an empty list. */
   projectsError: boolean;
-  /** `useProjectsQuery()`'s `data` (defaulted to `[]` by the caller). */
+  /** `useProjectsQuery`'s `data` (defaulted to `[]` by the caller). */
   projects: HomeSurfaceProjectSummary[];
   /** Persisted restore target from `navigation-store.ts` (localStorage). */
   lastProject: string | null;
@@ -60,7 +60,7 @@ export type HomeSurfaceResult =
    * is a consequence of the connection, not an independent data error. Named
    * for what is derived (this Station is not currently available to this app)
    * rather than "offline", which asserted a device network state nothing here
-   * observes (station#3711). `reason` is the connection layer's own typed
+   * observes (archive#3711). `reason` is the connection layer's own typed
    * verdict, when it has one.
    */
   | { status: 'host-unavailable'; reason: ConnectionFailureReason | null }

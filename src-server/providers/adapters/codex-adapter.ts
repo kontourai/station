@@ -90,7 +90,7 @@ interface CodexAdapterOptions {
   ) => ReturnType<typeof createCodexProcess>;
   now?: () => Date;
   /**
-   * App-home profile env (#896 wave 2, agent-engine-unification.md §6.1's
+   * App-home profile env (archive#896 wave 2, agent-engine-unification.md §6.1's
    * overlay model, channel 2) — `undefined` when the codex-runtime
    * connection has not opted in (`config.useAppHome`) or on any resolution
    * failure; the caller degrades to `undefined` rather than throwing.
@@ -101,7 +101,7 @@ interface CodexAdapterOptions {
     credentialProfileRef?: string,
   ) => Promise<Record<string, string> | undefined>;
   /**
-   * station#1195: mints a per-session, short-lived, station-control-scoped
+   * archive#1195: mints a per-session, short-lived, station-control-scoped
    * bearer token and returns the full station-control HTTP/SSE MCP endpoint
    * URL it authenticates — called ONLY when the resolved agent's
    * `toolServers` includes the canonical built-in station-control server
@@ -1080,7 +1080,7 @@ export class CodexAdapter implements ProviderAdapterShape {
 
     // Retained so a later `session.configured` can restate it: consumers read
     // `cwd` off the latest such event, so an event that omits it erases the
-    // session's working directory downstream (#903).
+    // session's working directory downstream (archive#903).
     if (input.cwd) {
       record.session.cwd = input.cwd;
     }
@@ -1128,7 +1128,7 @@ export class CodexAdapter implements ProviderAdapterShape {
 
       const codexThread = extractThread(result);
       this.transport.setCodexThreadId(record, codexThread.id);
-      // station#1182: the app-server's own `thread/start`/`thread/resume`
+      // archive#1182: the app-server's own `thread/start`/`thread/resume`
       // response — genuinely reported by Codex, not merely Station's
       // request echoed back. Proof this can diverge from what was
       // requested: `codex-models.ts` documents that Station deliberately
@@ -1178,10 +1178,10 @@ export class CodexAdapter implements ProviderAdapterShape {
         // Resolved approvalMode alongside the raw knobs, so the client can
         // track a durable lastAppliedApprovalMode baseline at session
         // start without re-deriving it from provider-specific knobs
-        // (#727 review round 3, item 1).
+        // (archive#727 review round 3, item 1).
         approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
         codexThreadId: codexThread.id,
-        // #896 wave 2: whether this session's app-server spawn env was
+        // archive#896 wave 2: whether this session's app-server spawn env was
         // layered with the codex-runtime app-home profile, or left at the
         // global CODEX_HOME (opted out or a degraded lookup).
         appHome,
@@ -1190,7 +1190,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           record.session.model,
         ),
       };
-      // station#1195: chained the same way claude-adapter.ts's toolServers
+      // archive#1195: chained the same way claude-adapter.ts's toolServers
       // merge is — mergeCapabilityDeliveryMetadata prepends any
       // resolution-stage undelivered entries session-agent-resolution.ts
       // already recorded, so passing the previous metadata as inputMetadata
@@ -1230,7 +1230,7 @@ export class CodexAdapter implements ProviderAdapterShape {
 
       return record.session;
     } catch (error) {
-      // station#1195: the session never actually started — its
+      // archive#1195: the session never actually started — its
       // station-control MCP token (if one was minted) would otherwise
       // linger unused until its TTL expires.
       this.options.revokeStationControlMcpAuth?.(input.threadId);
@@ -1249,7 +1249,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * station#1195 (agent-engine-unification.md §4.1 Tool-servers row,
+   * archive#1195 (agent-engine-unification.md §4.1 Tool-servers row,
    * channel 'wire' — `codex app-server` independently manages its own
    * outbound MCP connections; see `DeliveryChannel`'s doc comment for why
    * that's a distinct channel from Claude's 'subprocess'): resolve an
@@ -1325,7 +1325,7 @@ export class CodexAdapter implements ProviderAdapterShape {
 
   /**
    * Resolves the app-home profile env for a fresh `startSession` call
-   * (#896 wave 2). A missing resolver or an opted-out connection degrades to
+   * (archive#896 wave 2). A missing resolver or an opted-out connection degrades to
    * global CODEX_HOME. Ordinary lookup failures also degrade to global, while
    * an explicitly selected credential profile fails closed so Station cannot
    * claim or commit a candidate that was never applied.
@@ -1411,12 +1411,12 @@ export class CodexAdapter implements ProviderAdapterShape {
 
     const turnId = extractTurn(result).id;
     record.activeTurnId = turnId;
-    // station#3473 fix round: a new turn starts with no terminal published
+    // archive#3473 fix round: a new turn starts with no terminal published
     // for it yet — clear whatever the PREVIOUS turn (if any) left behind.
     record.terminalPublishedForTurnId = undefined;
     record.activeTurnStartedAt = turnStartedAt;
     record.turnOutput.set(turnId, '');
-    // #903: restate the model when a turn changes it — `session.configured` is
+    // archive#903: restate the model when a turn changes it — `session.configured` is
     // the only event that carries a model into the read model and the
     // persisted row, and it is otherwise published once at session start.
     if (input.modelId && input.modelId !== record.session.model) {
@@ -1455,7 +1455,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       prompt: input.displayInput ?? input.input,
       attachments: input.attachments,
       ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
-      // Durable per-turn record of the resolved approval posture (#727
+      // Durable per-turn record of the resolved approval posture (archive#727
       // review item 5) — turn/start has no dedicated "turn configured"
       // event, so this reuses turn.started's existing metadata bag rather
       // than adding a new canonical event for one field pair.
@@ -1470,7 +1470,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         approvalPolicy: approvalKnobs.approvalPolicy,
         sandbox: approvalKnobs.sandbox,
         // Lets the client track a durable lastAppliedApprovalMode baseline
-        // (#727 review round 3, item 1 — the pending-apply chip state).
+        // (archive#727 review round 3, item 1 — the pending-apply chip state).
         approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
           input.modelId,
@@ -1492,7 +1492,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (!activeTurnId) {
       return { outcome: 'no-active-turn' } as const;
     }
-    // station#3473 fix round (B1/H3): mirrors claude-adapter.ts's and
+    // archive#3473 fix round (B1/H3): mirrors claude-adapter.ts's and
     // acp-adapter.ts's own target-mismatch guard — codex was the only
     // adapter without one. `activeTurnId` is populated from a BOUNDED fact
     // set (`event-store.ts`'s `listSessionProjectionEvents`), not the full
@@ -1506,7 +1506,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     const targetTurnId = turnId ?? activeTurnId;
 
-    // station#3473 fix round (H3): do NOT clear `activeTurnId` (or mark the
+    // archive#3473 fix round (H3): do NOT clear `activeTurnId` (or mark the
     // terminal published) until the RPC actually succeeds and `turn.aborted`
     // is actually about to be published — matching claude/acp exactly. The
     // previous synchronous-before-await clear left two callers with no
@@ -1524,7 +1524,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         threadId: record.codexThreadId,
         turnId: targetTurnId,
       },
-      // station#3451 fix round D2: tracked so a forced teardown that has to
+      // archive#3451 fix round D2: tracked so a forced teardown that has to
       // force-reject this RPC can tell it apart from an abandoned interrupt
       // targeting a DIFFERENT (earlier) turn.
       { turnId: targetTurnId },
@@ -1576,7 +1576,7 @@ export class CodexAdapter implements ProviderAdapterShape {
 
   async stopSession(threadId: string): Promise<void> {
     await this.transport.stopSession(threadId, () => this.now().toISOString());
-    // station#1195: best-effort — a session that stops cleanly no longer
+    // archive#1195: best-effort — a session that stops cleanly no longer
     // needs its station-control MCP token; a session that never had one is
     // a no-op (revokeStationControlMcpToken tolerates an unknown id).
     this.options.revokeStationControlMcpAuth?.(threadId);

@@ -28,7 +28,7 @@ export interface TurnProgressTrackerDeps {
 
 /**
  * Turn progress and turn-stall observation, extracted from
- * `OrchestrationService` as epic #4024 slice 1 (#4116). The seam map
+ * `OrchestrationService` as epic archive#4024 (archive#4116). The seam map
  * (`docs/design/orchestration-decomposition-map.md` §7) records why this
  * cluster went first: its three fields are the only shared state in the
  * service with a single-writer/many-reader split, and nothing outside the
@@ -36,12 +36,12 @@ export interface TurnProgressTrackerDeps {
  *
  * Behavioral contracts carried over verbatim — do not "improve" them here:
  *
- * - station#2959: `observe` is fed from the RAW event stream. Progress is a
+ * - archive#2959: `observe` is fed from the RAW event stream. Progress is a
  *   fact about the engine producing output, so delta batching for
- *   persistence (station#3350) must not make a healthy fast turn look
+ *   persistence (archive#3350) must not make a healthy fast turn look
  *   silent. The caller keeps both call sites and the `isCoalescableDelta`
  *   guard (seam map T5).
- * - Stall handling is OBSERVE-ONLY by review decision (#2959): detection
+ * - Stall handling is OBSERVE-ONLY by review decision (archive#2959): detection
  *   emits telemetry and a warn line, and terminates nothing. Independent
  *   review found the termination decision rested on an event vocabulary
  *   three real cases fall outside of — a turn awaiting human approval, long
@@ -50,7 +50,7 @@ export interface TurnProgressTrackerDeps {
  *   false-positive rate BEFORE termination is enabled per-adapter
  *   (follow-up issue); the dormant `initiatedBy: 'stall'` plumbing stays in
  *   the service for that follow-up.
- * - station#4054: the progress observation is intentionally not an
+ * - archive#4054: the progress observation is intentionally not an
  *   event-store field. It describes this live process's narrow progress
  *   vocabulary and disappears when the watch clears.
  */
@@ -74,7 +74,7 @@ export class TurnProgressTracker {
         turnId: event.turnId,
         provider: event.provider,
         createdAt: event.createdAt,
-        // station#3451 finding 4/6: only a `runtime.error` carries this — the
+        // archive#3451 finding 4/6: only a `runtime.error` carries this — the
         // watchdog needs it to tell a genuine terminal failure (clear the
         // watch) from a codex deferred-retriable one (keep timing; the retry
         // may still be silently stuck).
@@ -155,7 +155,7 @@ export class TurnProgressTracker {
   }
 
   /**
-   * station#2959: fired by the watchdog when a thread's active turn produced
+   * archive#2959: fired by the watchdog when a thread's active turn produced
    * no observed progress within its agent's window. Observe-only — see the
    * class docblock; the emitted silence marker is the user-visible signal.
    */
@@ -179,7 +179,7 @@ export class TurnProgressTracker {
     });
   }
 
-  /** The only producer of the user-visible silence marker (station#4054). */
+  /** The only producer of the user-visible silence marker (archive#4054). */
   private publishSilence(input: {
     threadId: string;
     turnId: string;

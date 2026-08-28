@@ -1,5 +1,5 @@
 /**
- * station#1502 slice 4 — `describeProjectResolution`, the project-level
+ * archive#1502 — `describeProjectResolution`, the project-level
  * posture (`docs/design/portable-project-identity.md` §3.6 preamble, §4.1).
  *
  * Built over REAL stores on a temp home rather than fakes wherever the claim
@@ -222,7 +222,7 @@ describe('describeProjectResolution — the not-backing derivation (§4.1)', () 
     });
   });
 
-  // ── station#1502 fix round, HIGH-1 ───────────────────────────────────────
+  // ── archive#1502 fix round, HIGH-1 ───────────────────────────────────────
   //
   // `ProjectService.createProject` backfills a manifest for EVERY new project,
   // and `deriveRepos` returns a synthetic `local-only` placeholder whenever the
@@ -341,7 +341,7 @@ describe('describeProjectResolution — trap 2: `repos` is never read or exposed
 
     const view = await describeWith(harness, 'acme');
 
-    // station#1503: every declared resource still resolves BY ID, and the
+    // archive#1503: every declared resource still resolves BY ID, and the
     // ambiguity lands on `primary` — where a surface must render it, because
     // every no-`resourceId` consumer in Station still fails on this project.
     expect(view.posture).toBe('backing');
@@ -522,7 +522,7 @@ describe('describeProjectResolution — failures it does NOT absorb', () => {
   });
 });
 
-// ── station#1503 slice 5 — multi-repo ──────────────────────────────────────
+// ── archive#1503 — multi-repo ──────────────────────────────────────
 
 describe('describeProjectResolution — multi-repo (station#1503, §10 slice 5)', () => {
   test('a PARTIALLY BOUND project renders 2 of 3 — the reason slice 5 depends on slice 4', async () => {

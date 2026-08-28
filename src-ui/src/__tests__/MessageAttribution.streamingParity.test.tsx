@@ -1,21 +1,21 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1424 review round 3 (NEW-1), refined round 4: the streaming row
+ * archive#1424 3, refined : the streaming row
  * and the persisted row it becomes must render the SAME attribution
  * fields — no transition delta, no chip that appears while streaming and
  * then vanishes (or vice versa) the instant the turn settles.
  *
  * This pins EQUALITY between the two renders rather than an absolute
- * "engine chip never renders" claim (station#1424 review round 4): a
- * correct future #1410 turn-envelope implementation is expected to make an
+ * "engine chip never renders" claim (archive#1424 4): a
+ * correct future archive#1410 turn-envelope implementation is expected to make an
  * engine chip appear on BOTH rows at once, and an absolute-absence
  * assertion on either render would misread that as a regression — the same
  * reasoning `MessageBubble.temporalDrift.test.tsx` already documents for
  * its own `queryByText('Station')` pin. The one absolute assertion kept
  * here targets the CURRENT defect class specifically (no engine identity
  * read from the agent's CURRENT live binding — i.e. no live-derived
- * "Station" text — on either row), which #1410 landing does not retire:
+ * "Station" text — on either row), which archive#1410 landing does not retire:
  * it introduces a NEW turn-scoped source, not a live-derivation shortcut.
  */
 
@@ -26,10 +26,10 @@ import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('../contexts/AgentsContext', () => ({
-  // `agentEngineDescriptor({ slug: 'dev-agent' })` resolves this to
-  // `{ name: 'Station' }` (no execution binding at all -> Station). If
-  // either render still derived its engine chip from this live agent,
-  // "Station" would render there.
+// `agentEngineDescriptor({ slug: 'dev-agent' })` resolves this to
+// `{ name: 'Station' }` (no execution binding at all -> Station). If
+// either render still derived its engine chip from this live agent,
+// "Station" would render there.
   useAgents: () => [{ slug: 'dev-agent', name: 'Dev Agent' }],
 }));
 
@@ -138,19 +138,19 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
       />,
     );
 
-    // Agent identity text is present, identically, on both rows.
+// Agent identity text is present, identically, on both rows.
     expect(within(streaming).getByText('Dev Agent')).toBeTruthy();
     expect(within(persisted).getByText('Dev Agent')).toBeTruthy();
 
-    // Owner chip text is present, identically, on both rows.
+// Owner chip text is present, identically, on both rows.
     expect(within(streaming).getByText(/via Brian Anderson/)).toBeTruthy();
     expect(within(persisted).getByText(/via Brian Anderson/)).toBeTruthy();
 
-    // Engine-chip PRESENCE STATE — not a hardcoded absence — must match
-    // between streaming and persisted. Today both are false; a correct
-    // future #1410 implementation making both true (a real, turn-scoped
-    // engine identity on both rows at once) still passes this assertion,
-    // exactly the point of comparing state rather than asserting "never".
+// Engine-chip PRESENCE STATE — not a hardcoded absence — must match
+// between streaming and persisted. Today both are false; a correct
+ // future archive#1410 implementation making both true (a real, turn-scoped
+// engine identity on both rows at once) still passes this assertion,
+// exactly the point of comparing state rather than asserting "never".
     const streamingHasEngineChip = Boolean(
       streaming.querySelector('.engine-chip'),
     );
@@ -159,12 +159,12 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
     );
     expect(streamingHasEngineChip).toBe(persistedHasEngineChip);
 
-    // One absolute assertion, pinning the CURRENT defect class specifically
-    // (M1's temporal-drift bug): neither row's engine identity is ever read
-    // from the agent's CURRENT live binding — `agentEngineDescriptor` would
-    // resolve "Station" for `dev-agent` if either render read that live
-    // source. #1410 landing introduces a new turn-scoped authority; it does
-    // not resurrect the live-derivation shortcut this pins against.
+// One absolute assertion, pinning the CURRENT defect class specifically
+ // ( temporal-drift bug): neither row's engine identity is ever read
+// from the agent's CURRENT live binding — `agentEngineDescriptor` would
+// resolve "Station" for `dev-agent` if either render read that live
+ // source. archive#1410 landing introduces a new turn-scoped authority; it does
+// not resurrect the live-derivation shortcut this pins against.
     expect(within(streaming).queryByText('Station')).toBeNull();
     expect(within(persisted).queryByText('Station')).toBeNull();
   });
@@ -217,9 +217,9 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
               content: 'All done.',
               timestamp: 1,
               turnId: 'turn-7',
-              // The turn's provenance envelope only exists once the turn
-              // has a terminal event to fold, which is precisely why the
-              // streaming row above can state nothing.
+// The turn's provenance envelope only exists once the turn
+// has a terminal event to fold, which is precisely why the
+// streaming row above can state nothing.
               provenance: {
                 envelopeVersion: 1,
                 sessionId: 'additive-persisted-session',
@@ -251,15 +251,15 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
       />,
     );
 
-    // Streaming: no engine claim of any kind — not a different one, none.
+// Streaming: no engine claim of any kind — not a different one, none.
     expect(streaming.querySelector('.engine-chip')).toBeNull();
     expect(within(streaming).queryByText('Claude Code')).toBeNull();
-    // Settled with an observed envelope: the engine is finally knowable, and
-    // the row says so. Nothing the streaming row asserted is withdrawn.
+// Settled with an observed envelope: the engine is finally knowable, and
+// the row says so. Nothing the streaming row asserted is withdrawn.
     expect(persisted.querySelector('.engine-chip')?.textContent).toBe(
       'Claude Code',
     );
-    // The live-derivation shortcut stays closed on both rows.
+// The live-derivation shortcut stays closed on both rows.
     expect(within(streaming).queryByText('Station')).toBeNull();
     expect(within(persisted).queryByText('Station')).toBeNull();
   });

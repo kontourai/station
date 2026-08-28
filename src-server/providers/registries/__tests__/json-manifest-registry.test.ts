@@ -1110,7 +1110,7 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
   });
 
   /**
-   * station#4300. This provider writes `<plugins>/<manifest.name>` itself
+   * archive#4300. This provider writes `<plugins>/<manifest.name>` itself
    * rather than delegating to `installPluginFromSource`, so the reserved-
    * identity refusal has to hold here independently. A registry entry is the
    * least inspected install there is — the operator picked a catalog row.
@@ -1193,7 +1193,7 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
       projectHome,
     );
 
-    // station#4307 moved this rejection EARLIER: `manifest.name` is validated
+    // archive#4307 moved this rejection EARLIER: `manifest.name` is validated
     // as a canonical plugin id at manifest parse, so a traversal name is
     // refused before the "safe path segment" guard is consulted. The property
     // under test — refused, and nothing written outside the install root — is
@@ -1223,7 +1223,7 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
   });
 
   /**
-   * station#4309 follow-up review, MEDIUM 2. `install()` is called from inside
+   * archive#4309 follow-up review, MEDIUM 2. `install()` is called from inside
    * a plugin's content lock, and every consent decision, update and uninstall
    * for that plugin queues behind that span. An unbounded manifest fetch gives
    * the span no ceiling at all: a registry host that accepts the connection

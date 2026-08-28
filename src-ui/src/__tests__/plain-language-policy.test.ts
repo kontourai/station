@@ -5,7 +5,7 @@ import { describe, expect, test } from 'vitest';
 const SOURCE_ROOT = path.resolve(import.meta.dirname, '..');
 
 /**
- * station#3965. `NOT_VERIFIED` is Station's internal verification token: it
+ * archive#3965. `NOT_VERIFIED` is Station's internal verification token: it
  * means "we did not confirm this, and will not assert it either way". It is a
  * genuine distinction and it belongs on the wire, in contracts, and in
  * comparisons. It does not belong on screen — a person reading their own board

@@ -18,7 +18,7 @@ let attention: AttentionProjection = { items: [], pendingCount: 0 };
 let sessions: OrchestrationSessionSummary[] = [];
 let sessionsSettled = true;
 let listsLoading = false;
-// Review H1: both reads settle with no data when they fail, so an errored
+// both reads settle with no data when they fail, so an errored
 // query used to be indistinguishable from a genuinely empty inbox — the
 // panel asserted "All caught up" over a read that never answered. These are
 // independent, matching `NotificationHistory`'s own `notificationsError ??
@@ -52,9 +52,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     mutate: action,
   }),
-  // `session-failed` is the only kind that carries `acknowledgedAt`, so it is
-  // the only kind that can exercise the acknowledged/pending split below —
-  // and its row constructs this mutation for Open session and Dismiss.
+// `session-failed` is the only kind that carries `acknowledgedAt`, so it is
+// the only kind that can exercise the acknowledged/pending split below —
+// and its row constructs this mutation for Open session and Dismiss.
   useAcknowledgeAttentionItemMutation: () => ({
     isPending: false,
     mutate: acknowledge,
@@ -128,8 +128,8 @@ describe('NotificationHistory', () => {
       actionId: 'decline',
       id: 'notif-1',
     });
-    // Acting on one notification must NOT tear down the list being triaged —
-    // the popover stays open and the row animates instead.
+// Acting on one notification must NOT tear down the list being triaged —
+// the popover stays open and the row animates instead.
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -159,7 +159,7 @@ describe('NotificationHistory', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
 
-    // The dismissal is held, not committed, and the panel stays open.
+// The dismissal is held, not committed, and the panel stays open.
     expect(screen.getByText('Dismissed')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
     expect(dismiss).not.toHaveBeenCalled();
@@ -248,9 +248,9 @@ describe('NotificationHistory', () => {
     );
 
     const headings = screen.getAllByRole('heading', { level: 2 });
-    // station#3222: the section names the badge's own number, so a reader
-    // arriving from "Notifications (1 need attention)" is shown one row and
-    // told that is all of them.
+// archive#3222: the section names the badge's own number, so a reader
+// arriving from "Notifications (1 need attention)" is shown one row and
+// told that is all of them.
     expect(headings.map((heading) => heading.textContent?.trim())).toEqual([
       'Needs attention (1)',
       'Recent activity',
@@ -294,7 +294,7 @@ describe('NotificationHistory', () => {
 });
 
 /**
- * station#3222 / station#3227 A5 — the popover under the bell badge.
+ * archive#3222 / archive#3227 A5 — the popover under the bell badge.
  *
  * `AttentionProjection.items` deliberately KEEPS acknowledged items
  * (`attention-projection.ts:225-228`) while `pendingCount` — the badge — counts
@@ -340,8 +340,8 @@ describe('NotificationHistory attention section agrees with the badge', () => {
   }
 
   test("nothing narrowed: the heading shows the badge's own number", () => {
-    // The badge reads 2 and every pending row fits, so there is one
-    // population and one number — the pair would be noise here.
+// The badge reads 2 and every pending row fits, so there is one
+// population and one number — the pair would be noise here.
     attention = { pendingCount: 2, items: [failed(1), failed(2)] };
     open();
 
@@ -351,8 +351,8 @@ describe('NotificationHistory attention section agrees with the badge', () => {
   });
 
   test('truncation announces itself instead of dropping four rows in silence', () => {
-    // Badge 9, popover room for 5. The reader must be able to see that the
-    // list under the badge they just clicked is not the whole of it.
+// Badge 9, popover room for 5. The reader must be able to see that the
+// list under the badge they just clicked is not the whole of it.
     attention = {
       pendingCount: 9,
       items: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) => failed(index)),
@@ -365,9 +365,9 @@ describe('NotificationHistory attention section agrees with the badge', () => {
   });
 
   test('all acknowledged: the badge is gone, so nothing may claim attention', () => {
-    // `items` still carries the history; `pendingCount` is 0 and the header
-    // bell renders no badge at all. A populated "Needs attention" section
-    // underneath it is the section asserting a state the data does not carry.
+// `items` still carries the history; `pendingCount` is 0 and the header
+// bell renders no badge at all. A populated "Needs attention" section
+// underneath it is the section asserting a state the data does not carry.
     attention = {
       pendingCount: 0,
       items: [failed(1, stamp), failed(2, stamp), failed(3, stamp)],
@@ -392,8 +392,8 @@ describe('NotificationHistory attention section agrees with the badge', () => {
   });
 
   test('acknowledged rows do not consume the five visible slots', () => {
-    // The slice runs over the PENDING list, so four acked rows cannot push a
-    // live one off the bottom — the old `items.slice(0, 5)` let them.
+// The slice runs over the PENDING list, so four acked rows cannot push a
+// live one off the bottom — the old `items.slice(0, 5)` let them.
     attention = {
       pendingCount: 2,
       items: [
@@ -414,9 +414,9 @@ describe('NotificationHistory attention section agrees with the badge', () => {
   });
 
   test('a server pendingCount that disagrees is shown, never clamped away', () => {
-    // Same contract as `attentionCountLabel`'s docblock: two pending rows
-    // rendered under a badge reading 3 is drift, and a pair that says so is
-    // the only honest render of it.
+// Same contract as `attentionCountLabel`'s docblock: two pending rows
+// rendered under a badge reading 3 is drift, and a pair that says so is
+// the only honest render of it.
     attention = { pendingCount: 3, items: [failed(1), failed(2)] };
     open();
 
@@ -425,12 +425,12 @@ describe('NotificationHistory attention section agrees with the badge', () => {
 });
 
 describe('NotificationHistory undo window', () => {
-  /**
-   * The destructive half of the dismiss feature had no direct coverage: whether
-   * the dismissal ACTUALLY commits once the undo window elapses, whether Undo
-   * genuinely cancels it, and whether an unmount with a pending timer commits
-   * exactly once rather than double-firing with the timer.
-   */
+/**
+* The destructive half of the dismiss feature had no direct coverage: whether
+* the dismissal ACTUALLY commits once the undo window elapses, whether Undo
+* genuinely cancels it, and whether an unmount with a pending timer commits
+* exactly once rather than double-firing with the timer.
+*/
   function renderOne() {
     notifications = [
       {
@@ -494,11 +494,11 @@ describe('NotificationHistory undo window', () => {
       const { unmount } = renderOne();
       fireEvent.click(screen.getAllByRole('button', { name: /dismiss/i })[0]);
 
-      // Closing the panel must not silently cancel what the user asked for...
+// Closing the panel must not silently cancel what the user asked for...
       unmount();
       expect(dismiss).toHaveBeenCalledTimes(1);
 
-      // ...and the pending timer must not then fire a second commit.
+//.and the pending timer must not then fire a second commit.
       act(() => {
         vi.advanceTimersByTime(10_000);
       });
@@ -510,7 +510,7 @@ describe('NotificationHistory undo window', () => {
 });
 
 /**
- * station#1780 — the BLOCKING finding this slice closes.
+* archive#1780 — the finding this slice closes.
  *
  * The popover renders `notifications minus attention-projected`. When the
  * attention projection correctly drops an unanswerable session's card, its
@@ -585,17 +585,17 @@ describe('NotificationHistory answerability annotation', () => {
     expect((deny as HTMLButtonElement).disabled).toBe(true);
 
     const notice = screen.getByTestId('notification-answerability').textContent;
-    // Which arm, whose process, and WHEN. Dropping any one of the three
-    // turns the record of an observation back into a timeless label.
+// Which arm, whose process, and WHEN. Dropping any one of the three
+// turns the record of an observation back into a timeless label.
     expect(notice).toContain("no adapter for provider 'acme'");
     expect(notice).toContain('station-7f3a');
     expect(notice).toContain('2026-08-03T12:04:03.000Z');
   });
 
   test('the disabled action points a screen reader at the reason (review L3)', () => {
-    // A disabled button announces only "dimmed". The basis was on screen for
-    // a sighted reader and inaudible to everyone else — the same
-    // "render the basis" contract, one modality over.
+// A disabled button announces only "dimmed". The basis was on screen for
+// a sighted reader and inaudible to everyone else — the same
+// "render the basis" contract, one modality over.
     open();
     const allow = screen.getByRole('button', { name: 'Allow' });
     const describedBy = allow.getAttribute('aria-describedby');
@@ -636,9 +636,9 @@ describe('NotificationHistory answerability annotation', () => {
   });
 
   test('AC4 (self-heal): a later poll saying answerable re-enables with no repair step', () => {
-    // Nothing was written when the row was annotated, so recovery is a
-    // re-read — this is the whole reason ADR 0012 projects rather than
-    // persists an observation.
+// Nothing was written when the row was annotated, so recovery is a
+// re-read — this is the whole reason ADR 0012 projects rather than
+// persists an observation.
     sessions = [strandedSession({ answerable: true })];
     open();
     expect(
@@ -659,9 +659,9 @@ describe('NotificationHistory answerability annotation', () => {
   });
 
   test('a session the settled read does not list renders the explicit unknown gap, actions untouched', () => {
-    // "Could not look" is not "nothing can answer this": the row is
-    // annotated with the gap and NOT gated, because a surface with no
-    // observation has no standing to disable an action.
+// "Could not look" is not "nothing can answer this": the row is
+// annotated with the gap and NOT gated, because a surface with no
+// observation has no standing to disable an action.
     notifications = [strandedApproval('thread-not-listed')];
     open();
     expect(
@@ -692,14 +692,14 @@ describe('NotificationHistory answerability annotation', () => {
     ).toBe(false);
   });
 
-  /**
-   * "All caught up" is a claim about the data, not a default. The panel now
-   * mounts on first open (station#2751) rather than living for the app's
-   * lifetime, so its first paint genuinely has nothing yet — and a cache
-   * eviction returns it to that state later. Asserting an empty inbox while
-   * the fetch is still in flight would state something the component has not
-   * derived, which is exactly the defect class this repo treats as serious.
-   */
+/**
+* "All caught up" is a claim about the data, not a default. The panel now
+* mounts on first open (archive#2751) rather than living for the app's
+* lifetime, so its first paint genuinely has nothing yet — and a cache
+* eviction returns it to that state later. Asserting an empty inbox while
+* the fetch is still in flight would state something the component has not
+* derived, which is exactly the defect class this repo treats as serious.
+*/
   test('shows loading rather than claiming "All caught up" before data arrives', () => {
     listsLoading = true;
     notifications = [];
@@ -732,7 +732,7 @@ describe('NotificationHistory answerability annotation', () => {
 });
 
 /**
- * Review H1: `notificationsError ?? attentionError` renders `ErrorState`
+ * `notificationsError ?? attentionError` renders `ErrorState`
  * before the empty branch, before this fix "All caught up" — the most
  * definitive empty state in the app — rendered over a query that failed.
  * The panel ORs the two sources, so each is pinned independently: either

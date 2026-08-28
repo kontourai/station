@@ -1,5 +1,5 @@
 /**
- * 2026-08-26 audit F6: the bottom dock bar mixed five control vocabularies
+ * the bottom dock bar mixed five control vocabularies
  * (a bare-text ⌘D/⌃⌘M keycap hint, a drag-handle glyph, icon buttons, a
  * green monospace "No project ~ (defaults to home)" status segment, and an
  * underlined "Start a chat" link) where two families — icon buttons and one
@@ -36,10 +36,10 @@ describe('chat dock header keycap hints (station audit F6)', () => {
   });
 
   test('the per-button overrides that gave Maximize/New a different keycap color than the dock-toggle hint are gone', () => {
-    // Before the fix, `.chat-dock__new .chat-dock__subtitle` and
-    // `.chat-dock__maximize-btn .chat-dock__subtitle` restyled the keycap
-    // with a second, different color — reverting that (re-adding a
-    // divergent override) reds this.
+// Before the fix, `.chat-dock__new.chat-dock__subtitle` and
+// `.chat-dock__maximize-btn.chat-dock__subtitle` restyled the keycap
+// with a second, different color — reverting that (re-adding a
+// divergent override) reds this.
     expect(indexCss).not.toMatch(
       /\.chat-dock__maximize-btn \.chat-dock__subtitle\s*\{[^}]*color:\s*var\(--text-secondary\)/,
     );
@@ -52,9 +52,9 @@ describe('chat dock "Start a chat" action (station audit F6)', () => {
       indexCss,
       '.chat-dock__header-actions button.chat-dock__counter-action',
     );
-    // Positive power (delta review F2): post-fix this selector has NO rules
-    // at all, so the loop above is vacuous by design — pin that emptiness
-    // explicitly, and pin the shared sibling rule the button now inherits.
+ // Positive power : post-fix this selector has NO rules
+// at all, so the loop above is vacuous by design — pin that emptiness
+// explicitly, and pin the shared sibling rule the button now inherits.
     expect(overrides).toHaveLength(0);
     expect(
       ruleBodiesFor(indexCss, '.chat-dock__header-actions button').join('\n'),

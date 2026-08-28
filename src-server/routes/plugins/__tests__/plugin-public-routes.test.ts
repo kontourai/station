@@ -52,7 +52,7 @@ function createApp(projectHomeDir: string, emit = vi.fn()) {
   return app;
 }
 
-// Async since #2646: a non-async helper would DISCARD the grant promise, so
+// Async since archive#2646: a non-async helper would DISCARD the grant promise, so
 // callers could not await it and the route below raced the durable write.
 async function seedGrant(
   projectHomeDir: string,
@@ -190,7 +190,7 @@ describe('plugin-public-routes', () => {
   });
 
   /**
-   * station#4288, review HIGH 1. `POST /:name/grant` refuses `trusted`
+   * archive#4288, review HIGH 1. `POST /:name/grant` refuses `trusted`
    * permissions outright — they need the isolated host-approval channel. The
    * first draft's `grantPermissions` unioned the whole stored record with the
    * new permissions and re-stamped it with the current digest, so approving
@@ -246,7 +246,7 @@ describe('plugin-public-routes', () => {
     });
     expect(indirect.status).toBe(200);
 
-    // station#4288, delta review MEDIUM 2. The withdrawal is correct; the
+    // archive#4288, delta review MEDIUM 2. The withdrawal is correct; the
     // silence was the defect. This request DELETED a trusted grant that is
     // re-acquirable only through the isolated host-approval channel, so the
     // response says so rather than echoing the request back as `granted`.
@@ -268,7 +268,7 @@ describe('plugin-public-routes', () => {
   });
 
   /**
-   * station#4288, delta review MEDIUM 2. `granted` used to be the REQUEST
+   * archive#4288, delta review MEDIUM 2. `granted` used to be the REQUEST
    * echoed back, which is the same answer whether the store already held ten
    * permissions or the write had just destroyed nine of them. `DELETE
    * /:name/grant` already answered with derived state; this pins that POST
@@ -336,7 +336,7 @@ describe('plugin-public-routes', () => {
   test('station#3815: a plugin whose manifest is gone can still have its grants withdrawn', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-public-'));
     cleanupDirs.push(root);
-    // The grant is recorded while the plugin exists (station#4288 binds a
+    // The grant is recorded while the plugin exists (archive#4288 binds a
     // grant to the bytes it was given for, so it cannot be recorded for a
     // tree that is not there) and the tree is then removed underneath it.
     // The files are gone; the grant record remains. Being unable to withdraw
@@ -368,7 +368,7 @@ describe('plugin-public-routes', () => {
     });
     // Asserting `granted: []` here would prove nothing: a missing tree reads
     // as `changed`, which withholds everything whether or not the withdrawal
-    // happened (station#4288, review LOW). The RECORD is what this test is
+    // happened (archive#4288, review LOW). The RECORD is what this test is
     // about — it is the thing withdrawal writes to.
     const record = readPluginGrantRecord(root, 'ghost-plugin');
     expect(record.permissions).toEqual(['tools.invoke']);

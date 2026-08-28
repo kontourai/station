@@ -37,9 +37,9 @@ describe('color-contrast primitives (station#1424 review round 3, NEW-3)', () =>
   });
 
   test("whiteOnHslContrast: reproduces the reported round-3 regression — light theme's ORIGINAL 50%/42% pair fails AA at hue 60", () => {
-    // This is the exact defect the review reported (NEW-3): the pre-fix
-    // BrandIcon.css light-theme token pair, checked directly here so the
-    // regression is provably real and not just asserted by the fix.
+ // This is the exact defect the review reported : the pre-fix
+// BrandIcon.css light-theme token pair, checked directly here so the
+// regression is provably real and not just asserted by the fix.
     const ratio = whiteOnHslContrast(60, 0.5, 0.42);
     expect(ratio).toBeLessThan(4.5);
   });

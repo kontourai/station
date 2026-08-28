@@ -1,5 +1,5 @@
 /**
- * The UI's single clipboard write (station#3341).
+ * The UI's single clipboard write (archive#3341).
  *
  * Seven components had each hand-rolled this and five of them reported a copy
  * that never happened. Two shapes produced it:

@@ -8,7 +8,7 @@ export const STATION_PROOF_PROTOCOL_VERSION = 1 as const;
 export const STATION_PROOF_DOMAIN = 'station-environment-proof' as const;
 export const DEVICE_PAIRING_PROTOCOL_VERSION = 1 as const;
 /**
- * Pre-scoped pairing marker (station#1098). Every device paired before
+ * Pre-scoped pairing marker (archive#1098). Every device paired before
  * this feature shipped persisted exactly this literal in its `scope` field.
  * It is never issued to a new grant — {@link DEFAULT_GRANT_PAIRING_SCOPE} is
  * issued instead — but it is still recognized on read so an existing
@@ -24,7 +24,7 @@ export const PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH =
 export const PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH =
   '/.well-known/station/v1/pairing/exchange' as const;
 /**
- * Same-user local self-authorization (station#1715). Exchanges a per-boot,
+ * Same-user local self-authorization (archive#1715). Exchanges a per-boot,
  * owner-only-file grant secret (`<home>/runtime/local-grant.secret`, minted
  * fresh on every server boot) for a normal paired-device credential, by
  * running the ordinary offer/request/confirm/exchange ceremony server-side in
@@ -47,7 +47,7 @@ export const PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH =
   '/.well-known/station/v1/pairing/ui-bootstrap' as const;
 
 /**
- * Refreshes the single current launcher UI-bootstrap capability (station#1991).
+ * Refreshes the single current launcher UI-bootstrap capability (archive#1991).
  * It is reachable only by a direct-loopback caller that proves possession of
  * the per-boot local-grant secret. A later mint replaces an unspent token, so
  * only the most recently minted browser fragment can be exchanged.
@@ -56,7 +56,7 @@ export const PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH =
   '/.well-known/station/v1/pairing/mint-ui-bootstrap' as const;
 
 /**
- * Scoped pairing (station#1098): OAuth-style space-delimited scope strings on
+ * Scoped pairing (archive#1098): OAuth-style space-delimited scope strings on
  * pairing grants and the device sessions/credentials exchanged from them. A
  * leaked read-only credential can read and stream state but must 403 on
  * every mutation and every terminal route — enforced by the single
@@ -64,8 +64,8 @@ export const PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH =
  *
  * This started as a deliberately small four-scope set, not a general
  * permission system — see the issue's non-goals (no DPoP, no OAuth server,
- * no relay scopes). Station#1398 slice 2 added a fifth,
- * {@link PAIRING_SCOPE_INFERENCE_INVOKE}, under the same restraint: it exists
+ * no relay scopes). {@link PAIRING_SCOPE_INFERENCE_INVOKE} was added as a
+ * fifth under the same restraint: it exists
  * because "let my laptop use my workstation's GPU" must not be expressible
  * only as "let my laptop run agents on my workstation".
  */
@@ -76,7 +76,7 @@ export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
 /**
- * Fleet inference (station#1398, `docs/design/inference-fleet.md` §3.3):
+ * Fleet inference (archive#1398, `docs/design/inference-fleet.md` §3.3):
  * invoke a *model completion* on this Station's contributed connections, and
  * read which models it contributes. Deliberately NOT `orchestration:operate`:
  * that scope authorizes starting arbitrary agent sessions and driving turns
@@ -94,7 +94,7 @@ export const PAIRING_SCOPE_INFERENCE_INVOKE = 'inference:invoke' as const;
 
 /**
  * Approve or deny a PENDING pairing request, and read the pending list
- * (station#1887). Exactly `GET /api/pairing/requests`,
+ * (archive#1887). Exactly `GET /api/pairing/requests`,
  * `POST /api/pairing/requests/:id/confirm`, `DELETE /api/pairing/requests/:id`
  * — and nothing else in the `/api/pairing` family.
  *
@@ -120,7 +120,7 @@ export const PAIRING_SCOPE_ACCESS_APPROVE = 'access:approve' as const;
 
 /**
  * Decide (approve or deny) a pending {@link ConsentTransaction} on the
- * distinct-origin consent surface (station#3677). The decision endpoint lives
+ * distinct-origin consent surface (archive#3677). The decision endpoint lives
  * on the dedicated consent listener — a separate port whose origin same-origin
  * plugin code cannot script — never on the main runtime app.
  *
@@ -161,8 +161,8 @@ export type PairingScope = (typeof PAIRING_SCOPES)[number];
  * predates scoping and has always had full authority.
  *
  * **This is a curated constant, not `PAIRING_SCOPES.join(' ')`, and the
- * difference is the whole point** (station#1398 slice 2,
- * `docs/design/inference-fleet.md` §11). While the two happened to be equal,
+ * difference is the whole point**
+ * (`docs/design/inference-fleet.md` §11). While the two happened to be equal,
  * every vocabulary addition silently did two harmful things at once:
  *
  *  1. it granted the new scope to all three populations above, none of whom
@@ -197,7 +197,7 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * terminal) but withholds `access:manage` — a paired device, however
  * broadly scoped, can never manage other devices or pairing offers itself.
  *
- * `delegation` (station#1123 slice 1, `docs/design/station-peer-pairing.md`
+ * `delegation` (archive#1123, `docs/design/station-peer-pairing.md`
  * §2) is a THIRD preset, not a reuse of `standard`: every call
  * `delegate_task` makes against a remote target resolves to either
  * `orchestration:read` or `orchestration:operate`
@@ -222,7 +222,7 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * conflates the peer's own API reach with the remote agent's local tool
  * authority.
  *
- * `inference` (station#1398 slice 2, `docs/design/inference-fleet.md` §3.3)
+ * `inference` (archive#1398, `docs/design/inference-fleet.md` §3.3)
  * is a FOURTH preset and is a single scope on purpose: it is not "delegation
  * plus inference", it is *only* the fleet-inference surface. A peer holding
  * it may read which models this Station contributes and ask for a completion
@@ -249,7 +249,7 @@ export const PAIRING_SCOPE_PRESETS = {
 export type PairingScopePreset = keyof typeof PAIRING_SCOPE_PRESETS;
 
 /**
- * How a token can legitimately reach a real credential (station#1883).
+ * How a token can legitimately reach a real credential (archive#1883).
  *
  * - `preset` — offered at pairing time, via {@link PAIRING_SCOPE_PRESETS}.
  * - `default-grant` — inherited by {@link DEFAULT_GRANT_PAIRING_SCOPE} holders:
@@ -265,7 +265,7 @@ export type PairingScopeGrantPath =
 
 /**
  * Every scope token, mapped to how a human can actually obtain it
- * (station#1883).
+ * (archive#1883).
  *
  * **The defect this exists to make unrepresentable.** `access:manage` was in
  * {@link DEFAULT_GRANT_PAIRING_SCOPE} and in *no* preset. So it had a large
@@ -296,14 +296,14 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_TERMINAL_OPERATE]: ['preset', 'default-grant'],
   // The recorded historical exception: in the frozen default grant, in no
   // preset, and deliberately never added to one — elevation at pairing time
-  // grants the most to the least-known device. See station#1883.
+  // grants the most to the least-known device. See archive#1883.
   [PAIRING_SCOPE_ACCESS_MANAGE]: ['default-grant'],
   [PAIRING_SCOPE_INFERENCE_INVOKE]: ['preset'],
-  // station#1887: the only token whose sole path is an operator promoting an
+  // archive#1887: the only token whose sole path is an operator promoting an
   // already-paired device. In no preset (elevation at pairing time grants the
   // most to the least-known device) and never in the default grant.
   [PAIRING_SCOPE_ACCESS_APPROVE]: ['operator-promotion'],
-  // station#3677: same posture as access:approve — operator promotion only.
+  // archive#3677: same posture as access:approve — operator promotion only.
   // The operator itself decides consent by credential identity, not via this
   // token (see the PAIRING_SCOPE_CONSENT_DECIDE doc block).
   [PAIRING_SCOPE_CONSENT_DECIDE]: ['operator-promotion'],
@@ -510,7 +510,7 @@ export interface DevicePairingAccessRequestResponse {
 }
 
 /**
- * What a paired-device grant is FOR (station#1123 slice 1):
+ * What a paired-device grant is FOR:
  *  - `'device'` — an ordinary interactive device (phone, browser, CLI) that
  *    may control this Station through the paired-device UI/API surface.
  *  - `'delegation'` — a credential minted so a PEER Station may call
@@ -552,7 +552,7 @@ export interface PairedDevice {
   name: string;
   /**
    * Space-delimited {@link PairingScope} string granted to this device
-   * (station#1098). A device paired before scoped pairing shipped reads as
+   * (archive#1098). A device paired before scoped pairing shipped reads as
    * {@link DEFAULT_GRANT_PAIRING_SCOPE} — see {@link DEVICE_PAIRING_SCOPE}'s
    * doc. That set is no longer the whole vocabulary, so a renderer must
    * describe the tokens held rather than call it "full" (see
@@ -560,11 +560,11 @@ export interface PairedDevice {
    */
   scope: string;
   /**
-   * Additive (station#1123 slice 1): a device paired before this field
+   * Additive: a device paired before this field
    * existed has no such key in its persisted record and reads back as
    * `'device'` — see `DevicePairingService`'s registry loader, which
    * migrates it in place the same way `scope` itself was migrated
-   * (station#1098 R4). Never absent on a value read out of the service.
+   * (archive#1098 R4). Never absent on a value read out of the service.
    */
   kind: PairedDeviceKind;
   createdAt: number;
@@ -605,7 +605,7 @@ export interface PairedDevice {
    */
   revocation: PairedDeviceRevocation;
   /**
-   * Additive (station#1878 slice 1): how this device's pairing *request*
+   * Additive (archive#1878): how this device's pairing *request*
    * reached the host — carried onto the record at exchange, from the same
    * {@link DevicePairingRequest.source} the approval decision already
    * weighed and then used to discard. A device paired before this field
@@ -615,8 +615,8 @@ export interface PairedDevice {
    */
   source?: DevicePairingRequest['source'];
   /**
-   * Additive (station#1878 slice 1): who asked, when the pairing request
-   * arrived over the tailnet with a server-verified identity (station#1490)
+   * Additive (archive#1878): who asked, when the pairing request
+   * arrived over the tailnet with a server-verified identity (archive#1490)
    * — the same {@link DevicePairingRequest.requester} the approval decision
    * already saw. Present only when `source === 'tailnet'`; `same-origin` and
    * `pairing-code` requests carry no requester identity to record, and a
@@ -705,7 +705,7 @@ export interface EnvironmentSecurityRecord {
 }
 
 /**
- * Feature-detection flags on the public handshake (station#1095) — the
+ * Feature-detection flags on the public handshake (archive#1095) — the
  * rolling-upgrade story for phone/CLI vs server skew. Every key is an
  * optional boolean, and BOTH the whole object and any individual key may be
  * absent; either absence means "unsupported" (the host predates the
@@ -738,7 +738,7 @@ export interface StationCapabilityFlags {
   /**
    * The `/api/orchestration/events` (+ per-session) SSE stream honors a
    * `Last-Event-ID` resume cursor with bounded replay-or-snapshot semantics
-   * (station#1092). Server-side resume handling itself is unconditional and
+   * (archive#1092). Server-side resume handling itself is unconditional and
    * harmless to old clients; this flag only gates whether a *client* trusts
    * the new dedup/skip-refetch behavior.
    */
@@ -746,13 +746,13 @@ export interface StationCapabilityFlags {
   /** The versioned bounded per-session event-window protocol is available. */
   sessionEventWindow?: boolean;
   /**
-   * Scoped pairing (station#1098): pairing grants and device sessions carry
+   * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).
    */
   scopedPairing?: boolean;
   /**
-   * Fleet inference (station#1398): this build understands the
+   * Fleet inference (archive#1398): this build understands the
    * `inference:invoke` pairing scope token, so a peer may mint a grant
    * containing it.
    *
@@ -786,7 +786,7 @@ export interface StationCapabilityFlags {
   fleetInference?: boolean;
   /**
    * A device whose scope carries {@link PAIRING_SCOPE_ACCESS_APPROVE} may
-   * approve or deny pending pairing requests (station#1887).
+   * approve or deny pending pairing requests (archive#1887).
    *
    * Coupled if-and-only-if to the token parsing, and pinned by
    * `packages/contracts/src/__tests__/environment-security.test.ts`:
@@ -816,7 +816,7 @@ export interface PublicStationHandshake {
   compatibility: StationCompatibility;
   /**
    * Additive, see {@link StationCapabilityFlags}. Hosts from before
-   * station#1095 omit it entirely; every consumer must keep working when it
+   * archive#1095 omit it entirely; every consumer must keep working when it
    * is absent.
    */
   capabilities?: StationCapabilityFlags;

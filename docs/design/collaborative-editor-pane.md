@@ -1,6 +1,6 @@
 # Collaborative editor pane
 
-Issue #2890 is the Workspace Pane projection for shared text/code work. It is
+Issue archive#2890 is the Workspace Pane projection for shared text/code work. It is
 not the durable Project Chat discussion surface and it is not a new event or
 message store.
 
@@ -11,10 +11,10 @@ The module composes replaceable, intent-shaped Adapters:
 - `CollaborativeAuthorityAdapter` resolves the server-owned local actor and
   exact Project/Task/document grant at every ingress. It does not cache a UI
   permission guess.
-- `SharedWorkingStateProjectionAdapter` returns typed #2889 outcomes for only
+- `SharedWorkingStateProjectionAdapter` returns typed archive#2889 outcomes for only
   accepted operations and exact resync results. The provided direct Station
-  Adapter composes #2889 live/recovery ports; the pane never merges text.
-- `SharedWorkingStateEditingCapability` owns the server-side #2889 snapshot,
+  Adapter composes archive#2889 live/recovery ports; the pane never merges text.
+- `SharedWorkingStateEditingCapability` owns the server-side archive#2889 snapshot,
   write grant, and atom identity needed to translate textarea edits into exact
   frozen operation batches. It applies those same batches to a cloned
   `SharedWorkingState` for preview; the pane never receives atom snapshots or
@@ -23,7 +23,7 @@ The module composes replaceable, intent-shaped Adapters:
   batch as one idempotent intent. It returns total `accepted`,
   `definitely-not-invoked`, `refused`, or `indeterminate` truth; per-operation
   settlement remains projection-owned. It cannot retain a durable editor log.
-- `CollaborativeRevisionResolverAdapter` resolves a #2891-compatible immutable
+- `CollaborativeRevisionResolverAdapter` resolves a archive#2891-compatible immutable
   evidence revision only when evidence ID, scope, correlation, returned
   working-state revision, and projection all match.
 - Host navigation, cursor output, and live-room context remain separate
@@ -48,12 +48,12 @@ The pane distinguishes document read/write from room join/read/share/watch/
 follow. Solo read/write remains usable without joining a room. A read-only
 person retains authorized document truth but cannot form a new operation.
 Possible-effect batches remain in a private intent/operation ledger with
-count/byte bounds and exact per-operation settlement until #2889 proves each
+count/byte bounds and exact per-operation settlement until archive#2889 proves each
 operation non-deferred or releases its ID. Duplicate-but-still-deferred
 operations retain projection; released IDs use the protocol bound rather than
 the old local 32-entry assumption. Public state exposes only non-content intent
 ID, counts, aggregate states, timestamp, and bounded reason. ID/effect digest
-authority stays in #2889, where display/correlation metadata is excluded.
+authority stays in archive#2889, where display/correlation metadata is excluded.
 One planned batch is one external effect: all causally ordered delete chunks
 and a replacement insert cross the transport seam together, with a stable
 server-owned canonical SHA-256 digest. Planning is `uninvoked`; only the final

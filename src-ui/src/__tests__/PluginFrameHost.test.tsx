@@ -95,7 +95,7 @@ function postPaneHost(
 
 /**
  * An `api-request` from the frame — a method the shell no longer implements
- * (station#4300). Kept so the regression test below can send the exact
+ * (archive#4300). Kept so the regression test below can send the exact
  * message the deleted bridge answered.
  */
 function postApiRequest(params: Record<string, unknown>) {
@@ -112,9 +112,9 @@ function postApiRequest(params: Record<string, unknown>) {
  * Let every queued microtask and timer callback run.
  *
  * A negative assertion about `fetch` MUST be made after this, and the reason
- * is a fault injection that passed: `authenticatedFetch` awaits before it
+ * is a that passed: `authenticatedFetch` awaits before it
  * reaches the global `fetch`, so a synchronous `expect(fetchMock)
- * .not.toHaveBeenCalled()` runs BEFORE the call it is supposed to notice.
+*not.toHaveBeenCalled` runs BEFORE the call it is supposed to notice.
  * Re-adding the whole api-request bridge left this file green with four
  * unhandled rejections and 23 passing tests.
  */
@@ -147,8 +147,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   navigateMock.mockReset();
   setLayoutMock.mockReset();
-  // Module state: the budgets deliberately outlive a mount, so a leftover
-  // one would silently starve the next test's requests.
+// Module state: the budgets deliberately outlive a mount, so a leftover
+// one would silently starve the next test's requests.
   pluginToastBudget.reset();
   pluginNavigationBudget.reset();
   pluginConfirmBudget.reset();
@@ -177,11 +177,11 @@ describe('PluginFrameHost boundary', () => {
   });
 
   test('rejects spoofed sources and never transfers a shell nonce or credential', async () => {
-    // Seed the nonce where `resolveCspNonce` actually reads it (the marker
-    // element). Seeding the old `window.__STATION_CSP_NONCE__` global left
-    // this regression test powerless: that carrier was removed, so the
-    // assertion would pass even if someone wired `resolveCspNonce()` in here
-    // tomorrow (station#4287 review).
+// Seed the nonce where `resolveCspNonce` actually reads it (the marker
+// element). Seeding the old `window.__STATION_CSP_NONCE__` global left
+// this regression test powerless: that carrier was removed, so the
+// assertion would pass even if someone wired `resolveCspNonce` in here
+ // tomorrow (archive#4287).
     const cspMarker = document.createElement('script');
     cspMarker.nonce = 'shell-nonce';
     cspMarker.setAttribute('data-station-csp-nonce', '');
@@ -211,8 +211,8 @@ describe('PluginFrameHost boundary', () => {
 
   test('refuses ungranted navigation requests at the host', () => {
     const navigation = renderHost();
-    // '/agents' is a real registered surface: only the missing grant refuses
-    // it, so this cannot pass merely because the target was unroutable.
+// '/agents' is a real registered surface: only the missing grant refuses
+// it, so this cannot pass merely because the target was unroutable.
     postNavigate('/agents');
     expect(navigation.navigate).not.toHaveBeenCalled();
     expect(navigation.setLayout).not.toHaveBeenCalled();
@@ -227,9 +227,9 @@ describe('PluginFrameHost boundary', () => {
       },
     });
     postNavigate('/agents');
-    // Routed through the pane-host contract now: the frame's path string is
-    // decoded to `{ kind: 'app-surface', surfaceId: 'agents' }` and the SHELL
-    // resolves the route from its own registry. `{}` writes no query fields.
+// Routed through the pane-host contract now: the frame's path string is
+// decoded to `{ kind: 'app-surface', surfaceId: 'agents' }` and the SHELL
+// resolves the route from its own registry. `{}` writes no query fields.
     expect(navigation.navigate).toHaveBeenCalledWith('/agents', {});
   });
 
@@ -242,18 +242,18 @@ describe('PluginFrameHost boundary', () => {
       },
     });
     postNavigate('/projects/apollo/layouts/coding');
-    // The shell goes exactly where setLayout would have sent it — and the
-    // File Preview fields are explicitly cleared, because plain `navigate`
-    // starts from the live URL and would otherwise carry a preview intent
-    // across the project switch (setLayout's clearing side effect, kept).
+// The shell goes exactly where setLayout would have sent it — and the
+// File Preview fields are explicitly cleared, because plain `navigate`
+// starts from the live URL and would otherwise carry a preview intent
+// across the project switch (setLayout's clearing side effect, kept).
     expect(navigation.navigate).toHaveBeenCalledWith(
       '/projects/apollo/layouts/coding',
       { previewPath: null, previewLineStart: null, previewLineEnd: null },
     );
-    // ...but `setLayout` writes lastProject/lastProjectLayout to localStorage
-    // unconditionally, which would let a plugin repoint what `/` restores to
-    // on every future launch — outliving the plugin's own removal. A frame is
-    // not the user, so its choice is not recorded as the user's.
+//.but `setLayout` writes lastProject/lastProjectLayout to localStorage
+// unconditionally, which would let a plugin repoint what `/` restores to
+// on every future launch — outliving the plugin's own removal. A frame is
+// not the user, so its choice is not recorded as the user's.
     expect(navigation.setLayout).not.toHaveBeenCalled();
   });
 
@@ -294,7 +294,7 @@ describe('PluginFrameHost boundary', () => {
     );
     const live = toastStore.getSnapshot();
     expect(live).toHaveLength(1);
-    // The plugin name prefix keeps a frame from impersonating Station chrome.
+// The plugin name prefix keeps a frame from impersonating Station chrome.
     expect(live[0]?.message).toBe('demo: Feed refreshed');
   });
 
@@ -314,8 +314,8 @@ describe('PluginFrameHost boundary', () => {
 
   test('caps a plugin toast flood that varies its message every time', () => {
     renderHost();
-    // `toastStore.show` collapses byte-identical repeats only, so a varying
-    // suffix defeated it entirely and inserted unbounded live toasts.
+// `toastStore.show` collapses byte-identical repeats only, so a varying
+// suffix defeated it entirely and inserted unbounded live toasts.
     for (let index = 0; index < 25; index += 1) postToast(`tick ${index}`);
     expect(toastStore.getSnapshot()).toHaveLength(3);
     expect(toastStore.getSnapshot().map((toast) => toast.message)).toEqual([
@@ -333,7 +333,7 @@ describe('PluginFrameHost boundary', () => {
       for (let index = 0; index < 5; index += 1) postToast(`first ${index}`);
       expect(toastStore.getSnapshot()).toHaveLength(3);
 
-      // One interval buys exactly one more.
+// One interval buys exactly one more.
       vi.setSystemTime(start + 10_000);
       postToast('after one interval');
       postToast('still capped');
@@ -342,7 +342,7 @@ describe('PluginFrameHost boundary', () => {
       );
       expect(toastStore.getSnapshot()).toHaveLength(4);
 
-      // A long idle cannot bank more than the burst.
+// A long idle cannot bank more than the burst.
       vi.setSystemTime(start + 10_000_000);
       for (let index = 0; index < 5; index += 1) postToast(`later ${index}`);
       expect(toastStore.getSnapshot()).toHaveLength(7);
@@ -375,18 +375,18 @@ describe('PluginFrameHost boundary', () => {
         granted: ['navigation.dock'],
       },
     });
-    // `navigation.dock` is auto-granted with no consent prompt, so an
-    // unbounded loop here is a shell the user cannot steer, available to every
-    // installed plugin.
+// `navigation.dock` is auto-granted with no consent prompt, so an
+// unbounded loop here is a shell the user cannot steer, available to every
+// installed plugin.
     for (let index = 0; index < 8; index += 1) postNavigate('/agents');
     expect(navigation.navigate).toHaveBeenCalledTimes(2);
-    // Silent to the frame, reported once to the host — reporting every refusal
-    // would let the loop turn the report into the flood.
+// Silent to the frame, reported once to the host — reporting every refusal
+// would let the loop turn the report into the flood.
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain('navigation rate');
-    // The user sees the refusal too: a legitimate third click dying
-    // console-only is the silent no-op #3323 exists to fix. Host-issued, so
-    // it spends no plugin toast token, and bounded to once per interval.
+// The user sees the refusal too: a legitimate third click dying
+ // console-only is the silent no-op archive#3323 exists to fix. Host-issued, so
+// it spends no plugin toast token, and bounded to once per interval.
     const refusalToasts = toastStore
       .getSnapshot()
       .filter((toast) => toast.message.includes('navigation was ignored'));
@@ -410,7 +410,7 @@ describe('PluginFrameHost boundary', () => {
       postNavigate('/agents');
       expect(navigation.navigate).toHaveBeenCalledTimes(3);
 
-      // Idle time cannot bank more than the burst.
+// Idle time cannot bank more than the burst.
       vi.advanceTimersByTime(30_000 * 20);
       for (let index = 0; index < 5; index += 1) postNavigate('/agents');
       expect(navigation.navigate).toHaveBeenCalledTimes(5);
@@ -440,11 +440,11 @@ describe('PluginFrameHost boundary', () => {
       'Restart the runner?',
     );
 
-    // The bridge effect re-runs and tears the plugin document down. A new
-    // `granted` identity is the realistic trigger: it arrives from the
-    // plugin-meta query, so any registry refresh re-identities it. The
-    // placement stays mounted and `active` never flips, so neither of the
-    // other two lifetime boundaries fires.
+// The bridge effect re-runs and tears the plugin document down. A new
+// `granted` identity is the realistic trigger: it arrives from the
+// plugin-meta query, so any registry refresh re-identities it. The
+// placement stays mounted and `active` never flips, so neither of the
+// other two lifetime boundaries fires.
     act(() => {
       rerender(
         <PluginFrameHost
@@ -459,10 +459,10 @@ describe('PluginFrameHost boundary', () => {
       );
     });
 
-    // The dialog belonged to a document that no longer exists. Leaving it up
-    // would let the user answer a question for a dead frame -- and a reloaded
-    // plugin reusing id 'c1' would take that answer as the reply to whatever
-    // it asked next.
+// The dialog belonged to a document that no longer exists. Leaving it up
+// would let the user answer a question for a dead frame -- and a reloaded
+// plugin reusing id 'c1' would take that answer as the reply to whatever
+// it asked next.
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(post).toHaveBeenCalledWith(
       {
@@ -491,9 +491,9 @@ describe('PluginFrameHost boundary', () => {
       });
     });
 
-    // Station's own ConfirmModal, in the SHELL's document -- not a dialog
-    // drawn inside the iframe wearing Station's authority. The frame never
-    // receives a component, only the decision.
+// Station's own ConfirmModal, in the SHELL's document -- not a dialog
+// drawn inside the iframe wearing Station's authority. The frame never
+// receives a component, only the decision.
     const dialog = screen.getByRole('dialog');
     expect(dialog.textContent).toContain('demo: Restart');
     expect(dialog.textContent).toContain('Restart the runner?');
@@ -515,11 +515,11 @@ describe('PluginFrameHost boundary', () => {
     renderHost();
     const post = vi.spyOn(window, 'postMessage');
 
-    // `act` is what gives this test its power: without it a dialog the host
-    // WRONGLY opened would not have rendered by the time the assertion runs,
-    // so the test would pass whether or not the origin pin held. Proven by
-    // fault injection -- serving the contract before the pin passed until
-    // this flush was added.
+// `act` is what gives this test its power: without it a dialog the host
+// WRONGLY opened would not have rendered by the time the assertion runs,
+// so the test would pass whether or not the origin pin held. Proven by
+ // -- serving the contract before the pin passed until
+// this flush was added.
     act(() => {
       postPaneHost(
         'pane-host/confirm',
@@ -528,14 +528,14 @@ describe('PluginFrameHost boundary', () => {
       );
     });
 
-    // Not refused with a reply either: a message that failed the origin pin
-    // is not a conversation, and answering it would confirm the protocol to
-    // whoever sent it.
+// Not refused with a reply either: a message that failed the origin pin
+// is not a conversation, and answering it would confirm the protocol to
+// whoever sent it.
     expect(screen.queryByRole('dialog')).toBeNull();
-    // Reads as a second independent check but is not one on its own: on the
-    // refusal path nothing posts, so the loop body never runs and it passes
-    // either way. Pinned as an explicit emptiness assertion instead, so what
-    // it proves is what it says.
+// Reads as a second independent check but is not one on its own: on the
+// refusal path nothing posts, so the loop body never runs and it passes
+// either way. Pinned as an explicit emptiness assertion instead, so what
+// it proves is what it says.
     const paneHostReplies = post.mock.calls.filter(([payload]) =>
       JSON.stringify(payload).includes('pane-host/'),
     );
@@ -543,9 +543,9 @@ describe('PluginFrameHost boundary', () => {
   });
 
   test('a NOTIFY from a foreign origin is never served either', () => {
-    // The origin pin is one shared line, so this is the same code path — but
-    // a future reorder that only moves the fast paths would leave the confirm
-    // test green while this one reds.
+// The origin pin is one shared line, so this is the same code path — but
+// a future reorder that only moves the fast paths would leave the confirm
+// test green while this one reds.
     renderHost();
     const post = vi.spyOn(window, 'postMessage');
 
@@ -571,8 +571,8 @@ describe('PluginFrameHost boundary', () => {
 
     postPaneHost('pane-host/exfiltrate', {});
 
-    // Silence is how #3308 and #3323 both stayed broken: the capability was
-    // advertised, the message went nowhere, and nothing said so.
+ // Silence is how archive#3308 and archive#3323 both stayed broken: the capability was
+// advertised, the message went nowhere, and nothing said so.
     expect(post).toHaveBeenCalledWith(
       {
         method: 'pane-host/refused',
@@ -598,16 +598,16 @@ describe('PluginFrameHost boundary', () => {
       target: { kind: 'app-surface', surfaceId: 'agents' },
     });
 
-    // The same destination the documented `target: '/agents'` string reaches,
-    // through the same contract member -- one vocabulary, two encodings.
+// The same destination the documented `target: '/agents'` string reaches,
+// through the same contract member -- one vocabulary, two encodings.
     expect(navigation.navigate).toHaveBeenCalledWith('/agents', {});
   });
 
   test('the toast budget refuses a flood raised as a contract notify', () => {
     renderHost();
-    // Acceptance 3: a pane must not be able to spend more of the user's
-    // attention by being in a different tier, and the namespaced spelling of
-    // the intent must not be a way around the bound the legacy one has.
+// Acceptance 3: a pane must not be able to spend more of the user's
+// attention by being in a different tier, and the namespaced spelling of
+// the intent must not be a way around the bound the legacy one has.
     for (let index = 0; index < 25; index += 1) {
       postPaneHost('pane-host/notify', { text: `tick ${index}` });
     }
@@ -624,7 +624,7 @@ describe('PluginFrameHost boundary', () => {
 });
 
 /**
- * station#4300 deleted the frame's `api-request` bridge. The shell no longer
+ * archive#4300 deleted the frame's `api-request` bridge. The shell no longer
  * performs `/api/**` requests on a plugin frame's behalf under the operator's
  * credential: the method has no handler, and nothing in the pane-host contract
  * replaces it.
@@ -636,10 +636,10 @@ describe('PluginFrameHost boundary', () => {
  */
 describe('the api-request bridge is gone (station#4300)', () => {
   test('an api-request reaches nothing: no fetch, no reply, no refusal', async () => {
-    // The most permissive grant set the product can produce, aimed at a path
-    // those grants used to cover, so this cannot pass because the request
-    // would have been refused on its merits — under the old bridge this exact
-    // message was ALLOWED and performed.
+// The most permissive grant set the product can produce, aimed at a path
+// those grants used to cover, so this cannot pass because the request
+// would have been refused on its merits — under the old bridge this exact
+// message was ALLOWED and performed.
     renderHost({
       plugin: {
         name: 'demo',
@@ -670,22 +670,22 @@ describe('the api-request bridge is gone (station#4300)', () => {
 
     await settle();
     expect(fetchMock).not.toHaveBeenCalled();
-    // Not answered on its own channel...
+// Not answered on its own channel...
     expect(
       post.mock.calls
         .map(([payload]) => (payload as PaneHostReply)?.method)
         .filter((method) => method === 'api-response'),
     ).toEqual([]);
-    // ...and not refused on the contract's channel either. An unrecognised
-    // uplink method is not the adapter's, so it is neither served nor
-    // answered — the same treatment any undefined method gets.
+//.and not refused on the contract's channel either. An unrecognised
+// uplink method is not the adapter's, so it is neither served nor
+// answered — the same treatment any undefined method gets.
     expect(refusalsFor(post)).toEqual([]);
   });
 
   test('the frame transport still serves the contract it does implement', async () => {
-    // The negative above would also pass if the message listener were broken
-    // outright. A live pane-host member through the same transport is what
-    // makes it a claim about `api-request` specifically.
+// The negative above would also pass if the message listener were broken
+// outright. A live pane-host member through the same transport is what
+// makes it a claim about `api-request` specifically.
     const navigation = renderHost({
       plugin: {
         name: 'demo',

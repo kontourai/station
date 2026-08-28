@@ -49,11 +49,11 @@ describe('renderSettingRow', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
 
-  // station#1840: the control shows the EFFECTIVE value. An un-overridden
-  // default-on setting (`value === undefined`, `defaultValue: true` — e.g.
-  // mcpUiHost) used to render an OFF switch beside copy describing an active
-  // feature; the DEFAULT chip, not a contradicting control, carries the
-  // default-vs-overridden distinction.
+// archive#1840: the control shows the EFFECTIVE value. An un-overridden
+// default-on setting (`value === undefined`, `defaultValue: true` — e.g.
+// mcpUiHost) used to render an OFF switch beside copy describing an active
+// feature; the DEFAULT chip, not a contradicting control, carries the
+// default-vs-overridden distinction.
   describe('un-overridden values render the registry default (station#1840)', () => {
     test('boolean: undefined value with defaultValue true renders checked', () => {
       const def = stringDef({
@@ -216,8 +216,8 @@ describe('renderSettingRow', () => {
     ]);
   });
 
-  // station#1557: provenance no longer disables anything. It says where the
-  // value came from; it never claims an edit would be ignored.
+// archive#1557: provenance no longer disables anything. It says where the
+// value came from; it never claims an edit would be ignored.
   test('a declared env fallback does not disable the control', () => {
     const provenance: SettingProvenanceEntry = { source: 'file' };
     render(
@@ -257,9 +257,9 @@ describe('renderSettingRow', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  // station#settings-revamp slice 3 review finding 4: onChange write-path
-  // coverage per kind — the render-only tests above never exercised what
-  // each control actually SENDS back through onChange.
+// archive#settings-revamp: onChange write-path
+// coverage per kind — the render-only tests above never exercised what
+// each control actually SENDS back through onChange.
   describe('onChange write paths', () => {
     test('string: clearing the input calls onChange(null), not onChange("")', () => {
       const onChange = vi.fn();
@@ -348,8 +348,8 @@ describe('renderSettingRow', () => {
     });
 
     test('a row whose value comes from the environment still forwards an edit', () => {
-      // The user-visible consequence of #1557: storing a value is how you
-      // take over from the environment fallback, so the edit must land.
+ // The user-visible consequence of archive#1557: storing a value is how you
+// take over from the environment fallback, so the edit must land.
       const provenance: SettingProvenanceEntry = {
         source: 'env',
         envVar: 'MY_ENV',

@@ -46,8 +46,8 @@ function mountAnchor(name: string) {
 }
 
 afterEach(() => {
-  // Unmount through RTL first; wiping innerHTML underneath it makes its own
-  // cleanup throw on a container it no longer owns.
+ // Unmount through first; wiping innerHTML underneath it makes its own
+// cleanup throw on a container it no longer owns.
   cleanup();
   for (const stale of document.querySelectorAll(
     `[${FIRST_RUN_ANCHOR_ATTRIBUTE}]`,
@@ -65,13 +65,13 @@ describe('Coachmark accessibility', () => {
     mountAnchor('schedule');
     renderCoachmark();
     const dialog = screen.getByRole('dialog');
-    // Not modal: the coachmark annotates the surface behind it, which must
-    // stay visible and reachable — sealing off the page during a tour ABOUT
-    // the page is self-defeating.
+// Not modal: the coachmark annotates the surface behind it, which must
+// stay visible and reachable — sealing off the page during a tour ABOUT
+// the page is self-defeating.
     expect(dialog.getAttribute('aria-modal')).toBe('false');
-    // Resolve the ARIA relationships by hand — the accessible name and
-    // description must come from the step's own title and body, not from a
-    // generic "Tour" label that tells a screen-reader user nothing.
+// Resolve the ARIA relationships by hand — the accessible name and
+// description must come from the step's own title and body, not from a
+// generic "Tour" label that tells a screen-reader user nothing.
     const labelledBy = dialog.getAttribute('aria-labelledby');
     const describedBy = dialog.getAttribute('aria-describedby');
     expect(document.getElementById(labelledBy!)?.textContent).toBe(
@@ -122,7 +122,7 @@ describe('Coachmark anchoring', () => {
   });
 
   test('falls back to an unanchored card rather than pointing at nothing', () => {
-    // No anchor element in the document at all.
+// No anchor element in the document at all.
     renderCoachmark({ anchor: 'a-surface-that-is-not-mounted' });
     const card = screen.getByTestId('first-run-coachmark');
     expect(card.getAttribute('data-anchored')).toBe('false');
@@ -130,18 +130,18 @@ describe('Coachmark anchoring', () => {
   });
 
   test('waits for an anchor that only appears after the step navigates', async () => {
-    // The real failure this covers: a step mounts its coachmark and navigates
-    // in the same commit, so the anchor is NEVER present on the first
-    // measurement. Two fixed retries (60ms/300ms) looked fine in tests that
-    // mount the anchor first, and on a real machine gave up before the
-    // review-queue route had painted — the card silently fell back to
-    // unanchored while its anchor sat in the DOM.
+// The real failure this covers: a step mounts its coachmark and navigates
+// in the same commit, so the anchor is NEVER present on the first
+// measurement. Two fixed retries (60ms/300ms) looked fine in tests that
+// mount the anchor first, and on a real machine gave up before the
+// review-queue route had painted — the card silently fell back to
+// unanchored while its anchor sat in the DOM.
     renderCoachmark();
     expect(
       screen.getByTestId('first-run-coachmark').getAttribute('data-anchored'),
     ).toBe('false');
 
-    // Well past the old 300ms window.
+// Well past the old 300ms window.
     await new Promise((resolve) => setTimeout(resolve, 400));
     mountAnchor('schedule');
 

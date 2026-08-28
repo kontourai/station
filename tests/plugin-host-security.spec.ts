@@ -30,7 +30,7 @@ const HOSTILE_PLUGIN_SOURCE = `
   try { void window.parent.__TAURI__; } catch {}
   try { void window.parent.__TAURI_INTERNALS__.invoke('plugin:fs|read_file', {}); } catch {}
   try { fetch(${JSON.stringify(BLOCKED_URL)}).catch(() => {}); } catch {}
-  // station#4300 deleted the shell's \`api-request\` bridge. These two posts
+  // archive#4300 deleted the shell's \`api-request\` bridge. These two posts
   // are the message it used to answer, sent from real plugin bytes in a real
   // frame: \`hits.api\` staying 0 is the end-to-end proof that no handler
   // answers the name any more. (The DISCRIMINATING case — a path the bridge
@@ -52,7 +52,7 @@ const HOSTILE_PLUGIN_SOURCE = `
 `;
 
 /**
- * A BENIGN bundle, written against the pane-host contract (station#4201 step
+ * A BENIGN bundle, written against the pane-host contract (archive#4201 step
  * 3). It raises the contract's one request/response intent and then reports
  * the answer it received back to the shell, so a single assertion covers the
  * whole loop: frame -> host -> Station's own modal -> the user's decision ->
@@ -201,7 +201,7 @@ async function stageRemotePlugin(page: Page, bundle = hostileBundle) {
         },
       }),
     ),
-    // station#3102: `probeServerConnection` (`src-ui/src/lib/serverHealth.ts`)
+    // archive#3102: `probeServerConnection` (`src-ui/src/lib/serverHealth.ts`)
     // does not consider the connection healthy on the `.well-known`
     // handshake alone — it also requires this endpoint to answer with a
     // `bootId`. Without it, the broad `/api/**` catch-all above answers
@@ -210,7 +210,7 @@ async function stageRemotePlugin(page: Page, bundle = hostileBundle) {
     // the connection status never reaches `'connected'` and
     // `PluginRegistryGate` suppresses every capability banner. This mock is
     // what turns this fixture's handshake from unhealthy into genuinely
-    // healthy — the missing half `#3102` was filed to add.
+    // healthy — the missing half `archive#3102` was filed to add.
     page.route(`${REMOTE_ORIGIN}/api/system/identity`, (route) =>
       route.fulfill(
         json({
@@ -299,7 +299,7 @@ async function stageRemotePlugin(page: Page, bundle = hostileBundle) {
   await page.exposeFunction('recordPluginNavigation', () => {
     hits.navigations += 1;
   });
-  // station#3323 routed plugin navigation to the real seam, so the containment
+  // archive#3323 routed plugin navigation to the real seam, so the containment
   // claim is now observed at the effect — a history entry for the hostile
   // bundle's target — rather than at a CustomEvent nothing consumed.
   await page.addInitScript(() => {
@@ -436,17 +436,17 @@ test.describe('isolated remote plugin host security', () => {
     // which is the isolation working. The hostile bundle attempts
     // window.parent.__TAURI__ and __TAURI_INTERNALS__.invoke above; observing
     // that attempt fail requires running this suite INSIDE the real WebView,
-    // tracked in station#2495. Until that harness exists, native Stations stay
+    // tracked in archive#2495. Until that harness exists, native Stations stay
     // on the consent override rather than claiming an unproven boundary.
   });
 
-  // station#3102 (un-fixme'd — was `test.fixme` with no tracking issue).
+  // archive#3102 (un-fixme'd — was `test.fixme` with no tracking issue).
   //
   // The mismatch CONTRACT (an undeclared export marks the plugin failed and is
   // never silently trusted) is proven in src-ui/src/__tests__/PluginFrameHost.test.tsx.
   // Proving its BANNER surface end-to-end additionally requires a fully healthy
   // staged remote connection: PluginRegistryGate deliberately suppresses
-  // capability banners whenever the connection is unhealthy (station#2455), and
+  // capability banners whenever the connection is unhealthy (archive#2455), and
   // this fixture's handshake used to leave the connection in a compat-error
   // state — `probeServerConnection` never got a `bootId` from
   // `/api/system/identity` (it fell through to the broad `/api/**` catch-all
@@ -483,7 +483,7 @@ test.describe('isolated remote plugin host security', () => {
 });
 
 /**
- * station#4201 step 3: the pane-host contract, across the iframe boundary.
+ * archive#4201 step 3: the pane-host contract, across the iframe boundary.
  *
  * The unit suites prove the shell's half — the adapter decodes, the modal is
  * Station's, the decision resolves. None of them can prove the answer is

@@ -1,16 +1,16 @@
 /**
- * station#1399 slice 1 — provenance-bound UI blocks.
+ * Provenance-bound UI blocks.
  *
  * Typed, exact references to what a block's rendered claim was derived
  * from. Every kind names a concrete, checkable thing (never a free-text
- * description) so a later slice can actually resolve it against the
+ * description) so a consumer can actually resolve it against the
  * conversation transcript, a file's content, or a live binding:
  *  - `toolCallId` — the exact tool call whose result produced the value.
  *  - `messageId` — the exact message the value was read from.
  *  - `fileDigest` — a file path plus the content digest read at that path,
  *    so a later edit invalidates the reference instead of silently
  *    re-pointing it.
- *  - `binding` — a live `bindingId` at an exact `revision` (station#4079's
+ *  - `binding` — a live `bindingId` at an exact `revision` (archive#4079's
  *    pin/persistence model; the *generation* axis the design calls out is
  *    materialization-time and is stamped by the host at accept time, not
  *    supplied by the source ref).
@@ -24,8 +24,8 @@ export type UIBlockProvenanceSourceRef =
   | { kind: 'binding'; bindingId: string; revision: number };
 
 /**
- * Third visual state, distinct from both "attested" and "no data claimed"
- * (design comment, station#1399): a purely decorative block renders
+ * Third visual state, distinct from both "attested" and "no data claimed":
+ * a purely decorative block renders
  * plainly, a block making data claims WITH a checkable source renders
  * `attested`, and a block making data claims WITHOUT one renders
  * `unattested` — visibly, never as a quiet default.
@@ -37,15 +37,14 @@ export type UIBlockProvenanceSourceRef =
  * every time, which is what makes a self-declared `'decorative'` on a
  * data-bearing block a refusal rather than a trusted downgrade.
  *
- * **Precisely what `'attested'` means (station#1399 fix round 2, B5 — the
- * reviewer's condition for accepting the host's upward correction, M6):**
- * `'attested'` means the host receipted this block's source DECLARATION and
- * bound a digest to it at acceptance time — it does NOT mean the named
- * sources were verified to exist or to actually contain the claimed value.
- * Resolving a `derivedFrom` reference against the real conversation
- * transcript/file/binding it names is future work (R3/AC4's "unauthorized,
- * missing, stale, or unknown references" gaps), not something slice 1's
- * `'attested'` already claims.
+ * **Precisely what `'attested'` means:** `'attested'` means the host
+ * receipted this block's source DECLARATION and bound a digest to it at
+ * acceptance time — it does NOT mean the named sources were verified to
+ * exist or to actually contain the claimed value. Resolving a
+ * `derivedFrom` reference against the real conversation
+ * transcript/file/binding it names (the "unauthorized, missing, stale, or
+ * unknown references" gaps) is future work, not something `'attested'`
+ * claims.
  */
 export type UIBlockAttestationState = 'attested' | 'unattested' | 'decorative';
 
@@ -59,9 +58,9 @@ export interface UIBlockBase {
    * see {@link assertUIBlockProvenanceAccepted}, the refusal gate every
    * emission path calls before a data-bearing block is accepted.
    *
-   * Stored as the normalized SOURCE LIST, not only its digest, so a later
-   * slice can compute narrowing (a re-render dropping sources) vs. adding
-   * (a re-render claiming a new one) without re-deriving it from a hash.
+ * Stored as the normalized SOURCE LIST, not only its digest, so a later
+ * consumer can compute narrowing (a re-render dropping sources) vs. adding
+ * (a re-render claiming a new one) without re-deriving it from a hash.
    */
   derivedFrom?: UIBlockProvenanceSourceRef[];
   /**
@@ -140,10 +139,9 @@ export interface UIFormBlock extends UIBlockBase {
 export type UIBlock = UICardBlock | UITableBlock | UICodeBlock | UIFormBlock;
 
 /**
- * The decorative/claiming boundary, derived — not declared (station#1399
- * design comment: "Unattested must never be the quiet default (same
- * principle as ProvenanceBadge's history: a label the code doesn't derive
- * is a defect)").
+ * The decorative/claiming boundary, derived — not declared: "Unattested
+ * must never be the quiet default" — a label the code doesn't derive is a
+ * defect.
  *
  * The concrete mechanic: a block is CLAIMING when it carries a structured
  * set of separately-addressable data values that could each be traced to a
@@ -158,16 +156,16 @@ export type UIBlock = UICardBlock | UITableBlock | UICodeBlock | UIFormBlock;
  *    asked to supply), not asserted facts about the world; a form requests
  *    data rather than claiming it.
  *
- * If a later slice needs a form's `defaultValue` or a code block's content
- * to carry a claim, that is a contract change to make explicitly (a new
- * data-bearing shape), not a silent reinterpretation of this predicate.
+ * If a later consumer needs a form's `defaultValue` or a code block's
+ * content to carry a claim, that is a contract change to make explicitly
+ * (a new data-bearing shape), not a silent reinterpretation of this
+ * predicate.
  *
- * **Scope, stated precisely (station#1399 fix round, L7 — the previous
- * wording overclaimed):** this slice attests only structured `card.fields`
- * and `table.rows`. Titles, captions, column headers, form labels/defaults,
- * code, and prose can still carry an unattested claim and are out of
- * slice-1's derivation reach — nothing here inspects them, and no visible
- * state describes them as checked.
+ * **Scope, stated precisely:** this predicate attests only structured
+ * `card.fields` and `table.rows`. Titles, captions, column headers, form
+ * labels/defaults, code, and prose can still carry an unattested claim and
+ * are outside this derivation's reach — nothing here inspects them, and no
+ * visible state describes them as checked.
  */
 export function isUIBlockDataBearing(block: UIBlock): boolean {
   return isRawUIBlockDataBearing(block);
@@ -200,13 +198,13 @@ export function isRawUIBlockDataBearing(raw: {
  * characters, `computeUIBlockProvenanceDigest`'s and `receipt-chain.ts`'s
  * `computeChainedReceiptId`'s own `createHash('sha256').digest('hex')`
  * output. A `fileDigest` source ref's `digest` field is required to match
- * this shape (station#1399 fix round, M5) so it is at minimum
- * digest-shaped, even though slice 1 does not (yet) recompute it against
- * the named file's actual bytes — that resolution is later-slice work.
+ * this shape so it is at minimum digest-shaped, even though it is not
+ * (yet) recomputed against the named file's actual bytes — that resolution
+ * is future work.
  */
 const HEX_SHA256 = /^[0-9a-f]{64}$/;
 
-/** Non-empty after trimming — rejects `''`/whitespace-only identifiers (M5). */
+/** Non-empty after trimming — rejects `''`/whitespace-only identifiers. */
 function isNonEmptyIdentifier(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -214,10 +212,10 @@ function isNonEmptyIdentifier(value: unknown): value is string {
 /**
  * Parses an arbitrary (untrusted, agent/tool-authored) value into typed
  * source refs, dropping any entry that doesn't match one of the four known
- * shapes OR fails semantic validation (station#1399 fix round, M5: an empty
- * `toolCallId`/`messageId`/`path`, a `digest` that isn't digest-shaped, or a
- * negative/non-integer `revision` is treated as absent, not as a source —
- * `''` and `-1` are not references to anything checkable). Shared by every
+ * shapes OR fails semantic validation (an empty `toolCallId`/`messageId`/
+ * `path`, a `digest` that isn't digest-shaped, or a negative/non-integer
+ * `revision` is treated as absent, not as a source — `''` and `-1` are not
+ * references to anything checkable). Shared by every
  * acceptance path — the server-side `render_component` validator
  * (`src-server/runtime/tools/vended-tool-compat.ts`), the server-side
  * event-provenance sanitizer (`src-server/runtime/conversation/ui-block-provenance.ts`),
@@ -271,13 +269,12 @@ export function parseUIBlockSourceRefs(
  * Sort/dedupe key for one source ref — used only to derive a stable key,
  * this is NOT a digest and must not be used as one.
  *
- * station#1399 fix round, H3 (independent review): a hand-joined string
- * (`` `fileDigest ${path} ${digest}` ``) is ambiguous — a delimiter that can
- * also appear INSIDE a field value collides two different refs onto the same
- * key. `{ path: 'a', digest: 'b c' }` and `{ path: 'a b', digest: 'c' }` both
- * joined to `"fileDigest a b c"` under the old scheme, so normalizing
- * `[refA, refB]` silently dropped one as a "duplicate" (proven live: the
- * probe reduced a 2-element array to 1). `canonicalizeForDigest` + `JSON.stringify`
+ * A hand-joined string (`` `fileDigest ${path} ${digest}` ``) is
+ * ambiguous — a delimiter that can also appear INSIDE a field value
+ * collides two different refs onto the same key: `{ path: 'a', digest:
+ * 'b c' }` and `{ path: 'a b', digest: 'c' }` both join to
+ * `"fileDigest a b c"`, so normalizing `[refA, refB]` would silently drop
+ * one as a "duplicate". `canonicalizeForDigest` + `JSON.stringify`
  * is a real serialization with string-escaping, so two structurally
  * different refs cannot collide onto the same bytes.
  */
@@ -337,9 +334,9 @@ export class UIBlockProvenanceRefusedError extends Error {
 }
 
 /**
- * The synchronous, agent-facing refusal gate (station#1399 Core Contract
- * bullet 1: "A block emission without it is refused at the contract layer,
- * the same way a malformed block is refused today"). Called by the
+ * The synchronous, agent-facing refusal gate ("A block emission without
+ * provenance is refused at the contract layer, the same way a malformed
+ * block is refused"). Called by the
  * emission path that CAN reject a call and let the caller retry
  * (`render_component`) — not by the passive extraction path that has
  * nothing to reject a call on (`extractUIBlocks`/`normalizeUIBlock`, which
@@ -358,10 +355,10 @@ export class UIBlockProvenanceRefusedError extends Error {
  * `declaredAttestation` is read only to detect case 2; it is discarded
  * afterward and never assigned onto the returned block.
  *
- * `surfaceName` (station#4079 fix round, C6) names the emission surface in
+ * `surfaceName` names the emission surface in
  * the thrown message — defaults to `'render_component'` so the original
  * caller (`vended-tool-compat.ts`) is byte-identical, while a second
- * refusal-capable boundary (`board_pin`, station#4079) passes its own name
+ * refusal-capable boundary (`board_pin`) passes its own name
  * rather than lying about which surface refused the call.
  */
 export function assertUIBlockProvenanceAccepted(

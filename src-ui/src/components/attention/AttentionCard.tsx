@@ -83,7 +83,7 @@ export function AttentionCard({
 }
 
 /**
- * station#3203: the cause and the identity of a failed session. The cause is
+ * archive#3203: the cause and the identity of a failed session. The cause is
  * rendered unconditionally — an absent `body` means no reason was recorded,
  * and saying that is what distinguishes it from a row that simply forgot to
  * show one (the reported "'Session failed' tells me nothing"). The identity
@@ -133,7 +133,7 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
   const mutation = useNotificationActionMutation();
   const dismissMutation = useDismissNotificationMutation();
   const livePending = isApprovalLivePending(item);
-  // station#3779: measured — this does NOT delete. `DELETE /notifications/:id`
+  // archive#3779: measured — this does NOT delete. `DELETE /notifications/:id`
   // sets `status: 'dismissed'` and keeps the record; what differs from the bulk
   // acknowledge is the subject and terminality, not destruction.
   const dismiss = () => dismissMutation.mutate(item.source.notificationId);
@@ -255,7 +255,7 @@ function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
 }
 
 /**
- * station#1914: `session-failed` is DERIVED on every read (see the item's
+ * archive#1914: `session-failed` is DERIVED on every read (see the item's
  * own doc comment), so "Dismiss" here does not delete a stored notification
  * the way every other Dismiss button does — it records an acknowledgement of
  * THIS version of the failure (`AttentionProjectionService.acknowledge`) and
@@ -268,7 +268,7 @@ function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
   return (
     <>
       {/*
-       * station#3203: opening records the SAME acknowledgement Dismiss does.
+       * archive#3203: opening records the SAME acknowledgement Dismiss does.
        * The asymmetry between the two was the bug — both are the user acting
        * on this row, and only one of them decremented the badge.
        *
@@ -288,7 +288,7 @@ function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
 
 /**
  * A dismissal hides an attention fact; it does not resolve its source, and it
- * destroys nothing — so it keeps the word "Dismiss" (station#3779), read from
+ * destroys nothing — so it keeps the word "Dismiss" (archive#3779), read from
  * the shared action model rather than written here.
  */
 function DismissAttentionItem({ item }: { item: AttentionItem }) {
@@ -329,7 +329,7 @@ function GateRouteBackDetail({ item }: { item: GateRouteBackAttentionItem }) {
 /**
  * Shared affordance for `gate-route-back` and `gate-blocked`: a deep link
  * into the owning Flow run console plus an optional re-evaluate, which posts
- * to the same `POST .../runs/:runId/evaluate` route the console itself uses
+ * to the same `POST.../runs/:runId/evaluate` route the console itself uses
  * — resolving the gate here produces the identical run-history trail as
  * resolving it in place.
  */
@@ -369,7 +369,7 @@ function GateReEvaluateAction({
 /**
  * `gate-exception`: the gate's retry budget is exhausted, so re-evaluating
  * cannot resolve it — a human exception decision is genuinely pending. The
- * dialog posts to the EXISTING `POST .../runs/:runId/exception` endpoint
+ * dialog posts to the EXISTING `POST.../runs/:runId/exception` endpoint
  * (receipt parity with accepting the exception from the run console).
  */
 function GateExceptionAction({ item }: { item: GateExceptionAttentionItem }) {
@@ -511,7 +511,7 @@ function invalidateGateQueries(
 
 /**
  * `onOpen`, when supplied, runs to completion before the browser leaves for
- * `href` (station#3203) — see `acknowledgeThenOpen`. Without it the link keeps
+ * `href` (archive#3203) — see `acknowledgeThenOpen`. Without it the link keeps
  * its plain, untouched `<a href>` behaviour, which is what every kind other
  * than `session-failed` still wants: none of them has an acknowledgement to
  * record, and the server ignores an ack recorded against them anyway

@@ -13,7 +13,7 @@ import {
 } from '../accent-contrast';
 
 /**
- * station#3305 review finding: `--text-on-accent` named a derivation nothing
+ * archive#3305 finding: `--text-on-accent` named a derivation nothing
  * computed. These pin the derivation itself (both ends of the luminance
  * range), the AA outcome for every shipped preset, and the fact that the two
  * custom properties are applied and cleared together.
@@ -28,7 +28,7 @@ describe('accentContrastColor', () => {
   });
 
   test('flips the indigo preset that was the reported AA failure', () => {
-    // 4.47:1 against the static white token; 4.70:1 once derived.
+// 4.47:1 against the static white token; 4.70:1 once derived.
     expect(contrastRatio('#6366f1', ACCENT_CONTRAST_LIGHT)!).toBeLessThan(4.5);
     expect(accentContrastColor('#6366f1')).toBe(ACCENT_CONTRAST_DARK);
   });
@@ -51,9 +51,9 @@ describe('accentContrastColor', () => {
 
 describe('accentHoverFill', () => {
   test('shifts away from the accent foreground, in both directions', () => {
-    // Dark foreground (a light-ish accent) -> a LIGHTER hover; light
-    // foreground (a dark accent) -> a darker one. Toward the foreground the
-    // pairing would lose contrast, which is what the fill has to preserve.
+// Dark foreground (a light-ish accent) -> a LIGHTER hover; light
+// foreground (a dark accent) -> a darker one. Toward the foreground the
+// pairing would lose contrast, which is what the fill has to preserve.
     expect(accentContrastColor('#6366f1')).toBe(ACCENT_CONTRAST_DARK);
     expect(relativeLuminance(accentHoverFill('#6366f1')!)!).toBeGreaterThan(
       relativeLuminance('#6366f1')!,
@@ -74,11 +74,11 @@ describe('accentHoverFill', () => {
   });
 
   test('clears AA (4.5:1) in the HOVER state for every shipped preset', () => {
-    // The delta this pins: hover used to swap the fill to --accent-darker
-    // (var(--k-brand)), which applyAccentColor never touched — every preset
-    // hovered at 4.09:1 against the shipped light brand (#0e7c64), under AA
-    // and under the 5.14:1 the built-in brand had. (Shipped @kontourai/ui
-    // tokens; index.css retints --k-brand only under :root.is-dev-build.)
+// The delta this pins: hover used to swap the fill to --accent-darker
+// (var(--k-brand)), which applyAccentColor never touched — every preset
+// hovered at 4.09:1 against the shipped light brand (#0e7c64), under AA
+// and under the 5.14:1 the built-in brand had. (Shipped @kontourai/ui
+// tokens; index.css retints --k-brand only under :root.is-dev-build.)
     for (const preset of ACCENT_PRESETS) {
       const foreground = accentContrastColor(preset)!;
       const hover = accentHoverFill(preset)!;
@@ -118,9 +118,9 @@ describe('applyAccentColor', () => {
   });
 
   test('the applied rest AND hover fills both pair legibly with the applied foreground', () => {
-    // Reads what the DOM actually carries rather than recomputing, so a call
-    // site that stops stamping one of the three (or freezes it at a theme
-    // value) fails here rather than passing on arithmetic.
+// Reads what the DOM actually carries rather than recomputing, so a call
+// site that stops stamping one of the three (or freezes it at a theme
+// value) fails here rather than passing on arithmetic.
     const root = document.createElement('div');
     for (const preset of ACCENT_PRESETS) {
       applyAccentColor(root, preset);

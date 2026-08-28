@@ -3,7 +3,7 @@
  *
  * Shared by the composer's attachment strip and its preview popover so the two
  * surfaces describing the same attachment cannot report its size in different
- * units (station#3375 review): the popover used to render a resized 1 MB image
+ * units (archive#3375): the popover used to render a resized 1 MB image
  * as `1024.0 KB` beside the strip's `1.0 MB`.
  *
  * Scope is those two surfaces, not the app: `AgentConnectionView` keeps its own

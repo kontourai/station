@@ -1,5 +1,5 @@
 /**
- * station#3089: the one read path for the runtime resource posture that
+ * archive#3089: the one read path for the runtime resource posture that
  * `src-server/services/infra/resource-posture.ts` already derives and
  * enforces (`admitEngineStart` refuses at critical, `admitScheduledJob`
  * defers at degraded/critical). Nothing computes a second notion of host

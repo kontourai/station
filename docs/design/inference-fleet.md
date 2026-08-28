@@ -1,18 +1,18 @@
 # Design: the inference fleet — receipted model routing across your Stations
 
 > Status: **direction recorded (owner decisions, 2026-08-01); tracking issue
-> [#1398](https://github.com/kontourai/station/issues/1398).** All nine open
+> [archive#1398](https://github.com/kontourai/station/issues/1398).** All nine open
 > questions are resolved — see §10 and the
 > [owner decision comment](https://github.com/kontourai/station/issues/1398#issuecomment-5151783495)
-> on #1398 (2026-08-01). This doc is the contract for the arc: the v1 scope, the
+> on archive#1398 (2026-08-01). This doc is the contract for the arc: the v1 scope, the
 > mesh-admission-compliance model, the privacy posture, and the slice plan.
 > Revise this doc — not just the code — when direction changes.
 >
-> **Slice 0 has shipped** as [#1426](https://github.com/kontourai/station/issues/1426)
-> (PR [#1438](https://github.com/kontourai/station/pull/1438)); §2.5 and §11
+> **Slice 0 has shipped** as [archive#1426](https://github.com/kontourai/station/issues/1426)
+> (PR [archive#1438](https://github.com/kontourai/station/pull/1438)); §2.5 and §11
 > record what that changed and the two follow-ups it surfaced
-> ([#1430](https://github.com/kontourai/station/issues/1430),
-> [#1431](https://github.com/kontourai/station/issues/1431)).
+> ([archive#1430](https://github.com/kontourai/station/issues/1430),
+> [archive#1431](https://github.com/kontourai/station/issues/1431)).
 >
 > **Slice 1 has shipped** — contribution opt-in (default off), the
 > `station.fleet-contribution/v1` contributed-subset manifest, and the
@@ -31,16 +31,16 @@
 > shipped differently from the plan and why.
 >
 > Every claim about current behavior carries file:line evidence; §12 lists what
-> is UNVERIFIED. Refs #741/#819 (personal fleet), #1123 (peer pairing, slices
-> 1–3 shipped), #423 (Datum routing seed), #1425 (portable project bindings),
-> #1392 (multi-tenant tier / owner attestation).
+> is UNVERIFIED. Refs archive#741/#819 (personal fleet), archive#1123 (peer pairing, slices
+> 1–3 shipped), archive#423 (Datum routing seed), archive#1425 (portable project bindings),
+> archive#1392 (multi-tenant tier / owner attestation).
 
 ## 0. Naming, sources, and one repo-policy note
 
 This repo does not name competitors (`AGENTS.md:21`; precedent
 `docs/design/settings-architecture.md:3-5`). The reference implementation
-#1398 compares us against is called **"the reference mesh"** throughout this
-doc. Its product name, repo, and file:line evidence live in #1398's body and
+archive#1398 compares us against is called **"the reference mesh"** throughout this
+doc. Its product name, repo, and file:line evidence live in archive#1398's body and
 comments and in the private ops workspace analysis; nothing here depends on
 reading them.
 
@@ -56,7 +56,7 @@ Those readings matter because two of them invert the naive positioning:
 - Its "**join policy**" is a community terms-of-service/age-attestation
   document fetched from the relay — **not** a contributor-requirements
   manifest. There is no shipped mechanism publishing "to contribute you must
-  offer X." The owner's framing in #1398 ("the join-policy pattern") is
+  offer X." The owner's framing in archive#1398 ("the join-policy pattern") is
   therefore an *extension* of that pattern into new territory, not adoption of
   a proven one. This doc treats it as such and defers it accordingly (§4.6).
 
@@ -108,7 +108,7 @@ what each participant learns, and where we are *worse* than they are today.
 
 **Non-goal, explicitly.** Community GPU pooling and tensor-parallel model
 splitting are **deferred** (§9). They serve a multi-tenant community Station
-does not have yet (#1392 is P3 and sized at 2+ quarters), and the splitting
+does not have yet (archive#1392 is P3 and sized at 2+ quarters), and the splitting
 mechanics in the reference mesh are not even in that repo — they live in a
 vendored SDK. Chasing them would be building the part we cannot differentiate
 on, for a tenant that does not exist.
@@ -118,9 +118,9 @@ on, for a tenant that does not exist.
 Read this section before proposing anything; several plausible designs are
 already foreclosed by what shipped.
 
-### 2.1 The fleet substrate exists and is further along than #1398 assumed
+### 2.1 The fleet substrate exists and is further along than archive#1398 assumed
 
-`#1398` was filed when peer pairing was a spike. Slices 1–3 of #1123 have since
+`archive#1398` was filed when peer pairing was a spike. Slices 1–3 of archive#1123 have since
 landed:
 
 - **`delegation` is a real, third pairing preset** —
@@ -160,7 +160,7 @@ a credential, or an inference endpoint on this type. It is a display model.
 
 ### 2.3 Station already has a capability manifest — `station.model-inventory/v2`
 
-This is the most important existing asset for #1398 and it is easy to miss.
+This is the most important existing asset for archive#1398 and it is easy to miss.
 `LaunchableModelInventory` (`packages/contracts/src/model-inventory.ts:64-71`)
 already carries, per model:
 
@@ -182,9 +182,9 @@ already specified. Do not invent a second one.** A fleet capability manifest is
 a `LaunchableModelInventory` fetched from a peer and attributed to its
 `environmentId`. The `locality`/`availability`/`freshness`/`diagnostics` fields
 are exactly the honest-degraded-state vocabulary §4.5 needs, and they were
-designed under #423's handoff contract to be *observations*, not assertions
+designed under archive#423's handoff contract to be *observations*, not assertions
 ("preserves unknown runtime or tool surface as null; an empty tool array remains
-known-empty" — #423 handoff contract).
+known-empty" — archive#423 handoff contract).
 
 **But note the exposure this creates immediately** (§5.3): `/api/connections` is
 a route family classified at `orchestration:read`
@@ -199,7 +199,7 @@ boundary.** Both were surfaced by the slice-0 arc (§2.5) and are the reason
 "reuse the existing manifest" is not the same as "the existing manifest is
 ready":
 
-- **[#1430](https://github.com/kontourai/station/issues/1430) — `toolSurface` is
+- **[archive#1430](https://github.com/kontourai/station/issues/1430) — `toolSurface` is
   always `null`.** No LLM provider populates `supportsTools`
   (`src-server/providers/llm/model-provider-types.ts:17` is declared but unset by
   bedrock/ollama/openai-compat/anthropic/google; bedrock has a pinned test
@@ -207,20 +207,20 @@ ready":
   yields `null` for every model connection. A fleet manifest whose tool-surface
   column is structurally unknowable cannot support tool-capability routing at
   all — and per §10 OQ-5, v1 contributes **models only**, which is partly why
-  that resolution is the right one now rather than a compromise. #1430 also
+  that resolution is the right one now rather than a compromise. archive#1430 also
   records a second gap that matters more at fleet scale:
   `getCachedLaunchableModelInventory()` is populated only as a side effect of
   the `GET /api/connections/model-inventory` route and invalidated on every
   connection mutation, so **capability derivation currently depends on whether
   someone visited the Connections page**. A peer's manifest must never be a
   function of the peer operator's browsing; slice 1 needs the deterministic
-  accessor #1430 calls for.
-- **[#1431](https://github.com/kontourai/station/issues/1431) — evidence is
+  accessor archive#1430 calls for.
+- **[archive#1431](https://github.com/kontourai/station/issues/1431) — evidence is
   frozen at model construction.** Grades do not re-resolve on smoke or
   connection change (§2.5). Locally that is a staleness bug; across a machine
   boundary it becomes a *false claim about another machine*, since the consuming
   Station cannot distinguish "B says confirmed" from "B said confirmed
-  yesterday and never re-checked." Whatever staleness semantics #1431 settles,
+  yesterday and never re-checked." Whatever staleness semantics archive#1431 settles,
   fleet routing inherits them — so it is a dependency of slice 3, not an
   unrelated follow-up.
 
@@ -242,7 +242,7 @@ count as a working chat turn, and already ships the copy for each degraded
 state. Reusing it makes admission compliance a *projection* problem, not a new
 verification stack.
 
-### 2.5 Dispatch is wired, single-host, and unsurfaced — and self-asserted its evidence until #1426
+### 2.5 Dispatch is wired, single-host, and unsurfaced — and self-asserted its evidence until archive#1426
 
 `createConfiguredDispatchModel`
 (`src-server/runtime/conversation/dispatch-model-policy.ts`) is opt-in per agent
@@ -250,8 +250,8 @@ via `execution.modelOptions.dispatch`, builds an ordered candidate list from
 local model connections, and persists a `DispatchReceipt` per invocation.
 
 **The defect this design found, and slice 0 fixed.** Before
-[#1426](https://github.com/kontourai/station/issues/1426) (PR
-[#1438](https://github.com/kontourai/station/pull/1438)), every candidate was
+[archive#1426](https://github.com/kontourai/station/issues/1426) (PR
+[archive#1438](https://github.com/kontourai/station/pull/1438)), every candidate was
 built with `evidence: { level: 'declared', capabilities:
 ['structured-tools','abort','usage'] }` — a constant, identical for the primary
 and every alternate. `minimumEvidence` accepts `'confirmed'`, but no code path
@@ -286,14 +286,14 @@ time.
    `<projectHome>/monitoring/model-dispatch-receipts.ndjson` (mode `0600`) and
    increments the `modelDispatchReceipts` counter. There is **no API route, no
    UI surface, and no signature**; repo-wide, the only non-test references are
-   this module and `metrics.ts:60`. The #1398 headline — *"here's the signed
+   this module and `metrics.ts:60`. The archive#1398 headline — *"here's the signed
    receipt of why"* — is today **neither surfaced nor signed** (§10 OQ-3;
    surfacing is slice 4).
 2. **`structured-tools` was removed from derived capabilities, deliberately, and
    the gap it exposed is open.** No Station provider populates `supportsTools`,
    so `toolSurface` is `null` for every model connection and no consumer can
    truthfully assert the capability
-   ([#1430](https://github.com/kontourai/station/issues/1430)). Asserting it
+   ([archive#1430](https://github.com/kontourai/station/issues/1430)). Asserting it
    would have been an unearned capability claim stacked on an honest evidence
    level. Candidates now assert `['abort','usage']`, or `[]` at `unavailable`
    (`:159-180`).
@@ -302,7 +302,7 @@ time.
 
 **And one new one:** evidence is resolved once at model construction and frozen
 into a static plan for the built agent's lifetime
-([#1431](https://github.com/kontourai/station/issues/1431)) — so a `confirmed`
+([archive#1431](https://github.com/kontourai/station/issues/1431)) — so a `confirmed`
 grade can outlive its `freshUntil` by up to a day, and an operator who runs a
 smoke to earn `confirmed` sees no effect until an unrelated rebuild. §4.3's
 freshness requirement is therefore not yet met even locally; see §2.3 and §11
@@ -311,7 +311,7 @@ slice 3 for what that means when the same evidence crosses a machine boundary.
 ### 2.6 The building blocks: what is wired, and at what version
 
 This is the section most likely to be skimmed and most likely to invalidate a
-plan. The authority boundary in #1398's first comment describes six owners;
+plan. The authority boundary in archive#1398's first comment describes six owners;
 **Datum and Bearing are not direct Station dependencies; Conduit remains on its
 older host-hook contract; Dispatch and Relay are pinned at the versions used by
 the implemented fleet path.**
@@ -332,7 +332,7 @@ Version drift between a pin and the install is guarded by
 - **Datum and Bearing are present but unused.** They arrive transitively
   (Bearing is a hard dependency of Datum; both are optional peers of Dispatch)
   and **no Station source file imports either** — repo-wide, the only
-  non-`node_modules` mentions are in `package-lock.json`. #423's Datum routing
+  non-`node_modules` mentions are in `package-lock.json`. archive#423's Datum routing
   is unimplemented; Station's own `resolveManagedModelBinding`
   (`src-server/runtime/plugins/runtime-provider-resolution.ts`) is a separate,
   Station-owned resolution path, not Datum's. "Datum resolves configured
@@ -427,14 +427,14 @@ Consequences for this design:
 
 An operator marks specific local model connections on Station B as
 **contributed to the fleet**. Station A, holding a peer credential for B
-(#1123's mechanism), discovers B's contributed models as a fleet capability
+(archive#1123's mechanism), discovers B's contributed models as a fleet capability
 manifest, verifies the claims it will route on, and can then run an agent turn
 whose model executes on B. Every routing decision, exclusion, retry, fallback,
 and budget stop is recorded as a Dispatch receipt attributing the chosen
 candidate to an `environmentId` and a verification level. Nothing is contributed
 by default; nothing is routed to unverified; nothing degrades silently.
 
-**Authority boundaries** (from #1398's first comment, mapped onto §2's reality):
+**Authority boundaries** (from archive#1398's first comment, mapped onto §2's reality):
 
 | Owner | Owns | Status today |
 |---|---|---|
@@ -469,7 +469,7 @@ it as an `openai-compat` model connection.
 
 - It hands A a **raw, unauthenticated, unrevocable** path to B's inference
   backend. Ollama on a LAN has no auth; once A has the URL, revoking A's
-  pairing credential revokes nothing. This directly contradicts #741's R3
+  pairing credential revokes nothing. This directly contradicts archive#741's R3
   ("enrollment is one-time and revocable") and the constraint that discovery is
   not authentication.
 - It cannot produce a receipt on B's side, so B has no record of what it
@@ -569,7 +569,7 @@ The envelope must be able to answer:
   `known-environment.ts:92-97`).
 - **Why that candidate, and why not the others** — the considered set with
   per-candidate exclusion reasons. Not-selected must be as legible as selected;
-  #423's AC already demands "selection reasons, exclusions, evidence snapshot
+  archive#423's AC already demands "selection reasons, exclusions, evidence snapshot
   age/digest, uncertainty, and fallback posture," and Datum's
   `CapabilityRoleResult` already has that exact vocabulary (`posture:
   override | durable | fallback | unavailable`, plus `exclusions`,
@@ -590,7 +590,7 @@ The envelope must be able to answer:
 surface reads is not a receipt, it is a log. Slice 4 (§11) adds a bounded read
 route and a monitoring surface.
 
-**"Signed" means hash-chained in v1 (§10 OQ-3).** #1398's headline says *signed*
+**"Signed" means hash-chained in v1 (§10 OQ-3).** archive#1398's headline says *signed*
 receipt. **No cryptographic signing exists anywhere in the building block
 layer** — not in Dispatch, Relay, Bearing, Datum, or Conduit. Every "receipt,"
 "observation," and "conformance evidence" record in all five is plain structured
@@ -764,7 +764,7 @@ Two honesty constraints that must survive review:
    Note the gap does **not** close by adding Bearing: Bearing's observations are
    content-addressed, not signed (§3.4). What Bearing adds is a *disciplined
    record* of provenance, freshness, and uncertainty — not an unforgeable one.
-   Independent attestation needs #1392's owner attestation and a signing story
+   Independent attestation needs archive#1392's owner attestation and a signing story
    that does not exist yet (§6.2; §10 OQ-3 records signing as a follow-up).
 2. **A is entitled to demand its own smoke.** A consumer may require a fresh
    end-to-end completion *through the fleet path it will actually use* before
@@ -864,7 +864,7 @@ requirements." Two findings shape how far this doc goes:
 
 1. The reference mesh has **no such mechanism** (§0). Its join policy is
    terms-of-service text. There is no proven pattern here to adopt.
-2. Station has **no community tenant** to publish one. #1392 is P3 and
+2. Station has **no community tenant** to publish one. archive#1392 is P3 and
    explicitly sized at 2+ quarters.
 
 **Decided: design the seam in v1, ship no policy engine.** Concretely,
@@ -910,7 +910,7 @@ Stated as the contract:
 - **No third party sees prompt or completion content, because there is no third
   party in the request path.** This holds by construction in v1 and must be
   re-argued, not assumed, the moment any coordinator, relay, or directory is
-  introduced (#615, #1392).
+  introduced (archive#615, archive#1392).
 - **Station B — the serving machine — sees everything it is asked to
   generate.** It must, to generate it. This is the same bound the reference mesh
   concedes in its own vision doc: prompts go to people rather than a vendor,
@@ -920,7 +920,7 @@ Stated as the contract:
 - **The serving Station logs a serve-side receipt** (§3.4), which is by design a
   record that a prompt was served — its metadata, not its content. Per §10 OQ-4
   those receipts stay **local to the machine that wrote them** in v1; whether
-  they ever replicate is deferred to #741 slice 3, where replication consent
+  they ever replicate is deferred to archive#741 slice 3, where replication consent
   actually lives.
 
 ### 5.2 Discovery metadata minimization
@@ -955,15 +955,15 @@ Station's rules, chosen against that:
    must never be extended to convey what it can run.
 5. **Metadata minimization is a stated requirement of the receipt too.** A
    receipt that names every candidate model on every machine, replicated across
-   the fleet (#741 slice 3), is a fleet-wide inventory disclosure by another
+   the fleet (archive#741 slice 3), is a fleet-wide inventory disclosure by another
    route. This is why §10 OQ-4 keeps receipts **local-only in v1** and hands the
-   replication question to #741 slice 3 rather than settling it here.
+   replication question to archive#741 slice 3 rather than settling it here.
 
 ### 5.3 The exposure this design does not create but must not ignore
 
 `GET /api/connections/model-inventory` is currently readable by any peer holding
 `orchestration:read` (§2.3). Today that is a `delegation`-scoped peer or a
-Standard paired device. That predates this design. But #1398 makes the model
+Standard paired device. That predates this design. But archive#1398 makes the model
 inventory a *routing input*, which raises the value of the disclosure and makes
 "who may enumerate my models" a question worth answering deliberately rather
 than inheriting.
@@ -1054,9 +1054,9 @@ access immediately, using the existing mechanism
 (`machine-relationships.md:39`), with no separate inference ACL to forget to
 clean up.
 
-### 6.2 Relationship to #1392 owner attestation
+### 6.2 Relationship to archive#1392 owner attestation
 
-#1392's owner attestation (an agent carrying a signed authorization from its
+archive#1392's owner attestation (an agent carrying a signed authorization from its
 human owner; revoking the owner instantly de-auths all their agents) is the
 primitive that would let fleet inference cross an ownership boundary safely. The
 composition is clean and should be recorded now:
@@ -1071,19 +1071,19 @@ composition is clean and should be recorded now:
   it is a credential list is the class of provenance overstatement that reviews
   in this repo consistently catch.
 
-The reference mesh's own owner-binding scheme is worth studying when #1392 gets
+The reference mesh's own owner-binding scheme is worth studying when archive#1392 gets
 there — it binds a machine-level key to a community identity with two
 signatures, one of which covers the *exact advertised endpoints*, specifically so
 that controlling the community key alone cannot substitute an endpoint. Its
 weakness is equally instructive: revocation lags up to two poll intervals and
 requires a process restart, because the trust store is fixed at node start.
-Station should not adopt a design whose revocation needs a restart — #741 R2/R3
+Station should not adopt a design whose revocation needs a restart — archive#741 R2/R3
 and the existing device-list revocation semantics set a higher bar we already
 meet.
 
-### 6.3 Binding-aware routing constraints (#1425)
+### 6.3 Binding-aware routing constraints (archive#1425)
 
-#1425 splits a Project into a portable manifest (remote-keyed resources) and
+archive#1425 splits a Project into a portable manifest (remote-keyed resources) and
 per-Station local bindings (remote → local checkout path). Its own text names
 the join point: *"run this task on whichever of my Stations has a binding for
 repo X"* becomes a routing constraint with a Dispatch receipt.
@@ -1095,13 +1095,13 @@ appears and the distinction is worth writing down:
   stay on A (§3.2). A binding constraint is therefore usually *irrelevant* to
   choosing where to generate tokens — B does not need the repo to run the model.
 - Where it *does* bind is the sibling case: **task** delegation (`delegate_task`,
-  #1123) genuinely needs the repo present, and #1425's binding is the constraint
+  archive#1123) genuinely needs the repo present, and archive#1425's binding is the constraint
   that makes "route to a capable machine" honest instead of hopeful.
 
 So: the receipt schema should carry a general `constraints[]` channel with
 binding constraints as its first member, and the *router* should support them
 uniformly, but v1 fleet-inference routing will rarely populate it. Building the
-channel now costs little and stops #1425 and #1123 from each inventing their
+channel now costs little and stops archive#1425 and archive#1123 from each inventing their
 own. **Claiming binding-aware inference routing as a v1 user-facing feature
 would be overselling it** — the honest v1 statement is "the receipt can cite a
 constraint, and task routing is where constraints do the work."
@@ -1134,7 +1134,7 @@ Reasons, in order of decisiveness:
 2. **Nothing would meet the admission bar anyway.** §4's ladder tops out at a
    completed one-turn smoke with a freshness window. A phone that is
    backgrounded, thermally throttled, on battery, or on a metered radio cannot
-   hold a fresh liveness claim honestly, and #741 R4 requires offline instances
+   hold a fresh liveness claim honestly, and archive#741 R4 requires offline instances
    to degrade *honestly* rather than appear routable.
 3. **The reference implementation reaches the same conclusion.** Its shared
    compute is a desktop-only compile-time feature; the mobile client does not
@@ -1175,23 +1175,23 @@ bug.
 
 | Deferred | Why | Revisit when |
 |---|---|---|
-| Community GPU pooling (non-owner contributors) | No community tenant; consent story is entirely different when the serving peer is a stranger | #1392 ships membership + owner attestation |
+| Community GPU pooling (non-owner contributors) | No community tenant; consent story is entirely different when the serving peer is a stranger | archive#1392 ships membership + owner attestation |
 | Tensor-parallel / model splitting across machines | Serves capacity, not placement; the reference implementation's own splitting lives in a vendored SDK, not something we can study or match cheaply | A concrete user need for a model no single fleet machine can hold |
 | A virtual aggregate "fleet" model (mixture-of-agents style) | Presenting many machines as one model hides exactly the placement decision the receipt exists to expose | After receipts are surfaced and understood |
 | Contribution-required-to-consume economics | Owner direction; also no prior art in the reference implementation | Community tier exists and free-riding is observed |
-| A policy *engine* for join policy | No tenant to publish one (§4.6) | #1392 |
-| Coordinator/relay-mediated discovery | v1 needs none; introducing one re-opens the entire privacy argument (§5.1) | #615/#1392, with a fresh privacy analysis |
+| A policy *engine* for join policy | No tenant to publish one (§4.6) | archive#1392 |
+| Coordinator/relay-mediated discovery | v1 needs none; introducing one re-opens the entire privacy argument (§5.1) | archive#615/#1392, with a fresh privacy analysis |
 | Fleet routing for embeddings, vision, audio | Scope discipline; the evidence ladder is defined for chat completion turns | After chat-completion routing is proven |
-| Automatic/`Auto` fleet-wide model selection | #423's Auto is a local feature and is itself unimplemented; auto-selecting across machines before receipts are readable would be unauditable | #423 lands, receipts are surfaced |
+| Automatic/`Auto` fleet-wide model selection | archive#423's Auto is a local feature and is itself unimplemented; auto-selecting across machines before receipts are readable would be unauditable | archive#423 lands, receipts are surfaced |
 | Fleet routing for **interactive chat** | A Dispatch-routed turn does not stream and Relay has no native streaming contract (§2.7); a buffered chat reads as "the fleet is slow" | Streaming lands upstream — the serve route is streaming-shaped from day one, so this is a client change (§10 OQ-8) |
-| **Tool** contribution (vs. models) | Tool-surface data is structurally unknowable today (#1430), so a contributed tool could not be graded honestly (§2.3) | #1430 closes and slice 5 lands the conformance probe (§10 OQ-5) |
+| **Tool** contribution (vs. models) | Tool-surface data is structurally unknowable today (archive#1430), so a contributed tool could not be graded honestly (§2.3) | archive#1430 closes and slice 5 lands the conformance probe (§10 OQ-5) |
 | Cryptographically **signed** receipts | Nothing in the building-block layer signs; v1 ships hash-chained receipts and says "receipted" (§3.4) | A signing story with a revocation path exists — Surface's sigstore machinery is the natural donor (§10 OQ-3) |
-| Receipt **replication** across the fleet | A replicated receipt corpus is a fleet-wide inventory and activity log (§5.2 rule 5) | #741 slice 3, where replication consent lives (§10 OQ-4) |
+| Receipt **replication** across the fleet | A replicated receipt corpus is a fleet-wide inventory and activity log (§5.2 rule 5) | archive#741 slice 3, where replication consent lives (§10 OQ-4) |
 
 ## 10. Decisions recorded
 
 All nine questions this doc raised were resolved by the owner on **2026-08-01**
-([decision comment on #1398](https://github.com/kontourai/station/issues/1398#issuecomment-5151783495)),
+([decision comment on archive#1398](https://github.com/kontourai/station/issues/1398#issuecomment-5151783495)),
 each adopting the analysis's recommendation. The reasoning is retained below
 because the decisions are only durable if the tradeoff that produced them is
 still legible; the identifiers stay `OQ-n` so the doc, the issue comment, and
@@ -1223,7 +1223,7 @@ the slice plan refer to the same items.
   "signed" while meaning "hashed" is precisely the provenance overstatement this
   repo's reviews exist to catch.
 - **OQ-4 — Receipts are local-only in v1. DECIDED.** Receipts stay on the
-  deciding Station; the replication question is deferred to **#741 slice 3**
+  deciding Station; the replication question is deferred to **archive#741 slice 3**
   (owner-scoped conversation replication) rather than being settled here. A
   replicated receipt corpus is a fleet-wide inventory and activity log (§5.2
   rule 5), so it needs its own consent decision in the context that owns
@@ -1232,7 +1232,7 @@ the slice plan refer to the same items.
   capabilities, not tools. The §4.1 boundary (local-execution claims vs.
   reference-plus-credential) is designed and written down, but the tooling
   manifest and the conduit conformance probe do not ship until slice 5.
-  Reinforced by #1430: tool-surface data is structurally unknowable today
+  Reinforced by archive#1430: tool-surface data is structurally unknowable today
   (§2.3), so a v1 tool contribution could not have been graded honestly anyway.
 - **OQ-6 — The consumer's own smoke counts against budget. DECIDED.** A
   `consumer-verified` probe (§4.3) is a real inference call on real hardware; it
@@ -1254,7 +1254,7 @@ the slice plan refer to the same items.
 - **OQ-9 — The Dispatch 0.2.0 → 0.5.0 bump was its own change. SHIPPED.** The
   bump unlocked `bindDatumResolvedRef`, `capabilityEvidenceFromBearing`, and
   `AuthorizationLedger` (§2.6).
-  **The #1426 conformance tripwire is armed for it** — the tripwire cross-checks
+  **The archive#1426 conformance tripwire is armed for it** — the tripwire cross-checks
   the real `dispatch()` engine's admissions against the exclusion log with no
   hardcoded oracle, so a behavior change in the bump surfaces as a test failure
   rather than as silently different routing. Tripwire hardenings **R3-a/b/c** are
@@ -1267,8 +1267,8 @@ the v1 product; 5–7 are the composition work that makes the authority boundary
 in §3.1 true rather than aspirational.
 
 **Slice 0 — Honest local Dispatch evidence. SHIPPED**
-([#1426](https://github.com/kontourai/station/issues/1426), PR
-[#1438](https://github.com/kontourai/station/pull/1438)). Candidate evidence now
+([archive#1426](https://github.com/kontourai/station/issues/1426), PR
+[archive#1438](https://github.com/kontourai/station/pull/1438)). Candidate evidence now
 derives from the connection's live `ConnectionEvidenceLevel` instead of a
 hardcoded `'declared'` constant, with a documented mapping, a stale downgrade
 floor, an evidence `source` stamp, batched resolution, and exclusion-legibility
@@ -1278,10 +1278,10 @@ routing on top of a constant would have put a lie in the artifact we are
 selling.
 
 Two follow-ups it surfaced are **inputs to slices 1 and 3, not unrelated
-cleanup** (§2.3): [#1430](https://github.com/kontourai/station/issues/1430)
+cleanup** (§2.3): [archive#1430](https://github.com/kontourai/station/issues/1430)
 (`supportsTools` unpopulated → `toolSurface` always `null`, plus the
 route-populated inventory cache that makes capability derivation depend on a UI
-visit) and [#1431](https://github.com/kontourai/station/issues/1431) (evidence
+visit) and [archive#1431](https://github.com/kontourai/station/issues/1431) (evidence
 frozen at model construction, so a `confirmed` grade can outlive its
 `freshUntil`). A third residual — the conformance tripwire hardenings
 **R3-a/b/c** — is scoped to the Dispatch bump PR (§10 OQ-9).
@@ -1311,9 +1311,9 @@ Four contract decisions, recorded because slice 2/3 build on them:
   refresh at all.
 - **No capability columns.** The projected record deliberately omits
   `toolSurface`: no provider populates `supportsTools`, so the source column
-  is `null` for every model connection in production (#1430) and a
+  is `null` for every model connection in production (archive#1430) and a
   structurally-unknowable column reads as an observation. Re-adding it once
-  #1430 lands is an additive optional field. `supportsVision` IS carried — it
+  archive#1430 lands is an additive optional field. `supportsVision` IS carried — it
   has a real source (Bedrock's declared input modalities) and `null` there
   honestly means unknown.
 - **No `environmentId` in the body.** A peer's manifest is attributed by the
@@ -1353,7 +1353,7 @@ scope string on an unknown token. A build advertising the flag while still
 rejecting the token would invite a peer to mint
 `"orchestration:read inference:invoke"` against it and have the grant
 refused outright — the exact mixed-version failure the flag exists to
-prevent, and an unearned capability claim of the kind #1426 removed.
+prevent, and an unearned capability claim of the kind archive#1426 removed.
 
 Adding the token in slice 1 to make the claim true is not the alternative:
 `FULL_PAIRING_SCOPE` is `PAIRING_SCOPES.join(' ')`
@@ -1373,12 +1373,12 @@ without the token *or* the token lands without the flag. The §5.2
 "handshake discloses nothing about participation" guard is written now,
 ahead of the flag, so the flag cannot land without it.
 
-**#1430's inventory-cache finding is honoured, not blocked on.** The slice
+**archive#1430's inventory-cache finding is honoured, not blocked on.** The slice
 reads `listLaunchableModelInventory()` — compute-on-demand with a bounded
 stale snapshot — never `getCachedLaunchableModelInventory()`, which is the
-route-populated snapshot #1430 correctly calls nondeterministic. A peer's
+route-populated snapshot archive#1430 correctly calls nondeterministic. A peer's
 manifest is therefore not a function of whether that peer's operator opened
-the Connections page. #1430 remains a dependency of any *tool-surface* claim,
+the Connections page. archive#1430 remains a dependency of any *tool-surface* claim,
 which is why this slice makes none.
 
 **Slice 2 — `inference:invoke` scope + the serving route. SHIPPED.** The fifth scope, the
@@ -1444,7 +1444,7 @@ the four-token vocabulary.
 
 Four things the plan did not name that the implementation required:
 
-- **Historical implementation note, superseded by station#2051.** Fleet
+- **Historical implementation note, superseded by archive#2051.** Fleet
   inference formerly opted out of a generic loopback compatibility floor. All
   protected families now require a credential, while fleet inference adds its
   narrower `inference:invoke` scope. Exercising it locally requires an
@@ -1474,7 +1474,7 @@ Four things the plan did not name that the implementation required:
   body as `GET /api/inference/manifest`, and the SDK's two functions were
   renamed (`fetchContributedModelManifest` /
   `useContributedModelManifestQuery`) so the payload change cannot land as a
-  silent re-type. station#2051 then removed the §2.1 tunnel residue entirely:
+  silent re-type. archive#2051 then removed the §2.1 tunnel residue entirely:
   a credential-less SSH-forwarded reader receives `401 authentication_required`.
 
 The mixed-version mint guard reduced to the decoupling itself, and the reason
@@ -1499,7 +1499,7 @@ exclusions, constraints, and stream capability (§3.4 — Dispatch itself has no
 hash-chained and **local to the deciding Station** (§10 OQ-3/OQ-4). B's side:
 serve-side receipt. This is the first slice where the headline user outcome
 works end to end. Scoped to non-interactive work per §10 OQ-8. **Depends on
-#1431**: routing on a peer's evidence grade is only honest once that grade
+archive#1431**: routing on a peer's evidence grade is only honest once that grade
 re-resolves rather than staying frozen at model construction (§2.3).
 
 **Slice 4 — Receipts become readable, degraded states become visible.** A
@@ -1537,7 +1537,7 @@ because later slices build on them:
   mid-life — it is reported as `not-in-resolved-set` ("routable on the next
   agent rebuild") rather than silently ignored, and one that disappears is
   reported as `capability-withdrawn` rather than vanishing from the surface.
-  Re-grading per window is #1431's requirement applied to the fleet half.
+  Re-grading per window is archive#1431's requirement applied to the fleet half.
 - **A failure code is a claim, and `no-eligible-candidates` claims an
   exclusion.** It asserts policy removed everything, so it is emittable only
   alongside a non-empty exclusion list; §4.5's promise that the list "says why
@@ -1547,7 +1547,7 @@ because later slices build on them:
   A non-succeeded receipt that can support neither claim reports
   `unexplained-no-attempt` rather than borrowing a code that would.
   `FLEET_ROUTING_FAILURE_CODES` carries the semantics as data and is the
-  closed-set tripwire for the union (station#1556).
+  closed-set tripwire for the union (archive#1556).
 - **`fell-back-to-local` is a receipt state, not a log line.** A turn that
   SUCCEEDS locally after a fleet attempt failed is the §4.5 case most likely
   to be reported as a plain success; `deriveFleetRoutingFailure` names it, and
@@ -1567,8 +1567,8 @@ because later slices build on them:
   completion. Nothing in the request carries an environment id, and inventing
   one from the connection would assert an identity B did not verify.
 
-*Security-review round (the findings that changed the design, not just the
-code).* Six were structural enough to record here:
+*Security findings that changed the design, not just the code.* Six were
+structural enough to record here:
 
 - **A routing snapshot must be keyed by `planDigest`, not by "most recent".**
   One built Dispatch model serves every invocation of its agent, `plan()` runs
@@ -1640,8 +1640,7 @@ security round, which is its own lesson about fix-shaped defects:
   gate that exists *because* a scanner silently skipped a file. Exit 1 is
   clean; anything else fails the gate with git's own stderr surfaced.
 
-*Post-hoc correction from the slice 5.5 review (finding 2), recorded here
-because it is a slice 3 defect rather than a 5.5 one.* `fell-back-to-local`
+*Post-hoc correction (a slice 3 defect, recorded here).* `fell-back-to-local`
 was **unreachable in production** from the day it shipped.
 `FleetInferenceRoutingError` extended plain `Error` with a `refusalCode` and
 neither `code` nor `retryable`, and Dispatch's `normalizeInvocationError`
@@ -1695,12 +1694,12 @@ still halts the loop, so a revert to a plain `Error` subclass goes red.
   `writeFileSync`, which is portable but not the tightest ordering; the rename
   is what provides atomicity either way.
 
-**Deviation against #1410, recorded explicitly.** `TurnProvenanceRoutingReceiptRef`
+**Deviation against archive#1410, recorded explicitly.** `TurnProvenanceRoutingReceiptRef`
 carried the claim "Station has no per-turn routing receipt today". That is no
 longer true — a fleet-routed turn has one, with a `receiptId` of exactly that
 ref's shape. What is still missing is the **join**: a `DispatchReceipt` carries
 no session or turn identity at any version (§3.4), so nothing links an envelope
-to its turn except position in time, and #1410 AC4 requires these refs to be
+to its turn except position in time, and archive#1410 AC4 requires these refs to be
 exact rather than positional. A positional join was considered and rejected —
 manufacturing provenance from timestamps is the failure mode this envelope
 exists to prevent. So the ref stays an admitted gap with its reason narrowed
@@ -1717,7 +1716,7 @@ extended to host tooling (§4.3), pending Conduit-owner confirmation; the
 `reference-resolved` vs `probe-verified` distinction enforced at the type level
 so the two cannot be conflated by a later edit. This is where tool contribution
 first becomes possible (§10 OQ-5 keeps it out of v1), so it also depends on
-#1430 making tool-surface data real.
+archive#1430 making tool-surface data real.
 
 *As shipped — the consumer-verified half only; the tooling-conformance half is
 BLOCKED and is recorded as such rather than approximated.*
@@ -1791,7 +1790,7 @@ it to reach a function that cannot serve this purpose would be churn.
 
 **Slice 5.5 — Dispatch 0.2.0 → 0.5.0 (§10 OQ-9). SHIPPED.** Its own change and
 verification unlocked the bridge functions and
-`AuthorizationLedger`. Carries the #1426 conformance tripwire hardenings
+`AuthorizationLedger`. Carries the archive#1426 conformance tripwire hardenings
 **R3-a/b/c**; the tripwire itself is already armed and cross-checks the real
 `dispatch()` engine's admissions against the exclusion log with no hardcoded
 oracle, so a behavior change in the bump surfaces as a failing test rather than
@@ -1804,7 +1803,7 @@ everything above — but must not be bundled with a feature slice.
   second axis: `CapabilityEvidence.structuredToolsFidelity`, with the engine
   REFUSING any candidate whose capability list and fidelity disagree. An
   absent field reads as `'unavailable'`, so every Station candidate whose
-  model catalog genuinely reported native tool calling (#1430's derivation)
+  model catalog genuinely reported native tool calling (archive#1430's derivation)
   became ineligible for **every** plan, including one with no policy at all.
   Silent: no throw, no warning, a receipt reading `no-eligible-candidates`,
   and Station's own exclusion log reporting the candidate as admitted.
@@ -1909,11 +1908,11 @@ since that half also has to carry the wire change.
 policy, plus the signed-policy shape recorded but unimplemented (§4.6). Deferred
 behind everything else because nothing consumes it until there is a community.
 
-**Sequencing note.** Slices 0–4 depend on nothing outside Station beyond #1123's
-shipped peer credential and the two slice-0 follow-ups (#1430 into slice 1,
-#1431 into slice 3). Slice 5 depends on a Conduit conversation and a conduit
+**Sequencing note.** Slices 0–4 depend on nothing outside Station beyond archive#1123's
+shipped peer credential and the two slice-0 follow-ups (archive#1430 into slice 1,
+archive#1431 into slice 3). Slice 5 depends on a Conduit conversation and a conduit
 bump, 5.5 on a Dispatch bump, slice 6 on two package integrations, slice 7 on
-#1392. If the arc has to stop somewhere, **stopping after slice 4 leaves a
+archive#1392. If the arc has to stop somewhere, **stopping after slice 4 leaves a
 coherent, honest, shipped product** — the headline outcome works, the receipt is
 readable, and every gap is named in the UI rather than hidden.
 
@@ -1941,7 +1940,7 @@ several are now scheduled into a slice rather than merely disclosed.
   fixed; the twelve pre-existing tripwire cases would all have stayed green.
   The concern below is the one this outcome vindicates. Partly mitigated, not
   closed, by the
-  #1426 conformance tripwire armed for that PR (§11 slice 5.5) — a tripwire
+  archive#1426 conformance tripwire armed for that PR (§11 slice 5.5) — a tripwire
   catches an admissions divergence it happens to exercise, which is not the same
   as proving the bump inert.
 - **Serving-side performance and concurrency.** No measurement of what happens
@@ -1964,9 +1963,9 @@ several are now scheduled into a slice rather than merely disclosed.
   `Authorization` header (which also resolves to "no credential"), refuses a
   default-grant credential for lacking the scope, and asserts as a control
   that the pre-existing surface keeps its floor.
-- **ops#131 W6** (named in #1398's first comment as carrying the full
+- **ops#131 W6** (named in archive#1398's first comment as carrying the full
   requirements and acceptance criteria) was not readable from this session. If
-  it contains ACs beyond #1398's issue text, this doc has not been reconciled
+  it contains ACs beyond archive#1398's issue text, this doc has not been reconciled
   against them.
 - ~~**Whether any shipped consumer reads `GET /api/connections/model-inventory`
   with only `orchestration:read`.**~~ **Enumerated in slice 2 before the leaf
@@ -2028,12 +2027,12 @@ several are now scheduled into a slice rather than merely disclosed.
   against the deadline and abandoning the generator, which has its own leak
   (an abandoned generator still holds its socket) — real work, deliberately
   not half-done here. Not exercised, and now stated straight.
-- **Whether #1431's re-grade semantics arrive in a shape slice 3 can
+- **Whether archive#1431's re-grade semantics arrive in a shape slice 3 can
   consume.** Named as a dependency (§2.3) but not designed yet; if it resolves
   in a way that keeps evidence frozen, slice 3 inherits a dishonest peer
-  evidence grade and must be re-planned rather than shipped around. *(#1430's
+  evidence grade and must be re-planned rather than shipped around. *(archive#1430's
   half of this bullet is resolved for slice 1: the shipped manifest reads the
   compute-on-demand `listLaunchableModelInventory()` and makes no
   tool-surface claim, so it is neither UI-visit-dependent nor dependent on
-  `supportsTools` ever being populated. #1430 still gates any future
+  `supportsTools` ever being populated. archive#1430 still gates any future
   tool-capability column.)*

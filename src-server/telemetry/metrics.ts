@@ -109,7 +109,7 @@ export const acpToolUpdateSupervisorRetainedBytes = meter.createHistogram(
 );
 /**
  * Management operations on tool DEFINITIONS — add/remove/list/reconnect.
- * Split out of `station.tool.calls` (station#3077), which counted both, so
+ * Split out of `station.tool.calls` (archive#3077), which counted both, so
  * any dashboard summing it added "times a tool ran" to "times someone edited
  * a tool definition" and could only tell them apart by which attribute
  * happened to be present.
@@ -162,7 +162,7 @@ export const reviewEvidenceDuration = meter.createHistogram(
 );
 
 /**
- * station#1834: tool executions denied by the `beforeToolCall` gate. The
+ * archive#1834: tool executions denied by the `beforeToolCall` gate. The
  * `reason` attribute is a closed vocabulary (stale_generation /
  * delegated_tool_blocked / policy_config_protection / guardian_denied /
  * delegation_deny_approvals / user_denied / unattended_grant_denied /
@@ -207,7 +207,7 @@ export const chatErrors = meter.createCounter('station.chat.errors', {
 });
 
 /**
- * station#2807: prompts refused by the chat input size bound at the
+ * archive#2807: prompts refused by the chat input size bound at the
  * validate() boundary, by bounded `reason` (`over_limit` |
  * `unrecognized_shape`). The refusal otherwise surfaces only as an
  * undifferentiated 400; this observes how often the bound fires so the
@@ -237,7 +237,7 @@ export const inboundWebhookRequests = meter.createCounter(
   },
 );
 
-// station#2649: per-turn context-injection transparency. `blocks` counts
+// archive#2649: per-turn context-injection transparency. `blocks` counts
 // injected context blocks by kind (attribute `block`); the histogram records
 // the turn's TOTAL approximate injected tokens (utf8 bytes / 4 of the real
 // injected strings — an estimate by construction, see
@@ -412,7 +412,7 @@ export const projectPaneCatalogDuration = meter.createHistogram(
   },
 );
 
-// station#1499: portable project identity (docs/design/portable-project-identity.md).
+// archive#1499: portable project identity (docs/design/portable-project-identity.md).
 export const projectManifestBackfills = meter.createCounter(
   'station.project_manifest.backfills',
   {
@@ -428,7 +428,7 @@ export const projectResourceResolutions = meter.createCounter(
   },
 );
 
-// station#1502 slice 4: the user-visible resolution surface. These count the
+// archive#1502: the user-visible resolution surface. These count the
 // ROUTE, not the resolution — `projectResourceResolutions` above already fires
 // inside the resolver, and re-counting its states here would double-count every
 // state the route happens to be the caller for. Attributes are bounded to the
@@ -449,11 +449,11 @@ export const projectBindingOperations = meter.createCounter(
   },
 );
 
-// station#1501 slice 3a: the migration shadow. THREE outcomes justify flipping
-// a seam onto `resolveProjectResource` — `agree`, and (since station#1594)
+// archive#1501: the migration shadow. THREE outcomes justify flipping
+// a seam onto `resolveProjectResource` — `agree`, and (since archive#1594)
 // `agree-unverified` and `agree-drifted`, where both sides name the same
 // directory but the resolver could only offer the weaker `unverifiedPath`
-// observation. They are counted separately on purpose: #1501's gate asks for
+// observation. They are counted separately on purpose: archive#1501's gate asks for
 // the `stale` leg specifically, and a `drifted` sample must not stand in for
 // it. `outcome=conflated-unbound` is a FAIL-OPEN tripwire that must read zero
 // before the flip. `outcome=disabled` means the kill switch is set and NOTHING
@@ -476,7 +476,7 @@ export const surveyFlowReviewContinuations = meter.createCounter(
   { description: 'Survey-backed Flow gate continuation outcomes' },
 );
 
-/** A project whose sessions file could not be read for the aggregate (#3322). */
+/** A project whose sessions file could not be read for the aggregate (archive#3322). */
 export const surveyFlowReviewUnavailableProjects = meter.createCounter(
   'station.survey_flow_review.project_unavailable',
   {
@@ -766,7 +766,7 @@ export const chatStartGate = meter.createCounter('station.chat.start_gate', {
 });
 
 /**
- * #1011: where an engine session was told to launch. `outcome=inherited`
+ * archive#1011: where an engine session was told to launch. `outcome=inherited`
  * means Station supplied no cwd and the engine took the server process's
  * directory — expected for an unbound chat, and the signal to watch if it
  * ever reappears for a project-bound one.
@@ -878,7 +878,7 @@ export const orchestrationSteerDispatches = meter.createCounter(
 );
 
 /**
- * station#2959: a turn that produced no observed progress event (streamed
+ * archive#2959: a turn that produced no observed progress event (streamed
  * content chunk, tool lifecycle event, or session state transition) within
  * its agent's declared turn-stall window. Counted at detection time,
  * independent of whether the ensuing cooperative-stop settles cooperatively
@@ -903,7 +903,7 @@ export const modelLaunchResolutionTotal = meter.createCounter(
 );
 
 /**
- * station#1224 (offline slice 2): a `sendTurn` dispatch carrying a
+ * archive#1224 (offline): a `sendTurn` dispatch carrying a
  * `clientTurnId` that already has a claim recorded for its thread — either
  * already resolved (`outcome: 'hit'`) or still in flight from a concurrent
  * dispatch (`outcome: 'hit_inflight'`) — so `adapter.sendTurn` was NOT
@@ -925,7 +925,7 @@ export const turnDedupClaims = meter.createCounter(
 );
 
 /**
- * station#1224 (offline slice 2): a `/chat` request carrying a
+ * archive#1224 (offline): a `/chat` request carrying a
  * `clientTurnId` already claimed for a prior request — see
  * `chat-turn-dedup.ts`. Mirrors `orchestrationTurnDedup` for the direct
  * (non-orchestration) send path.
@@ -944,7 +944,7 @@ export const orchestrationEventsPersisted = meter.createCounter(
 
 /**
  * How often a bounded session-window read hands a client less than the stored
- * event, by which budget fired (station#3386). The per-event marker tells ONE
+ * event, by which budget fired (archive#3386). The per-event marker tells ONE
  * reader what happened to ONE event; this is the only way to know whether the
  * 4 KB per-event ceiling is a rare edge or a routine amputation of restored
  * transcripts — and neither ceiling can be tuned honestly without it.
@@ -967,7 +967,7 @@ export const orchestrationStoreQuarantineDispositions = meter.createCounter(
 
 /**
  * How often corruption is actually observed in the field. With the per-boot
- * integrity check removed (station#3219), reactive classification is the only
+ * integrity check removed (archive#3219), reactive classification is the only
  * detection path, and this counter is the evidence of what it finds. Without
  * it, the only honest answer to "is reactive detection enough?" is that
  * nobody knows.
@@ -982,7 +982,7 @@ export const orchestrationStoreCorruptionObserved = meter.createCounter(
 
 /**
  * SQLITE_BUSY observed against the orchestration event store from the adapter
- * event stream (station#3304). Distinct from corruption: the file is healthy,
+ * event stream (archive#3304). Distinct from corruption: the file is healthy,
  * another connection — typically a second Station process sharing the home —
  * holds a lock longer than the busy budget.
  */
@@ -1034,7 +1034,7 @@ export const orchestrationEventPersistDuration = meter.createHistogram(
   },
 );
 
-// ── Event-stream sequence-cursor resume (station#1092) ──
+// ── Event-stream sequence-cursor resume (archive#1092) ──
 export const orchestrationStreamResumeDecisions = meter.createCounter(
   'station.orchestration.stream_resume_decisions',
   {
@@ -1052,7 +1052,7 @@ export const orchestrationStreamResumeGap = meter.createHistogram(
 );
 
 /**
- * station#1848: how long a `/api/orchestration/events` SSE connection actually
+ * archive#1848: how long a `/api/orchestration/events` SSE connection actually
  * stayed open, recorded once per connection when it ends, by `scope`
  * (`thread`/`all`).
  *
@@ -1060,7 +1060,7 @@ export const orchestrationStreamResumeGap = meter.createHistogram(
  * Response as soon as the headers and body stream exist, so the request-log
  * line (`runtime-http.ts`) can only ever report time-to-headers — a
  * connection held open for an hour and one that failed instantly both log a
- * single-digit millisecond duration, and #1848 was diagnosed as "the endpoint
+ * single-digit millisecond duration, and archive#1848 was diagnosed as "the endpoint
  * answers and closes in 0-2ms" from exactly that reading. A duration recorded
  * at teardown is the only place the difference exists.
  */
@@ -1073,7 +1073,7 @@ export const orchestrationStreamDuration = meter.createHistogram(
   },
 );
 
-// ── Per-thread session-owner cache (station#1120) ──
+// ── Per-thread session-owner cache (archive#1120) ──
 /**
  * Lookups against the bounded per-thread `threadId -> ownerUserId` cache
  * that backs the `/events` SSE route's `canUserReadSession` authorization
@@ -1090,7 +1090,7 @@ export const sessionOwnerCacheOps = meter.createCounter(
   },
 );
 
-// ── Coalesced event fan-out (station#1093 Part B) ──
+// ── Coalesced event fan-out (archive#1093 Part B) ──
 /**
  * Per-dispatch coalesce ratio (events-in vs work-out) for a
  * `KeyedCoalescingWorker` consumer wired onto the orchestration event
@@ -1099,7 +1099,7 @@ export const sessionOwnerCacheOps = meter.createCounter(
  * for that dispatch; N = a burst of N events collapsed into one downstream
  * operation). `consumer` names the integration point (e.g. `console_bridge`).
  */
-// Review fix (LOW, station#1093 Part B fix round): no separate
+// Review fix (LOW, archive#1093 Part B fix round): no separate
 // burst-size counter alongside this — a histogram's Sum/Count
 // aggregations already give any backend the same running total and
 // dispatch count a parallel counter would have provided.
@@ -1265,7 +1265,7 @@ export const taskDispatchStartLatencyMs = meter.createHistogram(
   },
 );
 
-// Dispatch-as-claim (roadmap #584, part of epic #580, S4): AssignmentProvider
+// Dispatch-as-claim (roadmap archive#584, part of epic archive#580, S4): AssignmentProvider
 // claim/release outcomes, distinct from `taskDispatchTotal` (which only
 // carries the dispatch-level 'blocked' outcome) — this counter also covers
 // 'unavailable' (CLI missing/degraded) and 'released'/'skipped' outcomes
@@ -1541,7 +1541,7 @@ export const mcpUiRenderPermissionAllows = meter.createCounter(
   },
 );
 
-// station#1195 (epic #1191 slice C): the wire-safe station-control MCP
+// archive#1195 (epic archive#1191 slice C): the wire-safe station-control MCP
 // delivery to Codex — the token-minting/auth boundary and the wire-channel
 // delivery itself are separate concerns, each with their own counter.
 export const stationControlMcpTokenMinted = meter.createCounter(
@@ -1720,7 +1720,7 @@ export const workflowSidecarTransitions = meter.createCounter(
   },
 );
 
-// ── Work-item provider seam (roadmap #583, part of epic #580, S3) ──
+// ── Work-item provider seam (roadmap archive#583, part of epic archive#580, S3) ──
 export const workItemProviderListTotal = meter.createCounter(
   'station.work_item_provider.list.total',
   {
@@ -1833,7 +1833,7 @@ export const knowledgeStoreTransactionOps = meter.createCounter(
 );
 
 /**
- * station#1879: the `conversation-store` read-only projection adapter's own
+ * archive#1879: the `conversation-store` read-only projection adapter's own
  * usage counter — distinct from `knowledgeStoreRecordOps` above because that
  * instrument only ever fires for a Station-driven MUTATION
  * (`knowledge-store-provider.ts`'s `wrapWithChangeEvents`), and this adapter's
@@ -1909,7 +1909,7 @@ export const acpPassthroughSessions = meter.createCounter(
   },
 );
 
-// ── #895 wave B: ACP session resume (session/load) ──
+// ── archive#895 wave B: ACP session resume (session/load) ──
 export const acpResumeSessions = meter.createCounter(
   'station.acp.resume_sessions',
   {
@@ -1980,8 +1980,8 @@ export const acpOutboundExtensionNotifications = meter.createCounter(
 );
 
 /**
- * station#3441: a probe engine that survived its own destroy is retried on
- * the next probe cycle (station#3422) rather than forgotten -- but retention
+ * archive#3441: a probe engine that survived its own destroy is retried on
+ * the next probe cycle (archive#3422) rather than forgotten -- but retention
  * is bounded, so every terminal outcome of that retry loop is counted here.
  * Closed set: `reaped` (the kernel now agrees it is gone), `retained`
  * (still surviving, under the retry bound), `abandoned` (exceeded the retry
@@ -1990,7 +1990,7 @@ export const acpOutboundExtensionNotifications = meter.createCounter(
  * `reaped` derives ONLY "this object's process is no longer at the pid it
  * spawned" (`!survivesCleanup()`, the same identity check `forceGroupKill()`
  * confirms against) -- it does not claim THIS cycle's own attempt is what
- * killed it. Two of its three recording sites (station#3441 MEDIUM-1's
+ * killed it. Two of its three recording sites (archive#3441 MEDIUM-1's
  * pre-signal identity check, and LOW-1's post-timeout catch-up) perform no
  * destroy or signal at all in the cycle that records it; the process was
  * already gone, most plausibly from an earlier cycle's SIGKILL that hadn't
@@ -2013,7 +2013,7 @@ export const claudeSkillsMaterializedSessions = meter.createCounter(
   },
 );
 
-// ── #895 wave A: per-agent capability delivery ──
+// ── archive#895 wave A: per-agent capability delivery ──
 export const agentCapabilityUndelivered = meter.createCounter(
   'station.orchestration.agent_capability_undelivered',
   {
@@ -2022,7 +2022,7 @@ export const agentCapabilityUndelivered = meter.createCounter(
   },
 );
 
-// ── #895 wave B: agent-authored system prompt delivery ──
+// ── archive#895 wave B: agent-authored system prompt delivery ──
 export const agentSystemPromptSessions = meter.createCounter(
   'station.providers.agent_system_prompt_sessions',
   {
@@ -2031,7 +2031,7 @@ export const agentSystemPromptSessions = meter.createCounter(
   },
 );
 
-// ── #896: app-home profiles (overlay model channel 2) ──
+// ── archive#896: app-home profiles (overlay model channel 2) ──
 export const appHomeSessions = meter.createCounter(
   'station.providers.app_home_sessions',
   {
@@ -2046,7 +2046,7 @@ export const appHomeImport = meter.createCounter(
       "Explicit user-triggered imports of a global engine config snapshot into a Station-owned app-home profile (attrs: provider, outcome, credentials: 'included'|'excluded')",
   },
 );
-// #896 wave 2: bounded profile-GC mechanism — an explicit, user-triggered
+// archive#896 wave 2: bounded profile-GC mechanism — an explicit, user-triggered
 // clear action (never a background job/watcher/timer).
 export const appHomeCleared = meter.createCounter(
   'station.providers.app_home_cleared',
@@ -2113,7 +2113,7 @@ export const authOps = meter.createCounter('station.auth.operations', {
 });
 
 /**
- * station#514: authenticated mutation budget decisions (body-size and rate).
+ * archive#514: authenticated mutation budget decisions (body-size and rate).
  * Attributes are a closed vocabulary — `outcome` (allowed/oversized/rate_limited),
  * `class` (standard/streaming), and `source` (bearer/session/loopback, the
  * authentication mode the budget principal was derived from) — and NEVER carry
@@ -2258,7 +2258,7 @@ export const webPushSends = meter.createCounter('station.web_push.sends', {
     'Web Push send attempts by result (sent/gone/error), never includes payload or endpoint identity',
 });
 
-// ── Orchestration stream presence + push-on-completion (station#1225) ──
+// ── Orchestration stream presence + push-on-completion (archive#1225) ──
 /**
  * `/api/orchestration/events` connect/disconnect lifecycle, by op
  * (`connect`/`disconnect`) — backs `OrchestrationStreamPresence`'s
@@ -2274,7 +2274,7 @@ export const orchestrationStreamPresenceOps = meter.createCounter(
 );
 
 /**
- * station#4075 stage 3 slice 2: the bounded principal-roster retained
+ * archive#4075 stage 3 slice 2: the bounded principal-roster retained
  * alongside the ref-counting above, by op (`retain`/`release`/`capacity`).
  * `capacity` is the operationally interesting signal — it fires only when
  * `OrchestrationStreamPresence`'s roster bound (mirroring
@@ -2317,7 +2317,7 @@ export const turnCompletionNotificationOps = meter.createCounter(
 );
 
 /**
- * station#2802: workspace checkpoint capture decisions at turn boundaries
+ * archive#2802: workspace checkpoint capture decisions at turn boundaries
  * (`baseline` on turn.started, `settle` on turn.completed/turn.aborted).
  * Outcome vocabulary mirrors the durable index records exactly —
  * `captured`, `not_applicable` (no project working directory),
@@ -2337,7 +2337,7 @@ export const checkpointCaptureOps = meter.createCounter(
 );
 
 /**
- * station#1410: one data point per COMPLETED TURN, tagged with whether that
+ * archive#1410: one data point per COMPLETED TURN, tagged with whether that
  * turn yielded a provenance envelope.
  *
  * Scoped to turn completion, not to message reads: counting per read made
@@ -2355,7 +2355,7 @@ export const turnProvenanceProjections = meter.createCounter(
   },
 );
 
-// ── Answer shares (station#1423) ──
+// ── Answer shares (archive#1423) ──
 /**
  * Deliberately carries `outcome` and nothing else. A share is a capability
  * over one specific turn, so a `sessionId`/`turnId`/`shareId` attribute would
@@ -2383,7 +2383,7 @@ export const answerSharesRevoked = meter.createCounter(
  * `share_not_found` is someone guessing tokens, and it is distinguishable
  * here precisely because the HTTP response deliberately is not.
  *
- * `answer_unavailable` and `content_digest_mismatch` (station#1598) are one
+ * `answer_unavailable` and `content_digest_mismatch` (archive#1598) are one
  * HTTP refusal and two causes, separated here for the same reason: the wire
  * must not distinguish "the turn is gone" from "the shared words drifted",
  * and an operator must. Drift has a systemic cause — any change to the
@@ -2401,7 +2401,7 @@ export const answerShareViews = meter.createCounter(
 
 /**
  * How often each channel-binding status is COMPUTED for a served share
- * (station#1598). `status` is the only attribute, and the privacy rule above
+ * (archive#1598). `status` is the only attribute, and the privacy rule above
  * is why: a `channelId`, `epoch`, `seq`, checkpoint digest, or share id here
  * would put an identifier for a shared answer — and for the channel it lives
  * in — into a metrics pipeline exported far more widely than the answer
@@ -2428,7 +2428,7 @@ export const uiCommandOps = meter.createCounter(
   },
 );
 
-// ── Logging (station#1895) ──
+// ── Logging (archive#1895) ──
 export const serverLogStoreWriteErrors = meter.createCounter(
   'station.logs.store.write_errors',
   {
@@ -2449,7 +2449,7 @@ export const serverLogsRead = meter.createCounter('station.logs.read', {
     'Server log read-path queries (station#1896 logging slice 2), by surface (route|tool)',
 });
 
-// station#3677: the distinct-origin consent surface.
+// archive#3677: the distinct-origin consent surface.
 export const consentTransactionOps = meter.createCounter(
   'station.consent.transaction_ops',
   {

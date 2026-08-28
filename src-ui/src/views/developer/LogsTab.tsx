@@ -9,14 +9,14 @@ const LEVELS = ['', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
 export default function LogsTab() {
   const { apiBase } = useApiBase();
-  // #3843 T3. D6 redacts this read for any principal that did not prove home
-  // possession, and it is right to. What was missing is the sentence: a page
-  // that quietly serves `[REDACTED]` reads as a broken page rather than as a
-  // correct boundary. The read itself is remote-safe — the host performs it
-  // and this device only asks — so the affordance stays and the host is named
-  // beside it, which is exactly `HostAction`'s remote-safe branch. Note it
-  // does NOT claim the entries in view were redacted: the projection says
-  // which device is asking, and that is all it says.
+// archive#3843. redacts this read for any principal that did not prove home
+// possession, and it is right to. What was missing is the sentence: a page
+// that quietly serves `[REDACTED]` reads as a broken page rather than as a
+// correct boundary. The read itself is remote-safe — the host performs it
+// and this device only asks — so the affordance stays and the host is named
+// beside it, which is exactly `HostAction`'s remote-safe branch. Note it
+// does NOT claim the entries in view were redacted: the projection says
+// which device is asking, and that is all it says.
   const devicePresentation = useDevicePresentation();
   const [level, setLevel] = useState<(typeof LEVELS)[number]>('');
   const [q, setQuery] = useState('');
@@ -49,11 +49,11 @@ export default function LogsTab() {
           <input
             value={q}
             onChange={(event) => setQuery(event.target.value)}
-            // Not "Search redacted logs": that said `redacted` to a local
-            // operator who is receiving UNREDACTED bytes, which is a state
-            // word nothing on this page derived. Whether the read is redacted
-            // follows from the device class, and the host-named sentence
-            // below the list is where that is said.
+// Not "Search redacted logs": that said `redacted` to a local
+// operator who is receiving UNREDACTED bytes, which is a state
+// word nothing on this page derived. Whether the read is redacted
+// follows from the device class, and the host-named sentence
+// below the list is where that is said.
             placeholder="Search logs"
           />
         </label>
@@ -73,9 +73,9 @@ export default function LogsTab() {
       </div>
       {isLoading ? <Skeleton variant="block" /> : null}
       {error ? (
-        // A transient outage's error must not read as a permanently broken
-        // tab (owner report; live diagnosis 2026-08-14: server + scope
-        // healthy, the cached error simply had no way out).
+// A transient outage's error must not read as a permanently broken
+ // tab (owner report; live diagnosis : server + scope
+// healthy, the cached error simply had no way out).
         <ErrorState
           variant="compact"
           title="Unable to load server logs."

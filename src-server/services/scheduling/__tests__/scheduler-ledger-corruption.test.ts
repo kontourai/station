@@ -31,7 +31,7 @@ const { DatabaseSync } = require('node:sqlite') as {
 };
 
 /**
- * station#3220. Real corrupt bytes on a real store, never a thrown fixture.
+ * archive#3220. Real corrupt bytes on a real store, never a thrown fixture.
  *
  * The scenario is the one the ledger's boot `quick_check` structurally cannot
  * see: a store that opens healthy and goes bad while Station is running. So
@@ -210,7 +210,7 @@ describe('SchedulerLedger tells damaged bytes apart from a busy store', () => {
       expect(readCorruptionMarker(databasePath)).toBeNull();
       expect(ledger.update('job-1', { enabled: true })).toEqual(CORRUPT);
 
-      // Same marker station#3215 defines. Nothing reads it yet — station#3217
+      // Same marker archive#3215 defines. Nothing reads it yet — archive#3217
       // is building the first consumer — so this asserts the record exists and
       // is accurate, not that anything acts on it.
       const marker = readCorruptionMarker(databasePath);
@@ -218,7 +218,7 @@ describe('SchedulerLedger tells damaged bytes apart from a busy store', () => {
       expect(marker?.databasePath).toBe(
         // Canonical, not the string handed in — the marker resolves the
         // directory so two runtimes spelling one home differently still
-        // recognise each other's observation (station#3215).
+        // recognise each other's observation (archive#3215).
         join(realpathSync(dirname(databasePath)), basename(databasePath)),
       );
       expect([11, 26]).toContain(marker?.errcode);
@@ -267,7 +267,7 @@ describe('SchedulerLedger tells damaged bytes apart from a busy store', () => {
     expect(marker?.databasePath).toBe(
       // Canonical, not the string handed in — the marker resolves the
       // directory so two runtimes spelling one home differently still
-      // recognise each other's observation (station#3215).
+      // recognise each other's observation (archive#3215).
       join(realpathSync(dirname(databasePath)), basename(databasePath)),
     );
     // These bytes make `PRAGMA quick_check` THROW, so the connection watch is
@@ -293,7 +293,7 @@ describe('SchedulerLedger tells damaged bytes apart from a busy store', () => {
     expect(marker?.databasePath).toBe(
       // Canonical, not the string handed in — the marker resolves the
       // directory so two runtimes spelling one home differently still
-      // recognise each other's observation (station#3215).
+      // recognise each other's observation (archive#3215).
       join(realpathSync(dirname(databasePath)), basename(databasePath)),
     );
     expect(marker?.errcode).toBeUndefined();
@@ -338,7 +338,7 @@ describe('BuiltinScheduler acts on the difference', () => {
         // `src-ui/src/views/ScheduleView.tsx` renders a hardcoded "Scheduler
         // Unavailable / Check that the server is running" whenever both its
         // queries error, discarding status and body. Deliberately out of scope
-        // here; filed as follow-up (station#3220 review, HIGH-2).
+        // here; filed as follow-up (archive#3220 review, HIGH-2).
         await expect(call(scheduler)).rejects.toThrow(
           /restore a validated backup/,
         );

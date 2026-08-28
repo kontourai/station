@@ -10,7 +10,7 @@
 // cause that does not name this file.
 
 /**
- * station#1498 slice 1 — pure git-remote canonicalization
+ * Pure git-remote canonicalization
  * (`docs/design/portable-project-identity.md` §2.4, §3.3).
  *
  * `normalizeGitOrigin` is promoted verbatim out of

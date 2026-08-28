@@ -223,13 +223,13 @@ describe('push routes', () => {
   });
 
   // A revoked credential is now stopped one layer earlier than the other two
-  // rejections above. #1189 (station#1123 slice 3) narrowed the loopback
+  // rejections above. archive#1189 (archive#1123) narrowed the loopback
   // bypass so that a *presented, well-formed* credential always runs the
   // verify path regardless of peer class; a revoked one fails that verify and
   // the gate answers 401 authentication_required, so the request never reaches
   // this route's own device-identity check. The master credential still
   // reaches the route and answers 403 because it verifies but identifies no
-  // paired device. Since #2051, a caller presenting nothing is rejected by the
+  // paired device. Since archive#2051, a caller presenting nothing is rejected by the
   // same credential floor with the same 401 response as a revoked credential.
   //
   // The guarantee this test exists for is unchanged: a revoked device cannot
@@ -245,7 +245,7 @@ describe('push routes', () => {
   // DevicePairingRequiredError for exactly that reason — see
   // `throwIfDevicePairingRequired` in packages/sdk and its tests. Whether the
   // gate should let clients tell a revoked device apart from one that was
-  // never paired is open in #1212.
+  // never paired is open in archive#1212.
   test('a revoked device credential is rejected identically for loopback and remote peers and cannot resurrect its subscription', async () => {
     const harness = createHarness();
     const paired = await pairDevice(harness);

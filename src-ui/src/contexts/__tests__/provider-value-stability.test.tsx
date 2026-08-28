@@ -6,7 +6,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#3796 — the app-level providers published a fresh `value` object
+ * archive#3796 — the app-level providers published a fresh `value` object
  * literal on every render, so any render of a provider republished its
  * context to every consumer regardless of what the render was about; and
  * AuthProvider manufactured a new `Date` on every status poll, guaranteeing

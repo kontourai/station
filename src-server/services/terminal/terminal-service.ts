@@ -65,7 +65,7 @@ export class TerminalService {
     const history =
       existing?.history ?? (await this.historyStore.load(sessionId));
 
-    // station#1497 — refuse an empty working directory instead of letting
+    // archive#1497 — refuse an empty working directory instead of letting
     // node-pty decide. `unixTerminal.js` resolves `opt.cwd || process.cwd()`,
     // so a blank cwd silently spawns the user's shell in whatever directory
     // station-control was launched from — usually the Station checkout — and

@@ -1,5 +1,5 @@
 /**
- * station#1834 (review rounds 2-4): StrandsFramework.createTempAgent's tool
+ * archive#1834 (review rounds 2-4): StrandsFramework.createTempAgent's tool
  * gate, exercised at the adapter level with the strands SDK mocked at its
  * boundary (same approach as strands-tool-loader.test.ts — a full strands
  * model harness is impractical here). The mock dispatches hook events and
@@ -279,7 +279,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
-  // station#1834 round 3 (delta-2 HIGH): invocation-scoped, not agent-scoped.
+  // archive#1834 round 3 (delta-2 HIGH): invocation-scoped, not agent-scoped.
   test('interleaved lazy streams each consult THEIR OWN conversation requester', async () => {
     const execute = vi.fn().mockResolvedValue('ok');
     const requesterA = vi.fn().mockResolvedValue(true);
@@ -323,7 +323,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
-  // station#1834 round 3 (delta-2 HIGH): no truthy-merge field retention.
+  // archive#1834 round 3 (delta-2 HIGH): no truthy-merge field retention.
   test('a field absent on this request is absent in this invocation context (no stale delegation/userId)', async () => {
     const beforeToolCall = vi.fn().mockResolvedValue(true);
     const framework = new StrandsFramework();
@@ -396,7 +396,7 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
     expect(invocation.unattendedPrincipal).toBeUndefined();
   });
 
-  // station#1834 round 4 (delta-3 HIGH): the trusted context must not be
+  // archive#1834 round 4 (delta-3 HIGH): the trusted context must not be
   // spoofable from the SDK's tool-writable invocationState bag.
   test('a tool that plants a spoofed context in invocationState cannot change a sibling tool approval identity', async () => {
     const execute = vi.fn().mockResolvedValue('ok');

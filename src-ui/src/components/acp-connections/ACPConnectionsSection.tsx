@@ -32,7 +32,7 @@ export function ACPConnectionsSection({
     error: connectionQueryError,
     isError: connectionQueryIsError = false,
     isFetching: connectionQueryFetching = false,
-    // SHELL-09 class: the empty state below rendered from `connections.length
+    //  class: the empty state below rendered from `connections.length
     // === 0`, which is also true for the whole initial read — so a populated
     // instance briefly asserted "Add a provider to get started". `isPending`
     // is the initial-read signal; `isFetching` (already read above, for the

@@ -16,7 +16,7 @@ const MAX_TURN_RECORDS_PER_THREAD = 200;
 const MAX_THREADS = 400;
 
 /**
- * station#2802 fix round (H2): the index is ONE FILE PER THREAD, not one
+ * archive#2802 fix round (H2): the index is ONE FILE PER THREAD, not one
  * whole-home document. The captured document (`turn-checkpoints.json`)
  * made every recordTurnPhase a read+write of a file whose size scaled with
  * the GLOBAL thread/turn population — measured at 85.7 MB / ~335 ms of
@@ -111,7 +111,7 @@ export type TurnCheckpointWrite = Partial<
  * against a freshly parsed defensive copy and whose write is issued in the
  * same synchronous call — there is no read-modify-write surface a caller
  * could split across an await (the CAS-less RMW shape that produced
- * station#1588/#1600/#1606 is unreachable by construction).
+ * archive#1588/#1600/#1606 is unreachable by construction).
  */
 export interface CheckpointIndexStoreOptions {
   /** Documented bound: newest N turn records per thread. Default 200. */

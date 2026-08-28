@@ -12,7 +12,7 @@ import {
 } from '../components/chat-dock/ChatDockMobileHeader';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
-// station#3297 put a live connection indicator in this bar, so the header now
+// archive#3297 put a live connection indicator in this bar, so the header now
 // mounts through the same connection boundary the app uses. Nothing here
 // asserts on probe results; the stub only keeps the shared health coordinator
 // from reaching the network.
@@ -146,7 +146,7 @@ describe('ChatDockMobileHeader project scope', () => {
 });
 
 /**
- * kontourai/station#793: a project-switcher trigger distinct from the task
+ * archive#793: a project-switcher trigger distinct from the task
  * switcher's own buried eyebrow (`aria-label="Switch task"`) — see D3 in the
  * plan for why the eyebrow could not simply grow a click behavior.
  */
@@ -364,7 +364,7 @@ describe('ChatDockMobileHeader project switcher', () => {
 });
 
 /**
- * station#3297 — connection state on the surface where the failure is seen.
+ * archive#3297 — connection state on the surface where the failure is seen.
  *
  * The app toolbar's indicator is hidden while the mobile dock is full-screen
  * (`app__main--mobile-dock-fullscreen`), and this bar replaced it, so the chat

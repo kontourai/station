@@ -15,7 +15,7 @@ function session(
     eventCount: 0,
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
-    // station#1778: a cast is an EXEMPTION from the required-member
+    // archive#1778: a cast is an EXEMPTION from the required-member
     // enforcement, so this fixture is typed rather than asserted.
     answerability: { answerable: true },
     ...overrides,
@@ -32,7 +32,7 @@ function continuedFromRow(
 /**
  * Activity iteration 2 (attached-session adoption honesty). The server stamps
  * `continuationSourceThreadId` on every adopted child (`buildAdoptedChild`,
- * a station#1165 server-owned fact), and the field is on the public summary
+ * a archive#1165 server-owned fact), and the field is on the public summary
  * contract — but no surface rendered it, so a session Station created by
  * continuing an external transcript presented as an ordinary Station session.
  * These pin that the adopted session's own detail discloses its provenance

@@ -264,7 +264,7 @@ export function createButton(page: Page): Locator {
 /**
  * Expands the chat dock if a picker/new-chat flow left it collapsed.
  *
- * Fix round (review MED-8/MED-7): the earlier `/^Expand chat/` regex matched
+ * A broad `/^Expand chat/` regex matches
  * THREE distinct controls — this dock's own 'Expand chat dock', the
  * unrelated sidebar inbox toggle 'Expand chat list'
  * (`dock-mode-preference.spec.ts`), and a mobile menu item 'Expand chat'
@@ -278,7 +278,7 @@ export function createButton(page: Page): Locator {
  * What actually leaves the dock collapsed on this path is only PARTLY
  * diagnosed: `useChatDockActions.ts`'s `openChatForAgent` defaults
  * `revealDock` to `true` and calls `navigation.setDockState(true,
- * lastDockMaximized)`, which should already open it — station#82's
+ * lastDockMaximized)`, which should already open it — archive#82's
  * webdriver-gated first-run auto-open nudge is confirmed disabled in this
  * environment, but it is not the only mechanism in play, and it is not
  * confirmed to be the (or the only) reason the dock is sometimes still
@@ -291,14 +291,14 @@ export async function ensureChatDockOpen(page: Page): Promise<void> {
   // (`ChatDockMobileHeader.tsx`). Anchored alternation so the sidebar
   // inbox toggle 'Expand chat list' can never match — an exact
   // desktop-only name here broke every 390x844 phone-viewport journey
-  // (caught live in the smoke-live gate: the mobile control has no
-  // ' dock' suffix, so the helper silently never expanded the dock).
+  // (the mobile control has no
+  // ' dock' suffix, so the helper silently never expands the dock).
   const expand = page.getByRole('button', {
     name: /^Expand chat( dock)?$/,
   });
   if (await expand.isVisible({ timeout: 3_000 }).catch(() => false)) {
     await expand.click();
-    // Settled-state guard (review LOW-3): the SAME button relabels to its
+    // Settled-state guard: the SAME button relabels to its
     // 'Collapse …' form on toggle — asserting the NEW label directly
     // proves the dock reached its open state, rather than merely that the
     // old label's count dropped to zero, which a removed-and-replaced

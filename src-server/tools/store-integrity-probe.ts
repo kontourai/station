@@ -6,7 +6,7 @@
  *
  * It exists as a SEPARATE PROCESS because `node:sqlite`'s `DatabaseSync` is
  * synchronous. Running the check in the server would stall the event loop for
- * the whole duration (587 ms cold on a 61 MB store, measured in station#3215)
+ * the whole duration (587 ms cold on a 61 MB store, measured in archive#3215)
  * — blocking SSE frames, the terminal WebSocket, and every in-flight turn.
  * Moving that stall from boot to mid-session is not an improvement; moving it
  * off the loop is. There are no `worker_threads` in this repo, so a bundled

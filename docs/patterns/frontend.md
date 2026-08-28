@@ -402,7 +402,7 @@ useApiMutation(mutationFn, options)
 /* ❌ Wrong */
 .my-component {
   background: #ffffff;
-  color: #333;
+  color: archive#333;
 }
 ```
 

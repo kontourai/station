@@ -1,7 +1,7 @@
 # The plugin authority model: contributions, loci, and where consent belongs
 
-Status: design note, 2026-08-25. Written while shaping station#4220 (one plugin
-format, user-chosen runtime) and station#4190 (dogfood the iframe tier).
+Status: design note, 2026-08-25. Written while shaping archive#4220 (one plugin
+format, user-chosen runtime) and archive#4190 (dogfood the iframe tier).
 
 Two independent adversarial reviews corrected the first draft of this note on
 several points of fact. Where a claim below is narrower than you might expect,
@@ -102,7 +102,7 @@ vendor's code into your origin is an ordinary trade. But three facts stop it
 being sufficient on its own, and the first is not a design gap but a bug:
 
 **1. ~~Consent is currently requested *after* installation.~~ Fixed
-(station#4288, 2026-08-26).** The install flow used to mutate first and prompt
+(archive#4288, 2026-08-26).** The install flow used to mutate first and prompt
 second, and declining left the plugin installed — for the browser-resident
 contributions the prompt was not a gate at all. The decision is now a
 PARAMETER of `POST /api/plugins/install`: the operator answers on what the
@@ -190,11 +190,11 @@ document.
 **But attribution is necessary, not sufficient** — and the frame proved it.
 The frame *does* attribute (origin and WindowProxy both pinned), and its
 `api-request` bridge was still wrong, because it authorized on the permission
-the caller **named** rather than the resource it **asked for** (station#4275).
-So the typed, resource-shaped vocabulary work (station#3534) belongs
+the caller **named** rather than the resource it **asked for** (archive#4275).
+So the typed, resource-shaped vocabulary work (archive#3534) belongs
 *alongside* the boundary, not after it.
 
-> **Superseded, 2026-08-25 (station#4300).** The `api-request` bridge is
+> **Superseded, 2026-08-25 (archive#4300).** The `api-request` bridge is
 > deleted, not hardened: it had no producer, its reply was never deliverable
 > to plugin code, it forwarded neither body nor headers, and the only
 > permission that reached a real surface through it — `plugin.server` — already
@@ -249,7 +249,7 @@ to plugin B what plugin A will do to it.
   "same pixels, different realm" property a pane needs and that a `<script>` in
   head forfeits. **Host permissions as URL patterns**, granted per-origin and
   enforced at the network layer rather than as a capability name asserted at
-  call time — that is the precise fix for station#4275. Plus
+  call time — that is the precise fix for archive#4275. Plus
   `optional_permissions` for runtime escalation, and **disable-on-permission-
   increase at update**, which is the update-consent flow we need, field-tested.
 - **VS Code** — the honest negative lesson. It took the "disclose and trust"
@@ -279,13 +279,13 @@ to plugin B what plugin A will do to it.
 Three changes get most of the value, need no new boundary, and are subsets of
 already-scoped work:
 
-1. ~~**Fix station#4275 first.**~~ **Done differently: the bridge is gone**
-   (station#4300, 2026-08-25). #4275 landed the path-shaped authorization and
-   #4300 then deleted the whole `api-request` surface, so the frame tier is
+1. ~~**Fix archive#4275 first.**~~ **Done differently: the bridge is gone**
+   (archive#4300, 2026-08-25). archive#4275 landed the path-shaped authorization and
+   archive#4300 then deleted the whole `api-request` surface, so the frame tier is
    enforced by having no credentialed egress at all rather than by a matcher.
-   What survives is the reserved-identity guard #4275 produced, now refused at
+   What survives is the reserved-identity guard archive#4275 produced, now refused at
    install time (`src-server/services/plugins/reserved-plugin-identities.ts`).
-   The ordering argument against station#4190 is discharged: shipping more
+   The ordering argument against archive#4190 is discharged: shipping more
    plugins into the frame no longer widens this surface.
 2. **Stop handing plugins the shell nonce.** Load `bundle.js` by plain
    `<script src>` (it is already same-origin) and drop the nonce assignment.
@@ -295,13 +295,13 @@ already-scoped work:
 3. **Attach the digest to ordinary grants.** `computePluginContentDigest`
    exists and is already wired into two consent surfaces. Store it beside each
    grant and compare on load; that delivers update-consent with no runtime
-   boundary at all. **Done for grants and for install** (station#4288): a
+   boundary at all. **Done for grants and for install** (archive#4288): a
    grant records the digest it was given against, the read path derives
    `bound`/`unverified`/`changed` from it, and the install decision is checked
    against the same digest before the tree is written. Not done for the update
    route.
 
-Then finish the derivation (station#3396) so the tiering and host-approval
+Then finish the derivation (archive#3396) so the tiering and host-approval
 machinery that already works can see the other eight contributions.
 
 ## Open questions for the owner

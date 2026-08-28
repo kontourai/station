@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { resolveHomeDir } from '../../utils/paths.js';
 
 /**
- * station#1908: every engine binary Station spawns — the Claude Agent SDK's
+ * archive#1908: every engine binary Station spawns — the Claude Agent SDK's
  * bundled binary, Codex's `app-server`, and ACP-connected command-backed
  * engines such as OpenCode — self-extracts working files into whatever
  * `TMPDIR`/`os.tmpdir()` resolves to for the child. Measured on the

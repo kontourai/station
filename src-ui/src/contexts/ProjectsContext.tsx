@@ -16,7 +16,7 @@ export interface ProjectMetadata {
   layoutCount: number;
   hasKnowledge: boolean;
   defaultProviderId?: string;
-  /** Server-owned explicit sidebar position (station#3315); list is pre-sorted by it. */
+/** Server-owned explicit sidebar position (archive#3315); list is pre-sorted by it. */
   position?: number;
 }
 
@@ -40,18 +40,18 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 export function useProjects(): {
   projects: ProjectMetadata[];
   isLoading: boolean;
-  /**
-   * station#4525 review (HIGH-1): true only once the list has been
-   * POSITIVELY confirmed by a successful, error-free load with real data —
-   * never true for the pending shape (`isLoading`) OR the error shape,
-   * because both fold `data` to the same `[]` `projects` reads. A caller
-   * that treats an empty `projects` as "there really are none" (e.g. a
-   * cleanup that deletes state referencing a since-removed project) must
-   * gate on this, not on `!isLoading` — `!isLoading` is also true the
-   * instant the query settles into an error, and a query that errors on a
-   * cold boot (server not durably listening yet) or a broken network
-   * window must never read as "confirmed empty."
-   */
+/**
+* archive#4525: true only once the list has been
+* POSITIVELY confirmed by a successful, error-free load with real data —
+* never true for the pending shape (`isLoading`) OR the error shape,
+* because both fold `data` to the same `[]` `projects` reads. A caller
+* that treats an empty `projects` as "there really are none" (e.g. a
+* cleanup that deletes state referencing a since-removed project) must
+* gate on this, not on `!isLoading` — `!isLoading` is also true the
+* instant the query settles into an error, and a query that errors on a
+* cold boot (server not durably listening yet) or a broken network
+* window must never read as "confirmed empty."
+*/
   isConfirmedLoaded: boolean;
 } {
   const { data, isLoading, isSuccess, isError, isPlaceholderData } =
@@ -59,10 +59,10 @@ export function useProjects(): {
   return {
     projects: data ?? [],
     isLoading,
-    // `!isPlaceholderData`: placeholderData forces status to "success" while
-    // the real fetch is still pending, so without this a future
-    // keepPreviousData opt-in on the projects query would let placeholder
-    // contents read as a confirmed load (latent today — no caller opts in).
+// `!isPlaceholderData`: placeholderData forces status to "success" while
+// the real fetch is still pending, so without this a future
+// keepPreviousData opt-in on the projects query would let placeholder
+// contents read as a confirmed load (latent today — no caller opts in).
     isConfirmedLoaded:
       Boolean(isSuccess) &&
       !isError &&

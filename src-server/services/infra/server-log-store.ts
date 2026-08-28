@@ -1,5 +1,5 @@
 /**
- * Durable NDJSON sink for Station's server logger (station#1895, logging
+ * Durable NDJSON sink for Station's server logger (archive#1895, logging
  * slice 1). Mirrors the daily-file + retention pattern already proven by
  * `runtime/conversation/runtime-event-log.ts`, but for structured log lines
  * rather than monitoring events.
@@ -78,7 +78,7 @@ function countInstrument(name: keyof LogStoreInstruments, value: number): void {
 }
 
 const MIB = 1024 * 1024;
-/** Exported so `server-log-reader.ts` (station#1896 logging slice 2) reuses
+/** Exported so `server-log-reader.ts` (archive#1896 logging slice 2) reuses
  * the exact same filename shape rather than re-declaring a possibly-drifting
  * copy — the read side and write side must agree on what a day file looks
  * like. */

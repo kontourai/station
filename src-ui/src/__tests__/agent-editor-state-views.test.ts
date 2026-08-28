@@ -9,7 +9,7 @@ import {
 } from '../views/agent-editor/AgentEditorStateViews';
 
 describe('agent editor state views', () => {
-  // SHELL-13: the detail pane used to render the bare string "Loading
+  // the detail pane used to render the bare string "Loading
   // agent..." — one of eleven loading treatments across 28 routes. It now
   // renders the shared region skeleton, and the wait names itself in the
   // accessible label rather than as visible one-off copy.

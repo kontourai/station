@@ -14,7 +14,7 @@ import type {
 
 /**
  * The hard outer budget `withCatalogTimeout` races every `listModelCatalog`
- * call against. Exported (station#1430 review, H-1) so a provider adapter
+ * call against. Exported (archive#1430 review, H-1) so a provider adapter
  * that does its own internal, sub-catalog work with its own timing budget
  * (e.g. `OllamaLLMProvider`'s `/api/show` enrichment) can DERIVE its budget
  * from this constant instead of picking an independent number that can
@@ -241,7 +241,7 @@ export async function safeListModels(
 /**
  * Whether `requestedModel` is launchable, and under which exact selector.
  *
- * station#3653: for SOME providers an empty catalogue is not an enumeration.
+ * archive#3653: for SOME providers an empty catalogue is not an enumeration.
  * An adapter that declares `emptyCatalogMeaning: 'no-catalog'` is saying its
  * zero-row answer carries no statement about which models the endpoint
  * serves — and for those, Station's OTHER derivation of "usable" already

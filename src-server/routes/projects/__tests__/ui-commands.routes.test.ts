@@ -64,7 +64,7 @@ describe('UI Command Routes', () => {
     expect(res.status).toBe(400);
   });
 
-  // station#3567 fix round FIX 1: `UI_NAVIGATE` is denied at `/events` in
+  // archive#3567 fix round FIX 1: `UI_NAVIGATE` is denied at `/events` in
   // hosted multi-tenant mode (no destination identity in the payload to
   // route it to one tenant's connections) — this route must not report
   // success for a command that will never be delivered.
@@ -84,7 +84,7 @@ describe('UI Command Routes', () => {
       }),
     });
     const body = await json(res);
-    // station#3567 second fix round FIX 3: 403 (configuration refuses the
+    // archive#3567 second fix round FIX 3: 403 (configuration refuses the
     // operation outright), not 409 (a resolvable state conflict).
     expect(res.status).toBe(403);
     expect(body.success).toBe(false);

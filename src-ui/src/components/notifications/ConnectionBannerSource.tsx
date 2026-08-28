@@ -28,7 +28,7 @@ import {
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 
 /**
- * station#4470 review round (H2/M1): removing the active connection is
+* archive#4470: removing the active connection is
  * destructive and, unlike a rejected credential, this device has no way
  * back to the SAME host without re-pairing from scratch — so it takes two
  * deliberate taps, the same MECHANISM `PairedDeviceList.tsx`'s inline revoke
@@ -40,7 +40,7 @@ import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 const REMOVE_CONFIRM_TIMEOUT_MS = 5_000;
 
 /**
- * station#4470 micro-round (L1): a fast double-tap on the same pixel (the
+* archive#4470: a fast double-tap on the same pixel (the
  * "Remove" button, before the arm/confirm swap has visually settled) must
  * arm on the first tap and land on the SECOND control ("Confirm") rather
  * than removing in one gesture — the swap is a genuine two-step confirm
@@ -78,36 +78,36 @@ export function ConnectionBannerSource() {
       pollInterval: 10_000,
     });
   const endpoint = activeConnection?.url ?? apiBase;
-  // Two-step confirm for "Remove connection" (identity-mismatch banner,
-  // below) — armed by a first tap, disarmed by a second tap performing the
-  // removal, an explicit Cancel, a blur off the control, a timeout, or the
-  // underlying decision changing out from under it (the effect keyed on
-  // `reason` further down).
+// Two-step confirm for "Remove connection" (identity-mismatch banner,
+// below) — armed by a first tap, disarmed by a second tap performing the
+// removal, an explicit Cancel, a blur off the control, a timeout, or the
+// underlying decision changing out from under it (the effect keyed on
+// `reason` further down).
   const [removeArmed, setRemoveArmed] = useState(false);
   const disarmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // station#4470 micro-round (M2): a destructive confirm has to stay VISIBLE
-  // to be cancellable — a two-step control armed from a COLLAPSED banner
-  // (station#4470 H2 kept the collapsed card's actions live, not hidden)
-  // would otherwise sit one tap from removing a connection behind a 52px
-  // bar with no way to see, let alone cancel, the pending confirm. Arming
-  // force-expands the card if it was collapsed; this ref remembers whether
-  // THIS confirm did that, so disarming (by any path) restores collapsed
-  // only when arming is what changed it — a card the reader expanded
-  // themselves stays expanded.
+// archive#4470: a destructive confirm has to stay VISIBLE
+// to be cancellable — a two-step control armed from a COLLAPSED banner
+ // (archive#4470 kept the collapsed card's actions live, not hidden)
+// would otherwise sit one tap from removing a connection behind a 52px
+// bar with no way to see, let alone cancel, the pending confirm. Arming
+// force-expands the card if it was collapsed; this ref remembers whether
+// THIS confirm did that, so disarming (by any path) restores collapsed
+// only when arming is what changed it — a card the reader expanded
+// themselves stays expanded.
   const forcedExpandRef = useRef(false);
-  // station#4470 micro-round (L1): timestamp of the arming tap, so a
-  // near-simultaneous second tap on the same screen location — now hitting
-  // "Confirm" where "Remove" used to be — can be told apart from a
-  // deliberate, separate confirming tap. See ARM_DEBOUNCE_MS.
+// archive#4470: timestamp of the arming tap, so a
+// near-simultaneous second tap on the same screen location — now hitting
+// "Confirm" where "Remove" used to be — can be told apart from a
+// deliberate, separate confirming tap. See ARM_DEBOUNCE_MS.
   const armedAtRef = useRef(0);
-  // station#4470 delta review (L2): hoisted so every disarm path — the
-  // reason-change effect below, the armed actions' own onClick/onBlur, and
-  // the collapse-chevron interaction (M1, further down) — shares ONE
-  // definition instead of each restating "clear the timer, restore
-  // collapsed if we forced it, clear armed" and drifting apart. Stable
-  // across renders (only refs and the `setRemoveArmed` dispatch inside),
-  // so it is safe as an effect dependency and as a long-lived callback
-  // handed to `bannerStore.present`.
+// archive#4470: hoisted so every disarm path — the
+// reason-change effect below, the armed actions' own onClick/onBlur, and
+// the collapse-chevron interaction (further down) — shares ONE
+// definition instead of each restating "clear the timer, restore
+// collapsed if we forced it, clear armed" and drifting apart. Stable
+// across renders (only refs and the `setRemoveArmed` dispatch inside),
+// so it is safe as an effect dependency and as a long-lived callback
+// handed to `bannerStore.present`.
   const disarm = useCallback(() => {
     if (disarmTimerRef.current !== null) {
       clearTimeout(disarmTimerRef.current);
@@ -128,44 +128,44 @@ export function ConnectionBannerSource() {
     },
     [],
   );
-  // station#4512 review (M2): the hook now decides its own tick from
-  // whether a pending record exists, not from this component's `status`.
+// archive#4512: the hook now decides its own tick from
+// whether a pending record exists, not from this component's `status`.
   const pendingApproval = usePendingPairingApproval(endpoint);
 
   const showCompat =
     status === 'error' && reason === 'unsupported-capability-version';
-  // Credential pairing chrome is owned by OnboardingGate (BANNER_IDS.credential).
-  // When the active connection needs pairing, skip the offline strip so the
-  // slot does not stack two "credential" stories with different CTAs.
+// Credential pairing chrome is owned by OnboardingGate (BANNER_IDS.credential).
+// When the active connection needs pairing, skip the offline strip so the
+// slot does not stack two "credential" stories with different CTAs.
   const credentialOwned = activeConnection?.credentialState === 'required';
-  /**
-   * A loopback address reached from something that is not the machine hosting
-   * it can never resolve — no amount of retrying changes it, and the fix is a
-   * different address. That makes it a decision, even though the reason that
-   * carried it here ('unreachable'/'timeout') is not one on its own.
-   *
-   * Deliberately hedged in the copy below ("Connecting from another device?"),
-   * because this predicate cannot tell a phone from a browser open on the host
-   * itself — the sustained streak is what stops it firing on a dev server that
-   * is merely restarting.
-   */
+/**
+* A loopback address reached from something that is not the machine hosting
+* it can never resolve — no amount of retrying changes it, and the fix is a
+* different address. That makes it a decision, even though the reason that
+* carried it here ('unreachable'/'timeout') is not one on its own.
+*
+* Deliberately hedged in the copy below ("Connecting from another device?"),
+* because this predicate cannot tell a phone from a browser open on the host
+* itself — the sustained streak is what stops it firing on a dev server that
+* is merely restarting.
+*/
   const loopbackFromElsewhere =
     isLoopbackEndpoint(endpoint) && !isDesktop && failureStreak >= 3;
 
-  /**
-   * station#3297 part 3 — a banner requires a decision.
-   *
-   * The previous rule was "every reachability failure banners, once it has
-   * missed three probes". That put a paragraph of prose with an address in it
-   * on a phone screen for a condition that is usually transient and
-   * self-healing, which is what the owner asked to stop. Transient
-   * reachability is now carried by the connection indicator, which is exactly
-   * as loud as it needs to be and costs no vertical space.
-   *
-   * The 3-probe streak has NOT been deleted, only narrowed to the one
-   * reachability case that is a decision (above): #2630's finding that load is
-   * this application's normal operating condition still holds.
-   */
+/**
+ * archive#3297 — a banner requires a decision.
+*
+* The previous rule was "every reachability failure banners, once it has
+* missed three probes". That put a paragraph of prose with an address in it
+* on a phone screen for a condition that is usually transient and
+* self-healing, which is what the owner asked to stop. Transient
+* reachability is now carried by the connection indicator, which is exactly
+* as loud as it needs to be and costs no vertical space.
+*
+* The 3-probe streak has NOT been deleted, only narrowed to the one
+ * reachability case that is a decision (above): archive#2630's finding that load is
+* this application's normal operating condition still holds.
+*/
   const showDecision =
     status === 'error' &&
     !credentialOwned &&
@@ -195,9 +195,9 @@ export function ConnectionBannerSource() {
     );
     const hasStaleContext = activeConnection?.lastSuccessAt !== undefined;
     const connectionId = activeConnection?.id;
-    // One line stays visible; everything else is a tap away. The split is by
-    // what the reader needs to act, not by length: the summary says what
-    // happened, the detail says what to do about it and under what caveats.
+// One line stays visible; everything else is a tap away. The split is by
+// what the reader needs to act, not by length: the summary says what
+// happened, the detail says what to do about it and under what caveats.
     const detail = [
       copy.action,
       loopbackFromElsewhere
@@ -220,30 +220,30 @@ export function ConnectionBannerSource() {
       badge: blocked ? 'Credential required' : undefined,
       message: copy.summary,
       detail: detail || undefined,
-      // Every banner that reaches this point names a decision, so none of them
-      // is the "transient notice that must not become permanent mobile
-      // chrome" the old rule was written for. Blocking credential failures
-      // stay non-dismissible for the original reason: dismissing one hides
-      // the action needed to resume automatic reconnect.
+// Every banner that reaches this point names a decision, so none of them
+// is the "transient notice that must not become permanent mobile
+// chrome" the old rule was written for. Blocking credential failures
+// stay non-dismissible for the original reason: dismissing one hides
+// the action needed to resume automatic reconnect.
       dismissible: !blocked,
-      // station#4470 delta review (M1): the collapse chevron is gated only
-      // on the exit animation (BannerHost.tsx), never on this banner's own
-      // armed state — a reader can arm "Remove", then tap the chevron, and
-      // land the SAME H2 overflow this whole feature exists to avoid
-      // (message clipped to 0px, Cancel/dismiss pushed outside the clipped
-      // card) for up to REMOVE_CONFIRM_TIMEOUT_MS. Collapsing while armed
-      // now disarms — a reader collapsing a pending destructive confirm is
-      // read as cancelling it, not as asking to keep it live off screen.
+// archive#4470: the collapse chevron is gated only
+// on the exit animation (BannerHost.tsx), never on this banner's own
+// armed state — a reader can arm "Remove", then tap the chevron, and
+ // land the SAME overflow this whole feature exists to avoid
+// (message clipped to 0px, Cancel/dismiss pushed outside the clipped
+// card) for up to REMOVE_CONFIRM_TIMEOUT_MS. Collapsing while armed
+// now disarms — a reader collapsing a pending destructive confirm is
+// read as cancelling it, not as asking to keep it live off screen.
       onCollapse: disarm,
       dismissAriaLabel: 'Dismiss connection notice',
       actions:
         reason === 'authentication-failed'
           ? [
-              // station#3297: the remedy, first. A rejected credential cannot
-              // be rechecked into working — "Try now" was the only action
-              // offered here, and it is the one thing that provably does not
-              // help. It stays as the secondary, because a host that has since
-              // been re-approved out of band recovers on a probe.
+// archive#3297: the remedy, first. A rejected credential cannot
+// be rechecked into working — "Try now" was the only action
+// offered here, and it is the one thing that provably does not
+// help. It stays as the secondary, because a host that has since
+// been re-approved out of band recovers on a probe.
               {
                 label: 'Pair again',
                 onClick: () => openConnectionsModal({ mode: 'request-access' }),
@@ -257,62 +257,62 @@ export function ConnectionBannerSource() {
               },
             ]
           : reason === 'identity-mismatch'
-            ? // station#4470: the `detail` copy above this (from
-              // `connectionFailureCopy`) already tells the reader "Pair
-              // again, or remove this connection" — the CTA used to offer
-              // only "Try now", which cannot recover a host whose identity
-              // has genuinely changed (a reset/reinstalled host, or a
-              // different machine now answering at this address).
-              //
-              // Review round (H2): a third action ("Try now") does not fit
-              // this banner collapsed at a phone viewport — measured with a
-              // real Chromium page at 390px, three non-shrinkable
-              // `.banner-host__action`s in the collapsed 52px bar clip the
-              // message to 0px width and push the dismiss control off the
-              // clipped card entirely, leaving it unreachable for the rest
-              // of the session. Two actions fit (the same shape
-              // authentication-failed already ships), and retrying is not
-              // the remedy here the way it stayed one for a rejected
-              // credential that might since have been re-approved out of
-              // band — the owner named exactly two remedies for THIS
-              // reason, so retry is dropped rather than demoted.
-              //
-              // "Remove connection"/"Confirm removal" as the UNARMED
-              // labels (the first tried) STILL broke the same collapsed
-              // row even at two actions: `.banner-host__action`s wrap
-              // under `index.css`'s global mobile "legacy action rows" net
-              // (`[class*="__actions"] { flex-wrap: wrap; }`), and the two
-              // buttons' combined natural width didn't fit the ~244px this
-              // row has left once the message/controls columns take their
-              // share — the second button wrapped to a row the fixed 52px
-              // collapsed height then clips away entirely (measured:
-              // message AND the wrapped button both landed outside the
-              // card). "Pair again" is the established width from
-              // authentication-failed; "Remove"/"Confirm" are the short
-              // VISIBLE form that measures back down to a single row with
-              // the message column comfortably visible — `ariaLabel` below
-              // carries the full sentence for anyone not reading the
-              // banner's own message, which already names what is being
-              // removed.
-              //
-              // Micro-round (M2): an armed confirm has to stay reachable
-              // AND cancellable, which a relabeled single button sitting
-              // inside a possibly-collapsed 52px bar was neither — arming
-              // force-expands the card (forcedExpandRef, above) so the
-              // confirm is never hidden, and the armed state renders an
-              // explicit "Cancel" beside "Confirm" rather than only a
-              // relabel, mirroring `PairedDeviceList.tsx`'s
-              // `confirming ? <Confirm/Cancel> : <normal actions>` shape.
-              // Three actions ("Pair again"/"Confirm"/"Cancel") measured
-              // 262.6px of content in the 345px the expanded row has at
-              // 390px (31% headroom) — unlike H2's collapsed 52px bar,
-              // this fits comfortably. That measurement is only ever taken
-              // EXPANDED: arming force-expands a collapsed card, and
-              // delta review (M1) closed the other way in — collapsing
-              // the chevron while armed now disarms (`onCollapse: disarm`
-              // above) instead of leaving the three-action row reachable
-              // behind the collapsed 52px bar, so this row is never
-              // rendered collapsed by either path.
+            ? // archive#4470: the `detail` copy above this (from
+// `connectionFailureCopy`) already tells the reader "Pair
+// again, or remove this connection" — the CTA used to offer
+// only "Try now", which cannot recover a host whose identity
+// has genuinely changed (a reset/reinstalled host, or a
+// different machine now answering at this address).
+//
+ // Review round : a third action ("Try now") does not fit
+// this banner collapsed at a phone viewport — measured with a
+// real Chromium page at 390px, three non-shrinkable
+// `.banner-host__action`s in the collapsed 52px bar clip the
+// message to 0px width and push the dismiss control off the
+// clipped card entirely, leaving it unreachable for the rest
+// of the session. Two actions fit (the same shape
+// authentication-failed already ships), and retrying is not
+// the remedy here the way it stayed one for a rejected
+// credential that might since have been re-approved out of
+// band — the owner named exactly two remedies for THIS
+// reason, so retry is dropped rather than demoted.
+//
+// "Remove connection"/"Confirm removal" as the UNARMED
+// labels (the first tried) STILL broke the same collapsed
+// row even at two actions: `.banner-host__action`s wrap
+// under `index.css`'s global mobile "legacy action rows" net
+// (`[class*="__actions"] { flex-wrap: wrap; }`), and the two
+// buttons' combined natural width didn't fit the ~244px this
+// row has left once the message/controls columns take their
+// share — the second button wrapped to a row the fixed 52px
+// collapsed height then clips away entirely (measured:
+// message AND the wrapped button both landed outside the
+// card). "Pair again" is the established width from
+// authentication-failed; "Remove"/"Confirm" are the short
+// VISIBLE form that measures back down to a single row with
+// the message column comfortably visible — `ariaLabel` below
+// carries the full sentence for anyone not reading the
+// banner's own message, which already names what is being
+// removed.
+//
+ // Micro-round : an armed confirm has to stay reachable
+// AND cancellable, which a relabeled single button sitting
+// inside a possibly-collapsed 52px bar was neither — arming
+// force-expands the card (forcedExpandRef, above) so the
+// confirm is never hidden, and the armed state renders an
+// explicit "Cancel" beside "Confirm" rather than only a
+// relabel, mirroring `PairedDeviceList.tsx`'s
+// `confirming ? <Confirm/Cancel> : <normal actions>` shape.
+// Three actions ("Pair again"/"Confirm"/"Cancel") measured
+// 262.6px of content in the 345px the expanded row has at
+ // 390px (31% headroom) — unlike collapsed 52px bar,
+// this fits comfortably. That measurement is only ever taken
+// EXPANDED: arming force-expands a collapsed card, and
+ // closed the other way in — collapsing
+// the chevron while armed now disarms (`onCollapse: disarm`
+// above) instead of leaving the three-action row reachable
+// behind the collapsed 52px bar, so this row is never
+// rendered collapsed by either path.
               (() => {
                 const pairAgain = {
                   label: 'Pair again',
@@ -352,8 +352,8 @@ export function ConnectionBannerSource() {
                     ariaLabel: 'Confirm removing this connection',
                     variant: 'danger' as const,
                     onClick: () => {
-                      // L1: a fast double-tap on the same pixel must arm,
-                      // not arm-then-remove in one gesture.
+// a fast double-tap on the same pixel must arm,
+// not arm-then-remove in one gesture.
                       if (Date.now() - armedAtRef.current < ARM_DEBOUNCE_MS) {
                         return;
                       }

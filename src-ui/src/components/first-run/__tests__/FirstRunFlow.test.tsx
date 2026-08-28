@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * FirstRunFlow is the TOUR now (UX audit RT-02/SHELL-12 moved the questions to
+ * FirstRunFlow is the TOUR now ( / moved the questions to
  * `FirstRunHomeChapter`). What these cover is what the `Coachmark` tests below
  * it cannot see: that the tour only ever opens because someone asked for it,
  * that focus is captured and restored across a whole run, and that a chapter
@@ -40,9 +40,9 @@ afterEach(() => {
 
 describe('the tour opens only when it is asked for', () => {
   test('a cold mount renders nothing at all', () => {
-    // The whole RT-02 defect in one assertion: nothing about mounting, about a
-    // readiness probe, or about how long the page has been open may put a
-    // first-run surface on screen.
+ // The whole defect in one assertion: nothing about mounting, about a
+// readiness probe, or about how long the page has been open may put a
+// first-run surface on screen.
     render(<FirstRunFlow />);
     expect(screen.queryByTestId('first-run-coachmark')).toBeNull();
     expect(firstRunStore.getSnapshot().chapter).toBe('connect');
@@ -94,10 +94,10 @@ describe('return focus across the run (review H2, MEDIUM-2)', () => {
   });
 
   test('falls back to a surviving ancestor when the trigger unmounts', async () => {
-    // THE PRODUCTION PATH. `CommandPalette.runCommand` is `close();
-    // command.run();` and `close()` is a batched setState, so when we capture,
-    // focus is still on the palette's own input — a node that unmounts a tick
-    // later.
+// THE PRODUCTION PATH. `CommandPalette.runCommand` is `close;
+// command.run;` and `close` is a batched setState, so when we capture,
+// focus is still on the palette's own input — a node that unmounts a tick
+// later.
     const shell = document.createElement('div');
     shell.id = 'app-shell';
     const overlay = document.createElement('div');
@@ -110,7 +110,7 @@ describe('return focus across the run (review H2, MEDIUM-2)', () => {
     input.focus();
     expect(document.activeElement).toBe(input);
     fireEvent(window, new CustomEvent('station-start-first-run-tour'));
-    // The overlay tears itself down right after invoking us.
+// The overlay tears itself down right after invoking us.
     overlay.remove();
 
     await waitFor(() =>
@@ -118,18 +118,18 @@ describe('return focus across the run (review H2, MEDIUM-2)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Skip the tour' }));
 
-    // The captured node is gone, so the shared helper walks to the nearest
-    // surviving ancestor. What matters is that it is NOT <body> — that is the
-    // station#1126 defect this whole mechanism exists to avoid.
+// The captured node is gone, so the shared helper walks to the nearest
+// surviving ancestor. What matters is that it is NOT <body> — that is the
+// archive#1126 defect this whole mechanism exists to avoid.
     await waitFor(() => expect(document.activeElement).toBe(shell));
     expect(document.activeElement).not.toBe(document.body);
   });
 
   test('a run started from no gesture captures nothing and restores nothing', async () => {
-    // `FirstRunHomeChapter` completes and dispatches the event from its own
-    // teardown, so `document.activeElement` can legitimately be <body>:
-    // `captureReturnFocus` returns an empty chain and `endRun` correctly skips
-    // the restore. Asserted rather than left as an undocumented no-op.
+// `FirstRunHomeChapter` completes and dispatches the event from its own
+// teardown, so `document.activeElement` can legitimately be <body>:
+// `captureReturnFocus` returns an empty chain and `endRun` correctly skips
+// the restore. Asserted rather than left as an undocumented no-op.
     render(<FirstRunFlow />);
     act(() => requestFirstRunTour());
     await waitFor(() =>
@@ -145,9 +145,9 @@ describe('return focus across the run (review H2, MEDIUM-2)', () => {
 
 describe('downgrade safety (review MEDIUM-4)', () => {
   test('a chapter written by a newer Station repairs instead of sticking', () => {
-    // `firstRunProgress` is a composite device setting persisted verbatim, so
-    // this survives a downgrade byte-for-byte, and `resolveResumePoint`'s
-    // documented restart fallback is inert unless something reads its chapter.
+// `firstRunProgress` is a composite device setting persisted verbatim, so
+// this survives a downgrade byte-for-byte, and `resolveResumePoint`'s
+// documented restart fallback is inert unless something reads its chapter.
     firstRunStore.enterChapter('from-a-newer-station' as never);
     render(<FirstRunFlow />);
     expect(firstRunStore.getSnapshot().chapter).toBe('connect');
@@ -186,8 +186,8 @@ describe('re-entry (review L1, L3)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Skip the tour' }));
     navigate.mockClear();
 
-    // Without clearing the "already navigated" latch, this second run would
-    // render its coachmark on whatever page the user happened to be on.
+// Without clearing the "already navigated" latch, this second run would
+// render its coachmark on whatever page the user happened to be on.
     act(() => requestFirstRunTour());
     await waitFor(() => expect(navigate).toHaveBeenCalledWith(firstPath));
   });

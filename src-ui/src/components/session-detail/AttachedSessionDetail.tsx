@@ -54,7 +54,7 @@ function reservationFailure(
  * Read-only view for a session Station is only following (a terminal
  * session attached from another surface, e.g. a CLI). Offers one action —
  * adopt it into a real Station-owned continuation — plus the imported
- * transcript. Split out of `SessionsView` per station#1204.
+ * transcript. Split out of `SessionsView` per archive#1204.
  */
 export function AttachedSessionDetail({
   apiBase,
@@ -80,7 +80,7 @@ export function AttachedSessionDetail({
   upgradeRequired?: boolean;
   streamError?: Error;
   /**
-   * station#3426: the three honest states behind one `disconnected` flag.
+   * archive#3426: the three honest states behind one `disconnected` flag.
    * `liveStreamStoppedTerminal`/`historyStoppedTerminal` name a credential
    * rejection (401/403) the SSE transport or the history-window ladder gave
    * up on for good; `capabilityRecoveryExhausted` names the bounded
@@ -174,7 +174,7 @@ export function AttachedSessionDetail({
             );
           }
           if (outcome.correlation.state !== 'bound')
-            // station#3965: a toast is read in a second — it has to lead with
+            // archive#3965: a toast is read in a second — it has to lead with
             // what happened, not with the name of the check that didn't pass.
             showToast(
               `Continued. We couldn’t confirm this links back to your first-task step (${outcome.correlation.reason}).`,
@@ -230,11 +230,11 @@ export function AttachedSessionDetail({
     adoptionCause,
   ].filter((message): message is string => Boolean(message));
   const disconnected = !connected || Boolean(streamError);
-  // station#3426: derive the claim from the mechanism that is actually
+  // archive#3426: derive the claim from the mechanism that is actually
   // active, instead of one copy folding three recovery mechanisms with
   // different behaviours. `stoppedTerminal` takes precedence — a credential
   // rejection stops both the other mechanisms too (the SSE transport closes
-  // the stream, `authenticatedStream?.close()`, and the capability probe is
+  // the stream, `authenticatedStream?.close`, and the capability probe is
   // moot with nothing left to hydrate).
   const stoppedTerminal = Boolean(
     liveStreamStoppedTerminal || historyStoppedTerminal,
@@ -252,7 +252,7 @@ export function AttachedSessionDetail({
     adoptionError?.failureClass === 'uncertain-no-response';
   const adoptionTransportFailed = isStationTransportFailure(adoption.error);
   const adoptionDisabled = adoption.isPending || serverRejectedRetry;
-  // station#3227 C3: this was an inline copy of `sessionTitle`'s first and
+  // archive#3227 C3: this was an inline copy of `sessionTitle`'s first and
   // last branches with its delegation branch missing, so an attached session
   // that DID carry a delegated task id read "Claude Code session" here and
   // "Worker task · <id>" in the list it was opened from.
@@ -280,7 +280,7 @@ export function AttachedSessionDetail({
         </div>
       </header>
 
-      {/* station#3305: one scroll region for everything below the pinned
+      {/* archive#3305: one scroll region for everything below the pinned
           header. The previous fixed grid template declared 3 rows for a
           variable child list, so the transcript and adoption controls could
           land past the pane's clipped height with no way to reach them. */}
@@ -411,7 +411,7 @@ export function AttachedSessionDetail({
                 >
                   <p className="sessions-detail__transcript-role">
                     {message.role === 'assistant' ? 'Assistant' : 'You'}
-                    {/* station#1424: this view exists only for a session
+                    {/* archive#1424: this view exists only for a session
                       Station is following read-only (see the doc comment
                       above) — every assistant row it renders is genuinely
                       read-only-attached, so the badge is unconditional here

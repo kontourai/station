@@ -27,15 +27,15 @@ export interface AgentLayoutProps {
   onShowChat?: () => void;
   onRequestAuth?: () => Promise<boolean>;
   onSendToChat?: (text: string, agent?: string) => void;
-  /**
-   * A terminal MCP UI resolver result. This is observational only: the frame
-   * continues to own resource loading, CSP, sandboxing, and approval policy.
-   */
+/**
+* A terminal MCP UI resolver result. This is observational only: the frame
+* continues to own resource loading, CSP, sandboxing, and approval policy.
+*/
   onMcpUiResolution?: (resolution: {
     ref: string;
     status: 'missing_resource' | 'render_revoked';
   }) => void;
-  /** Immutable declaration identity that scopes an MCP resolver attempt. */
+/** Immutable declaration identity that scopes an MCP resolver attempt. */
   mcpUiResolutionIdentity?: string;
   mcpUiPaneIdentity?: MCPAppPanePresentationIdentity;
   mcpUiDisplayMode?: 'inline' | 'fullscreen';
@@ -99,10 +99,10 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
   const navigation = useNavigationOptional();
   const component = activeTab?.component;
 
-  // A plugin-provided view withheld by the remote-isolation policy is not
-  // "missing" — naming installation as the cause would send the user to
-  // reinstall a plugin the server already has. Name the real refusal and
-  // offer the same path the chrome banner does (#2539).
+// A plugin-provided view withheld by the remote-isolation policy is not
+// "missing" — naming installation as the cause would send the user to
+// reinstall a plugin the server already has. Name the real refusal and
+ // offer the same path the chrome banner does (archive#2539).
   if (
     typeof component === 'string' &&
     loadStatus.failure === 'remote-isolation'
@@ -271,7 +271,7 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 };
 
 builtinRegistry.default = DefaultLayout;
-// Project-wide Flow run console (S2): include in a layout via
+// Project-wide Flow run console : include in a layout via
 // { kind: 'builtin-component', name: 'flow-run-console' }.
 builtinRegistry['flow-run-console'] = () => <FlowRunConsole />;
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;
@@ -296,8 +296,8 @@ export function clientLayoutRendererPresence(
     case 'plugin-component':
       return pluginRegistry.getLayout(normalized.name) ? 'present' : 'missing';
     case 'mcp-tool-ui':
-      // MCPToolUILayout is an explicit host branch; this says nothing about
-      // the MCP tool's own permission or availability.
+// MCPToolUILayout is an explicit host branch; this says nothing about
+// the MCP tool's own permission or availability.
       return 'present';
   }
 }
@@ -348,7 +348,7 @@ interface LayoutRendererProps extends AgentLayoutProps {
   activeTabId?: string;
   onTabChange?: (tabId: string) => void;
   refreshKey?: number;
-  /** Exact direct-pane plugin component already authorized by its occurrence. */
+/** Exact direct-pane plugin component already authorized by its occurrence. */
   trustedPluginLayout?: AgentLayoutComponent;
 }
 
@@ -365,10 +365,10 @@ export function LayoutRenderer({
   trustedPluginLayout,
   ...props
 }: LayoutRendererProps) {
-  // Re-resolve the component when the plugin registry's status changes: a
-  // live registry reload (e.g. consent granted without a page reload) must
-  // swap a mounted fallback for the newly registered layout instead of
-  // stranding the stale selection (sol review of the honest-slot change).
+// Re-resolve the component when the plugin registry's status changes: a
+// live registry reload (e.g. consent granted without a page reload) must
+// swap a mounted fallback for the newly registered layout instead of
+// stranding the stale selection.
   useSyncExternalStore(pluginRegistry.subscribe, pluginRegistry.getLoadStatus);
   try {
     return (

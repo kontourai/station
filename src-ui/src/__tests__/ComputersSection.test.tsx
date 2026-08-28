@@ -74,9 +74,9 @@ vi.mock('../views/connections-hub/AddMachineModal', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  // The section rail's own reads. They are here because two of these tests
-  // render the FRAME around this section, which is the only way to compare
-  // the rail's count against the rows the body actually drew.
+// The section rail's own reads. They are here because two of these tests
+// render the FRAME around this section, which is the only way to compare
+// the rail's count against the rows the body actually drew.
   useConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
   useAgentConnectionsQuery: () => ({ data: [] }),
@@ -405,17 +405,17 @@ describe('ComputersSection', () => {
     expect(screen.getByRole('button', { name: 'Remove' })).toBeTruthy();
   });
 
-  // sol review finding 5. This section constructed its OWN
-  // `KnownEnvironmentRegistry`, so it subscribed to listeners nobody else
-  // notified: the add dialog wrote to the same localStorage through a
-  // different instance and this list did not hear about it. The code comment
-  // in `known-environment-registry.ts` described the failure exactly; the
-  // section was the one place that had not adopted the singleton.
+//This section constructed its OWN
+// `KnownEnvironmentRegistry`, so it subscribed to listeners nobody else
+// notified: the add dialog wrote to the same localStorage through a
+// different instance and this list did not hear about it. The code comment
+// in `known-environment-registry.ts` described the failure exactly; the
+// section was the one place that had not adopted the singleton.
   test('a Station added through the shared registry appears without a remount', async () => {
     render(<ComputersSection />);
     expect(screen.getByText('No other computers yet')).toBeTruthy();
 
-    // The dialog's own write path — the same singleton, not a second instance.
+// The dialog's own write path — the same singleton, not a second instance.
     act(() => {
       knownEnvironmentRegistry().add({
         label: 'Box B',
@@ -425,18 +425,18 @@ describe('ComputersSection', () => {
       });
     });
 
-    // No re-render, no remount: the subscription is what has to deliver this.
+// No re-render, no remount: the subscription is what has to deliver this.
     await waitFor(() => expect(screen.getByText('Box B')).toBeTruthy());
     expect(
       document.querySelectorAll('.connections-computers__row'),
     ).toHaveLength(1);
   });
 
-  // The rail's count used to be `savedStations.length + sshComputers.length`,
-  // which is wrong in BOTH directions against the list it labels: it missed
-  // every manual entry, and counted a paired device and its SSH profile
-  // twice where the body folds them into one row. Both cases are present
-  // here, so a count that is merely "close" still fails.
+// The rail's count used to be `savedStations.length + sshComputers.length`,
+// which is wrong in BOTH directions against the list it labels: it missed
+// every manual entry, and counted a paired device and its SSH profile
+// twice where the body folds them into one row. Both cases are present
+// here, so a count that is merely "close" still fails.
   test('the rail count is the number of rows the body renders', async () => {
     connectionsState.data = [
       makeConnection({ environmentId: 'environment-box-b' }),
@@ -470,7 +470,7 @@ describe('ComputersSection', () => {
     const renderedRows = document.querySelectorAll(
       '.connections-computers__row',
     ).length;
-    // 1 manual + 1 folded (paired + its SSH profile) + 1 standalone SSH.
+// 1 manual + 1 folded (paired + its SSH profile) + 1 standalone SSH.
     expect(renderedRows).toBe(3);
     const computersTab = screen
       .getAllByRole('tab')

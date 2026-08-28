@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Regression coverage for the station#726 "ACP id fix": before this fix,
+ * Regression coverage for the archive#726 "ACP id fix": before this fix,
  * ACPChatPanel passed the raw ChatUIState (which has no `id` field) into
  * ChatMessageList via `as any`, so `.id` was `undefined` at runtime and
  * every message key namespaced under the literal "undefined" string. That

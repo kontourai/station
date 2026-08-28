@@ -16,7 +16,7 @@ interface ACPConnectionsViewProps {
  * `PageHeaderScope`, so in practice `ConnectionsSectionFrame`'s own eyebrow
  * wins — this is the contract this component's own tests pin).
  *
- * station#4463 slice 1 fix round: 'Connections' only, unlinked — `/connections`
+* archive#4463: 'Connections' only, unlinked — `/connections`
  * is a redirect-only resolver (`ConnectionsHub` jumps straight to whichever
  * section needs attention, or Models), so a click here would be a no-op or a
  * sibling jump dressed up as "go up", matching the same call made for the

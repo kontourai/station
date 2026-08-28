@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { STATION_SERVER_EXTERNALS } from '../../../scripts/lib/server-build-config.mjs';
 
 /**
- * station#3278. The watchdog's entrypoint guard compared `import.meta.url` to
+ * archive#3278. The watchdog's entrypoint guard compared `import.meta.url` to
  * `pathToFileURL(process.argv[1])`. Node resolves the entry module through
  * realpath; argv stays as invoked — so through any symlinked path the guard
  * failed and the watchdog STARTED, DID NOTHING, AND EXITED 0. A clean-looking

@@ -8,7 +8,7 @@ import {
 } from '../views/project-page/project-live-work-model';
 
 /**
- * station#3202. The sidebar badge and the project page's Live work section are
+ * archive#3202. The sidebar badge and the project page's Live work section are
  * the same function, so what is asserted here is (a) that the scoping is the
  * Sessions list's own project predicate, (b) that only the two LIVE lanes
  * survive, and (c) the agreement itself — the count is the length of the list.
@@ -22,11 +22,11 @@ function session(
   overrides: Partial<OrchestrationSessionSummary> &
     Pick<OrchestrationSessionSummary, 'threadId'>,
 ): OrchestrationSessionSummary {
-  // station#3241: no cast — the old summary-typed assertion was hiding three
-  // values the wire shape does not admit (`controlMode: 'managed'`,
-  // `status: 'open'`, an unbranded agent slug). The fixture now compiles
-  // against the contract, so a future wire-shape move fails here instead of
-  // asserting a session that cannot occur.
+// archive#3241: no cast — the old summary-typed assertion was hiding three
+// values the wire shape does not admit (`controlMode: 'managed'`,
+// `status: 'open'`, an unbranded agent slug). The fixture now compiles
+// against the contract, so a future wire-shape move fails here instead of
+// asserting a session that cannot occur.
   return {
     provider: 'claude',
     controlMode: 'station-owned',
@@ -59,7 +59,7 @@ const finished = session({ threadId: 'finished', lifecycleState: 'completed' });
  * A run that finished SECONDS ago, which `partitionHomeWorkItems` files under
  * `recentlyFinished` rather than `settled` (the terminal linger window).
  *
- * This fixture exists because of a fault injection that the suite did not
+ * This fixture exists because of a that the suite did not
  * catch: adding `'recentlyFinished'` to `PROJECT_LIVE_LANE_IDS` — the exact
  * mistake of letting the archive leak into the live section — passed every
  * test, because every terminal fixture was an hour old and therefore already
@@ -74,7 +74,7 @@ const justFinished = session({
 /**
  * A SECOND waiting session, so at least one lane holds more than one row.
  *
- * Also the product of an uncaught fault injection: `projectLiveCount` returning
+ * Also the product of an uncaught : `projectLiveCount` returning
  * `lanes.length` instead of the total number of sessions passed the whole
  * suite, because every lane in every fixture happened to hold exactly one
  * session. A count that agrees with its list only at cardinality one is not
@@ -111,14 +111,14 @@ describe('projectLiveLanes', () => {
   });
 
   test('a finished session is not live work and appears in no lane here', () => {
-    // Recently finished / Earlier are the Sessions list's job; the project
-    // page shows what is in flight, not an archive.
+// Recently finished / Earlier are the Sessions list's job; the project
+// page shows what is in flight, not an archive.
     expect(lanesFor([finished])).toEqual([]);
   });
 
   test('a run that finished seconds ago is still not live work', () => {
-    // The reachable form of the leg above: this session IS in the partition's
-    // `recentlyFinished` bucket, so only the lane filter keeps it out of here.
+// The reachable form of the leg above: this session IS in the partition's
+// `recentlyFinished` bucket, so only the lane filter keeps it out of here.
     expect(lanesFor([justFinished])).toEqual([]);
     expect(projectLiveCount(lanesFor([justFinished, running]))).toBe(1);
     expect(projectLiveLabel(lanesFor([justFinished, running]))).toBe(
@@ -145,10 +145,10 @@ describe('projectLiveLanes', () => {
   });
 
   test('an ambiguously attributed session appears under every candidate', () => {
-    // `matchesProjectFilter`'s rule, reused rather than restated: a filter
-    // never hides a session it cannot prove is unrelated, so a working
-    // directory configured as two projects is counted by both rather than
-    // filed under an arbitrary winner.
+// `matchesProjectFilter`'s rule, reused rather than restated: a filter
+// never hides a session it cannot prove is unrelated, so a working
+// directory configured as two projects is counted by both rather than
+// filed under an arbitrary winner.
     const ambiguous = session({
       threadId: 'ambiguous',
       projectSlug: undefined,
@@ -168,8 +168,8 @@ describe('projectLiveLanes', () => {
 
 describe('the badge number and the section list are one derivation', () => {
   test('the count is the total length of the lanes rendered', () => {
-    // Deliberately UNEVEN — two rows in one lane, one in the other — so a
-    // count that secretly returns the number of lanes cannot pass.
+// Deliberately UNEVEN — two rows in one lane, one in the other — so a
+// count that secretly returns the number of lanes cannot pass.
     const lanes = lanesFor([
       waiting,
       alsoWaiting,

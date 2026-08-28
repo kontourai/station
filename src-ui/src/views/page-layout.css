@@ -1,14 +1,14 @@
 /* ═══ Shared Page Layout ═══
  * Common classes for all core management views.
  * Provides consistent header, typography, animation, and container styling.
- * All management views MUST use .page as their root container class.
+* All management views MUST use.page as their root container class.
  */
 
 /* ── Page Container ── */
 .page {
   padding: 2rem 1.5rem;
   font-family: var(--font-sans);
-  /* The route entrance moved to `.route-transition` (app-shell) so the eight
+/* The route entrance moved to `.route-transition` (app-shell) so the eight
      split-pane routes, which are not `.page` descendants, get one too. The
      keyframe that used to run here was named `page-fade-in` and animated an
      8 px slide with no opacity at all — measured, every route popped in at
@@ -44,7 +44,7 @@
     grid-template-columns: 1fr;
   }
 
-  /* Tab strips scroll horizontally instead of clipping off-screen at EVERY
+/* Tab strips scroll horizontally instead of clipping off-screen at EVERY
      viewport (station#4463 slice 2 review HIGH-1 — `.page__tabs`/`.page__tab`'s
      scroll/nowrap layout is unconditional below; this media query now only
      adds the mobile-specific bits: a hidden scrollbar and a 44px touch
@@ -414,7 +414,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  /* The padding is the strip's own opaque band — content scrolls under it,
+/* The padding is the strip's own opaque band — content scrolls under it,
      not into the gap below it — so the base rule's margin comes off, or the
      two stack into 64px of dead space between the tabs and the first row. */
   padding-top: 0.25rem;
@@ -580,7 +580,7 @@
   color: var(--text-on-accent);
 }
 
-/* station#4463 slice 2 review HIGH-1 (fix round): `.page__tab` is
+/* archive#4463: `.page__tab` is
    `display: inline-flex`, and flexbox trims a flex item's OWN leading
    whitespace at the start of its line box — the count span's text content
    (" 3") therefore rendered as "3" with no visible gap ("Models0"), even
@@ -610,7 +610,7 @@
   min-height: 0;
 }
 
-/* ── SectionNav (scroll-spy / URL-section links; station#4463 slice 2) ──
+/* ── SectionNav (scroll-spy / URL-section links; archive#4463) ──
    Shares `.page__tab`'s pill visual for each link but is a `<nav>` of real
    anchors, not a `role="tablist"` — see `components/SectionNav.tsx`. Scrolls
    at every viewport like `.page__tabs` above, with an ALWAYS-visible thin

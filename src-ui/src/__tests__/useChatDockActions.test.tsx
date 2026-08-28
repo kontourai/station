@@ -41,9 +41,9 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
   useOpenConversation: () => openConversationAction,
 }));
 vi.mock('../utils/execution', () => ({
-  // Carries a model, so a test can tell "seeded the agent default" from
-  // "seeded nothing" — the mock previously returned no model at all, which
-  // made the station#3165 defect undetectable here.
+// Carries a model, so a test can tell "seeded the agent default" from
+// "seeded nothing" — the mock previously returned no model at all, which
+// made the archive#3165 defect undetectable here.
   resolveAgentExecution: () => ({
     providerOptions: {},
     model: 'opencode/deepseek-v4-flash-free',
@@ -114,12 +114,12 @@ describe('useChatDockActions placement-aware actions', () => {
     expect(setDockState).not.toHaveBeenCalled();
   });
 
-  /**
-   * station#3782: focusing a chat that has not taken its first successful turn
-   * yet must still leave `?chat=` pointing at something the dock can resolve.
-   * This used to write `conversationId ?? null`, which cleared the URL pointer
-   * for a chat that is live in the tab strip in front of the user.
-   */
+/**
+* archive#3782: focusing a chat that has not taken its first successful turn
+* yet must still leave `?chat=` pointing at something the dock can resolve.
+* This used to write `conversationId ?? null`, which cleared the URL pointer
+* for a chat that is live in the tab strip in front of the user.
+*/
   test('stamps the session id when the focused chat has no conversation yet', () => {
     const setActiveSessionId = vi.fn();
     const { result } = renderHook(() =>
@@ -218,9 +218,9 @@ describe('useChatDockActions placement-aware actions', () => {
   });
 
   test('reopening a conversation seeds no model, rather than the agent default', async () => {
-    // THE caller assertion. The extracted decision has its own tests, but
-    // nothing proved this hook uses it — reverting the call site to
-    // `: agentExecution` kept every one of those green (station#3165 review).
+// THE caller assertion. The extracted decision has its own tests, but
+// nothing proved this hook uses it — reverting the call site to
+ // `: agentExecution` kept every one of those green (archive#3165).
     const setActiveSessionId = vi.fn();
     const { result } = renderHook(() =>
       useChatDockActions({
@@ -243,8 +243,8 @@ describe('useChatDockActions placement-aware actions', () => {
     const execution = call?.[5] as
       | { model?: string; modelSource?: string }
       | undefined;
-    // The agent default must NOT be seeded: a send before the orchestration
-    // snapshot lands would dispatch it as an override the user never chose.
+// The agent default must NOT be seeded: a send before the orchestration
+// snapshot lands would dispatch it as an override the user never chose.
     expect(execution?.model).toBeUndefined();
     expect(execution?.modelSource).toBe('unknown');
   });

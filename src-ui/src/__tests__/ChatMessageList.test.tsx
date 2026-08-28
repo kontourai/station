@@ -285,7 +285,7 @@ describe('ChatMessageList', () => {
   });
 
   test('renders settled work inline, inside the message row, in reading order', () => {
-    // station#2652 redesign: no "Show N work activities" gate — a settled
+    // archive#2652 redesign: no "Show N work activities" gate — a settled
     // turn's activities interleave with its prose exactly as `contentParts`
     // orders them, as quiet rows inside the one message row.
     const messages = [
@@ -492,7 +492,7 @@ describe('ChatMessageList', () => {
     expect(screen.queryByText(/^via /)).toBeNull();
   });
 
-  // station#3341: the per-message copy called `navigator.clipboard.writeText`
+  // archive#3341: the per-message copy called `navigator.clipboard.writeText`
   // with no optional chain, no await and no catch — an insecure origin threw a
   // synchronous TypeError before the toast, and a refused write toasted
   // "Copied to clipboard" from an unhandled rejection.

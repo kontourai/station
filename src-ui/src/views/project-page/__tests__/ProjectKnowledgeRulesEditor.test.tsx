@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { ProjectKnowledgeRulesEditor } from '../ProjectKnowledgeRulesEditor';
 
 /**
- * station#771 regression. This editor used to gate only on
+ * archive#771 regression. This editor used to gate only on
  * `!rulesLoaded && rulesLoading` — a settled query error left both false, so
  * it fell straight through to an EMPTY, EDITABLE textarea with no message at
  * all, silently indistinguishable from a project that genuinely has no rules
@@ -27,10 +27,10 @@ describe('ProjectKnowledgeRulesEditor (#771)', () => {
     expect(container.querySelector('textarea')).toBeNull();
   });
 
-  // station#771 fix round (review LOW): the first pass only threaded a
-  // boolean, so every failure rendered the same generic title with no
-  // specific text — unlike the other 12 fixed sites, all of which run their
-  // error through `describeReadFailure`. Assert the actual message surfaces.
+// archive#771: the first pass only threaded a
+// boolean, so every failure rendered the same generic title with no
+// specific text — unlike the other 12 fixed sites, all of which run their
+// error through `describeReadFailure`. Assert the actual message surfaces.
   test('renders an error state with retry and the specific failure text instead of an empty editable textarea', () => {
     const onRetryRules = vi.fn();
     render(

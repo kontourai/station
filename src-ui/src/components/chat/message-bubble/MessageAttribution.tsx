@@ -10,22 +10,22 @@ interface MessageAttributionAgent {
 }
 
 interface MessageAttributionProps {
-  /**
-   * Agent identity text (station#1424 review fix S2): no icon here — the
-   * row already renders one avatar per message (`MessageBubble`'s
-   * `.message-row__avatar` / `StreamingMessage`'s `.streaming-message-icon`,
-   * both `AgentIcon`), so a second, smaller icon inside the strip was pure
-   * duplication, not a second identity. `null` when the agent is genuinely
-   * unresolved — this never falls back to a placeholder name like "AI".
-   */
+/**
+ * Agent identity text (archive#1424 fix): no icon here — the
+* row already renders one avatar per message (`MessageBubble`'s
+* `.message-row__avatar` / `StreamingMessage`'s `.streaming-message-icon`,
+* both `AgentIcon`), so a second, smaller icon inside the strip was pure
+* duplication, not a second identity. `null` when the agent is genuinely
+* unresolved — this never falls back to a placeholder name like "AI".
+*/
   agent: MessageAttributionAgent | null;
-  /**
-   * Already-resolved engine identity for THIS turn — this component never
-   * resolves engine identity itself. On a persisted row the caller reads it
-   * from the turn's own provenance envelope (`resolveTurnEngine`,
-   * station#1434); a caller with no per-turn record passes `null` and no
-   * chip renders.
-   */
+/**
+* Already-resolved engine identity for THIS turn — this component never
+* resolves engine identity itself. On a persisted row the caller reads it
+* from the turn's own provenance envelope (`resolveTurnEngine`,
+* archive#1434); a caller with no per-turn record passes `null` and no
+* chip renders.
+*/
   engine: EngineDescriptor | null;
   owner?: OwnerAttribution | null;
   permissionPosture?: PermissionPosture | null;
@@ -42,7 +42,7 @@ export function normalizedDisplayLabel(value: string | undefined): string {
 
 /**
  * Additive identity strip for an agent-authored chat/stream row
- * (station#1424): agent identity, engine chip, owner attribution, and
+ * (archive#1424): agent identity, engine chip, owner attribution, and
  * permission posture. Annotation, not segregation — this renders inside the
  * existing row/bubble shape, never a second row layout. Any prop left
  * unresolved (null/undefined) simply omits its chip; the whole component

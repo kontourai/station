@@ -117,7 +117,7 @@ export function conformAgentHooks(
     beforeToolCall: hooks.beforeToolCall
       ? async (tool, invocation) => {
           const decision = await hooks.beforeToolCall!(tool, invocation);
-          // Any non-`true` result is a denial (station#1834): a
+          // Any non-`true` result is a denial (archive#1834): a
           // ToolCallDenial object is truthy, so never branch on truthiness.
           const allowed = decision === true;
           const projected = await adapter.project(

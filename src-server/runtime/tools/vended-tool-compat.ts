@@ -458,7 +458,7 @@ function createHttpRequestTool(
  * tool error so it can correct itself). This is the authoritative server-side
  * gate; the UI's `extractUIBlocks` re-validates defensively at render time.
  *
- * station#1399 slice 1: every returned block also carries the host-derived
+ * archive#1399: every returned block also carries the host-derived
  * provenance stamp (`derivedFrom`/`provenanceDigest`/`attestationState`) via
  * {@link acceptUIBlockProvenance} — see that function for the refusal rules.
  */
@@ -693,7 +693,7 @@ function createRenderComponentTool(
           type: 'string',
           description: "Highlighting hint, e.g. 'ts', 'json' (type 'code').",
         },
-        // provenance (station#1399 slice 1)
+        // provenance (archive#1399)
         derivedFrom: {
           type: 'array',
           description:

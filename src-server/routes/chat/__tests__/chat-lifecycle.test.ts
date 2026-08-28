@@ -8,7 +8,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   tokensOutput: { add: vi.fn() },
 }));
 
-// station#1566: the title-generation model call itself is covered by
+// archive#1566: the title-generation model call itself is covered by
 // chat-title-generation.test.ts — these tests only need to control what it
 // returns to exercise the hook's write/skip decisions.
 const generateConversationTitle = vi.fn();
@@ -79,7 +79,7 @@ describe('chat-lifecycle helpers', () => {
       input: 'hello',
     });
 
-    // The Station-engine start span now names its engine (#3074): before,
+    // The Station-engine start span now names its engine (archive#3074): before,
     // it carried neither provider nor model, which is why a tool event could
     // not be joined back to an engine at all.
     expect(ctx.monitoringEmitter.emitAgentStart).toHaveBeenCalledWith({
@@ -210,7 +210,7 @@ describe('chat-lifecycle helpers', () => {
     expect(chatSpan.end).toHaveBeenCalled();
   });
 
-  // #191 R2 persistence-gap fix: a failed turn that produced zero output
+  // archive#191 R2 persistence-gap fix: a failed turn that produced zero output
   // otherwise persisted nothing at all, so a translated error a user saw
   // live silently vanished on reload.
   describe('failed-turn marker persistence (#191 R2)', () => {
@@ -254,7 +254,7 @@ describe('chat-lifecycle helpers', () => {
 
       expect(addMessage).toHaveBeenCalledTimes(2);
 
-      // #797: the user's own message has to land first, or the transcript
+      // archive#797: the user's own message has to land first, or the transcript
       // shows a failure with nothing the user actually sent.
       const [userTurn, userTurnUserId, userTurnConversationId] =
         addMessage.mock.calls[0];
@@ -313,7 +313,7 @@ describe('chat-lifecycle helpers', () => {
 
       // Assert the dedup check actually ran, not merely that one write
       // happened — a deleted recovery call would also leave exactly the
-      // marker (#797 review).
+      // marker (archive#797 review).
       expect(getMessages).toHaveBeenCalledWith('user-1', 'conversation-1');
       expect(addMessage).toHaveBeenCalledTimes(1);
       expect(addMessage.mock.calls[0][0].parts[0].text).toBe(
@@ -437,7 +437,7 @@ describe('chat-lifecycle helpers', () => {
       });
 
       // No marker — but the user's own message is still recovered, because
-      // this graceful-cancellation path loses it too (#797 review).
+      // this graceful-cancellation path loses it too (archive#797 review).
       expect(
         addMessage.mock.calls.filter((call) =>
           String(call[0]?.parts?.[0]?.text ?? '').includes('[CHAT_ERROR]'),
@@ -485,7 +485,7 @@ describe('chat-lifecycle helpers', () => {
       expect(addMessage).not.toHaveBeenCalled();
     });
 
-    // station#1293 review (HIGH-1), verifier-reproduced: chat-lifecycle
+    // archive#1293 review (HIGH-1), verifier-reproduced: chat-lifecycle
     // persists the user text via persistUserTurnIfMissing, then
     // unconditionally appends the [CHAT_ERROR] marker, on EVERY zero-output
     // failed turn. Two back-to-back failed turns with identical text used
@@ -583,7 +583,7 @@ describe('chat-lifecycle helpers', () => {
     });
   });
 
-  // station#1566: fire-and-forget auto-title generation, hooked off the
+  // archive#1566: fire-and-forget auto-title generation, hooked off the
   // first turn of a brand-new conversation.
   describe('auto title generation (station#1566)', () => {
     function chatSpanStub() {
@@ -759,7 +759,7 @@ describe('chat-lifecycle helpers', () => {
       });
     });
 
-    // station#1566 review (HIGH, TOCTOU): the original shape read the
+    // archive#1566 review (HIGH, TOCTOU): the original shape read the
     // conversation, decided, and only THEN wrote a static object — a rename
     // landing in that gap got silently clobbered. The fix moves the decision
     // inside the updater callback, which the (real, adapter-level) queue

@@ -57,7 +57,7 @@ describe('station-control shared helpers', () => {
       // The per-process stdio caller binding. Kept in this EXACT-set
       // assertion rather than loosened to objectContaining: this is an
       // attestation surface, and a header appearing on it unannounced is
-      // exactly what should stop a build (station#4292). Its value is a
+      // exactly what should stop a build (archive#4292). Its value is a
       // random 32-byte binding, so only its presence is asserted.
       [INTERNAL_CONTROL_CALLER_BINDING_HEADER]: expect.any(String),
     });

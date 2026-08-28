@@ -65,7 +65,7 @@ afterAll(() => rmSync(managedWorkspaceHome, { recursive: true, force: true }));
 class FakeAcpProcess {
   client!: Client;
   /**
-   * station#1684: OPTIONAL, and mutable. The adapter's station-control gate
+   * archive#1684: OPTIONAL, and mutable. The adapter's station-control gate
    * distinguishes "the engine answered no" from "there was no initialize
    * result to read", so the fake has to be able to represent the second —
    * `initResult` used to be a non-optional readonly field, which made that
@@ -105,13 +105,13 @@ class FakeAcpProcess {
   }
 
   newSessionMcpServers: unknown[] | undefined;
-  /** station#1684: proves the fail-closed path does NOT retry session/new. */
+  /** archive#1684: proves the fail-closed path does NOT retry session/new. */
   newSessionCalls = 0;
-  /** station#1182: overridable per-test to simulate an agent's own reported model config option. */
+  /** archive#1182: overridable per-test to simulate an agent's own reported model config option. */
   newSessionConfigOptions: unknown[] = [];
 
   /**
-   * station#1684: makes `session/new` REJECT, so the no-retry claim has
+   * archive#1684: makes `session/new` REJECT, so the no-retry claim has
    * something to be true of. Without it `newSessionCalls === 1` only ever
    * observed the success path, and a `.catch(...)` retry was invisible.
    */
@@ -131,7 +131,7 @@ class FakeAcpProcess {
   loadSessionArgs?: { sessionId: string; cwd: string; mcpServers?: unknown[] };
   loadSessionCalls = 0;
   loadSessionPromise?: Promise<void>;
-  /** station#1684 delta review (LOW-2): the resume branch needs the same
+  /** archive#1684 delta review (LOW-2): the resume branch needs the same
    * no-retry proof `newSessionError` gives `session/new`. */
   loadSessionError?: unknown;
 
@@ -225,21 +225,21 @@ function createAdapter(
     connectionOverrides?: Partial<ACPConnectionConfig>[];
     resolveToolServer?: (id: string) => Promise<any>;
     logger?: any;
-    /** station#1182: `newSession`'s response configOptions, injected at process-construction time. */
+    /** archive#1182: `newSession`'s response configOptions, injected at process-construction time. */
     newSessionConfigOptions?: unknown[];
-    /** station#1684: what the connected CLI advertises at `initialize`.
+    /** archive#1684: what the connected CLI advertises at `initialize`.
      * `undefined` leaves `mcpCapabilities` off the handshake entirely — the
      * ordinary shape for a CLI that does not support HTTP MCP. */
     mcpHttpCapability?: boolean;
-    /** station#1684: no `initialize` result at all — a different fact from
+    /** archive#1684: no `initialize` result at all — a different fact from
      * an engine that answered no, and it must produce a different receipt. */
     noInitResult?: boolean;
     mintStationControlMcpAuth?: AcpAdapterOptions['mintStationControlMcpAuth'];
     revokeStationControlMcpAuth?: AcpAdapterOptions['revokeStationControlMcpAuth'];
     managedWorkspaceHomeDir?: string;
-    /** station#1684: reject `session/new` with this, to prove no retry. */
+    /** archive#1684: reject `session/new` with this, to prove no retry. */
     newSessionError?: unknown;
-    /** station#1684 delta review (LOW-2): same, for the resume branch. */
+    /** archive#1684 delta review (LOW-2): same, for the resume branch. */
     loadSessionError?: unknown;
     onProcess?: (process: FakeAcpProcess, index: number) => void;
     resolvePreToolPolicy?: AcpAdapterOptions['resolvePreToolPolicy'];
@@ -1318,9 +1318,9 @@ describe('AcpAdapter', () => {
   });
 
   test('#1403: an unbound CLI launches in a private Station-managed workspace', async () => {
-    // The last fail-open path from #1011. The orchestration resolver
+    // The last fail-open path from archive#1011. The orchestration resolver
     // deliberately skips ACP (it must not shadow `config.cwd`, which only the
-    // adapter can see), so #1042's explicit-$HOME default never reached this
+    // adapter can see), so archive#1042's explicit-$HOME default never reached this
     // engine family and the chain still ended at `process.cwd()` — Station's
     // own install root for a dev checkout or a service. Live repro on the
     // seeded `default` project (no workingDirectory): the spawned CLI's cwd
@@ -1420,7 +1420,7 @@ describe('AcpAdapter', () => {
   });
 
   test('MCP passthrough (docs/design/connections-onboarding.md §5): off by default, `newSession` gets an empty mcpServers array when the connection has no `provideToolServers`', async () => {
-    // station#1547 AC5 narrowed what "never called" means here: the resolver
+    // archive#1547 AC5 narrowed what "never called" means here: the resolver
     // IS now consulted once per session for `station-docs`, whatever the
     // connection opted into. What must still never happen is a lookup for a
     // server the connection did not name — asserted by id rather than by
@@ -1535,7 +1535,7 @@ describe('AcpAdapter', () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [{ id: 'kiro', provideToolServers: ['filesystem'] }],
       resolveToolServer: async (id) => {
-        // station#1547 AC5: `station-docs` is the one id Station looks up on
+        // archive#1547 AC5: `station-docs` is the one id Station looks up on
         // its own account, so it is not evidence that the agent path
         // consulted the connection's resolver. Any other id here would be.
         if (id !== 'station-docs') {
@@ -1576,10 +1576,10 @@ describe('AcpAdapter', () => {
   });
 
   /**
-   * station#1547 AC5 — the runtime docs grant.
+   * archive#1547 AC5 — the runtime docs grant.
    *
    * The point of the credential-free docs server is the population that
-   * cannot receive `station-control`. station#1684 NARROWED that population
+   * cannot receive `station-control`. archive#1684 NARROWED that population
    * from "every ACP engine" to "every ACP connection whose CLI does not
    * advertise `mcpCapabilities.http`" — it did not empty it. Such a
    * connection cannot run the built-in assistant, so it runs its own agent —
@@ -1820,7 +1820,7 @@ describe('AcpAdapter', () => {
     });
 
     expect(processes[0].newSessionMcpServers).toEqual([]);
-    // station#1547 AC5: the ONLY lookup an authored-empty session may make is
+    // archive#1547 AC5: the ONLY lookup an authored-empty session may make is
     // Station's own docs grant. `filesystem` — the connection default this
     // authored empty array exists to disable — must still never be resolved.
     expect(
@@ -2285,7 +2285,7 @@ describe('AcpAdapter', () => {
         requestedModel: 'claude-sonnet',
         appliedModel: 'claude-sonnet',
       },
-      // #895 wave A: an absent input.agent and no connection-level
+      // archive#895 wave A: an absent input.agent and no connection-level
       // provideToolServers still produce a fresh, empty connection-default
       // receipt — see acp-adapter.ts's capability-delivery merge.
       capabilityDelivery: {
@@ -2555,7 +2555,7 @@ describe('AcpAdapter', () => {
     expect(sessions[0].status).toBe('error');
   });
 
-  // station#4084: reproduces the live #1860 kiro-cli evidence — a
+  // archive#4084: reproduces the live archive#1860 kiro-cli evidence — a
   // notification bound to the `acp.turn-error-cause` consumer
   // (`_kiro.dev/error/rate_limit`, carrying the engine's own human-readable
   // message; see src-shared/extension-notification-bindings.ts for the
@@ -2587,7 +2587,7 @@ describe('AcpAdapter', () => {
       await nextEvent(iterator, 'turn.started');
 
       // The engine's bound notification, received milliseconds before the
-      // rejection (live #1860 shape).
+      // rejection (live archive#1860 shape).
       await processes[0].client.extNotification?.(
         '_kiro.dev/error/rate_limit',
         {
@@ -3335,7 +3335,7 @@ describe('station#1182: runtime-reported model', () => {
 });
 
 /**
- * station#1684 — the LIVE gate for the built-in station-control server.
+ * archive#1684 — the LIVE gate for the built-in station-control server.
  *
  * The `acp` matrix cell names a delivery mechanism whose basis is
  * `runtime_observation`: the cell says a reviewed mechanism EXISTS, and this
@@ -3873,7 +3873,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
   });
 
   /**
-   * station#1684 review fix (uncaught injection #11).
+   * archive#1684 review fix (uncaught injection archive#11).
    *
    * The `GATE OFF: newSession is called exactly ONCE` test above only ever
    * observed the SUCCESS path — nothing drove `session/new` to reject, so a
@@ -3992,7 +3992,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
   );
 
   /**
-   * station#1684 review fix (M1): the mint keys on the ID `'station-control'`
+   * archive#1684 review fix (M1): the mint keys on the ID `'station-control'`
    * in the requested list; delivery keys on the IDENTITY
    * `isBuiltinStationControl`. When they disagree a live credential exists
    * that nothing will ever present.

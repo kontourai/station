@@ -20,7 +20,7 @@ const attachedOnly = {
 } as any;
 const notACommand = { name: 'plain-skill', installed: true } as any;
 
-// CAT-R08. The rule this replaces read the authored record's own `agent`
+// CAT-. The rule this replaces read the authored record's own `agent`
 // field, so the binding the agent editor wrote was never consulted and
 // attaching a record to an agent changed nothing. `agent.skills` is now both
 // the record the editor writes and the record this reads.
@@ -74,12 +74,12 @@ describe('findMatchingSkillCommand', () => {
     ).toBeUndefined();
   });
 
-  // The SERVER resolves clashes (`resolveSkillCommands`, then
-  // `SkillService.listSkills`): exactly one skill per command word comes back
-  // enabled, and each loser carries `command.enabled: false` plus a
-  // `commandDiagnostic` naming the winner. This fixture is that response
-  // shape, verbatim — a listing with TWO enabled skills on one word is not a
-  // production shape, and the client must not invent a precedence for it.
+// The SERVER resolves clashes (`resolveSkillCommands`, then
+// `SkillService.listSkills`): exactly one skill per command word comes back
+// enabled, and each loser carries `command.enabled: false` plus a
+// `commandDiagnostic` naming the winner. This fixture is that response
+// shape, verbatim — a listing with TWO enabled skills on one word is not a
+// production shape, and the client must not invent a precedence for it.
   test('a clash loser stays unrunnable even where the agent attached it', () => {
     const clashingWinner = {
       name: 'ship-global',
@@ -97,7 +97,7 @@ describe('findMatchingSkillCommand', () => {
       skills: ['ship-local'],
     };
 
-    // Attaching the loser does not move the word: the server's winner runs.
+// Attaching the loser does not move the word: the server's winner runs.
     expect(
       findMatchingSkillCommand(
         [clashingLoser, clashingWinner],
@@ -105,8 +105,8 @@ describe('findMatchingSkillCommand', () => {
         agentWithLoserAttached,
       )?.name,
     ).toBe('ship-global');
-    // And the loser is offered nowhere, attachment included — its declaration
-    // is not in effect.
+// And the loser is offered nowhere, attachment included — its declaration
+// is not in effect.
     expect(isSkillCommandOfferedTo(clashingLoser, agentWithLoserAttached)).toBe(
       false,
     );
@@ -143,14 +143,14 @@ describe('findMatchingSkillCommand', () => {
   });
 });
 
-// Review M3: the Test modal and the slash handler share ONE substitution
+// the Test modal and the slash handler share ONE substitution
 // derivation. Its contract: declared defaults apply; a variable with neither
 // a provided value nor a usable default is REJECTED and named — never
 // silently substituted with an empty string.
 describe('substituteSkillVariables', () => {
-  // In production the variables list is derived FROM the body
-  // (`mergeSkillVariables`), so each case's list names only placeholders its
-  // body actually contains.
+// In production the variables list is derived FROM the body
+// (`mergeSkillVariables`), so each case's list names only placeholders its
+// body actually contains.
   test('applies provided values and declared defaults', () => {
     expect(
       substituteSkillVariables(
@@ -179,8 +179,8 @@ describe('substituteSkillVariables', () => {
     ).toEqual({ ok: false, missing: ['notes'] });
   });
 
-  // Delta review: a CLEARED field (stored '') means "use the default", not
-  // "supply nothing" — the placeholder is the default, the preview agrees.
+// a CLEARED field (stored '') means "use the default", not
+// "supply nothing" — the placeholder is the default, the preview agrees.
   test('a cleared value falls back to the declared default', () => {
     expect(
       substituteSkillVariables(
@@ -228,7 +228,7 @@ describe('substituteSkillVariables', () => {
   });
 });
 
-// Delta review: the ONE shell-style parser every slash-command consumer
+// the ONE shell-style parser every slash-command consumer
 // uses. Quotes group, backslash escapes, an unterminated quote is an error
 // naming it — never a guess.
 describe('parseShellWords', () => {
@@ -252,7 +252,7 @@ describe('parseShellWords', () => {
       ok: true,
       words: ['env', 'a"b\\c'],
     });
-    // POSIX single quotes: no escapes inside, backslash is a literal.
+// POSIX single quotes: no escapes inside, backslash is a literal.
     expect(parseShellWords("path 'a\\b'")).toEqual({
       ok: true,
       words: ['path', 'a\\b'],
@@ -278,7 +278,7 @@ describe('parseShellWords', () => {
   });
 });
 
-// Delta review: `name=value` assigns by name so an earlier defaulted variable
+// `name=value` assigns by name so an earlier defaulted variable
 // can be skipped; positionals fill the unnamed variables in declaration
 // order.
 describe('assignSkillVariableArgs', () => {
@@ -306,13 +306,13 @@ describe('assignSkillVariableArgs', () => {
   });
 
   test('a named value keeps equals bytes; a non-declared prefix stays positional', () => {
-    // `env=a=b` splits at the FIRST equals: env gets 'a=b'.
+// `env=a=b` splits at the FIRST equals: env gets 'a=b'.
     expect(assignSkillVariableArgs(vars, ['env=a=b'])).toEqual({
       ok: true,
       provided: { env: 'a=b' },
     });
-    // `foo=x` names no declared variable, so it is a positional value —
-    // a word that merely CONTAINS '=' is not a typo to reject.
+// `foo=x` names no declared variable, so it is a positional value —
+// a word that merely CONTAINS '=' is not a typo to reject.
     expect(assignSkillVariableArgs(vars, ['foo=x', 'prod'])).toEqual({
       ok: true,
       provided: { notes: 'foo=x', env: 'prod' },

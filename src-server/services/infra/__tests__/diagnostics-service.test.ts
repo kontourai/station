@@ -60,7 +60,7 @@ describe('DiagnosticsService', () => {
       platform: 'darwin',
       // The seeded secret goes in a PROVENANCE field on purpose: the
       // assertion below claims provenance does not bypass redaction, and
-      // before station#2010's review nothing put a secret there, so the claim
+      // before archive#2010's review nothing put a secret there, so the claim
       // was never exercised while `build` genuinely skipped the sanitizer.
       buildProvenanceSnapshot: captureBuildProvenance({
         STATION_BUILD_SHA: 'abcdef0123456789abcdef0123456789abcdef01',

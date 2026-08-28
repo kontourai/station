@@ -1,5 +1,5 @@
 /**
- * station#3354 — split an unclosed trailing code fence out of streaming
+ * archive#3354 — split an unclosed trailing code fence out of streaming
  * markdown BEFORE it reaches the markdown renderer.
  *
  * Why at this layer: react-markdown/remark does NOT expose whether a fence

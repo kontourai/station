@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 /**
- * station#766 review follow-up: `findCliBinaryAsync` must answer an ABSOLUTE
+ * archive#766 review follow-up: `findCliBinaryAsync` must answer an ABSOLUTE
  * command without waiting on login-shell PATH resolution.
  *
  * Its caller is the ACP process spawn (`acp-process.ts`), and that wait is a

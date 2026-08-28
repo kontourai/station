@@ -1,7 +1,7 @@
 /**
  * In-process `OperatingState` derivation for a Station project (roadmap
- * #586, part of epic #580, S6 — "reuse console-bridge mapping"; extended
- * for roadmap #753 to wire the `hasUnresolvedCritique` signal the S6 review
+ * archive#586, part of epic archive#580, S6 — "reuse console-bridge mapping"; extended
+ * for roadmap archive#753 to wire the `hasUnresolvedCritique` signal the S6 review
  * flagged as always-undefined).
  *
  * Pipeline, entirely in-process, no hub, no HTTP:
@@ -20,7 +20,7 @@
  *      `workflow-process-projection-mirror.ts` used to hand-mirror this
  *      table before that subpath existed; see that file's header,
  *      "RETIREMENT"). As part of that mapping, this service also reads the
- *      task's `trust.bundle` (roadmap #753, same sidecar directory as
+ *      task's `trust.bundle` (roadmap archive#753, same sidecar directory as
  *      `state.json`) via `WorkflowSidecarService.readTrustBundle` — read
  *      defensively per task (a missing or malformed bundle degrades to "no
  *      critique signal", warned and skipped, never a crash, matching every
@@ -28,7 +28,7 @@
  *      `hasUnresolvedCritique` boolean into the mapper so a session with an
  *      unresolved live critique renders as `review_pending` with a
  *      `blockedReason`, instead of silently rendering under its base status
- *      (the S6 review's MEDIUM finding, station#753).
+ *      (the S6 review's MEDIUM finding, archive#753).
  *   3. The assembled `WorkflowProcessProjectionEnvelope` is folded through
  *      `@kontourai/console-server`'s REAL, published
  *      `translateWorkflowProcessProjectionEnvelope` (the actual
@@ -282,7 +282,7 @@ export class OperatingStateService {
   }
 
   /**
-   * `hasUnresolvedCritique` for one task (roadmap #753): reads `trust.bundle`
+   * `hasUnresolvedCritique` for one task (roadmap archive#753): reads `trust.bundle`
    * (defensively — see `tryReadTrustBundle`), extracts its critique claims,
    * excludes any claim whose join key does not attribute it to THIS task
    * (`filterCritiquesForSlug`'s slug/work-item-ref check), and reduces the

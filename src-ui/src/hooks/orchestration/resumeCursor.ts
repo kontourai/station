@@ -1,5 +1,5 @@
 /**
- * Sequence-cursor dedup guard (station#1092). The server sets each SSE
+ * Sequence-cursor dedup guard (archive#1092). The server sets each SSE
  * frame's `id:` to the orchestration event store's global sequence number
  * (see `EventStore.headGlobalSequence`/`listEventsAfterGlobalSequence`); a
  * reconnect can legitimately re-deliver a frame the client already applied

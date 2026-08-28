@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-// station#3159 tripwire.
+// archive#3159 tripwire.
 //
 // DiffPanel.tsx's controlled `<CodeView items={...} />` seam depends on an
 // *installed-package internal* behaviour that nothing in @pierre/diffs'
@@ -16,11 +16,11 @@
 // of it in the same file and in
 // `node_modules/@pierre/diffs/dist/utils/areManagedSnapshotsEqual.js` that
 // gate the exact same field before a controlled update ever reaches React.
-// (Verified empirically, not by reading the .d.ts: patching all three of
+// (Verified empirically, not by reading the.d.ts: patching all three of
 // those checks to stop comparing `.version` is what makes the "same
 // version" assertion below go red — see the fault-injection note.)
 //
-// DiffPanel.tsx's `itemsRevisionRef` (added by #3104) exists solely to
+// DiffPanel.tsx's `itemsRevisionRef` (added by archive#3104) exists solely to
 // satisfy this contract by stamping a fresh `version` on every genuine
 // `items` recompute. This test exercises the real @pierre/diffs `CodeView`
 // component directly (no DiffPanel, no mocks of the library) to prove that
@@ -50,7 +50,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 // at ~670ms of test time on a loaded host, which is single-digit-multiple
 // headroom against `waitFor`'s 1000ms default.
 //
-// station#3161 was exactly this shape: a heavy, contention-sensitive test
+// archive#3161 was exactly this shape: a heavy, contention-sensitive test
 // inheriting a default tuned for assertion-shaped ones, timing out at 5007ms
 // against 5000ms and reading as a failure. Shipping another one in the batch
 // that fixed it would be self-defeating, so both the per-`waitFor` budget and
@@ -118,9 +118,9 @@ describe('@pierre/diffs CodeView controlled-item version gate (station#3159 trip
       });
       expect(screen.getByTestId('marker').textContent).toBe('first');
 
-      // Same version, different content: CodeView's controlled-item gate must
-      // discard this update entirely. This is exactly DiffPanel's pre-#3104
-      // bug shape — a fresh item object with an unchanged `version`.
+// Same version, different content: CodeView's controlled-item gate must
+ // discard this update entirely. This is exactly DiffPanel's pre-archive#3104
+// bug shape — a fresh item object with an unchanged `version`.
       rerender(
         <CodeView
           items={[buildItem(1, 'second')]}
@@ -129,13 +129,13 @@ describe('@pierre/diffs CodeView controlled-item version gate (station#3159 trip
           options={options}
         />,
       );
-      // Give any (async, e.g. Shiki-tokenization-driven) update a real chance
-      // to land before asserting it didn't.
+// Give any (async, e.g. Shiki-tokenization-driven) update a real chance
+// to land before asserting it didn't.
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(screen.getByTestId('marker').textContent).toBe('first');
 
-      // Bumping version must apply the update — this is the half of the
-      // contract DiffPanel's `itemsRevisionRef` relies on.
+// Bumping version must apply the update — this is the half of the
+// contract DiffPanel's `itemsRevisionRef` relies on.
       rerender(
         <CodeView
           items={[buildItem(2, 'third')]}

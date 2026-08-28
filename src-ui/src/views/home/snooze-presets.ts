@@ -1,5 +1,5 @@
 /**
- * Agent-rhythm snooze presets (design (b), station#1099): In 1 hour / This
+ * Agent-rhythm snooze presets (design (b), archive#1099): In 1 hour / This
  * evening / Tomorrow 9am / Next week Mon 9am, each computed against local
  * time so "evening"/"9am" match the wall clock the triager is actually
  * looking at.
@@ -8,7 +8,7 @@
  * lazily-loaded `SnoozeMenu` needs this date math, and `home-lane-model.ts`
  * is imported eagerly (by `useHomeWorkLanes`, on every Home render), so
  * merging the two would pull preset-menu-only code back into the entry
- * bundle (AC4).
+* bundle.
  */
 
 export interface SnoozePreset {
@@ -41,9 +41,9 @@ export function snoozePresetTargets(now: number): SnoozePreset[] {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowNine = atLocalHour(tomorrow, MORNING_HOUR);
 
-  // "Next week Monday" always lands in a week later than the current one:
-  // for any day other than Monday this is simply the next Monday; on a
-  // Monday itself it skips today and lands on the Monday seven days out.
+// "Next week Monday" always lands in a week later than the current one:
+// for any day other than Monday this is simply the next Monday; on a
+// Monday itself it skips today and lands on the Monday seven days out.
   const nextWeekMonday = new Date(nowDate);
   const day = nextWeekMonday.getDay(); // 0 = Sunday .. 6 = Saturday
   const daysUntilMonday = ((8 - day) % 7 || 7) as number;

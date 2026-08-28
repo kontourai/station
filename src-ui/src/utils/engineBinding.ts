@@ -1,5 +1,5 @@
 /**
- * station#1194 (epic #1191, slice B): the pure logic behind BOTH surfaces
+* archive#1194: the pure logic behind BOTH surfaces
  * that talk about the built-in assistant's engine binding — the picker
  * (`components/EnginePicker.tsx`) and the Settings row that opens it
  * (`views/settings/BuiltinEngineRow.tsx`).
@@ -11,7 +11,7 @@
  * into the Settings bundle eagerly, defeating the split.
  *
  * Everything here reads `@kontourai/station-contracts/engine-capability-matrix`
- * — the same matrix the agent editor's own engine picker reads (station#975)
+* the same matrix the agent editor's own engine picker reads (archive#975)
  * and the same one `session-agent-resolution.ts` keys its station-control
  * exemption on — so no surface here ever hardcodes a per-engine-id branch.
  */
@@ -29,16 +29,16 @@ import {
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 
 export interface EnginePickerOption {
-  /** `null` names Station's own engine — every other engine names its live connection id. */
+/** `null` names Station's own engine — every other engine names its live connection id. */
   connectionId: EngineConnectionId | null;
   name: string;
   capability: EngineControlPlaneCapability;
   matrix: EngineCapabilityMatrix;
-  /**
-   * station#1549: this connection's own live-handshake evidence, carried
-   * alongside the matrix so every downstream caller re-derives the
-   * capability from the SAME two inputs the server bootstrap used.
-   */
+/**
+* archive#1549: this connection's own live-handshake evidence, carried
+* alongside the matrix so every downstream caller re-derives the
+* capability from the SAME two inputs the server bootstrap used.
+*/
   controlPlaneObservation?: ControlPlaneObservation;
 }
 
@@ -63,7 +63,7 @@ export function isStationChatReady(status: {
  * Every READY engine — Station first (when its own chat is ready), each
  * carrying the matrix-derived capability. A connection must be enabled,
  * `agent-runtime`-capable, and currently `ready` to appear; this mirrors the
- * agent editor's own `externalEngineOptions` filter (station#975,
+ * agent editor's own `externalEngineOptions` filter (archive#975,
  * `AgentEditorBasicTab.tsx`) plus the readiness check, generalized to
  * include command-backed connections (which that filter already covers too).
  *
@@ -95,9 +95,9 @@ export function readyEngineOptions(input: {
     options.push({
       connectionId: connection.id,
       name: connection.name,
-      // station#1549: subject-aware. For every engine whose cell declares a
-      // static mechanism this is byte-identical to the pre-#1549 call; only
-      // an observation-based cell reads the second argument.
+// archive#1549: subject-aware. For every engine whose cell declares a
+ // static mechanism this is byte-identical to the pre-archive#1549 call; only
+// an observation-based cell reads the second argument.
       capability: engineControlPlaneCapability(
         matrix,
         connection.controlPlaneObservation,
@@ -110,7 +110,7 @@ export function readyEngineOptions(input: {
 }
 
 /**
- * The engines the picker may actually offer (owner directive, station#1194):
+ * The engines the picker may actually offer (owner directive, archive#1194):
  * only those that can carry the built-in `station-control` server. The
  * built-in assistant's whole identity is "the assistant that operates
  * Station"; on an engine whose `toolServers` delivery cannot carry that
@@ -118,7 +118,7 @@ export function readyEngineOptions(input: {
  * `resolveBuiltinAgentEngineBinding` applies the same capability filter
  * itself, so what is offered and what will resolve cannot diverge.
  *
- * station#1549: `'observation-required'` is deliberately NOT offered here.
+ * archive#1549: `'observation-required'` is deliberately NOT offered here.
  * Offering a radio for a connection Station has never observed would be an
  * implicit "yes" nobody can honestly make. Those rows are surfaced
  * separately by `pendingObservationEngineOptions` below, listed and
@@ -131,17 +131,17 @@ export function capableEngineOptions(
 }
 
 /**
- * station#1549: ready engines whose capability cannot be answered yet
+ * archive#1549: ready engines whose capability cannot be answered yet
  * because no successful handshake has ever been observed for this specific
  * connection.
  *
- * ## Reachability, stated honestly (review finding — an earlier revision of
+* ## Reachability, stated honestly (an earlier revision of
  * this comment had it backwards)
  *
  * For an ACP connection this state is currently NOT reachable, and the
  * reason is worth writing down rather than rediscovering: `readyEngineOptions`
  * above skips any connection whose `status !== 'ready'`, and an ACP
- * connection is `ready` iff `probe.isAvailable()` iff a `initialize` +
+* connection is `ready` iff `probe.isAvailable` iff a `initialize` +
  * `session/new` handshake has already succeeded — which is the same event
  * that records the observation. So during the boot window the connection is
  * not `ready` and is filtered out BEFORE it can be pending; by the time it is
@@ -156,7 +156,7 @@ export function capableEngineOptions(
  * readiness.
  *
  * Kept distinct from `chat-only` on purpose: "not checked yet" and "checked,
- * and the answer is no" are different facts, and #1283's none-capable copy
+ * and the answer is no" are different facts, and archive#1283's none-capable copy
  * ("⟨Kiro⟩ can chat, but it can't operate Station…") is only true of the
  * second. Note in particular that a handshake carrying NO `agentCapabilities`
  * is the SECOND case, not this one — see `projectControlPlaneObservation`.
@@ -170,7 +170,7 @@ export function pendingObservationEngineOptions(
 }
 
 /**
- * station#1549: the picker's sub-line for a not-yet-observed connection. A
+ * archive#1549: the picker's sub-line for a not-yet-observed connection. A
  * function of the connection's own name — a command-backed engine is always
  * shown by its connection name, never by the protocol it speaks.
  */
@@ -203,7 +203,7 @@ export interface BuiltinEngineDisplay {
 }
 
 export function builtinEngineDisplay(input: {
-  /** The persisted (or drafted) `builtinAgentEngineConnectionId` verbatim. */
+/** The persisted (or drafted) `builtinAgentEngineConnectionId` verbatim. */
   value: EngineConnectionId | null | undefined;
   stationChatReady: boolean;
   connections: AgentConnectionView[];
@@ -230,9 +230,9 @@ export function builtinEngineDisplay(input: {
       })),
   });
 
-  // `null` from the resolver means Station's own engine — the same
-  // convention every other engine-identity resolution in the matrix module
-  // uses.
+// `null` from the resolver means Station's own engine — the same
+// convention every other engine-identity resolution in the matrix module
+// uses.
   const boundOption = binding
     ? options.find((option) => option.connectionId === binding.connectionId)
     : undefined;
@@ -241,26 +241,26 @@ export function builtinEngineDisplay(input: {
     : 'Station';
 
   if (input.value === undefined) {
-    // Nothing pinned: this is whatever the resolver derives each boot, and
-    // it can change when connections change. Say so — the name alone would
-    // read as a deliberate choice.
+// Nothing pinned: this is whatever the resolver derives each boot, and
+// it can change when connections change. Say so — the name alone would
+// read as a deliberate choice.
     return { name, note: 'Auto-detected' };
   }
   if (input.value === null) return { name };
   if (binding?.connectionId === input.value) return { name };
 
-  // The saved choice did not resolve. The resolver leaves the config
-  // untouched (a re-appearing or newly-capable engine binds again with no
-  // user action), so the choice is still real — but it is NOT what is
-  // running, and this row must not imply otherwise.
+// The saved choice did not resolve. The resolver leaves the config
+// untouched (a re-appearing or newly-capable engine binds again with no
+// user action), so the choice is still real — but it is NOT what is
+// running, and this row must not imply otherwise.
   const savedReady = options.find(
     (option) => option.connectionId === input.value,
   );
   if (savedReady) {
-    // station#1549: a saved choice that is merely UNOBSERVED must not be
-    // reported as incapable. "Can't run the built-in assistant" is a verdict;
-    // Station has not reached one. Saying it anyway would tell the user to
-    // go change a setting that is about to start working on its own.
+// archive#1549: a saved choice that is merely UNOBSERVED must not be
+// reported as incapable. "Can't run the built-in assistant" is a verdict;
+// Station has not reached one. Saying it anyway would tell the user to
+// go change a setting that is about to start working on its own.
     if (savedReady.capability === 'observation-required') {
       return {
         name,

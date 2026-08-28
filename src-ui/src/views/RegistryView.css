@@ -2,7 +2,7 @@
  * RegistryView mobile refinements.
  *
  * Desktop (>=769px) is intentionally untouched — every rule here is scoped
- * under .registry-view AND the mobile breakpoint so the install/detail surface
+ * under.registry-view AND the mobile breakpoint so the install/detail surface
  * and cards stay tappable and overflow-free at <=390px wide. Shared layout
  * concerns (card grid collapsing to one column, tab strip scrolling, header
  * stacking) are already handled in page-layout.css.

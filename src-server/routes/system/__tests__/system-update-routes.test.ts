@@ -69,7 +69,7 @@ function createApp(
 }
 
 beforeEach(() => {
-  // Bundles are ineligible for self-update unless a test opts in (#1624).
+  // Bundles are ineligible for self-update unless a test opts in (archive#1624).
   vi.mocked(resolveSelfUpdateEligibility).mockResolvedValue({
     eligible: false,
     reason: 'no source checkout recorded',
@@ -650,7 +650,7 @@ describe('performGitPullRestart (station#1903)', () => {
           // /api/system/status — inheriting the parent's env unchanged
           // would leave it reporting the OLD build's sha/instanceId, and
           // the watchdog's identity check would never verify a genuinely
-          // successful restart (station#1903 review finding 1).
+          // successful restart (archive#1903 review finding 1).
           STATION_BUILD_SHA: 'def5678'.padEnd(40, '0'),
           STATION_INSTANCE_ID: 'default',
         }),

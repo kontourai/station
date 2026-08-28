@@ -12,7 +12,7 @@ export interface KnowledgeRagContextResult {
   context: string;
   /**
    * Chunks/sources of THAT string, derived from the same `relevant` array
-   * that built it (station#2649) — record and injection share one
+   * that built it (archive#2649) — record and injection share one
    * derivation, so the per-turn context receipt cannot name a chunk the
    * model never saw.
    */

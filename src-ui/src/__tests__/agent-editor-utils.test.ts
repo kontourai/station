@@ -190,7 +190,7 @@ describe('agent-editor utils', () => {
   });
 });
 
-// station#3530: the editor's save payload builds `execution` as an explicit
+// archive#3530: the editor's save payload builds `execution` as an explicit
 // whitelist, so a persisted field the form type does not carry is silently
 // DELETED by any unrelated edit. Nothing in this editor sets a credential
 // profile — a user pins one from the CLI — so a rename must not unpin the

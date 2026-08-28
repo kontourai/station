@@ -286,11 +286,11 @@ describe('PullRequestsPanel', () => {
     expect(screen.getByText('No open pull requests')).toBeTruthy();
   });
   test('a context-level unavailability renders its own reason even with stale list data', () => {
-    // Layered guards: the list layer also catches unavailability (proven by
-    // fault injection — bypassing the context guard still rendered an
-    // ErrorState), but only the CONTEXT guard carries the context's reason.
-    // Pin it with the list still holding data, so this test discriminates
-    // the context layer alone.
+// Layered guards: the list layer also catches unavailability (proven by
+// bypassing the context guard still rendered an
+// ErrorState), but only the CONTEXT guard carries the context's reason.
+// Pin it with the list still holding data, so this test discriminates
+// the context layer alone.
     contextQuery.data = {
       available: false,
       reason: 'repository context could not be resolved',

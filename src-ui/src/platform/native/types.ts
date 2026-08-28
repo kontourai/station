@@ -31,7 +31,7 @@ export interface NativeCapabilityStatus {
   id: NativeCapabilityId;
   state: NativeCapabilityState;
   reason: string;
-  /** False when the Tauri host returned no usable capability report. */
+/** False when the Tauri host returned no usable capability report. */
   reportVerified?: boolean;
 }
 
@@ -47,15 +47,15 @@ export interface NativeCapabilityReport {
   platform: NativeCompileTarget;
   channel?: 'stable' | 'dev' | 'beta' | 'nightly';
   capabilities: NativeCapabilityStatus[];
-  /**
-   * True for a development build. Absent from older hosts, so treat a missing
-   * value as a release build rather than tinting a real install by accident.
-   */
+/**
+* True for a development build. Absent from older hosts, so treat a missing
+* value as a release build rather than tinting a real install by accident.
+*/
   devBuild?: boolean;
-  /**
-   * Secret-free HTTPS origin baked into a native-mobile build by its trusted
-   * release environment. Saved/default profiles remain authoritative.
-   */
+/**
+* Secret-free HTTPS origin baked into a native-mobile build by its trusted
+* release environment. Saved/default profiles remain authoritative.
+*/
   mobileDefaultEndpoint?: string;
 }
 
@@ -87,11 +87,11 @@ export interface NativeWorkspacePanePopOutRequest {
  * native session cease to exist when the host action ends.
  */
 export interface NativeBrowserPreviewGrant {
-  /** Opaque, short-lived native handle; never write it to Pane state. */
+/** Opaque, short-lived native handle; never write it to Pane state. */
   grantId: string;
-  /** UTC epoch milliseconds for display/retry policy only. */
+/** UTC epoch milliseconds for display/retry policy only. */
   expiresAtMs: number;
-  /** Native-only observation made while selecting this exact target. */
+/** Native-only observation made while selecting this exact target. */
   observation: NativeBrowserPreviewObservation;
 }
 
@@ -175,7 +175,7 @@ export type NativeBrowserPreviewHostResult =
   | NativeBrowserPreviewGrantResult
   | NativeBrowserPreviewWindowResult;
 
-/** Discrete haptic kinds the native host accepts (station#1954). */
+/** Discrete haptic kinds the native host accepts (archive#1954). */
 export type HapticFeedbackKind =
   | 'selection'
   | 'light'
@@ -211,43 +211,43 @@ export interface BundledServerStatus {
   maxAttempts: number;
   apiBase: string | null;
   port: number | null;
-  /** Exact sidecar child generation, absent outside a desktop-owned sidecar. */
+/** Exact sidecar child generation, absent outside a desktop-owned sidecar. */
   generation?: number | null;
-  /** Stable server instance identity selected by the desktop host. */
+/** Stable server instance identity selected by the desktop host. */
   instanceId?: string | null;
-  /** Per-child server boot identity; never fabricate one in the renderer. */
+/** Per-child server boot identity; never fabricate one in the renderer. */
   bootId?: string | null;
   lastExitCode: number | null;
   nextRetryInMs: number | null;
-  /**
-   * The selected local owner's stdout (or combined) log file, when this
-   * platform writes one to a known path. `null` — never an
-   * empty string standing in for "unknown" — when no such file exists (e.g.
-   * systemd/journald on Linux, which logs to the journal only) (#1899).
-   */
+/**
+* The selected local owner's stdout (or combined) log file, when this
+* platform writes one to a known path. `null` — never an
+* empty string standing in for "unknown" — when no such file exists (e.g.
+ * systemd/journald on Linux, which logs to the journal only) (archive#1899).
+*/
   logPath: string | null;
-  /**
-   * The stderr log, where a crashing server's actual error lands, when this
-   * platform's service manager writes stdout/stderr to separate files
-   * (launchd only). `undefined` on an older host that predates this field
-   * (#1571); `null` when the host resolved status but no separate stderr
-   * file exists on this platform (#1899).
-   */
+/**
+* The stderr log, where a crashing server's actual error lands, when this
+* platform's service manager writes stdout/stderr to separate files
+* (launchd only). `undefined` on an older host that predates this field
+ * (archive#1571); `null` when the host resolved status but no separate stderr
+ * file exists on this platform (archive#1899).
+*/
   errorLogPath?: string | null;
-  /**
-   * The desktop shell's OWN log file (this process, not the supervised
-   * per-user service) — present so a support flow can find it even when the
-   * per-user service never got far enough to log anything (#1899).
-   * `undefined` on an older host that predates this field.
-   */
+/**
+* The desktop shell's OWN log file (this process, not the supervised
+* per-user service) — present so a support flow can find it even when the
+ * per-user service never got far enough to log anything (archive#1899).
+* `undefined` on an older host that predates this field.
+*/
   desktopLogPath?: string | null;
   ownership: BundledServerOwnership;
   canRunInBackground: boolean;
-  /**
-   * True when the host classified the last exit as fail-closed (retrying
-   * cannot succeed). Computed once in the supervisor; the UI must read it
-   * rather than re-deriving from stderr text (#1571).
-   */
+/**
+* True when the host classified the last exit as fail-closed (retrying
+* cannot succeed). Computed once in the supervisor; the UI must read it
+ * rather than re-deriving from stderr text (archive#1571).
+*/
   failClosed: boolean;
   message: string;
   detail?: string | null;
@@ -295,7 +295,7 @@ export interface NativePlatformAdapter {
     listener: (event: NativeShareEvent) => void,
     onError?: (error: NativePlatformError) => void,
   ): NativeEventSubscription;
-  /** Receive only URLs opened through the reviewed `station://pair` association. */
+/** Receive only URLs opened through the reviewed `station://pair` association. */
   subscribeToPairingDeepLinks(
     listener: (event: NativePairingDeepLinkEvent) => void,
     onError?: (error: NativePlatformError) => void,
@@ -304,16 +304,16 @@ export interface NativePlatformAdapter {
     listener: (event: NativeTrayNavigationEvent) => void,
     onError?: (error: NativePlatformError) => void,
   ): NativeEventSubscription;
-  /** One-shot snapshot of the configured local service state. */
+/** One-shot snapshot of the configured local service state. */
   getBundledServerStatus(): Promise<NativeCommandResult<BundledServerStatus>>;
-  /** Subscribe to local-service lifecycle transitions. */
+/** Subscribe to local-service lifecycle transitions. */
   subscribeToBundledServerStatus(
     listener: (status: BundledServerStatus) => void,
     onError?: (error: NativePlatformError) => void,
   ): NativeEventSubscription;
-  /** Ask the native host to start the configured durable service. */
+/** Ask the native host to start the configured durable service. */
   restartBundledServer(): Promise<NativeCommandResult<void>>;
-  /** Recheck and reveal the main window after the renderer commits its exact proof. */
+/** Recheck and reveal the main window after the renderer commits its exact proof. */
   commitStartupReadiness(
     ticket: NativeStartupReadinessTicket,
   ): Promise<NativeCommandResult<void>>;
@@ -321,43 +321,43 @@ export interface NativePlatformAdapter {
   subscribeToStartupReadinessRetry(
     listener: () => void,
   ): NativeEventSubscription;
-  /**
-   * Ask the desktop host to open one revalidated loopback URL in the system
-   * browser. The host, not the webview, owns this boundary.
-   */
+/**
+* Ask the desktop host to open one revalidated loopback URL in the system
+* browser. The host, not the webview, owns this boundary.
+*/
   openLocalBrowserPreview(url: string): Promise<NativeCommandResult<void>>;
-  /**
-   * Resolves and probes one loopback target from the native service boundary,
-   * then returns the only one-time grant that a desktop preview can consume.
-   */
+/**
+* Resolves and probes one loopback target from the native service boundary,
+* then returns the only one-time grant that a desktop preview can consume.
+*/
   discoverLocalBrowserPreviewTarget(
     url: string,
   ): Promise<NativeBrowserPreviewGrantResult>;
-  /**
-   * Open an isolated renderer using a one-time native grant. The renderer
-   * never receives a caller-supplied target or endpoint identity.
-   */
+/**
+* Open an isolated renderer using a one-time native grant. The renderer
+* never receives a caller-supplied target or endpoint identity.
+*/
   openLocalBrowserPreviewWindow(
     grantId: string,
   ): Promise<NativeBrowserPreviewWindowResult>;
-  /** Open one Station-routed desktop window for a catalog-issued pane occurrence. */
+/** Open one Station-routed desktop window for a catalog-issued pane occurrence. */
   openWorkspacePanePopOut(
     request: NativeWorkspacePanePopOutRequest,
   ): Promise<NativeCommandResult<void>>;
-  /**
-   * Fire a one-shot haptic pulse. Web and desktop hosts return
-   * `unsupported`; mobile hosts that report the `haptics` capability as
-   * enabled return `ok` after requesting the OS feedback (station#1954).
-   */
+/**
+* Fire a one-shot haptic pulse. Web and desktop hosts return
+* `unsupported`; mobile hosts that report the `haptics` capability as
+* enabled return `ok` after requesting the OS feedback (archive#1954).
+*/
   hapticFeedback(kind: HapticFeedbackKind): Promise<NativeCommandResult<void>>;
-  /**
-   * Review and decide one consent transaction in native OS chrome
-   * (station#3677 PR 3). The native host fetches the server-authored
-   * description with its own local-grant credential, shows an OS dialog the
-   * webview cannot script, commits the decision server-side, and returns
-   * only the settled status. Web hosts return `unsupported` — they use the
-   * distinct-origin consent page instead.
-   */
+/**
+* Review and decide one consent transaction in native OS chrome
+ * (archive#3677). The native host fetches the server-authored
+* description with its own local-grant credential, shows an OS dialog the
+* webview cannot script, commits the decision server-side, and returns
+* only the settled status. Web hosts return `unsupported` — they use the
+* distinct-origin consent page instead.
+*/
   reviewConsentNatively(
     requestId: string,
   ): Promise<NativeCommandResult<NativeConsentOutcome>>;

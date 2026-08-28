@@ -1,10 +1,10 @@
 import './SessionEvidenceButton.css';
 
 /**
- * "See what it did" for a session that has ENDED (station#4052 slice 3).
+ * "See what it did" for a session that has ENDED (archive#4052).
  *
  * A real `<button>` in the row's trailing slot — the `SessionProjectPill`
- * precedent (station#3027): `SplitPaneLayout` renders `trailing` as a SIBLING
+ * precedent (archive#3027): `SplitPaneLayout` renders `trailing` as a SIBLING
  * of the row button because a button may not contain interactive content.
  *
  * The control renders only for genuinely terminal sessions whose detail

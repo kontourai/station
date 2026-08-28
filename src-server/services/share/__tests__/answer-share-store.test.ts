@@ -20,7 +20,7 @@ import {
 } from '../answer-share-store.js';
 
 /**
- * The durable half of station#1423. Two properties carry the whole design and
+ * The durable half of archive#1423. Two properties carry the whole design and
  * both are asserted against the bytes on disk, not against the API's promises:
  * the token is never stored, and revocation tombstones rather than deletes.
  */

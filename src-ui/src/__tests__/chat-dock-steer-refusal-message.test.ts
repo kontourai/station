@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { steerRefusalMessage } from '../components/chat-dock/ChatDockBody';
 
 /**
- * station#4075 stage 2 review round 2: `onSteer`'s outcome→message mapping
+* archive#4075: `onSteer`'s outcome→message mapping
  * had no test coverage for ANY outcome before this — a two-way ternary's
  * catch-all silently absorbed the new `'concurrent-steer'` outcome and told
  * the user the turn had ENDED, which is false (the turn is still live;
@@ -35,8 +35,8 @@ describe('steerRefusalMessage (station#4075 stage 2 review round 2)', () => {
     );
   });
 
-  // The exact defect this round fixed: 'concurrent-steer' must NOT read as
-  // "the turn ended" — the turn is live, a different steer won the race.
+// The exact defect this round fixed: 'concurrent-steer' must NOT read as
+// "the turn ended" — the turn is live, a different steer won the race.
   it('concurrent-steer reports contention, never "the turn ended"', () => {
     const result: Exclude<SteerTurnResult, { outcome: 'steered' }> = {
       outcome: 'concurrent-steer',

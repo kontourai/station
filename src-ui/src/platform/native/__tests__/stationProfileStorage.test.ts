@@ -204,42 +204,42 @@ function memoryAdapter(): StorageAdapter {
 describe('NativeStationProfileStorage', () => {
   describe('pendingLocalSelfProvisionProfileName (station#1715)', () => {
     it('returns undefined for a default Station with no localService, even with a working credential', async () => {
-      // PROFILE_STORE's "kontour" carries a credentialRef AND
-      // configurationState "configured" but no `localService` at all — not
-      // a local-service install, so there is nothing for
-      // `station_local_self_provision` to do regardless of credential state.
+// PROFILE_STORE's "kontour" carries a credentialRef AND
+// configurationState "configured" but no `localService` at all — not
+// a local-service install, so there is nothing for
+// `station_local_self_provision` to do regardless of credential state.
       const { storage } = storageWithProfileStore();
       await storage.hydrate();
 
       expect(storage.pendingLocalSelfProvisionProfileName()).toBeUndefined();
     });
 
-    /**
-     * station#1818 part 1 review round 1 (HIGH) — THE regression this test
-     * exists to catch. Before this fix, a profile carrying BOTH
-     * `credentialRef` AND `configurationState: 'configured'` short-circuited
-     * here to `undefined`, on the theory those two RECORDED fields mean
-     * "already durably provisioned". That is exactly the shape a Station is
-     * left in after a nightly bundle swap re-signs the app and the macOS
-     * keychain ACL bound to the previous signature refuses every read of
-     * the credential — the fields never change, so the old short-circuit
-     * silently prevented `station_local_self_provision` (and therefore
-     * `read_credential_for_eligibility`'s keychain read-back,
-     * `src-desktop/src/lib.rs`) from EVER running again for a stranded
-     * profile. This process cannot read the OS keychain itself to tell a
-     * merely-recorded credential from a genuinely usable one, so it must
-     * not pre-empt that decision — it now returns the name unconditionally
-     * whenever the Station is a local-service install, and leaves
-     * usability entirely to the Rust command.
-     */
+/**
+ * archive#1818 — THE regression this test
+* exists to catch. Before this fix, a profile carrying BOTH
+* `credentialRef` AND `configurationState: 'configured'` short-circuited
+* here to `undefined`, on the theory those two RECORDED fields mean
+* "already durably provisioned". That is exactly the shape a Station is
+* left in after a nightly bundle swap re-signs the app and the macOS
+* keychain ACL bound to the previous signature refuses every read of
+* the credential — the fields never change, so the old short-circuit
+* silently prevented `station_local_self_provision` (and therefore
+* `read_credential_for_eligibility`'s keychain read-back,
+* `src-desktop/src/lib.rs`) from EVER running again for a stranded
+* profile. This process cannot read the OS keychain itself to tell a
+* merely-recorded credential from a genuinely usable one, so it must
+* not pre-empt that decision — it now returns the name unconditionally
+* whenever the Station is a local-service install, and leaves
+* usability entirely to the Rust command.
+*/
     it('returns the default Station name even when credentialRef and configured are already set (station#1818)', async () => {
       const strandedLikeHealthy = structuredClone(
         PROFILE_STORE,
       ) as unknown as StationProfileStore;
       strandedLikeHealthy.profiles[0] = {
         ...strandedLikeHealthy.profiles[0],
-        // Exactly the shape a stranded post-bundle-swap Station is left in:
-        // both fields present and "healthy"-looking, credential unreadable.
+// Exactly the shape a stranded post-bundle-swap Station is left in:
+// both fields present and "healthy"-looking, credential unreadable.
         credentialRef: { kind: 'station-bearer', id: 'kontour-token' },
         configurationState: 'configured',
         localService: {
@@ -255,17 +255,17 @@ describe('NativeStationProfileStorage', () => {
       expect(storage.pendingLocalSelfProvisionProfileName()).toBe('kontour');
     });
 
-    // station#1715 LIVE-BOOT REGRESSION (the bug this test would have
-    // caught): `station setup local`
-    // (packages/cli/src/commands/setup-command.ts) writes a fresh local
-    // profile with configurationState "configured" and NO credentialRef at
-    // all — the CLI itself never needed one. The original implementation
-    // treated "configured" alone as "already done" and returned undefined
-    // here, so the boot-time effect never fired on any real installation.
-    // Every earlier version of this fixture used configurationState
-    // "unconfigured" for the positive case, a shape `station setup local`
-    // never actually produces — which is exactly how 69 green
-    // OnboardingGate tests (and this file) missed a real-machine no-op.
+// archive#1715 LIVE-BOOT REGRESSION (the bug this test would have
+// caught): `station setup local`
+// (packages/cli/src/commands/setup-command.ts) writes a fresh local
+// profile with configurationState "configured" and NO credentialRef at
+// all — the CLI itself never needed one. The original implementation
+// treated "configured" alone as "already done" and returned undefined
+// here, so the boot-time effect never fired on any real installation.
+// Every earlier version of this fixture used configurationState
+// "unconfigured" for the positive case, a shape `station setup local`
+// never actually produces — which is exactly how 69 green
+// OnboardingGate tests (and this file) missed a real-machine no-op.
     it('returns the default Station name for a real fresh local install (configured, no credentialRef)', async () => {
       const pending = structuredClone(
         PROFILE_STORE,
@@ -274,7 +274,7 @@ describe('NativeStationProfileStorage', () => {
         ...pending.profiles[0],
         credentialRef: undefined,
         environmentId: undefined,
-        // The REAL state a fresh `station setup local` install is in.
+// The REAL state a fresh `station setup local` install is in.
         configurationState: 'configured',
         localService: {
           instanceId: 'inst',
@@ -295,10 +295,10 @@ describe('NativeStationProfileStorage', () => {
       ) as unknown as StationProfileStore;
       stranded.profiles[0] = {
         ...stranded.profiles[0],
-        // A credentialRef exists (a previous attempt got partway through)
-        // but the profile never reached "configured" — never trusted on
-        // its own, so this must still be eligible for a retry rather than
-        // silently stuck forever.
+// A credentialRef exists (a previous attempt got partway through)
+// but the profile never reached "configured" — never trusted on
+// its own, so this must still be eligible for a retry rather than
+// silently stuck forever.
         configurationState: 'requires-auth',
         localService: {
           instanceId: 'inst',
@@ -332,9 +332,9 @@ describe('NativeStationProfileStorage', () => {
       const { storage } = storageWithProfileStore(notDefault);
       await storage.hydrate();
 
-      // The default Station ("station.kontourai.io") has no localService at
-      // all, so this is undefined even though ANOTHER profile qualifies —
-      // this command only ever targets the default Station.
+// The default Station ("station.kontourai.io") has no localService at
+// all, so this is undefined even though ANOTHER profile qualifies —
+// this command only ever targets the default Station.
       expect(storage.pendingLocalSelfProvisionProfileName()).toBeUndefined();
     });
 
@@ -609,7 +609,7 @@ describe('NativeStationProfileStorage', () => {
     expect(connections.getActive()).toMatchObject({
       id: 'station-profile:station.kontourai.io',
     });
-    // A CLI metadata change must not rehydrate or rewrite keyring entries.
+// A CLI metadata change must not rehydrate or rewrite keyring entries.
     expect(calls).toEqual(['station_profile_store_read']);
   });
 
@@ -735,8 +735,8 @@ describe('NativeStationProfileStorage', () => {
       url: 'https://Station.Example.test:8444/',
       source: 'mobile-default',
     });
-    // The injected URL is only a cold-boot routing hint. The paired native
-    // profile owns the credential and is the one row/active subject.
+// The injected URL is only a cold-boot routing hint. The paired native
+// profile owns the credential and is the one row/active subject.
     expect(connections.getAll()).toHaveLength(2);
     expect(connections.getAll()[0].id).toBe('station-profile:kontour');
     expect(connections.getActive()?.id).toBe('station-profile:kontour');

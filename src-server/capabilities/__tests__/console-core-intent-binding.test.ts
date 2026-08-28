@@ -1,7 +1,7 @@
 /**
  * Adversarial behavior tests for `@kontourai/console-core`'s published
  * `resolveIntentBinding`/`intentBindingFromCommand` (console#238), AS
- * CONSUMED BY STATION (roadmap #585/#586, part of epic #580, S5/S6).
+ * CONSUMED BY STATION (roadmap archive#585/#586, part of epic archive#580, S5/S6).
  *
  * Test cases below are ported 1:1 from console-core's own
  * `console-core/test/intent-binding.test.ts`, run here against the REAL

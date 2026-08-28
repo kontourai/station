@@ -25,7 +25,7 @@
   color: var(--text-muted, #94a3b8);
 }
 
-/* station#F6 audit: Home has no PageFrame action cell
+/* Home has no PageFrame action cell
    (`page-frame-registry.ts` maps `home: null`), so `WorkspacePaneDockAction`
    used to render as a bare sibling stacked directly above the intro,
    colliding with the `Your work` eyebrow. This row gives it the same
@@ -127,7 +127,7 @@
   color: var(--text-muted);
 }
 .home-view__action small {
-  /* This copy is normal text on a raised action card, where the faintest rung
+/* This copy is normal text on a raised action card, where the faintest rung
      can fall below 4.5:1 after the card's inherited surface is composited.
      Use the shared muted rung, which is the token that carries normal
      secondary content across the shell. */
@@ -198,7 +198,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* station#1783: the observation behind an Unanswerable chip. */
+/* archive#1783: the observation behind an Unanswerable chip. */
 .home-view__unanswerable {
   color: var(--text-muted);
   font-style: italic;
@@ -223,7 +223,7 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
-/* station#1097 R2: provenance-only badge naming a remote SSH environment —
+/* archive#1097: provenance-only badge naming a remote SSH environment —
  * neutral tone, matching the Connections hub's "badge tone is
  * provenance-only, never a liveness signal" convention
  * (KnownEnvironmentsSection.tsx), not a fourth lifecycle color. */
@@ -236,7 +236,7 @@
   background: var(--bg-tertiary);
   color: var(--text-muted);
 }
-/* station#1097 R3: unobtrusive degrade note — never the ErrorState primitive,
+/* archive#1097: unobtrusive degrade note — never the ErrorState primitive,
  * which is reserved for a genuine blocking failure of the whole section. */
 .home-view__remote-note {
   margin: 8px 0 0;
@@ -326,11 +326,11 @@
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .home-view {
-    /* The shell reserves the dock (--dock-bottom-clearance on .content-view,
+/* The shell reserves the dock (--dock-bottom-clearance on.content-view,
        station#3902); this is only the page's own bottom gutter. */
     padding: 24px 16px 32px;
   }
-  /* A narrow viewport has no width to spare beside the intro's h1 — stack
+/* A narrow viewport has no width to spare beside the intro's h1 — stack
      the dock action below it instead of squeezing the row. */
   .home-view__top-row {
     flex-direction: column;
@@ -401,7 +401,7 @@
 /* A count is a control only where its population is on this page — see
    `statTargets` in HomeRecentWorkSection.tsx. */
 .home-pulse__stat--link {
-  /* station#3768: the same explicit tap floor every other Home control
+/* archive#3768: the same explicit tap floor every other Home control
      carries (`.home-view__section-heading button`, `.home-view__task-open`).
      It was the omission that made these two counts the surface's only
      sub-44px targets. */
@@ -432,7 +432,7 @@
   letter-spacing: 0.04em;
 }
 
-/* ── Home role (station#3122 stage 3) ─────────────────────────────────── */
+/* ── Home role (archive#3122) ─────────────────────────────────── */
 /* The provenance bar above a granted Home Pane: always names who provides
    the route and always offers the way back to the built-in. */
 .home-role-bar {

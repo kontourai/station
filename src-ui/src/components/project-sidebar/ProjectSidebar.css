@@ -64,7 +64,7 @@
   padding-left: 34px;
 }
 
-/* Mobile/column layout (station#3316): a closed drawer also carries
+/* Mobile/column layout (archive#3316): a closed drawer also carries
    `sidebar--collapsed`, but there is no 48px rail occupying the corner —
    the toolbar sits at the window edge, so the 34px rail offset above left
    its first control under the traffic lights. Same specificity, later in
@@ -240,7 +240,7 @@
   font-size: var(--text-sm);
 }
 
-/* The Projects header carries the "New Project" action (station#1300), so
+/* The Projects header carries the "New Project" action (archive#1300), so
    unlike the other (purely decorative) section labels it stays reachable
    when the sidebar is collapsed — icon-only, matching how every other
    collapsed row keeps its button and drops only its text label. */
@@ -388,7 +388,7 @@
   clip: rect(0 0 0 0);
 }
 
-/* station#2673: in the collapsed rail the badge must not participate in the
+/* archive#2673: in the collapsed rail the badge must not participate in the
    button's centered flex row — as an in-flow item it widens the centered
    content group past the rail, displacing the tile (accent bar and label
    clip off the rail's left edge) and overflowing the badge past the right
@@ -437,7 +437,7 @@
   transform: translateY(-50%) rotate(90deg);
 }
 
-/* station#3315: drag/keyboard reorder handle. Hidden until the row is hovered
+/* archive#3315: drag/keyboard reorder handle. Hidden until the row is hovered
    or the handle itself is focused, so the rail stays quiet; it is still in the
    tab order either way, which is what keeps keyboard reorder reachable. */
 .sidebar__reorder-handle {
@@ -470,7 +470,7 @@
   background: var(--bg-tertiary);
 }
 
-/* station#3331: a coarse pointer has neither hover nor focus-visible, so the
+/* archive#3331: a coarse pointer has neither hover nor focus-visible, so the
    handle above was permanently invisible AND permanently active — a finger
    starting a sidebar scroll inside that 20px zone had its scroll suppressed by
    `touch-action: none` and could commit a reorder it never asked for. Touch
@@ -508,7 +508,7 @@
     padding-right: 66px;
   }
 
-  /* station#3346: the row's OTHER control. #3331 raised the handle beside it to
+  /* archive#3346: the row's OTHER control. #3331 raised the handle beside it to
      the 44px floor and left this one at 20x20, so a row had one control at the
      floor and one under half of it. The hit area grows; the glyph does not —
      the 12px `<svg>` stays centred and the box keeps its centre exactly where
@@ -658,7 +658,7 @@
   opacity: 0.72;
 }
 
-/* SHELL-05: the clicked row stays marked while its route outlet is suspended.
+/* the clicked row stays marked while its route outlet is suspended.
    `aria-busy` is set from the same derivation, so this is a rendering of the
    pending state rather than a second, independent claim about it. Perpetual
    status category: the spin is not the only signal (`aria-busy` is), and the
@@ -748,7 +748,7 @@
   white-space: nowrap;
 }
 .sidebar__recent-task span {
-  /* Row size — station#1300: this had no rule at all and inherited the
+  /* Row size — archive#1300: this had no rule at all and inherited the
      root default, rendering as the largest text in the sidebar. */
   font-size: var(--text-md);
 }

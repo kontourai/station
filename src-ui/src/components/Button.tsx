@@ -21,9 +21,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    * facts a user needs — "it heard me" and "don't press it again" — are one
    * prop instead of a per-view convention. The audit found the opposite
    * everywhere: Create project fired with no acknowledgement at all for 6-8
-   * seconds (SHELL-01), which is precisely what invites the double-submit
+   * seconds, which is precisely what invites the double-submit
    * that produced the first pass's error render; `Run now`, `Enable` and
-   * `Set up 2` were equally silent (SHELL-12, SHELL-16).
+   * `Set up 2` were equally silent.
    *
    * `pendingLabel` swaps the text as well ("Creating…"); without it the label
    * stays put and only the spinner appears. Prefer swapping it — a label that
@@ -72,7 +72,7 @@ export function Button({
       // A pending control must REFUSE the second click, not merely look busy.
       // `disabled` also picks up `.button:disabled`'s opacity/not-allowed
       // treatment, so a pending primary can never be mistaken for a live one
-      // (RT-05 measured a disabled Save Changes painted as a full-strength
+      // ( measured a disabled Save Changes painted as a full-strength
       // primary: `opacity: 1`, `cursor: pointer`, no tooltip).
       disabled={disabled || pending}
       aria-busy={pending || undefined}

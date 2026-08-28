@@ -125,7 +125,7 @@ async function readAvailability(
 }
 
 /**
- * station#3823. Chrome banners the app's own sources present on boot — a
+ * archive#3823. Chrome banners the app's own sources present on boot — a
  * capability failure, a plugin-registry gate, a resource-posture warning —
  * occupy the banner host's bounded visible stack, and every one of them
  * presents ABOVE the `info` band the route guard's redirect notice uses. Two
@@ -250,7 +250,7 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
     // 4-HOME-016: the subtitle is the PROJECT, not a sentence about boards —
     // the frame says which project's board this is.
     await expect(header.locator('.page__subtitle')).toHaveText(WITH_RUN_NAME);
-    // station#3776: ONE receipt on the page. Console Kit's `BoardView`
+    // archive#3776: ONE receipt on the page. Console Kit's `BoardView`
     // renders its own ('.board-receipt', derived from the very projection
     // rendered beneath it) and exposes no prop to suppress its header, so
     // Station stopped printing a second copy of the same number ~40px above
@@ -355,7 +355,7 @@ test.describe('Board visibility at 390x844', () => {
       'the board must not push the page sideways at 390',
     ).toBe(true);
 
-    // station#3777: the kanban strip scrolls inside the page, so the document
+    // archive#3777: the kanban strip scrolls inside the page, so the document
     // check above passes while IN FLIGHT — the only populated column — sits
     // entirely off-screen with its count. The tab strip is what states the
     // columns that the scroller hides; without it the reader lands on what

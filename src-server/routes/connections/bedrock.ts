@@ -87,7 +87,7 @@ export function createBedrockRoutes(
       }
       let region: string;
       try {
-        // station#1557 round 3: an explicit `?region=` still wins — that is the
+        // archive#1557 round 3: an explicit `?region=` still wins — that is the
         // caller asking about a specific region, not a second opinion about
         // which one applies. Everything below it is the shared resolution.
         region = normalizeBedrockRegion(

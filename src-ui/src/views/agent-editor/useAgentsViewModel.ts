@@ -84,12 +84,12 @@ export function useAgentsViewModel({
   onNavigate,
 }: UseAgentsViewModelArgs) {
   const liveAgents = useAgents();
-  /**
-   * station#3751: whether the readiness words on these rows describe the
-   * runtime as it is NOW. `/api/agents` serves the last stable catalog while
-   * the runtime is mid-reconciliation and says so (`catalogState`), which the
-   * SDK used to drop.
-   */
+/**
+* archive#3751: whether the readiness words on these rows describe the
+* runtime as it is NOW. `/api/agents` serves the last stable catalog while
+* the runtime is mid-reconciliation and says so (`catalogState`), which the
+* SDK used to drop.
+*/
   const readinessKnown = useAgentCatalogReconciling() !== true;
   const appConfig = useConfig();
   const { createAgent, updateAgent, deleteAgent } = useAgentActions();
@@ -103,33 +103,33 @@ export function useAgentsViewModel({
   const selectedSlug = urlSlug === 'new' ? null : urlSlug;
   const selectedAgentSlug = selectedSlug ?? undefined;
   const [isCreating, setIsCreating] = useState(urlSlug === 'new');
-  /**
-   * DESIGN.md §4 — creation is a two-beat flow: choose a starting point, then
-   * fill the form it prepared. `startingPointChosen` is beat two, and
-   * `copyPicking` is the "Copy an existing agent" detour between them.
-   */
+/**
+ * DESIGN.md §4 — creation is a two-beat flow: choose a starting point, then
+* fill the form it prepared. `startingPointChosen` is beat two, and
+* `copyPicking` is the "Copy an existing agent" detour between them.
+*/
   const [startingPointChosen, setStartingPointChosen] = useState(false);
   const [copyPicking, setCopyPicking] = useState(false);
-  /**
-   * §4's "one-line success notice" lives in the URL, not in state. Navigating
-   * from `/agents/new` to `/agents/<slug>` re-mounts this hook, so a
-   * `useState` notice was set and then discarded before it could render
-   * (`notice: false` in this lane's live capture, on a create that otherwise
-   * worked end to end). `?created=1` survives the remount and is cleared for
-   * free: `navigationStore` strips non-shell params on any route change, so
-   * selecting another agent drops it without anyone remembering to.
-   */
+/**
+ * §4's "one-line success notice" lives in the URL, not in state. Navigating
+* from `/agents/new` to `/agents/<slug>` re-mounts this hook, so a
+* `useState` notice was set and then discarded before it could render
+* (`notice: false` in this lane's live capture, on a create that otherwise
+* worked end to end). `?created=1` survives the remount and is cleared for
+* free: `navigationStore` strips non-shell params on any route change, so
+* selecting another agent drops it without anyone remembering to.
+*/
   const createdParam =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('created') === '1';
-  /**
-   * §3.2's engine question when the ANSWER is not derivable from the binding
-   * — "an installed agent CLI" chosen with none named yet. `null` means
-   * "derive it", which is every persisted agent.
-   */
+/**
+ * §3.2's engine question when the ANSWER is not derivable from the binding
+* "an installed agent CLI" chosen with none named yet. `null` means
+* "derive it", which is every persisted agent.
+*/
   const [engineKindOverride, setEngineKindOverride] =
     useState<EngineKind | null>(null);
-  /** A created Agent waiting for the form to read clean before we open it. */
+/** A created Agent waiting for the form to read clean before we open it. */
   const [pendingCreatedSlug, setPendingCreatedSlug] = useState<string | null>(
     null,
   );
@@ -140,9 +140,9 @@ export function useAgentsViewModel({
   const { data: modelConnections = [] } = useModelConnectionsQuery() as {
     data?: ConnectionConfig[];
   };
-  // Do not bind a fresh agent to a managed engine that is merely present.
-  // Backend readiness includes provider prerequisites such as Bedrock
-  // credentials and configuration.
+// Do not bind a fresh agent to a managed engine that is merely present.
+// Backend readiness includes provider prerequisites such as Bedrock
+// credentials and configuration.
   const defaultManagedRuntimeId =
     defaultSelectableManagedRuntimeConnection(agentConnections)?.id ?? '';
   const [form, setForm] = useState<AgentFormData>(() =>
@@ -181,11 +181,11 @@ export function useAgentsViewModel({
   const exposesStationTools =
     selectedCatalogAgent?.engineId === 'station' ||
     !selectedCatalogAgent?.execution?.agentConnectionId;
-  // AC5: a create now returns as soon as its write is durable, so the first
-  // tools read after one legitimately lands while the Agent is still
-  // activating. The SDK retries that case (and only that case) inside a
-  // bounded window; this exposes the two outcomes the pane has to tell apart —
-  // still activating, or activation is not coming.
+ // a create now returns as soon as its write is durable, so the first
+// tools read after one legitimately lands while the Agent is still
+// activating. The SDK retries that case (and only that case) inside a
+// bounded window; this exposes the two outcomes the pane has to tell apart —
+// still activating, or activation is not coming.
   const {
     data: agentTools = [],
     isError: agentToolsFailed,
@@ -198,11 +198,11 @@ export function useAgentsViewModel({
     data?: Tool[];
     isError?: boolean;
     error?: unknown;
-    /**
-     * The last attempt's error WHILE the query is still retrying. `error`
-     * stays null until the retries are spent, so this is the only signal that
-     * distinguishes "still becoming available" from "it never arrived".
-     */
+/**
+* The last attempt's error WHILE the query is still retrying. `error`
+* stays null until the retries are spent, so this is the only signal that
+* distinguishes "still becoming available" from "it never arrived".
+*/
     failureReason?: unknown;
     refetch?: () => unknown;
   };
@@ -228,8 +228,8 @@ export function useAgentsViewModel({
   const { data: knownProjects = [] } = useProjectsQuery() as {
     data?: Array<{ slug: string }>;
   };
-  // #3843 T2: the rail's one fixing verb names the machine an engine would be
-  // set up on. Read from the same status query the rest of the app uses.
+// archive#3843: the rail's one fixing verb names the machine an engine would be
+// set up on. Read from the same status query the rest of the app uses.
   const devicePresentation = useDevicePresentation();
   const knownProjectSlugs = useMemo(
     () => new Set(knownProjects.map((project) => project.slug)),
@@ -255,13 +255,13 @@ export function useAgentsViewModel({
     [devicePresentation, filteredAgents, knownProjectSlugs, readinessKnown],
   );
 
-  /*
-   * DESIGN.md §2's empty state is about having no AGENTS, and this slot is the
-   * detail pane with nothing selected. Rendering it unconditionally printed
-   * "No agents of your own yet" beside a rail listing four (caught live), so
-   * it renders only when the claim is true; otherwise SplitPaneLayout's own
-   * "Select an agent to edit" stands.
-   */
+/*
+ * DESIGN.md §2's empty state is about having no AGENTS, and this slot is the
+* detail pane with nothing selected. Rendering it unconditionally printed
+* "No agents of your own yet" beside a rail listing four, so
+* it renders only when the claim is true; otherwise SplitPaneLayout's own
+* "Select an agent to edit" stands.
+*/
   const authoredAgents = allAgents.filter((agent) => !agent.engineDefault);
   const emptyContent =
     authoredAgents.length === 0
@@ -273,11 +273,11 @@ export function useAgentsViewModel({
         })
       : undefined;
 
-  // The selection is URL-driven, so browser navigation must restore the
-  // editor state as well as its mode. Entering /agents/new outside handleNew
-  // (for example via browser Back) must not retain the previously selected
-  // agent's form. handleNew already supplies its intended form, including a
-  // selected template, so preserve that deliberate transition.
+// The selection is URL-driven, so browser navigation must restore the
+// editor state as well as its mode. Entering /agents/new outside handleNew
+// (for example via browser Back) must not retain the previously selected
+// agent's form. handleNew already supplies its intended form, including a
+// selected template, so preserve that deliberate transition.
   useEffect(() => {
     if (previousUrlSlugRef.current === urlSlug) {
       return;
@@ -316,12 +316,12 @@ export function useAgentsViewModel({
     setIsLocked(true);
   }, [loadedAgent, isCreating]);
 
-  // station#3662 review HIGH-2: CREATE ONLY. A new Agent's form is built
-  // before the connections query resolves, so it legitimately picks up the
-  // managed runtime once it does. Applying the same fill to a LOADED Agent
-  // re-created the binding the heal had just removed — an absent binding on a
-  // persisted record is Station's own engine, not a form that has not loaded
-  // yet, and the two are indistinguishable from inside this effect.
+// archive#3662: CREATE ONLY. A new Agent's form is built
+// before the connections query resolves, so it legitimately picks up the
+// managed runtime once it does. Applying the same fill to a LOADED Agent
+// re-created the binding the heal had just removed — an absent binding on a
+// persisted record is Station's own engine, not a form that has not loaded
+// yet, and the two are indistinguishable from inside this effect.
   useEffect(() => {
     if (!isCreating || !defaultManagedRuntimeId) {
       return;
@@ -354,12 +354,12 @@ export function useAgentsViewModel({
     setIntegrationTools(groupAgentToolsByServer(agentTools));
   }, [agentTools]);
 
-  /**
-   * Whether THIS engine delivers a system prompt of its own — the matrix
-   * answer `validateAgentForm` needs. Hoisted out of `validate` because the
-   * form has to say the field is required BEFORE the button is pressed
-   * (station#3741), and the button has to be gated on the same answer.
-   */
+/**
+* Whether THIS engine delivers a system prompt of its own — the matrix
+* answer `validateAgentForm` needs. Hoisted out of `validate` because the
+* form has to say the field is required BEFORE the button is pressed
+* (archive#3741), and the button has to be gated on the same answer.
+*/
   const engineDeliversNativePrompt =
     resolveEngineCapabilityMatrix(
       form.execution.agentConnectionId,
@@ -367,11 +367,11 @@ export function useAgentsViewModel({
         (connection) => connection.id === form.execution.agentConnectionId,
       ),
     ).systemPrompt.state === 'native';
-  /**
-   * ...and whether this particular agent must author one. The reserved
-   * `station` Agent runs on Station's own prompt, so the same predicate the
-   * save applies is the one the asterisk reads.
-   */
+/**
+*.and whether this particular agent must author one. The reserved
+* `station` Agent runs on Station's own prompt, so the same predicate the
+* save applies is the one the asterisk reads.
+*/
   const promptIsRequired = requiresAuthoredAgentPrompt(
     form.slug,
     engineDeliversNativePrompt,
@@ -382,14 +382,14 @@ export function useAgentsViewModel({
   });
 
   const validate = (): boolean => {
-    // DESIGN.md §4: engine readiness is NOT a post-submit validation any
-    // more. Create is disabled until an engine is chosen and that engine is
-    // Ready (`createEngineReady` below), with the fixing action shown inline
-    // beside the unready engine — so the state this error described can no
-    // longer be reached by pressing the button. Since station#3741 the same
-    // holds for the required fields: Create is disabled while any of them is
-    // empty, so these messages are reachable only from Save on a loaded
-    // agent, never as the answer to pressing Create.
+ // DESIGN.md §4: engine readiness is NOT a post-submit validation any
+// more. Create is disabled until an engine is chosen and that engine is
+// Ready (`createEngineReady` below), with the fixing action shown inline
+// beside the unready engine — so the state this error described can no
+// longer be reached by pressing the button. Since archive#3741 the same
+// holds for the required fields: Create is disabled while any of them is
+// empty, so these messages are reachable only from Save on a loaded
+// agent, never as the answer to pressing Create.
     setValidationErrors(formErrors);
     return Object.keys(formErrors).length === 0;
   };
@@ -397,8 +397,8 @@ export function useAgentsViewModel({
   const dirty = isAgentFormDirty(form, savedForm);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
 
-  // See `handleSave`: navigate to the created Agent only once the guard has
-  // nothing to guard.
+// See `handleSave`: navigate to the created Agent only once the guard has
+// nothing to guard.
   useEffect(() => {
     if (!pendingCreatedSlug || dirty) return;
     setPendingCreatedSlug(null);
@@ -420,8 +420,8 @@ export function useAgentsViewModel({
 
   function handleNew(initialForm?: Partial<AgentFormData>) {
     guard(() => {
-      // When this action changes the URL, the URL effect must retain the form
-      // prepared below instead of replacing the starting point just chosen.
+// When this action changes the URL, the URL effect must retain the form
+// prepared below instead of replacing the starting point just chosen.
       createNavigationRef.current = urlSlug !== 'new';
       urlSelect('new');
       setIsCreating(true);
@@ -436,7 +436,7 @@ export function useAgentsViewModel({
     });
   }
 
-  /** §4 "Chat with a model": Station's engine, Basics + §3.3 + Instructions. */
+ /** §4 "Chat with a model": Station's engine, Basics + §3.3 + Instructions. */
   function handleStartWithModel() {
     setEngineKindOverride('model');
     setForm((current) => ({
@@ -444,12 +444,12 @@ export function useAgentsViewModel({
       execution: {
         ...current.execution,
         agentConnectionId: defaultManagedRuntimeId,
-        // Deliberately unset: "use the app default", the §3.3 picker's own
-        // default option. This used to capture whichever connection was ready
-        // AT THIS INSTANT, which wrote an empty id whenever the connections
-        // query had not resolved yet and left Create permanently disabled
-        // beside a picker listing a Ready connection (station#3743).
-        // `resolveStationModelBinding` reads the live list instead.
+ // Deliberately unset: "use the app default", the §3.3 picker's own
+// default option. This used to capture whichever connection was ready
+// AT THIS INSTANT, which wrote an empty id whenever the connections
+// query had not resolved yet and left Create permanently disabled
+// beside a picker listing a Ready connection (archive#3743).
+// `resolveStationModelBinding` reads the live list instead.
         modelConnectionId: '',
         runtimeOptions: {},
         modelOptions: {},
@@ -458,11 +458,11 @@ export function useAgentsViewModel({
     setStartingPointChosen(true);
   }
 
-  /**
-   * §4 "Wrap an installed agent CLI": the CLI is chosen in §3.2's radio list,
-   * NOT here — binding the first enabled engine would create an agent on an
-   * engine nobody named, and Create is gated on the choice being made.
-   */
+/**
+ * §4 "Wrap an installed agent CLI": the CLI is chosen in §3.2's radio list,
+* NOT here — binding the first enabled engine would create an agent on an
+* engine nobody named, and Create is gated on the choice being made.
+*/
   function handleStartWithCli() {
     setEngineKindOverride('cli');
     setForm((current) => ({
@@ -478,7 +478,7 @@ export function useAgentsViewModel({
     setStartingPointChosen(true);
   }
 
-  /** §4 "Copy an existing agent": every field, name "<original> copy". */
+ /** §4 "Copy an existing agent": every field, name "<original> copy". */
   function handleCopyAgent(source: AgentData) {
     const copied = cloneableAgentFields(source);
     const next: AgentFormData = {
@@ -513,9 +513,9 @@ export function useAgentsViewModel({
   }
 
   async function handleSave() {
-    // Keyboard/form submission reaches this handler without consulting the
-    // disabled button. Do not create an Agent on an explicitly unready
-    // connection just because another connection happens to be ready.
+// Keyboard/form submission reaches this handler without consulting the
+// disabled button. Do not create an Agent on an explicitly unready
+// connection just because another connection happens to be ready.
     if (isCreating && !createEngineReady) return;
     if (!validate()) return;
     try {
@@ -524,26 +524,26 @@ export function useAgentsViewModel({
       const savedSnapshot = structuredClone(form);
       const payload = buildAgentPayload(form, { isCreating });
       if (isCreating) {
-        // Select the slug the SERVER assigned, not the one typed into the
-        // form: the create response carries the persisted identity, and the
-        // mutation has already invalidated the agents query — so the list
-        // gains the row and this selects it, with no reload (AC5).
+// Select the slug the SERVER assigned, not the one typed into the
+// form: the create response carries the persisted identity, and the
+// mutation has already invalidated the agents query — so the list
+// gains the row and this selects it, with no reload.
         const { data } = await createAgent(payload as any);
         const createdSlug = (data as { slug?: string })?.slug ?? form.slug;
         setSavedForm(savedSnapshot);
         setIsCreating(false);
-        // §4: the editor opens on the new agent with one line saying so.
+ // §4: the editor opens on the new agent with one line saying so.
 
-        // NOT `urlSelect(createdSlug)` here. `useUnsavedGuard` has a live
-        // navigation guard registered for as long as the form reads dirty,
-        // and it is still dirty in THIS tick — `setSavedForm` has not
-        // rendered yet. `navigationStore.navigate` sees a guard, hands the
-        // navigation to the discard prompt, and returns: the write landed,
-        // the row appeared, and the app sat on `/agents/new` with the create
-        // form already torn down — a blank pane after a successful create.
-        // Caught live; the unit test could not see it because it does not
-        // mount the guard. The effect below navigates on the first render
-        // where the form is clean, so the guard has nothing to intercept.
+// NOT `urlSelect(createdSlug)` here. `useUnsavedGuard` has a live
+// navigation guard registered for as long as the form reads dirty,
+// and it is still dirty in THIS tick — `setSavedForm` has not
+// rendered yet. `navigationStore.navigate` sees a guard, hands the
+// navigation to the discard prompt, and returns: the write landed,
+// the row appeared, and the app sat on `/agents/new` with the create
+// form already torn down — a blank pane after a successful create.
+// Caught live; the unit test could not see it because it does not
+// mount the guard. The effect below navigates on the first render
+// where the form is clean, so the guard has nothing to intercept.
         setPendingCreatedSlug(createdSlug);
       } else {
         await updateAgent(selectedSlug!, payload);
@@ -569,23 +569,23 @@ export function useAgentsViewModel({
   const selectedAgent = allAgents.find((agent) => agent.slug === selectedSlug);
   const isPlugin = !!selectedAgent?.plugin && !isCreating;
   const isAcp = selectedAgent?.engineConnectionType === 'acp';
-  // AC7 (station#3027 follow-up): `engineDefault` is NOT a lock any more.
-  // It used to be, and the result was a six-tab editor with every field
-  // disabled, a Delete that did nothing, and a Save styled as an active
-  // primary that could never save — for the only four agents a fresh install
-  // had. Engine agents are now materialized as ordinary files
-  // (`materializeEngineAgent`), so they are editable and deletable like any
-  // other Agent, and the Skills tab's `+ Add` (which keys off this same
-  // `locked`) is finally reachable on a fresh home.
-  //
-  // What remains: a PLUGIN-owned agent (unlockable, and it says so) and an
-  // ACP-connection-owned one (genuinely read-only — its configuration lives
-  // in the connection, and the pane renders the ownership sentence plus a
-  // "Configure in Connections" action rather than a dead primary).
+ // (archive#3027 follow-up): `engineDefault` is NOT a lock any more.
+// It used to be, and the result was a six-tab editor with every field
+// disabled, a Delete that did nothing, and a Save styled as an active
+// primary that could never save — for the only four agents a fresh install
+// had. Engine agents are now materialized as ordinary files
+// (`materializeEngineAgent`), so they are editable and deletable like any
+// other Agent, and the Skills tab's `+ Add` (which keys off this same
+// `locked`) is finally reachable on a fresh home.
+//
+// What remains: a PLUGIN-owned agent (unlockable, and it says so) and an
+// ACP-connection-owned one (genuinely read-only — its configuration lives
+// in the connection, and the pane renders the ownership sentence plus a
+// "Configure in Connections" action rather than a dead primary).
   const locked = !!(isPlugin && isLocked) || !!isAcp;
-  // A failed initial read has no trustworthy entity to edit. A later refresh
-  // failure may retain a previously loaded entity, so keep that form visible
-  // with an honest banner instead of replacing in-progress edits.
+// A failed initial read has no trustworthy entity to edit. A later refresh
+// failure may retain a previously loaded entity, so keep that form visible
+// with an honest banner instead of replacing in-progress edits.
   const { blockingLoadError, editorIsLoading, notFound, visibleRefreshError } =
     resolveAgentEditorReadState({
       hasLoadedAgent: !!loadedAgent,
@@ -594,10 +594,10 @@ export function useAgentsViewModel({
       isFetching,
       isCreating,
     });
-  // "Loading agent…" is BOUNDED (AC5). A detail read that never resolves used
-  // to leave that line on screen forever with nothing to press; past the
-  // shared degraded window it becomes the same load-failure state a real
-  // error produces, which at least offers Retry and Back.
+// "Loading agent…" is BOUNDED. A detail read that never resolves used
+// to leave that line on screen forever with nothing to press; past the
+// shared degraded window it becomes the same load-failure state a real
+// error produces, which at least offers Retry and Back.
   const [loadRetrySeq, bumpLoadRetry] = useReducer((n: number) => n + 1, 0);
   const detailReadState = useDegradedQueryState({
     isPending: editorIsLoading,
@@ -607,21 +607,21 @@ export function useAgentsViewModel({
   const error = actionError ?? visibleRefreshError;
   const editorId = isCreating ? '__new__' : (selectedSlug ?? null);
 
-  // AC4: one predicate, shared with the New Chat picker and Home's
-  // recommendation card. A row this pane calls Not set up is by construction
-  // the same row the picker calls Not set up.
-  // The runtime tried to activate this Agent and gave up, and said why. A
-  // different state from "still activating" and from a plain unavailable row:
-  // it has a cause and a retry, and the pane owes the user both.
+ // one predicate, shared with the New Chat picker and Home's
+// recommendation card. A row this pane calls Not set up is by construction
+// the same row the picker calls Not set up.
+// The runtime tried to activate this Agent and gave up, and said why. A
+// different state from "still activating" and from a plain unavailable row:
+// it has a cause and a retry, and the pane owes the user both.
   const activationFailure = !isCreating
     ? selectedAgent?.activationFailure
     : undefined;
 
   const selectedRunnability: AgentRunnability | undefined =
     !isCreating && selectedAgent ? agentRunnability(selectedAgent) : undefined;
-  // An engine identity with no file behind it has nothing to edit — the
-  // detail read 404s. Render its state and its ONE action instead of an
-  // "Agent not found" dead end.
+// An engine identity with no file behind it has nothing to edit — the
+// detail read 404s. Render its state and its ONE action instead of an
+// "Agent not found" dead end.
   const selectedIsUnmaterializedEngine =
     !isCreating && selectedAgent?.engineDefault === true;
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
@@ -645,12 +645,12 @@ export function useAgentsViewModel({
     }
   }
 
-  /**
-   * §3.2's engine answer. Derived from the binding for every persisted agent
-   * — Station's own engine is an ABSENT binding, not a missing one — and
-   * taken from the explicit override only while creating, where "a CLI, not
-   * yet named" is a state the binding cannot represent.
-   */
+/**
+ * §3.2's engine answer. Derived from the binding for every persisted agent
+* Station's own engine is an ABSENT binding, not a missing one — and
+* taken from the explicit override only while creating, where "a CLI, not
+* yet named" is a state the binding cannot represent.
+*/
   const formBoundConnection = agentConnections.find(
     (connection) => connection.id === form.execution.agentConnectionId,
   );
@@ -668,34 +668,34 @@ export function useAgentsViewModel({
       : 'cli';
   const engineKind: EngineKind = engineKindOverride ?? derivedEngineKind;
 
-  /**
-   * DESIGN.md §4: Create is disabled until an engine is chosen AND that
-   * engine is Ready. Both halves are the SERVER's: a Station-engine agent
-   * needs a selectable managed runtime connection
-   * (`defaultSelectableManagedRuntimeConnection` reads `status`), a CLI agent
-   * needs its own chosen connection selectable. Nothing here re-derives
-   * readiness from anything the server did not compute.
-   */
+/**
+ * DESIGN.md §4: Create is disabled until an engine is chosen AND that
+* engine is Ready. Both halves are the SERVER's: a Station-engine agent
+* needs a selectable managed runtime connection
+* (`defaultSelectableManagedRuntimeConnection` reads `status`), a CLI agent
+* needs its own chosen connection selectable. Nothing here re-derives
+* readiness from anything the server did not compute.
+*/
   const createEngineReady = createEngineIsReady({
     engineKind,
-    // Station's own engine runs on a MODEL connection — that, not the
-    // presence of a managed agent-runtime connection, is what decides whether
-    // it can answer. The first cut asked for the latter and disabled Create
-    // on a home with a perfectly ready model connection (caught live). It is
-    // the same question §3.3's inline repair answers, and now literally the
-    // same derivation: §3.3 renders `stationModelBinding.reason` when this is
-    // false, so the gate and the explanation beside it cannot disagree
-    // (station#3743).
+// Station's own engine runs on a MODEL connection — that, not the
+// presence of a managed agent-runtime connection, is what decides whether
+// it can answer. The first cut asked for the latter and disabled Create
+// on a home with a perfectly ready model connection  It is
+ // the same question §3.3's inline repair answers, and now literally the
+ // same derivation: §3.3 renders `stationModelBinding.reason` when this is
+// false, so the gate and the explanation beside it cannot disagree
+// (archive#3743).
     stationEngineSelectable: stationModelBinding.kind === 'resolved',
     namedCliEngineSelectable: isAgentConnectionSelectable(formBoundConnection),
   });
-  /**
-   * station#3741: Create refused with "System prompt is required" for a field
-   * the form never marked, on a section the person was not looking at. The
-   * field says it is required now, and pressing Create is not how you find
-   * out — the button is disabled while the form is incomplete, exactly as it
-   * already was for an unready engine.
-   */
+/**
+* archive#3741: Create refused with "System prompt is required" for a field
+* the form never marked, on a section the person was not looking at. The
+* field says it is required now, and pressing Create is not how you find
+* out — the button is disabled while the form is incomplete, exactly as it
+* already was for an unready engine.
+*/
   const createBlocked = createIsBlocked({
     isCreating,
     engineReady: createEngineReady,
@@ -712,9 +712,9 @@ export function useAgentsViewModel({
 
   return {
     DiscardModal,
-    // M3 (delta review round 3): the UNFILTERED collection — `listItems` is
-    // already search-narrowed — so a stale/typed query never gets blamed
-    // for an emptiness a genuinely-empty agent roster caused on its own.
+ // the UNFILTERED collection — `listItems` is
+// already search-narrowed — so a stale/typed query never gets blamed
+// for an emptiness a genuinely-empty agent roster caused on its own.
     agentsCollectionEmpty: allAgents.length === 0,
     appConfig,
     availableSkills,

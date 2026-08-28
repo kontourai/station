@@ -20,7 +20,7 @@ export async function readDiskIntegrations(
     if (!existsSync(defPath)) continue;
     try {
       const def = JSON.parse(readFileSync(defPath, 'utf-8'));
-      // station#3063: the built-in files persist NO `command` — their spawn
+      // archive#3063: the built-in files persist NO `command` — their spawn
       // identity is resolved at load time by the runtime overlay. Derive
       // binary presence from the same command the overlay actually spawns
       // with, so station-control/station-docs don't list as 'missing binary'

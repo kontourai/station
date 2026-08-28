@@ -1,5 +1,5 @@
 /**
- * station#1223 (offline slice 1) — reconnect invalidation.
+ * archive#1223 (offline) — reconnect invalidation.
  *
  * Cache-first persistence (`../lib/queryPersistence.ts`) shows the
  * last-loaded data instantly, including data restored from a previous
@@ -9,7 +9,7 @@
  * both the ordinary offline→online reconnect and the very first successful
  * connect after a cold boot (when the restored cache can be arbitrarily old).
  *
- * station#3069 extends the same transition to drive recovery for queries that
+ * archive#3069 extends the same transition to drive recovery for queries that
  * ERRORED during the outage, whatever their key — see the comment on the
  * `refetchQueries` call below for why nothing else in the client can.
  *
@@ -38,30 +38,30 @@ export function useQueryCacheReconnectSync(): void {
     previousStatusRef.current = status;
     if (previousStatus !== 'connected' && status === 'connected') {
       void invalidatePersistedQueries(queryClient);
-      // station#3069 — recover queries that FAILED during the outage, whatever
-      // their key. `invalidatePersistedQueries` above only covers
-      // `PERSISTED_QUERY_KEY_PREFIXES`, so every deliberately-unpersisted key
-      // ('orchestration-*', 'attention', 'tasks', 'acp-connections', …) that
-      // errored while the server was unreachable had NO path back to a refetch:
-      //   - `refetchOnMount: false` and `refetchOnWindowFocus: false` (both set
-      //     in `main.tsx`) rule out the two automatic paths a default client has;
-      //   - `retry: 1` is long exhausted by the time the outage ends;
-      //   - react-query's own `refetchOnReconnect` rides `onlineManager`, which
-      //     listens to the window `online` event — and that event NEVER FIRES for
-      //     the outage shape this app actually sees. Measured on-device
-      //     (Pixel, debug build, CDP): dropping and restoring the Tailscale VPN
-      //     leaves `navigator.onLine === true` throughout and emits zero
-      //     online/offline events, because the Wi-Fi link never went down. Only
-      //     the route did.
-      // The user-visible result was a stale error card (Home's "Recent work
-      // unavailable", backed by the unpersisted `orchestration-sessions` key)
-      // that survived reconnection and could only be cleared by restarting the
-      // app — reproduced on-device before this fix.
-      //
-      // Scoped to `status === 'error'` on purpose: this is recovery, not a
-      // blanket refresh. Queries holding good data are left alone (no
-      // thundering herd on every reconnect); only the ones with nothing to show
-      // are re-driven, which is exactly what the outage broke.
+// archive#3069 — recover queries that FAILED during the outage, whatever
+// their key. `invalidatePersistedQueries` above only covers
+// `PERSISTED_QUERY_KEY_PREFIXES`, so every deliberately-unpersisted key
+// ('orchestration-*', 'attention', 'tasks', 'acp-connections', …) that
+// errored while the server was unreachable had NO path back to a refetch:
+//   - `refetchOnMount: false` and `refetchOnWindowFocus: false` (both set
+//     in `main.tsx`) rule out the two automatic paths a default client has;
+//   - `retry: 1` is long exhausted by the time the outage ends;
+//   - react-query's own `refetchOnReconnect` rides `onlineManager`, which
+//     listens to the window `online` event — and that event NEVER FIRES for
+//     the outage shape this app actually sees. Measured on-device
+//     (Pixel, debug build, CDP): dropping and restoring the Tailscale VPN
+//     leaves `navigator.onLine === true` throughout and emits zero
+//     online/offline events, because the Wi-Fi link never went down. Only
+//     the route did.
+// The user-visible result was a stale error card (Home's "Recent work
+// unavailable", backed by the unpersisted `orchestration-sessions` key)
+// that survived reconnection and could only be cleared by restarting the
+// app — reproduced on-device before this fix.
+//
+// Scoped to `status === 'error'` on purpose: this is recovery, not a
+// blanket refresh. Queries holding good data are left alone (no
+// thundering herd on every reconnect); only the ones with nothing to show
+// are re-driven, which is exactly what the outage broke.
       void queryClient.refetchQueries({
         predicate: (query) => query.state.status === 'error',
       });

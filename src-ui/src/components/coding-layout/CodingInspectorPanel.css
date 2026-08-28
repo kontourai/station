@@ -165,7 +165,7 @@
   cursor: not-allowed;
 }
 
-/* station#3341: the refused-clipboard colour, paired with this button's own
+/* archive#3341: the refused-clipboard colour, paired with this button's own
    class. This stylesheet is injected as its own chunk AFTER the entry sheet, so
    a bare `.copy-affordance--failed` there loses the same-specificity tie. */
 .coding-inspector__cta-action.copy-affordance--failed {

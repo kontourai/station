@@ -41,9 +41,9 @@ export function useShareToConversation(apiBase: string) {
         undefined,
         execution,
       );
-      // station#1312 review: `openConversation` now reports a failed
-      // conversation fetch (`null`) instead of silently opening an empty
-      // tab — nothing to share the attachments into.
+ // archive#1312: `openConversation` now reports a failed
+// conversation fetch (`null`) instead of silently opening an empty
+// tab — nothing to share the attachments into.
       if (sessionId === null) return null;
 
       if (attachments.length > 0) {

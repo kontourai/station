@@ -4,7 +4,7 @@ import { WebNativePlatformAdapter } from '../web';
 import { completeNativeCapabilityReport } from './completeNativeCapabilityReportFixture';
 
 /**
- * station#3677 PR 3, review round 1 gap: nothing pinned the capability id →
+ * archive#3677, 1 gap: nothing pinned the capability id →
  * adapter → EXACT Tauri command-name wiring, so a rename on either side
  * would have gone silently green (the component tests mock the hook, and
  * the Rust tests never see the JS command string).
@@ -57,9 +57,9 @@ describe('native consent broker host capability', () => {
       status: 'ok',
       value: { status: 'approved' },
     });
-    // Both halves are the contract with src-desktop/src/lib.rs: the command
-    // is `station_native_consent_review` and its one parameter arrives as
-    // `requestId` (serde renames `request_id` camelCase).
+// Both halves are the contract with src-desktop/src/lib.rs: the command
+// is `station_native_consent_review` and its one parameter arrives as
+// `requestId` (serde renames `request_id` camelCase).
     expect(calls).toContainEqual({
       command: 'station_native_consent_review',
       args: { requestId: 'txn-42' },

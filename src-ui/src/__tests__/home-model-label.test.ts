@@ -7,7 +7,7 @@ import { modelDisplayLabel, prettifyModelId } from '../utils/modelCapabilities';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
 
 /**
- * station#3391. Home showed one session two model names: the "Start direct
+ * archive#3391. Home showed one session two model names: the "Start direct
  * chat" card resolved the id against the connection catalog and read
  * "Selected Test Model", while "Continue most recent work" printed the stored
  * `model-selected` beside it. Two derivations of one user-visible fact, and
@@ -94,12 +94,12 @@ describe('Home names a model the same way its sibling card does (station#3391)',
 
   test('an id the catalog does not know is readable, not the bare id', () => {
     const label = continueCardLabel('claude-opus-5[1m]', []);
-    // Honest in both directions: it never claims a name the catalog did not
-    // give, and it never hands the user the internal id it was derived from.
+// Honest in both directions: it never claims a name the catalog did not
+// give, and it never hands the user the internal id it was derived from.
     expect(label).toBe('Opus 5 (1M)');
     expect(label).not.toBe('claude-opus-5[1m]');
-    // And the sibling card agrees about that case too — the point of the
-    // shared derivation is that neither path has its own fallback.
+// And the sibling card agrees about that case too — the point of the
+// shared derivation is that neither path has its own fallback.
     expect(label).toBe(startCardLabel('claude-opus-5[1m]'));
   });
 
@@ -107,25 +107,25 @@ describe('Home names a model the same way its sibling card does (station#3391)',
     expect(continueCardLabel('')).toBe('Model not reported');
   });
 
-  /**
-   * station#3391 review B-2/B-3. The prettifier is a display transformation,
-   * and a transformation that produces a blank string or a fabricated product
-   * name is worse than the id it started from.
-   */
+/**
+ * archive#3391 /. The prettifier is a display transformation,
+* and a transformation that produces a blank string or a fabricated product
+* name is worse than the id it started from.
+*/
   test('an id the prettifier cannot improve is returned, not mangled or blanked', () => {
-    // Provider-qualified: splitting on '-' would read
-    // "Us.anthropic.claude Sonnet 4 5 20250929 V1:0".
+// Provider-qualified: splitting on '-' would read
+// "Us.anthropic.claude Sonnet 4 5 20250929 V1:0".
     const bedrock = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
     expect(continueCardLabel(bedrock, [])).toBe(bedrock);
     expect(continueCardLabel('openai/gpt-5', [])).toBe('openai/gpt-5');
-    // 'claude-' prettifies to the empty string: prefix stripped, nothing left.
-    // Asserted on the PRETTIFIER ITSELF as well as through the card, because
-    // `modelDisplayLabel` carries its own `|| id` guard — going through the
-    // card alone passes with the prettifier's guard removed, so it proves the
-    // pair rather than either one (found by fault injection).
+// 'claude-' prettifies to the empty string: prefix stripped, nothing left.
+// Asserted on the PRETTIFIER ITSELF as well as through the card, because
+// `modelDisplayLabel` carries its own `|| id` guard — going through the
+// card alone passes with the prettifier's guard removed, so it proves the
+ // pair rather than either one (found by).
     expect(prettifyModelId('claude-')).toBe('claude-');
     expect(continueCardLabel('claude-', [])).toBe('claude-');
-    // And a catalog entry still wins over both.
+// And a catalog entry still wins over both.
     expect(
       continueCardLabel(bedrock, [
         { id: bedrock, name: 'Sonnet 4.5', originalId: bedrock },
@@ -147,8 +147,8 @@ describe('Home names a model the same way its sibling card does (station#3391)',
       agents: [{ slug: 'claude', name: 'Claude' }] as never,
       resolveModelLabel: (id) => modelDisplayLabel(id, CATALOG),
     });
-    // The label is a derivation OF this, so a consumer that needs the model
-    // never has to parse a display string back into an id.
+// The label is a derivation OF this, so a consumer that needs the model
+// never has to parse a display string back into an id.
     expect(item.model).toBe('model-selected');
     expect(item.modelLabel).toBe('Selected Test Model');
   });

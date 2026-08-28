@@ -54,16 +54,16 @@ export function MonitoringSidebar({
           const agentColor = getAgentColor(agent.slug);
 
           return (
-            // The card itself must NOT be a button: it contains the
-            // conversation controls below, and a button's descendants are
-            // flattened to presentational in accessibility APIs — a screen
-            // reader user would never discover "Active Chats" inside it
-            // (review HIGH, PR #1277 round 2). The card stays a mouse
-            // convenience surface for the whole area; the real keyboard
-            // control is the agent-header row, a SIBLING of the
-            // conversation list.
-            // biome-ignore lint/a11y/noStaticElementInteractions: mouse convenience surface; the keyboard control is the agent-header row inside.
-            // biome-ignore lint/a11y/useKeyWithClickEvents: same — the agent-header row carries the keyboard path.
+// The card itself must NOT be a button: it contains the
+// conversation controls below, and a button's descendants are
+// flattened to presentational in accessibility APIs — a screen
+// reader user would never discover "Active Chats" inside it
+//  The card stays a mouse
+// convenience surface for the whole area; the real keyboard
+// control is the agent-header row, a SIBLING of the
+// conversation list.
+// biome-ignore lint/a11y/noStaticElementInteractions: mouse convenience surface; the keyboard control is the agent-header row inside.
+// biome-ignore lint/a11y/useKeyWithClickEvents: same — the agent-header row carries the keyboard path.
             <div
               key={agent.slug}
               className={`agent-card status-${agent.status} ${isSelected ? 'selected' : ''}`}
@@ -78,9 +78,9 @@ export function MonitoringSidebar({
               <div
                 className="agent-header"
                 {...activatable((event) => {
-                  // The card's own onClick above covers the mouse; without
-                  // this a click here would select the agent twice (toggling
-                  // it straight back off).
+// The card's own onClick above covers the mouse; without
+// this a click here would select the agent twice (toggling
+// it straight back off).
                   event.stopPropagation();
                   onAgentClick(agent.slug, event);
                 })}
@@ -113,8 +113,8 @@ export function MonitoringSidebar({
                         className="conversation-item"
                         style={{ borderLeftColor: conversation.color }}
                         {...activatable((event) => {
-                          // Nested inside the agent card: without this,
-                          // choosing a conversation also reselects the agent.
+// Nested inside the agent card: without this,
+// choosing a conversation also reselects the agent.
                           event.stopPropagation();
                           onConversationClick(conversation.id, agent.slug);
                         })}
@@ -147,11 +147,11 @@ export function MonitoringSidebar({
           <>
             <div className="agent-historical-header">Historical</div>
             {historicalSlugs.map((slug) => {
-              // Count through the SAME naming rule the list was built with.
-              // Comparing the raw field to a derived name meant the
-              // '(unnamed)' card reported 0 events and then filtered to N —
-              // a number contradicting what selecting it produced, which is
-              // exactly the label-vs-derivation defect this work is about.
+// Count through the SAME naming rule the list was built with.
+// Comparing the raw field to a derived name meant the
+// '(unnamed)' card reported 0 events and then filtered to N —
+// a number contradicting what selecting it produced, which is
+// exactly the label-vs-derivation defect this work is about.
               const eventCount = filteredEvents.filter(
                 (event) =>
                   monitoringAgentName(event as Record<string, unknown>) ===
@@ -161,13 +161,13 @@ export function MonitoringSidebar({
               const agentColor = getAgentColor(slug);
 
               return (
-                // Same structure as the running card above: card = mouse
-                // convenience, header row = the keyboard control. This card
-                // has no interactive descendants, but the shared shape keeps
-                // its meta rows readable as text instead of flattened into
-                // one long button label.
-                // biome-ignore lint/a11y/noStaticElementInteractions: mouse convenience surface; the keyboard control is the agent-header row inside.
-                // biome-ignore lint/a11y/useKeyWithClickEvents: same — the agent-header row carries the keyboard path.
+// Same structure as the running card above: card = mouse
+// convenience, header row = the keyboard control. This card
+// has no interactive descendants, but the shared shape keeps
+// its meta rows readable as text instead of flattened into
+// one long button label.
+// biome-ignore lint/a11y/noStaticElementInteractions: mouse convenience surface; the keyboard control is the agent-header row inside.
+// biome-ignore lint/a11y/useKeyWithClickEvents: same — the agent-header row carries the keyboard path.
                 <div
                   key={slug}
                   className={`agent-card historical ${isSelected ? 'selected' : ''}`}

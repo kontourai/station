@@ -5,10 +5,10 @@ import { resolveStationModelBinding } from '../views/agent-editor/agentsViewUtil
 /**
  * The runtime and the agent editor, asked the same question from ONE fixture.
  *
- * station#3743's fix expressed the binding rule a second time in the editor,
+ * archive#3743's fix expressed the binding rule a second time in the editor,
  * and the copy drifted on the case that decides whether an agent can run at
  * all: the editor chose "the sole READY candidate" where the runtime counts
- * every ENABLED one and calls two of them ambiguous (sol review, HIGH). One
+* every ENABLED one and calls two of them ambiguous. One
  * ready connection beside one enabled-but-degraded connection, no app default,
  * made Create pressable and persisted no explicit binding — for an agent the
  * runtime then refused to run.
@@ -91,7 +91,7 @@ function editorVerdict(
 }
 
 describe('the editor agrees with the shared managed-model rule', () => {
-  // THE decisive case, and the one the drifting mirror got wrong.
+// THE decisive case, and the one the drifting mirror got wrong.
   test('one ready plus one enabled-but-degraded, no default, is ambiguous to both', () => {
     const connections = [
       connection({ id: 'ready-llm' }),
@@ -169,19 +169,19 @@ describe('the editor agrees with the shared managed-model rule', () => {
     );
   });
 
-  /**
-   * The ONE deliberate asymmetry, pinned so it stays deliberate.
-   *
-   * Readiness is not part of WHICH connection is bound — both sides name the
-   * same one. The editor then asks a second question about that connection,
-   * because its gate exists so that pressing Create is never how someone
-   * learns the engine cannot answer. So the editor can be stricter, and when
-   * it is, it says why.
-   */
+/**
+* The ONE deliberate asymmetry, pinned so it stays deliberate.
+*
+* Readiness is not part of WHICH connection is bound — both sides name the
+* same one. The editor then asks a second question about that connection,
+* because its gate exists so that pressing Create is never how someone
+* learns the engine cannot answer. So the editor can be stricter, and when
+* it is, it says why.
+*/
   test('readiness is a second question the editor asks about the same connection', () => {
     const connections = [connection({ id: 'only-llm', status: 'degraded' })];
 
-    // Same binding as the rule (and therefore as the runtime).
+// Same binding as the rule (and therefore as the runtime).
     expect(classifyManagedModelBinding({ connections })).toEqual({
       kind: 'resolved',
       connectionId: 'only-llm',
@@ -192,7 +192,7 @@ describe('the editor agrees with the shared managed-model rule', () => {
       connectionId: 'only-llm',
     });
 
-    // The editor refuses it, and names it.
+// The editor refuses it, and names it.
     const binding = resolveStationModelBinding({
       modelConnectionId: '',
       modelConnections: connections as never,

@@ -22,7 +22,7 @@ export function approvalModeKnobSupported(engineId?: string | null): boolean {
  * brand-new, untouched connection actually does today. This is what the
  * chip resolves to (not the `'connection-default'` sentinel) so an
  * untouched Codex connection reads as full-access/never-ask at a glance,
- * per #727 review item 2.
+* per archive#727.
  */
 export function adapterDefaultApprovalMode(
   engineId?: string | null,
@@ -62,7 +62,7 @@ export const APPROVAL_MODE_OPTIONS: Array<{
 ];
 
 /** Provider-specific description for 'auto', since its real guarantee
- * differs per engine connection (#727 review item 4) — generic copy for any other
+ * differs per engine connection (archive#727) — generic copy for any other
  * mode, or for a runtime the chip doesn't recognize. */
 const AUTO_MODE_DESCRIPTIONS: Partial<Record<string, string>> = {
   codex:
@@ -91,7 +91,7 @@ export function approvalModeLabel(mode: ApprovalMode): string {
 }
 
 /**
- * Short forms for the composer chip (#1010 item 2). The descriptive labels in
+ * Short forms for the composer chip (archive#1010). The descriptive labels in
  * `APPROVAL_MODE_OPTIONS` are written for the picker's option rows, where a
  * full sentence fragment reads well; in a pill they are far too long — "Never
  * ask (full access) — default" measured 152px against 390px of composer and
@@ -108,7 +108,7 @@ const APPROVAL_MODE_CHIP_LABELS: Record<ApprovalMode, string> = {
   'connection-default': 'Default',
   ask: 'Ask',
   auto: 'Auto',
-  // Keeps the severity legible at a glance — the danger is the point.
+// Keeps the severity legible at a glance — the danger is the point.
   never: 'Full access',
 };
 
@@ -118,7 +118,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 
 /**
  * What the chip says for an engine whose adapter reads no `approvalMode` at
- * all (#1010 item 3).
+ * all (archive#1010).
  *
  * This is deliberately a *capability* statement, not a mode. The old read-only
  * chip ran the same `resolveEffectiveApprovalMode` resolution as a
@@ -130,7 +130,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
  * reporting nothing.
  */
 /*
- * "Set by engine", not "Not managed" (#1010 review). ACP connections — the main
+ * "Set by engine", not "Not managed" (archive#1010). ACP connections — the main
  * population that reaches this chip — DO manage approvals: `acp-adapter.ts`
  * implements the interactive `session/request_permission` handshake, and Station
  * itself surfaces those prompts. What is missing is Station's ability to set the
@@ -160,7 +160,7 @@ export interface EffectiveApprovalMode {
  * then the adapter's own built-in default. `'connection-default'` is only
  * ever a *selectable* value meaning "clear my override" — it is never
  * itself displayed as a resolved posture when a concrete adapter default
- * is known (#727 review item 2).
+ * is known (archive#727).
  *
  * When the resolution did NOT come from an explicit session override, the
  * label is suffixed with "— default" so the two are visually
@@ -208,9 +208,9 @@ export function resolveEffectiveApprovalMode({
     };
   }
 
-  // No knob-supporting runtime is known (read-only providers, or no
-  // engineConnectionId at all) — Station genuinely has nothing more specific to
-  // report than "whatever the connection already does."
+// No knob-supporting runtime is known (read-only providers, or no
+// engineConnectionId at all) — Station genuinely has nothing more specific to
+// report than "whatever the connection already does."
   return {
     mode: 'connection-default',
     label: approvalModeLabel('connection-default'),

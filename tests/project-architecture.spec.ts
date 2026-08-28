@@ -235,7 +235,7 @@ function seedRoutes(page: import('@playwright/test').Page) {
 /**
  * The project row also exposes an expand/collapse chevron whose own
  * accessible name contains the project name (e.g. "Expand Alpha layouts",
- * station#1629). Target the row's project-navigation button by its full
+ * archive#1629). Target the row's project-navigation button by its full
  * accessible name (icon + name) so a non-exact match doesn't also resolve
  * that chevron.
  */
@@ -290,7 +290,7 @@ test.describe('Project Sidebar', () => {
   test('the fullscreen chat layout publishes no dock-slot clearance', async ({
     page,
   }) => {
-    // station#3972. `--dock-slot-size` is the shell's ONE clearance
+    // archive#3972. `--dock-slot-size` is the shell's ONE clearance
     // derivation: every route reserves space for whatever it says. A
     // fullscreen chat pane is INSIDE the layout, not over it, so it has
     // nothing to clear — and when it published anyway, this route reserved
@@ -782,7 +782,7 @@ test.describe('ChatDock', () => {
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page);
     await page.goto('/');
-    // #1064 removed the "Chat Dock" label; the dock is identified by its own
+    // archive#1064 removed the "Chat Dock" label; the dock is identified by its own
     // container now, which is what these tests actually care about.
     await expect(page.locator('.chat-dock')).toBeVisible({
       timeout: 10_000,
@@ -802,7 +802,7 @@ test.describe('ChatDock', () => {
   test('the ambient dock host adds no element between the shell and the dock', async ({
     page,
   }) => {
-    // station#3973. The dock renders THROUGH a chromeless WorkspacePaneHost
+    // archive#3973. The dock renders THROUGH a chromeless WorkspacePaneHost
     // now, and the whole point of chromeless is that you cannot tell from the
     // DOM: the shell positions the dock with child combinators
     // (`.app__main--dock-left > .chat-dock`, `:has(> .chat-dock)`), so one
@@ -827,8 +827,8 @@ test.describe('ChatDock', () => {
     ).toMatch(/app__main/);
   });
 
-  // Removed in station#3929 (the affordance had nowhere to appear and the
-  // spec timed out); back with station#4090 / epic station#4142 M2: `/` is
+  // Removed in archive#3929 (the affordance had nowhere to appear and the
+  // spec timed out); back with archive#4090 / epic archive#4142 M2: `/` is
   // the standalone placement of the Home pane occurrence, so
   // `#station-main` now carries a real 'Dock this pane'.
   test('docks Home through the ambient document and returns the same dock slot to Chat', async ({
@@ -906,8 +906,8 @@ test.describe('Ambient chat dock host at 390x844', () => {
     ).toBeGreaterThanOrEqual(44);
   });
 
-  // The phone half of the same journey — removed in station#3929, back with
-  // station#4090 / epic station#4142 M2 for the same reason as the desktop
+  // The phone half of the same journey — removed in archive#3929, back with
+  // archive#4090 / epic archive#4142 M2 for the same reason as the desktop
   // half above.
   test('keeps a docked Home pane within the phone viewport', async ({
     page,

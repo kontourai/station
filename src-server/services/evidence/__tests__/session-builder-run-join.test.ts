@@ -1,5 +1,5 @@
 /**
- * Session -> Builder run join (station#189 S4).
+ * Session -> Builder run join (archive#189 S4).
  *
  * Every test here is about the same question: what is Station entitled to
  * claim? The join has exactly two admissible paths, and the interesting cases

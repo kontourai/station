@@ -35,25 +35,25 @@ interface ACPChatPanelProps {
   projectSlug: string;
   projectName?: string;
   agentSlug: string;
-  /** Stable tab ID — used to persist the session across re-renders */
+/** Stable tab ID — used to persist the session across re-renders */
   tabId: string;
-  /**
-   * station#1294 review (SHOULD-FIX-4): whether this tab is the active one.
-   * `CodingTerminalPanel` keeps every tab's panel mounted (`display: none`
-   * on inactive tabs, mirroring `TerminalPanel`'s own `isActive` prop)
-   * rather than unmounting it, so a send failure in a background tab must
-   * not have its toast suppressed on the assumption the transcript notice
-   * is visible — it isn't. Defaults to `true` so any other, single-tab
-   * caller keeps today's behavior.
-   */
+/**
+* archive#1294: whether this tab is the active one.
+* `CodingTerminalPanel` keeps every tab's panel mounted (`display: none`
+* on inactive tabs, mirroring `TerminalPanel`'s own `isActive` prop)
+* rather than unmounting it, so a send failure in a background tab must
+* not have its toast suppressed on the assumption the transcript notice
+* is visible — it isn't. Defaults to `true` so any other, single-tab
+* caller keeps today's behavior.
+*/
   isActive?: boolean;
 }
 
 export function acpViewportBoundaryStyle(
   viewportStyle: React.CSSProperties,
 ): React.CSSProperties {
-  // CodingTerminalPanel owns the nested surface's top placement. ACP consumes
-  // the shared available height only; applying offsetTop here would double it.
+// CodingTerminalPanel owns the nested surface's top placement. ACP consumes
+// the shared available height only; applying offsetTop here would double it.
   return {
     ...viewportStyle,
     maxHeight: 'var(--chat-visual-viewport-height)',
@@ -140,7 +140,7 @@ export function ACPChatPanel({
     [user],
   );
 
-  // Resolve session ID: restore from sessionStorage or create new
+// Resolve session ID: restore from sessionStorage or create new
   const [sessionId] = useState<string>(() => {
     const stored = sessionStorage.getItem(`acp-tab-session:${tabId}`);
     if (stored) return stored;
@@ -157,8 +157,8 @@ export function ACPChatPanel({
   });
 
   const activeSession = useActiveChatState(sessionId);
-  // Agent app connection default for the approval-mode chip (#727 review
-  // item 7 LOW) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
+ // Agent app connection default for the approval-mode chip (archive#727
+ //) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
   const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
@@ -170,21 +170,21 @@ export function ACPChatPanel({
       ? runtimeConnection.config.approvalMode
       : undefined;
 
-  // A panel's Project is a default for its fresh tab only. A restored or
-  // already-dispatched conversation has an immutable workspace identity from
-  // its first turn, so navigation must not rewrite it to this panel's Project.
+// A panel's Project is a default for its fresh tab only. A restored or
+// already-dispatched conversation has an immutable workspace identity from
+// its first turn, so navigation must not rewrite it to this panel's Project.
   useEffect(() => {
     if (shouldBindPanelProjectContext(activeSession, projectSlug)) {
       updateChat(sessionId, { projectSlug, projectName });
     }
   }, [activeSession, projectSlug, projectName, sessionId, updateChat]);
 
-  // station#3344: this used to read `agent.supportsAttachments`, a wire field
-  // no server code has ever written — so it was `undefined ?? false` on every
-  // render and this panel refused every image, while `acp-adapter.ts` declares
-  // `image-input` and builds real ACP image content blocks. The engine's own
-  // declared cell answers it now, the same way the tool-policy chip below
-  // resolves.
+// archive#3344: this used to read `agent.supportsAttachments`, a wire field
+// no server code has ever written — so it was `undefined ?? false` on every
+// render and this panel refused every image, while `acp-adapter.ts` declares
+// `image-input` and builds real ACP image content blocks. The engine's own
+// declared cell answers it now, the same way the tool-policy chip below
+// resolves.
   const composerImageSupport = resolveComposerImageSupport(
     ENGINE_CAPABILITY_MATRICES.acp,
     runtimeConnection
@@ -217,16 +217,16 @@ export function ACPChatPanel({
     conversationId: activeSession?.conversationId,
     availableModels: [],
     attachmentCapabilities,
-    // station#1294 review (SHOULD-FIX-4): suppress the generic error toast
-    // only while this tab is the one actually on screen.
+// archive#1294: suppress the generic error toast
+// only while this tab is the one actually on screen.
     isChatVisible: isActive,
   });
 
-  // Narrow, selector-granular subscription for the transcript: only
-  // re-renders (i.e. only returns a new object) when a field the transcript
-  // actually reads changes. This is what stops composer keystrokes —
-  // updateChat(sessionId, { input }) — from re-rendering/re-parsing the
-  // memoized ChatMessageList tree below.
+// Narrow, selector-granular subscription for the transcript: only
+// re-renders (i.e. only returns a new object) when a field the transcript
+// actually reads changes. This is what stops composer keystrokes —
+// updateChat(sessionId, { input }) — from re-rendering/re-parsing the
+// memoized ChatMessageList tree below.
   const transcriptSession = useActiveChatSelector(
     sessionId,
     useCallback(
@@ -244,8 +244,8 @@ export function ACPChatPanel({
     );
   }
 
-  // ACP is nested in CodingTerminalPanel rather than fixed to the window. Its
-  // ancestor owns top placement; consuming offsetTop here would double it.
+// ACP is nested in CodingTerminalPanel rather than fixed to the window. Its
+// ancestor owns top placement; consuming offsetTop here would double it.
   return (
     <div
       className="acp-chat-panel"

@@ -1,6 +1,6 @@
 # Native platform capabilities
 
-Status: implemented foundation for Station #809; native release contract for #818 (2026-07-25)
+Status: implemented foundation for Station archive#809; native release contract for archive#818 (2026-07-25)
 
 Station is web/PWA-first. The React application talks to exactly one typed
 platform boundary at `src-ui/src/platform/native/`; it never imports Tauri
@@ -26,8 +26,8 @@ host.
 | Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
 | Pairing deep link | unsupported | enabled | Only `station://pair?payload=station-pairing:v1:...` is registered. It opens Join for explicit confirmation, never navigates or fetches a supplied URL. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
-| Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
-| Remote push wakeup | unsupported | unsupported | No provisioned FCM/APNs application or server delivery credentials. The capability report names this explicitly; the dormant local poller cannot wake a frozen or closed app (#917/#1225). |
+| Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (archive#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
+| Remote push wakeup | unsupported | unsupported | No provisioned FCM/APNs application or server delivery credentials. The capability report names this explicitly; the dormant local poller cannot wake a frozen or closed app (archive#917/#1225). |
 | Station service tray | unsupported | report-authoritative | Desktop implementation remains Rust-owned; JavaScript receives no opener permission. |
 
 Desktop startup readiness is also Rust-owned. A sidecar status may carry the
@@ -66,7 +66,7 @@ shell-interpolated command. There is no claimed secure credential backend.
 The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 `__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
 
-### Pairing deep-link threat review (station#1957)
+### Pairing deep-link threat review (archive#1957)
 
 The `tauri-plugin-deep-link` association is limited to the custom
 `station://pair` scheme on Android, iOS, and desktop. The adapter accepts one
@@ -89,14 +89,14 @@ exists.
 | --- | --- | --- |
 | Deep linking | Partial on Android, iOS, and macOS: schemes must be registered in configuration; runtime registration is not supported. | `tauri-plugin-deep-link` 2.4.9 is enabled only for reviewed `station://pair` links; generic share intake remains disabled. |
 | Local notifications | Supported across listed Tauri targets. | enabled, but cannot wake a frozen or closed mobile app. |
-| Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | `tauri-plugin-single-instance` 2.4.3 with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; the primary focuses its existing window (station#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); once a stable release ships this, a dev build (`tauri dev`, same identifier) will focus the installed app instead of starting. |
-| Remote push | Platform support requires FCM on Android and APNs on iOS. | unsupported pending the provider/privacy decision and provisioning tracked by #917; #1225 remains open. |
+| Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | `tauri-plugin-single-instance` 2.4.3 with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; the primary focuses its existing window (archive#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); once a stable release ships this, a dev build (`tauri dev`, same identifier) will focus the installed app instead of starting. |
+| Remote push | Platform support requires FCM on Android and APNs on iOS. | unsupported pending the provider/privacy decision and provisioning tracked by archive#917; archive#1225 remains open. |
 | Updater | Desktop only; mobile is unsupported. | disabled; unused updater dependency removed. |
 | Dialog | Mobile is partial: no folder picker and path results use URI forms. | disabled. |
 | File system | Mobile is partial/sandboxed. | disabled. |
 | Opener / shell | Mobile is limited to opening URLs; desktop has broader support. | Rust desktop tray uses `tauri-plugin-opener` 2.5.4 for a validated local HTTP URL only; JavaScript link interception and opener permissions are disabled. |
 | Process | Desktop only. | disabled for JavaScript and no process plugin enabled. |
-| Credential storage | Platform-native stores are available on mobile. | unsupported for durable mobile pairing. #2043 requires host-owned pairing capture and request brokering before any Keystore/Keychain persistence can be enabled. |
+| Credential storage | Platform-native stores are available on mobile. | unsupported for durable mobile pairing. archive#2043 requires host-owned pairing capture and request brokering before any Keystore/Keychain persistence can be enabled. |
 | Clipboard | Mobile supports plain text only. | disabled. |
 | Autostart | Desktop only. | disabled. |
 | Biometric / barcode scanner | Mobile only. | disabled. |
@@ -130,7 +130,7 @@ Sources were reviewed 2026-08-08:
 Native distribution, signing, installation, real-device behavior, durable
 mobile credentials, inbound native shares, remote-push delivery, and
 background mobile agents are
-NOT_VERIFIED. #818 adds source-controlled Android/iOS Tauri configuration and
+NOT_VERIFIED. archive#818 adds source-controlled Android/iOS Tauri configuration and
 a fail-closed GitHub workflow contract, not credential-backed distribution
 proof. The only secretless mobile output is an unsigned iOS simulator archive
 marked verification-only; it is never a distributable asset. The 2026-07-25

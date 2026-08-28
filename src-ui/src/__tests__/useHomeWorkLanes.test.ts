@@ -81,15 +81,15 @@ describe('useHomeWorkLanes', () => {
     expect(first.result.current.snoozed.map((i) => i.id)).toEqual(['a']);
     expect(first.result.current.active).toEqual([]);
 
-    // Simulate a reload: unmount and mount a brand new hook instance, which
-    // must reconstruct state purely from localStorage.
+// Simulate a reload: unmount and mount a brand new hook instance, which
+// must reconstruct state purely from localStorage.
     first.unmount();
     const reloaded = renderHook(() => useHomeWorkLanes([a]));
     expect(reloaded.result.current.snoozed.map((i) => i.id)).toEqual(['a']);
     expect(reloaded.result.current.active).toEqual([]);
 
-    // Advance past the wake time and re-tick; the item returns to active
-    // with a woke-from-snooze pill, and the wake also survives reload.
+// Advance past the wake time and re-tick; the item returns to active
+// with a woke-from-snooze pill, and the wake also survives reload.
     act(() => {
       vi.advanceTimersByTime(61 * 60 * 1000);
     });
@@ -151,10 +151,10 @@ describe('useHomeWorkLanes', () => {
     expect(first.result.current.settled).toEqual([]);
     first.unmount();
 
-    // Simulate time passing while the tab was closed/reloaded: advance past
-    // the linger window, then mount a FRESH hook instance. Nothing in
-    // memory carries over — only whatever terminal-since was persisted to
-    // localStorage by the first instance's effect.
+// Simulate time passing while the tab was closed/reloaded: advance past
+// the linger window, then mount a FRESH hook instance. Nothing in
+// memory carries over — only whatever terminal-since was persisted to
+// localStorage by the first instance's effect.
     act(() => {
       vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
     });
@@ -209,9 +209,9 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
   });
 
   it('a chat promoted from a local session key to a server conversationId does not reorder the active lane', () => {
-    // Both renders carry a second, unrelated session so the invariant under
-    // test — the PROMOTED item's stable position — is distinguishable from
-    // "only one item exists, order is trivially stable".
+// Both renders carry a second, unrelated session so the invariant under
+// test — the PROMOTED item's stable position — is distinguishable from
+// "only one item exists, order is trivially stable".
     const otherSession = {
       threadId: 'thread-other',
       provider: 'codex',
@@ -250,9 +250,9 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
       expect.arrayContaining(['local-1', 'thread-other']),
     );
 
-    // The server assigns a conversationId on the first message
-    // (`useActiveChatSessionMessaging.ts`'s `assignConversationId`) — the
-    // chat's HomeWorkItem.id flips to it.
+// The server assigns a conversationId on the first message
+// (`useActiveChatSessionMessaging.ts`'s `assignConversationId`) — the
+// chat's HomeWorkItem.id flips to it.
     const after = buildHomeWorkItems({
       chats: {
         'local-1': {
@@ -271,11 +271,11 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
     expect(after.map((i) => i.id)).not.toContain('local-1');
 
     rerender({ items: after });
-    // The raw id really did change...
+// The raw id really did change...
     expect(result.current.active.map((i) => i.id)).toEqual(
       expect.arrayContaining(['conv-99', 'thread-other']),
     );
-    // ...but the stable id — and therefore the AC1 order — did not.
+//.but the stable id — and therefore the order — did not.
     expect(result.current.active.map((i) => i.stableId)).toEqual(
       stableIdsBefore,
     );
@@ -324,9 +324,9 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
     );
     const stableIdsBefore = result.current.active.map((i) => i.stableId);
 
-    // A durable Task is created correlated to `thread-1`
-    // (`task.sessionId === session.threadId`) — mergeHomeWorkItems drops the
-    // raw orchestration item and surfaces a task-keyed item instead.
+// A durable Task is created correlated to `thread-1`
+// (`task.sessionId === session.threadId`) — mergeHomeWorkItems drops the
+// raw orchestration item and surfaces a task-keyed item instead.
     const after = buildHomeWorkItems({
       chats: {},
       sessions: [
@@ -355,11 +355,11 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
     expect(after.map((i) => i.id)).not.toContain('thread-1');
 
     rerender({ items: after });
-    // The raw id really did change...
+// The raw id really did change...
     expect(result.current.active.map((i) => i.id)).toEqual(
       expect.arrayContaining(['task-42', 'thread-other']),
     );
-    // ...but the stable id — and therefore the AC1 order — did not.
+//.but the stable id — and therefore the order — did not.
     expect(result.current.active.map((i) => i.stableId)).toEqual(
       stableIdsBefore,
     );

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4463 slice 2 fix round (M1, delta review round 3): a prior version
+* archive#4463: a prior version
  * of this fix pinned the skeleton row's rhythm with a CSS-text assertion —
  * `expect(cssRuleFrom(skeletonCss, '.skeleton-list__item')).toContain(
  * 'min-height: 38px;')` — which is true of the STYLESHEET TEXT and false of
@@ -78,9 +78,9 @@ const SKELETON_CSS_PATH = resolve(HERE, '../components/Skeleton.css');
 function buildFixtureCss(): string {
   const css = [
     resolveCssImports(INDEX_CSS_PATH),
-    // Plain, import-free component stylesheets — read directly rather than
-    // through resolveCssImports, matching resolveCssImports' own base case
-    // (a file with nothing to inline).
+// Plain, import-free component stylesheets — read directly rather than
+// through resolveCssImports, matching resolveCssImports' own base case
+// (a file with nothing to inline).
     readFileSync(SPLIT_PANE_CSS_PATH, 'utf8'),
     readFileSync(SKELETON_CSS_PATH, 'utf8'),
   ].join('\n');

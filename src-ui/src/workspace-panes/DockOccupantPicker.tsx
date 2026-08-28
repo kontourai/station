@@ -6,15 +6,15 @@ import { useEffect, useRef, useState } from 'react';
 import { ambientDockOccupantChoices } from './ambientDockOccupants';
 
 /**
- * The dock-slot header's occupant picker (station#4090, epic #4142 M5).
+* The dock-slot header's occupant picker (archive#4090).
  *
  * Replaces the old fixed "return to Chat" action: with three dockable panes a
  * two-pane vocabulary was already wrong, so the header names the CURRENT
- * occupant (the descriptor's `name`, never a raw id — #3971) and opens a menu
+ * occupant (the descriptor's `name`, never a raw id — archive#3971) and opens a menu
  * of every pane the ambient slot admits. Chat is not special here — it is one
  * of the list.
  *
- * The list is `ambientDockOccupantChoices()` — the derivation over the render
+* The list is `ambientDockOccupantChoices` — the derivation over the render
  * table and the admission fold — read here rather than passed in, so no
  * caller can substitute a curated array.
  *
@@ -98,9 +98,9 @@ export function DockOccupantPicker({
                   : ''
               }`}
               onClick={() => {
-                // The current occupant is already placed: choosing it again
-                // is a no-op that closes the menu, not a replace that churns
-                // the persisted document.
+// The current occupant is already placed: choosing it again
+// is a no-op that closes the menu, not a replace that churns
+// the persisted document.
                 if (choice.descriptor.id !== current.id)
                   onChoose(choice.descriptor, choice.instance);
                 setMenuOpen(false);

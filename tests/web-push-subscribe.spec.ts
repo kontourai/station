@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * station#614 — Web Push subscribe/unsubscribe from the Notifications
+ * archive#614 — Web Push subscribe/unsubscribe from the Notifications
  * settings section.
  *
  * Hermetic by design (CLAUDE.md testing conventions: route API calls via

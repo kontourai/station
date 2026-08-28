@@ -1,8 +1,8 @@
 # Live-work session contract
 
-`LiveWorkSession` is #2914's deep, pure Station module for one exact Project,
+`LiveWorkSession` is archive#2914's deep, pure Station module for one exact Project,
 Task, surface, session, and configured channel identity. It owns no API, route,
-database, UI, transport, message log, or revision store. #2972 composes its
+database, UI, transport, message log, or revision store. archive#2972 composes its
 narrow material-history Adapter; ephemeral presence remains in memory.
 
 ## Authority and live projection
@@ -70,7 +70,7 @@ may begin after an earlier ordinal but never reorders it.
 Participants, panes, and typing are not restored. Missing required Adapters
 refuse restoration rather than create an unrecoverable obligation.
 
-Revision references enter only through an injected #2891 resolver. `AVAILABLE`
+Revision references enter only through an injected archive#2891 resolver. `AVAILABLE`
 must be a closed result for the exact requested revision ID, Project, Task,
 session, and applicable run. Caller-provided verification text alone grants
 nothing. Private work cannot reference a revision. The room adapter resolves

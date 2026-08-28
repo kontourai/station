@@ -27,8 +27,8 @@ describe('GuidanceView', () => {
     sessionStorage.clear();
   });
 
-  // ONE authored concept (Skills) and one runtime view (Commands). There is no
-  // Playbooks tab, and nothing resolves to one.
+// ONE authored concept (Skills) and one runtime view (Commands). There is no
+// Playbooks tab, and nothing resolves to one.
   test('offers exactly the Skills and Commands tabs', () => {
     render(<GuidanceView route={{ type: 'guidance', tab: 'skills' }} />);
 
@@ -98,8 +98,8 @@ describe('GuidanceView', () => {
     });
   });
 
-  // The command-skill list is a narrowed Skills list, and the header has to say
-  // so rather than claim to be the whole collection.
+// The command-skill list is a narrowed Skills list, and the header has to say
+// so rather than claim to be the whole collection.
   test('passes the commands filter through to the Skills list', () => {
     render(
       <GuidanceView
@@ -120,19 +120,19 @@ describe('GuidanceView', () => {
     expect(screen.getByText('Commands body')).toBeTruthy();
   });
 
-  // station#4463 slice 1 (2026-08-26 shell audit): the page title is
-  // 'Guidance' and must not change when the tab changes — the tab strip
-  // already names the section. Only the top-level nav route decides this, so
-  // the tabs must not restate it as 'Skills'/'Commands' the way the retired
-  // per-tab header used to.
-  //
-  // Fix round (test-power): the spec's fallback title must NOT equal
-  // 'Guidance' — if it did, a GuidanceView that stopped publishing an
-  // override entirely would still render 'Guidance' from the FALLBACK and
-  // every assertion below would pass despite the view being broken. The
-  // placeholder text below can only appear if GuidanceView never calls
-  // `usePageHeader` with a title, which is exactly the regression these
-  // tests exist to catch.
+// archive#4463: the page title is
+// 'Guidance' and must not change when the tab changes — the tab strip
+// already names the section. Only the top-level nav route decides this, so
+// the tabs must not restate it as 'Skills'/'Commands' the way the retired
+// per-tab header used to.
+//
+// Fix round (test-power): the spec's fallback title must NOT equal
+// 'Guidance' — if it did, a GuidanceView that stopped publishing an
+// override entirely would still render 'Guidance' from the FALLBACK and
+// every assertion below would pass despite the view being broken. The
+// placeholder text below can only appear if GuidanceView never calls
+// `usePageHeader` with a title, which is exactly the regression these
+// tests exist to catch.
   const FALLBACK_TITLE = 'FALLBACK — must be overridden';
 
   describe('the page title stays "Guidance" across tabs', () => {

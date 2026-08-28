@@ -1,5 +1,5 @@
 /**
- * station#1399 slice 1 — server-only digest computation for provenance-bound
+ * archive#1399 — server-only digest computation for provenance-bound
  * UI blocks.
  *
  * Kept out of `packages/contracts/src/ui-block.ts` on purpose:
@@ -18,7 +18,7 @@
  * recomputes this digest — it only ever passes an already-computed
  * `provenanceDigest` through verbatim, which is what keeps a streamed copy
  * and a persisted/reloaded copy of the same block provenance-identical
- * (station#1399 Core Contract bullet 2 / R2).
+ * (archive#1399 Core Contract bullet 2 / R2).
  */
 
 import { createHash } from 'node:crypto';
@@ -77,14 +77,14 @@ export function computeUIBlockProvenanceDigest(
 }
 
 /**
- * The host-owned provenance ACCEPT step (station#1399 slice 1, promoted here
- * station#4079 slice 1 so a second refusal-capable, agent/tool-facing
+ * The host-owned provenance ACCEPT step (archive#1399, promoted here
+ * archive#4079 so a second refusal-capable, agent/tool-facing
  * emission boundary can reuse it instead of re-deriving its own copy of
  * "what counts as accepted"). Originally private to
  * `vended-tool-compat.ts#validateUIBlock` (`render_component`); now also
  * called by the board pin boundary (`routes/board.ts`, before `BoardStore`
- * is ever touched) per the station#4079 design comment: "Pinning a claiming
- * block requires its provenance to be present (the #1399 refusal applies at
+ * is ever touched) per the archive#4079 design comment: "Pinning a claiming
+ * block requires its provenance to be present (the archive#1399 refusal applies at
  * pin, not just at render)". Both callers hand it a raw, per-type-shape-
  * validated block plus the caller's raw (untrusted)
  * `derivedFrom`/`attestationState` input; neither is ever trusted verbatim.
@@ -133,7 +133,7 @@ const KNOWN_UI_BLOCK_TYPES = new Set(['card', 'table', 'code', 'form']);
 /**
  * Recomputes `derivedFrom`/`provenanceDigest`/`attestationState` on ONE raw
  * (untrusted) block candidate, UNCONDITIONALLY discarding whatever the
- * candidate itself supplied for those three fields — station#1399 fix
+ * candidate itself supplied for those three fields — archive#1399 fix
  * round, H1: minting `'attested'` from mere source PRESENCE, and trusting a
  * tool-supplied `provenanceDigest` string verbatim, let any tool (not just
  * the host-validated `render_component`) stamp its own output "attested"
@@ -181,7 +181,7 @@ function sanitizeRawUIBlockCandidate(raw: unknown): unknown {
 
 /**
  * The `{uiBlock}`/`{uiBlocks}` carrier shape, optionally AI-SDK-json-wrapped.
- * Exported (station#1399 fix round 2, B2) so the message-serving seam
+ * Exported (archive#1399 fix round 2, B2) so the message-serving seam
  * (`sanitizeConversationMessagesUIBlockProvenance` below) can apply the
  * identical logic to a `MessagePart.output`, not only to a
  * `CanonicalRuntimeEvent.output` — the two writers must never define
@@ -215,7 +215,7 @@ export function sanitizeUIBlockCarrierOutput(output: unknown): unknown {
 }
 
 /**
- * station#1399 fix round — a provenance-sanitizing writer, not THE single
+ * archive#1399 fix round — a provenance-sanitizing writer, not THE single
  * writer (fix round 2, B1/B3 correction of the original docblock's
  * overclaim: `OrchestrationService#publishCanonicalEvent` is one of at
  * least two writers that persist/publish a `tool.completed` event —
@@ -236,7 +236,7 @@ export function sanitizeUIBlockCarrierOutput(output: unknown): unknown {
  *    result over the block's own (parsed, semantically-validated, deduped)
  *    `derivedFrom`, or absent.
  *  - `render_component`'s OWN output (already sanitized once inside its
- *    `execute()`, station#1399 slice 1) is sanitized again here,
+ *    `execute()`, archive#1399) is sanitized again here,
  *    idempotently — recomputing the identical digest over the identical
  *    normalized source list is a pure function of that list, so this is a
  *    safe no-op re-stamp, not a second, possibly-divergent source of truth.
@@ -281,7 +281,7 @@ export function sanitizeUIBlockEventProvenance(
 
 /**
  * Ultra-defensive, non-recomputing "blank it" fallback for ONE raw
- * candidate — station#1399 fix round 2, B4. Deliberately does NOT call
+ * candidate — archive#1399 fix round 2, B4. Deliberately does NOT call
  * {@link isRawUIBlockDataBearing}/`parseUIBlockSourceRefs`/
  * `computeUIBlockProvenanceDigest` (the functions a poisoned getter is
  * likely to have thrown from) — it only ever reads `.type` and spreads the
@@ -408,7 +408,7 @@ export function safeSanitizeUIBlockCarrierOutput(
 }
 
 /**
- * station#1399 fix round 2, B2 (independent review) — sanitizes at the
+ * archive#1399 fix round 2, B2 (independent review) — sanitizes at the
  * SERVE boundary: `conversations.ts`'s `GET /:slug/conversations/:conversationId/messages`
  * route (and every other reader of `readConversationMessages`, its one
  * shared read seam) calls this on every `ConversationMessage[]` it is about
@@ -500,7 +500,7 @@ function sanitizeOneMessagePart(
           error: error instanceof Error ? error.message : String(error),
         },
       );
-      // station#1399 micro-round, M2 (independent review): the fallback
+      // archive#1399 micro-round, M2 (independent review): the fallback
       // itself can throw — `forceUIBlockCandidateUnattested` spreads the
       // SAME raw object, so a poisoned getter that threw once throws again
       // here. Unlike the carrier-output path (whose own outer try/catch

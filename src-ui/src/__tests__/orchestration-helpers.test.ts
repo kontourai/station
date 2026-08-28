@@ -7,7 +7,7 @@ vi.mock('../contexts/active-chats-store', () => ({
   },
 }));
 
-// station#1225: `snapshotHandlers.ts` now imports `rehydrateChatSession.ts`
+// archive#1225: `snapshotHandlers.ts` now imports `rehydrateChatSession.ts`
 // for its reconnect-fallback refetch, which transitively reaches
 // `contexts/conversations-store.ts` -> `utils/logger.ts`'s module-level
 // `localStorage` read — undefined in this file's test environment. This
@@ -117,7 +117,7 @@ describe('orchestration helpers', () => {
     expect(parts).toEqual([{ type: 'text', content: 'Hello' }]);
   });
 
-  // station#3690: text streamed AFTER a tool call must not be folded back into
+  // archive#3690: text streamed AFTER a tool call must not be folded back into
   // the text part that preceded it. Appending to the first same-type part
   // rewrites the turn's reading order — and only on the live path, so the same
   // turn reordered itself on reload once durable replay rebuilt it correctly.

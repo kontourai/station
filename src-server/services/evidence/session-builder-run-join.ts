@@ -1,5 +1,5 @@
 /**
- * Session → Builder run read-side join (station#189 S4).
+ * Session → Builder run read-side join (archive#189 S4).
  *
  * The auto-attached `station-delivery` run is not the Builder run. Builder
  * runs are started by `flow-agents` (from Station or from a bare CLI) and
@@ -23,7 +23,7 @@
  * routinely NOT a Station thread id (bare Codex CLI thread ids are the live
  * case), and one thread id legitimately appears in several sidecars when a
  * runtime session drives several Builder runs in sequence. A near-match is
- * therefore evidence of nothing, and #582 already paid for the lesson that a
+ * therefore evidence of nothing, and archive#582 already paid for the lesson that a
  * plausible join is indistinguishable from a verified one once rendered.
  *
  * This module is pure: it takes the session's thread id, its Station binding
@@ -166,7 +166,7 @@ interface BoundTaskReader {
  * throw escape reaches the join's outer fail-open catch, which yields no row
  * at all — and "no row" is how Station says "there is no Builder run here".
  * A corrupt sidecar would then be indistinguishable from an absent one, which
- * is exactly the class of silence station#189 exists to remove.
+ * is exactly the class of silence archive#189 exists to remove.
  *
  * Both failures deserve the same row: Station bound this session to a task it
  * can no longer read. `onUnreadable` carries the underlying error out to the
@@ -220,7 +220,7 @@ export interface ResolveSessionBuilderRunInput {
  * workspace contains no Builder run carrying a runtime-session identity to
  * join against. Anywhere a join was possible in principle but was not made,
  * this returns a row saying so, because silence there is indistinguishable
- * from "no Builder run exists" and that is the failure #189 is about.
+ * from "no Builder run exists" and that is the failure archive#189 is about.
  */
 export function resolveSessionBuilderRun(
   input: ResolveSessionBuilderRunInput,

@@ -46,7 +46,7 @@ describe('plugin shared-module bridge', () => {
     expect(shared()?.debug).toBeDefined();
 
     // Held back out of the entry chunk until something actually needs them.
-    // The SDK barrel and UserDetailModal joined this half in station#883: a
+    // The SDK barrel and UserDetailModal joined this half in archive#883: a
     // namespace import materializes every export, pinning 43 app-unreached SDK
     // modules into the entry chunk.
     expect(shared()?.['@kontourai/station-sdk']).toBeUndefined();
@@ -74,7 +74,7 @@ describe('plugin shared-module bridge', () => {
     await ready?.();
 
     // Assert on a real export, not on the container: the components entry is
-    // an object literal, so `toBeDefined()` would pass even if the dynamic
+    // an object literal, so `toBeDefined` would pass even if the dynamic
     // import resolved `UserDetailModal` to undefined.
     const loadedShared = shared();
     if (!loadedShared) {
@@ -138,12 +138,12 @@ describe('plugin shared-module bridge', () => {
     registry.setApiBase(ORIGIN);
     await registry.initialize();
 
-    // The bundle's require() shim reads these synchronously the moment the
+    // The bundle's require shim reads these synchronously the moment the
     // injected script runs, so they must already be resolved by now.
     const requireShim = (window as any).require as (m: string) => unknown;
     expect(typeof requireShim).toBe('function');
     // Assert on real exports: the shim answers unknown modules with `{}`, so a
-    // bare `toBeDefined()` would pass even with the bridge left unresolved.
+    // bare `toBeDefined` would pass even with the bridge left unresolved.
     expect((requireShim('zod') as any).string).toBeTypeOf('function');
     expect(typeof requireShim('dompurify')).toBe('function');
     expect((requireShim('dompurify') as any).sanitize).toBeTypeOf('function');
@@ -152,7 +152,7 @@ describe('plugin shared-module bridge', () => {
     const voiceSdk = await import('@kontourai/station-sdk/voice');
     expect(requireShim('@kontourai/station-sdk/voice')).toBe(voiceSdk);
 
-    // The two modules station#883 MOVED to the on-demand half. Without these,
+    // The two modules archive#883 MOVED to the on-demand half. Without these,
     // the whole "no plugin can observe the deferral" claim rests on a path no
     // test exercises for the affected modules.
     const sdk = await import('@kontourai/station-sdk');

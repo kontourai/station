@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 /**
- * The Home role's production grant surface (station#3122 stage 3). These
+ * The Home role's production grant surface (archive#3122). These
  * prove the wiring that the independent review found absent — a real,
  * reachable channel — and its shape: the button only OPENS a request and
  * hands the decision to the isolated review page; nothing here (or anywhere
@@ -113,11 +113,11 @@ test('an eligible pane offers the explicit grant act, which opens the isolated r
   expect(opened[0]).toBe(
     'http://localhost:3141/api/plugins/home-role/requests/req-1/review',
   );
-  // The popup is severed from this page — the review page must not be
-  // scriptable through window.opener.
+// The popup is severed from this page — the review page must not be
+// scriptable through window.opener.
   expect(reviewWindow.opener).toBeNull();
-  // Nothing here decided anything: no grant write exists in this component's
-  // reachable surface at all (the SDK exposes none).
+// Nothing here decided anything: no grant write exists in this component's
+// reachable surface at all (the SDK exposes none).
 });
 
 test('on a native-broker host the grant opens NO popup and hands the transaction to native chrome (station#3677 PR 3)', async () => {
@@ -137,9 +137,9 @@ test('on a native-broker host the grant opens NO popup and hands the transaction
   fireEvent.click(screen.getByRole('button', { name: 'Use as Home…' }));
 
   await waitFor(() => expect(reviewed).toEqual(['req-native']));
-  // The webview path is bypassed entirely: no popup, no status-poll loop —
-  // the native host settles the decision server-side with its own
-  // local-grant credential and this component only waits for the outcome.
+// The webview path is bypassed entirely: no popup, no status-poll loop —
+// the native host settles the decision server-side with its own
+// local-grant credential and this component only waits for the outcome.
   expect(open).not.toHaveBeenCalled();
   expect(sdk.fetchRequest).not.toHaveBeenCalled();
   await waitFor(() =>

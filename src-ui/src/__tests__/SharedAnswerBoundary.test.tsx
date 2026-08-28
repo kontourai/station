@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SharedAnswerBoundary } from '../views/share/SharedAnswerBoundary';
 
 /**
- * station#1423 security review L-1 — the share page sits above the app shell,
+ * archive#1423 — the share page sits above the app shell,
  * so nothing else catches a throw or a failed chunk fetch. Both used to
  * white-screen indistinguishably, which makes an honest message impossible.
  */
@@ -39,8 +39,8 @@ describe('SharedAnswerBoundary', () => {
     expect(
       screen.getByText('This shared answer could not be displayed'),
     ).toBeTruthy();
-    // The honesty rule the whole feature holds to: a page that failed to read
-    // anything must not imply anything about the answer.
+// The honesty rule the whole feature holds to: a page that failed to read
+// anything must not imply anything about the answer.
     expect(screen.getByText(/nothing was successfully read/)).toBeTruthy();
     expect(container.textContent).not.toBe('');
   });
@@ -62,10 +62,10 @@ describe('SharedAnswerBoundary', () => {
         <Never />
       </SharedAnswerBoundary>,
     );
-    // A null Suspense fallback is another silent white page. The fallback is
-    // now the shared region skeleton (SHELL-13), which paints placeholder
-    // blocks and names the wait in its accessible label rather than in visible
-    // copy — so "non-blank" is asserted on rendered marks, not on textContent.
+// A null Suspense fallback is another silent white page. The fallback is
+// now the shared region skeleton, which paints placeholder
+// blocks and names the wait in its accessible label rather than in visible
+// copy — so "non-blank" is asserted on rendered marks, not on textContent.
     expect(screen.getByLabelText('Loading the shared answer')).toBeTruthy();
     expect(container.querySelectorAll('.skeleton').length).toBeGreaterThan(0);
   });

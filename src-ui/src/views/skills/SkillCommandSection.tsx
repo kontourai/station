@@ -40,7 +40,7 @@ export function SkillCommandSection({
   const variables = formVariables(form);
   const commandWord = formCommandWord(form);
   /**
-   * station#3737: the server refused `Ship It` with the rule it broke, the
+   * archive#3737: the server refused `Ship It` with the rule it broke, the
    * refusal never reached the screen, and this field went on promising
    * "Type /Ship It in chat." — a command that does not exist and cannot be
    * typed. The rule is the contract's, the same one the HTTP schema applies,

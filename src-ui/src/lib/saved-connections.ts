@@ -10,7 +10,7 @@ const INJECTED_CONNECTION_IDS = new Set(['cli-base', 'managed-loopback']);
  * non-same-origin endpoint, or one that has learned a server identity or
  * connected before. Injected (host-supplied) connections are excluded.
  *
- * Shared rather than local to `OnboardingGate` (station#3311): this predicate
+ * Shared rather than local to `OnboardingGate` (archive#3311): this predicate
  * is what decides whether the mobile "No Station connected" banner appears, so
  * the toolbar's connection chip has to key its own copy and its mobile
  * suppression on the SAME condition. A second reader that re-derived

@@ -26,7 +26,7 @@ vi.mock('../../flow/orchestration-flow-gate.js', async (importOriginal) => {
 });
 
 /**
- * Unit pins for the C15 extraction (epic #4024 slice 11, #4218) — the
+ * Unit pins for the C15 extraction (epic archive#4024, archive#4218) — the
  * contracts the service suite proved it CANNOT discriminate (each ran green
  * under injection at the service level, or has no service-level fixture):
  *
@@ -37,7 +37,7 @@ vi.mock('../../flow/orchestration-flow-gate.js', async (importOriginal) => {
  *    the pre-gate `input.events` it closed over.
  * 3. The spool completion arms: success spools `output`; error spools
  *    `error ?? output`. Neither claims an exit code or a duration — Station
- *    observed these calls, it did not run them (station#4237). And the I12
+ *    observed these calls, it did not run them (archive#4237). And the I12
  *    inverse: no
  *    veritasReadinessService (every fixture here omits it) still spools —
  *    the command-evidence bridge needs only flowRunService.
@@ -265,7 +265,7 @@ describe('FlowPolicySidecar (unit pins)', () => {
         output: 'all green',
         status: 'success',
         // Observed, not executed: no exit code, no duration is claimed
-        // (station#4237). `status` is the one execution fact Station has,
+        // (archive#4237). `status` is the one execution fact Station has,
         // and the durable pass/fail claim derives from it.
         exitCode: null,
         durationMs: null,
@@ -297,7 +297,7 @@ describe('FlowPolicySidecar (unit pins)', () => {
       expect.objectContaining({
         output: '{"message":"boom"}',
         status: 'error',
-        // The honesty fix L8's note anticipated landed as station#4237: the
+        // The honesty fix L8's note anticipated landed as archive#4237: the
         // exit code is no longer synthesized from `status`, so this pin now
         // asserts the absence it used to ratchet. The load-bearing half of
         // the assertion remains the `error ?? output` preference above.
@@ -308,7 +308,7 @@ describe('FlowPolicySidecar (unit pins)', () => {
   });
 
   it('reports truncation from the adapter receipt, not as a flat false', () => {
-    // #4237 review M1: asserting `outputTruncated: false` recorded a
+    // archive#4237 review M1: asserting `outputTruncated: false` recorded a
     // head-sliced output as complete, so the evidence file's "tail" was
     // actually the beginning of the run. The adapters that truncate say so
     // on the event; presence of the receipt IS the truncation.

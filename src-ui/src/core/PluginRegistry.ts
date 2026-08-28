@@ -40,7 +40,7 @@ export type PluginRegistryFailure =
 export interface PluginRegistryLoadStatus {
   readonly state: PluginRegistryLoadState;
   readonly failedPluginNames: readonly string[];
-  /** Why contributed extensions are unavailable while the shell remains usable. */
+/** Why contributed extensions are unavailable while the shell remains usable. */
   readonly failure?: PluginRegistryFailure;
 }
 
@@ -81,10 +81,10 @@ export function authorizesPluginLayout(
   contribution: LayoutCatalogContribution | undefined,
   isolated = false,
 ): boolean {
-  // Every nested read is optional: this predicate runs over EVERY workspace
-  // pane contribution during catalog resolution, and a contribution without
-  // sourceIdentity/provenance is unauthorized, not a crash. Dereferencing them
-  // eagerly threw during boot and blanked the whole app (no boundary above it).
+// Every nested read is optional: this predicate runs over EVERY workspace
+// pane contribution during catalog resolution, and a contribution without
+// sourceIdentity/provenance is unauthorized, not a crash. Dereferencing them
+// eagerly threw during boot and blanked the whole app (no boundary above it).
   return Boolean(
     contribution &&
       owner.generation === generation &&
@@ -118,7 +118,7 @@ function isSameOriginBundleUrl(url: string): boolean {
  * `window.__station_ai_plugins` is a shared mutable window property that any
  * executing bundle can write at any time — including a bundle whose load the
  * registry already reported as failed, which keeps running after the rejection
- * and after `performReload`'s `delete` (station#4302). So presence of an entry
+ * and after `performReload`'s `delete` (archive#4302). So presence of an entry
  * is never on its own evidence that the load the registry awaited produced it;
  * every read here is paired with the admission check in `loadPlugin`.
  */
@@ -153,7 +153,7 @@ export class PluginRegistry {
   private allowRemoteBundles = false;
   private nativeHost = false;
   private apiBaseGeneration = 0;
-  /** Every inventory pass mints records that cannot survive a later reload. */
+/** Every inventory pass mints records that cannot survive a later reload. */
   private registryGeneration = 0;
   private apiBaseAbortController = new AbortController();
   private failedPluginNames: string[] = [];
@@ -215,10 +215,10 @@ export class PluginRegistry {
       !this.allowRemoteBundles &&
       !remoteBrowserIsolation
     ) {
-      // Remote Station bundles execute in this root webview and therefore
-      // share its authenticated request and native-bridge authority. Until
-      // plugins run behind an isolated execution boundary, never load code
-      // supplied by a non-loopback saved Station.
+// Remote Station bundles execute in this root webview and therefore
+// share its authenticated request and native-bridge authority. Until
+// plugins run behind an isolated execution boundary, never load code
+// supplied by a non-loopback saved Station.
       log.plugin(
         '[PluginRegistry] Skipped remote plugin bundles pending plugin isolation.',
       );
@@ -353,7 +353,7 @@ export class PluginRegistry {
   ): Promise<boolean> {
     const name = pluginMeta.name;
     try {
-      // Load CSS first, then JS bundle
+// Load CSS first, then JS bundle
       await this.loadCSS(
         `${apiBase}/api/plugins/${encodeURIComponent(name)}/bundle.css`,
         apiBase,
@@ -361,17 +361,17 @@ export class PluginRegistry {
         signal,
       );
 
-      // Load JS bundle
+// Load JS bundle
       const bundleUrl = `${apiBase}/api/plugins/${encodeURIComponent(name)}/bundle.js`;
 
-      // Whatever is already on the window before this load begins. A bundle
-      // the registry disowned (timeout, abort, error) still executes, and it
-      // can re-create `window.__station_ai_plugins` after `performReload`'s
-      // `delete` has run — so an entry that is merely PRESENT may be the
-      // corpse of a load this registry already reported as failed.
+// Whatever is already on the window before this load begins. A bundle
+// the registry disowned (timeout, abort, error) still executes, and it
+// can re-create `window.__station_ai_plugins` after `performReload`'s
+// `delete` has run — so an entry that is merely PRESENT may be the
+// corpse of a load this registry already reported as failed.
       const priorRegistration = readBundleRegistration(name);
 
-      // Load IIFE bundle via script tag — it registers on window.__station_ai_plugins
+// Load IIFE bundle via script tag — it registers on window.__station_ai_plugins
       const observedRegistration = await this.loadScript(
         bundleUrl,
         name,
@@ -382,14 +382,14 @@ export class PluginRegistry {
       if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration))
         return true;
 
-      // Admitted only when THIS load was observed to produce it: the value is
-      // read at the instant the browser reported the script executed, and it
-      // must be a different object from the one that was there beforehand.
-      // A late bundle's write lands after that instant, so it cannot be
-      // adopted by the pass that was waiting for it; and on any later pass it
-      // is identical to `priorRegistration`, so it cannot be adopted there
-      // either. That is the property: a plugin the registry reported as
-      // failed cannot become live by finishing late (station#4302).
+// Admitted only when THIS load was observed to produce it: the value is
+// read at the instant the browser reported the script executed, and it
+// must be a different object from the one that was there beforehand.
+// A late bundle's write lands after that instant, so it cannot be
+// adopted by the pass that was waiting for it; and on any later pass it
+// is identical to `priorRegistration`, so it cannot be adopted there
+// either. That is the property: a plugin the registry reported as
+// failed cannot become live by finishing late (archive#4302).
       const pluginExports =
         observedRegistration && observedRegistration !== priorRegistration
           ? observedRegistration
@@ -402,7 +402,7 @@ export class PluginRegistry {
       const disposer = pluginExports.activate?.({ apiBase });
       if (disposer) this.pluginDisposers.set(name, disposer);
 
-      // Register named component exports
+// Register named component exports
       if (
         pluginExports.components &&
         typeof pluginExports.components === 'object'
@@ -423,7 +423,7 @@ export class PluginRegistry {
         }
       }
 
-      // Also register default export
+// Also register default export
       if (pluginExports.default) {
         this.layouts.set(name, {
           component: pluginExports.default as LayoutComponent,
@@ -440,43 +440,43 @@ export class PluginRegistry {
       return true;
     } catch {
       this.disposePlugin(name);
-      // Plugin failures can contain provider authorization or signed
-      // endpoints. Keep the host log content-free at this trust boundary.
+// Plugin failures can contain provider authorization or signed
+// endpoints. Keep the host log content-free at this trust boundary.
       log.api(`[PluginRegistry] Failed to load plugin ${name}`);
       return false;
     }
   }
 
-  /**
-   * Executes one plugin bundle in the shell's own realm.
-   *
-   * A SAME-ORIGIN bundle is loaded BY URL and is given no nonce
-   * (station#4287). The HTTP shell serves
-   * `script-src 'self' 'nonce-<per-response>' 'wasm-unsafe-eval'`; this used to
-   * fetch the bundle's bytes and run them as an inline `<script>` carrying that
-   * nonce, and code holding a nonce can mint further nonce'd scripts — remote
-   * ones included — so the policy constrained everything except the code it was
-   * written for. `'self'` admits a same-origin `<script src>` on its own, and
-   * the browser sends the shell's HttpOnly device-session cookie with a
-   * same-origin subresource request, so the bundle still loads authenticated
-   * and the route is unchanged.
-   *
-   * What this does NOT do, and must not be described as doing: it does not stop
-   * a plugin running code it chose after install. A plugin holding
-   * `plugin.server` serves its own `/api/plugins/:name/*` routes, which are
-   * same-origin and therefore admitted by `'self'` exactly as this bundle is.
-   * What it restores is the narrower property the policy already advertises:
-   * no UNDECLARED REMOTE script.
-   *
-   * A CROSS-ORIGIN bundle URL still takes the fetch-and-inline path and still
-   * receives the shell nonce. That is the desktop app: its window is Tauri's
-   * asset origin (`WebviewUrl::App("index.html")`) while the bundle lives on
-   * the supervised server's loopback origin, so `'self'` does not admit the
-   * URL; and its credential is held in Rust behind the native transport, so a
-   * webview-issued `<script src>` would not be authenticated either. Closing it
-   * there needs the desktop host to serve plugin bundles from the shell's own
-   * origin — not a looser route here.
-   */
+/**
+* Executes one plugin bundle in the shell's own realm.
+*
+* A SAME-ORIGIN bundle is loaded BY URL and is given no nonce
+* (archive#4287). The HTTP shell serves
+* `script-src 'self' 'nonce-<per-response>' 'wasm-unsafe-eval'`; this used to
+* fetch the bundle's bytes and run them as an inline `<script>` carrying that
+* nonce, and code holding a nonce can mint further nonce'd scripts — remote
+* ones included — so the policy constrained everything except the code it was
+* written for. `'self'` admits a same-origin `<script src>` on its own, and
+* the browser sends the shell's HttpOnly device-session cookie with a
+* same-origin subresource request, so the bundle still loads authenticated
+* and the route is unchanged.
+*
+* What this does NOT do, and must not be described as doing: it does not stop
+* a plugin running code it chose after install. A plugin holding
+* `plugin.server` serves its own `/api/plugins/:name/*` routes, which are
+* same-origin and therefore admitted by `'self'` exactly as this bundle is.
+* What it restores is the narrower property the policy already advertises:
+* no UNDECLARED REMOTE script.
+*
+* A CROSS-ORIGIN bundle URL still takes the fetch-and-inline path and still
+* receives the shell nonce. That is the desktop app: its window is Tauri's
+* asset origin (`WebviewUrl::App("index.html")`) while the bundle lives on
+* the supervised server's loopback origin, so `'self'` does not admit the
+* URL; and its credential is held in Rust behind the native transport, so a
+* webview-issued `<script src>` would not be authenticated either. Closing it
+* there needs the desktop host to serve plugin bundles from the shell's own
+* origin — not a looser route here.
+*/
   private async loadScript(
     url: string,
     name: string,
@@ -484,8 +484,8 @@ export class PluginRegistry {
     apiBaseGeneration: number,
     signal: AbortSignal,
   ): Promise<PluginBundleExports | undefined> {
-    // Plugin-only shared modules are fetched on demand; the bundle's require()
-    // shim reads them synchronously once it executes, so resolve them first.
+// Plugin-only shared modules are fetched on demand; the bundle's require
+// shim reads them synchronously once it executes, so resolve them first.
     if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration))
       return undefined;
     await ensurePluginSharedRuntimeReady();
@@ -494,7 +494,7 @@ export class PluginRegistry {
     if (!(window as any).require) {
       const shared = (window as any).__station_ai_shared || {};
       (window as any).require = (m: string) => {
-        // Alias old package names
+// Alias old package names
         if (shared[m]) return shared[m];
         if (m.startsWith('react')) return shared.react;
         console.warn('[Plugin] Unknown shared module:', m);
@@ -513,19 +513,19 @@ export class PluginRegistry {
     );
   }
 
-  /** Same-origin bundle: the browser fetches it, `'self'` admits it, no nonce. */
+/** Same-origin bundle: the browser fetches it, `'self'` admits it, no nonce. */
   private async executeBundleByUrl(
     url: string,
     name: string,
     signal: AbortSignal,
   ): Promise<PluginBundleExports | undefined> {
-    // An already-aborted signal never fires `abort`, so without this the
-    // script would be appended and run after the caller had given up.
+// An already-aborted signal never fires `abort`, so without this the
+// script would be appended and run after the caller had given up.
     if (signal.aborted) throw new Error(`Aborted loading: ${url}`);
     const script = document.createElement('script');
     script.src = url;
-    // Bundles execute in registry order today because each load is awaited;
-    // keep that ordering explicit rather than depending on the await alone.
+// Bundles execute in registry order today because each load is awaited;
+// keep that ordering explicit rather than depending on the await alone.
     script.async = false;
     script.setAttribute('data-station-plugin', url);
     return await new Promise<PluginBundleExports | undefined>(
@@ -543,38 +543,38 @@ export class PluginRegistry {
             resolve(observed);
             return;
           }
-          // The element is deliberately LEFT IN PLACE. Removing a `<script src>`
-          // does not cancel its pending fetch or its evaluation, so a bundle
-          // that timed out or was aborted can still execute afterwards --
-          // verified in Chromium. Removing the element would only hide that a
-          // load is still in flight, and the reload sweep clears
-          // `[data-station-plugin]` anyway.
-          //
-          // So this rejection means "the registry is not waiting for this any
-          // more", NOT "this code will not run". A late bundle still executes in
-          // the shell realm and can write `window.__station_ai_plugins` behind
-          // the registry's back (station#4302). The inline path could refuse
-          // this because it re-checked the origin between fetch and append; a
-          // browser-driven load structurally cannot.
-          //
-          // What IS in the host's power is refusing to trust the result. The
-          // registration is read below at the instant the browser reports this
-          // script executed, and `loadPlugin` admits it only if this load
-          // produced it — so a write that lands after this settle is never
-          // adopted, here or on any later pass.
+// The element is deliberately LEFT IN PLACE. Removing a `<script src>`
+// does not cancel its pending fetch or its evaluation, so a bundle
+// that timed out or was aborted can still execute afterwards --
+// verified in Chromium. Removing the element would only hide that a
+// load is still in flight, and the reload sweep clears
+// `[data-station-plugin]` anyway.
+//
+// So this rejection means "the registry is not waiting for this any
+// more", NOT "this code will not run". A late bundle still executes in
+// the shell realm and can write `window.__station_ai_plugins` behind
+// the registry's back (archive#4302). The inline path could refuse
+// this because it re-checked the origin between fetch and append; a
+// browser-driven load structurally cannot.
+//
+// What IS in the host's power is refusing to trust the result. The
+// registration is read below at the instant the browser reports this
+// script executed, and `loadPlugin` admits it only if this load
+// produced it — so a write that lands after this settle is never
+// adopted, here or on any later pass.
           reject(error);
         };
-        // Read synchronously in the load handler: a `load` event on a classic
-        // script fires after its evaluation, so this is the registration THIS
-        // script produced. Reading after the `await` instead would let any
-        // later write — including a disowned bundle finishing at last — stand
-        // in for it.
+// Read synchronously in the load handler: a `load` event on a classic
+// script fires after its evaluation, so this is the registration THIS
+// script produced. Reading after the `await` instead would let any
+// later write — including a disowned bundle finishing at last — stand
+// in for it.
         const handleLoad = () =>
           settle(undefined, readBundleRegistration(name));
         const handleError = () => settle(new Error(`Failed to load: ${url}`));
         const handleAbort = () => settle(new Error(`Aborted loading: ${url}`));
-        // A script element that never fires either event would leave plugin
-        // discovery pending forever; the inventory deadline applies here too.
+// A script element that never fires either event would leave plugin
+// discovery pending forever; the inventory deadline applies here too.
         timer = setTimeout(
           () => settle(new Error(`Timed out loading: ${url}`)),
           PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
@@ -587,7 +587,7 @@ export class PluginRegistry {
     );
   }
 
-  /** Cross-origin bundle (the desktop shell): bytes fetched, run under the nonce. */
+/** Cross-origin bundle (the desktop shell): bytes fetched, run under the nonce. */
   private async executeBundleInline(
     url: string,
     name: string,
@@ -609,9 +609,9 @@ export class PluginRegistry {
     const nonce = resolveCspNonce();
     if (nonce) script.nonce = nonce;
     document.head.appendChild(script);
-    // An inline classic script evaluates synchronously during the append, so
-    // this read is the same instant-of-execution capture the URL path gets
-    // from its `load` handler.
+// An inline classic script evaluates synchronously during the append, so
+// this read is the same instant-of-execution capture the URL path gets
+// from its `load` handler.
     return readBundleRegistration(name);
   }
 
@@ -636,7 +636,7 @@ export class PluginRegistry {
     document.head.appendChild(style);
   }
 
-  /** Reload — re-fetch plugin list and load any new bundles */
+/** Reload — re-fetch plugin list and load any new bundles */
   reload(): Promise<PluginRegistrySettledLoadState> {
     if (this.reloadInFlight) {
       this.reloadQueued = true;
@@ -672,15 +672,15 @@ export class PluginRegistry {
     document
       .querySelectorAll('[data-station-plugin]')
       .forEach((node) => node.remove());
-    // A bundle that stops registering an export must not inherit its previous
-    // implementation from this window. Each reload rebuilds the registry from
-    // the currently fetched bundles only.
-    //
-    // This `delete` is tidying, not the guarantee: a bundle still in flight
-    // from the previous pass re-creates the global right after it runs
-    // (station#4302), so the property is enforced at admission in
-    // `loadPlugin`, which requires each pass to observe its own registration
-    // rather than trusting whatever the window holds.
+// A bundle that stops registering an export must not inherit its previous
+// implementation from this window. Each reload rebuilds the registry from
+// the currently fetched bundles only.
+//
+// This `delete` is tidying, not the guarantee: a bundle still in flight
+// from the previous pass re-creates the global right after it runs
+// (archive#4302), so the property is enforced at admission in
+// `loadPlugin`, which requires each pass to observe its own registration
+// rather than trusting whatever the window holds.
     delete (window as any).__station_ai_plugins;
     const loadState = await this.initialize();
     this.setLoadStatus(loadState, this.failedPluginNames, this.failure);
@@ -700,8 +700,8 @@ export class PluginRegistry {
     try {
       disposer();
     } catch {
-      // Plugin cleanup is isolated: one broken plugin cannot retain every
-      // other plugin's activation or block the host reload lifecycle.
+// Plugin cleanup is isolated: one broken plugin cannot retain every
+// other plugin's activation or block the host reload lifecycle.
       log.api(`[PluginRegistry] Plugin ${name} cleanup failed`);
     }
   }
@@ -710,12 +710,12 @@ export class PluginRegistry {
     return this.layouts.get(name)?.component ?? null;
   }
 
-  /**
-   * Returns a React component only when its active registry record is owned by
-   * the exact local contribution bound to the pane occurrence. Component names
-   * are intentionally insufficient authority: another contribution may use
-   * the same name, or a newer registry generation may have replaced it.
-   */
+/**
+* Returns a React component only when its active registry record is owned by
+* the exact local contribution bound to the pane occurrence. Component names
+* are intentionally insufficient authority: another contribution may use
+* the same name, or a newer registry generation may have replaced it.
+*/
   getTrustedLayout(
     name: string,
     contribution: LayoutCatalogContribution | undefined,
@@ -734,10 +734,10 @@ export class PluginRegistry {
       return null;
     if (registration.isolated && registration.plugin) {
       const plugin = registration.plugin;
-      // The isolated host only renders for a remote Station's plugin Pane, so
-      // it must not ride the entry chunk (station#2467's ratchet). LazyBoundary
-      // also gives a failed chunk fetch a contained retry instead of an
-      // unhandled rejection.
+// The isolated host only renders for a remote Station's plugin Pane, so
+// it must not ride the entry chunk (archive#2467's ratchet). LazyBoundary
+// also gives a failed chunk fetch a contained retry instead of an
+// unhandled rejection.
       return () =>
         isolatedPluginLayout({
           plugin,
@@ -787,7 +787,7 @@ export class PluginRegistry {
     return this.getLayoutManifest(name);
   }
 
-  /** Aggregate links from all plugins, optionally filtered by placement */
+/** Aggregate links from all plugins, optionally filtered by placement */
   getLinks(
     placement?: string,
   ): Array<{ label: string; href: string; icon?: string; placement?: string }> {

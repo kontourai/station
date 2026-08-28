@@ -115,7 +115,7 @@
   flex-direction: column;
   gap: 1rem;
   padding: 1rem 1.25rem 1.5rem;
-  /* This view owns its own scroller, so the ancestor's dock reservation
+/* This view owns its own scroller, so the ancestor's dock reservation
      shortened the PANEL instead of letting content scroll clear of the dock —
      the page visibly compressed as the dock grew. Cancel that reservation and
      take the allowance as scroll padding here: the panel keeps full height and
@@ -291,7 +291,7 @@
   .project-settings__body {
     padding: 0.75rem;
   }
-  /* station#4463 slice 2 review MED-4: the scrollbar affordance that used to
+/* archive#4463: the scrollbar affordance that used to
      live here moved to the shared `.section-nav` rule in page-layout.css, so
      a higher-specificity hide can never silently outrank it again. Only this
      host's own inset/scroll-padding stays local. */
@@ -303,7 +303,7 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  /* Stop the identity preview / path strings from forcing horizontal scroll */
+/* Stop the identity preview / path strings from forcing horizontal scroll */
   .project-settings__identity-preview,
   .project-settings__identity-card,
   .project-settings__field--featured {
@@ -316,7 +316,7 @@
     word-break: break-word;
   }
 
-  /* Keep primary action buttons tappable */
+/* Keep primary action buttons tappable */
   .project-settings__working-dir-input {
     width: 100%;
     box-sizing: border-box;
@@ -329,7 +329,7 @@
   font: inherit;
 }
 
-/* station#1502 slice 4 — resolution states (§3.6) in project settings. */
+/* archive#1502 — resolution states (§3.6) in project settings. */
 .resources-section__row {
   display: flex;
   flex-direction: column;
@@ -337,7 +337,7 @@
 }
 
 /*
- * station#1503 slice 5 — several resources render as several rows, so they need
+ * archive#1503 — several resources render as several rows, so they need
  * a separator; a single-repo project renders one row and no tally, and its
  * spacing is unchanged.
  */

@@ -35,7 +35,7 @@ describe('injectConversationFeedbackContext', () => {
       'Message #2 was rated negatively: "Too vague"',
     );
     expect(result.ragContext).not.toContain('conv-2');
-    // station#2649: the receipt half describes the block that was actually
+    // archive#2649: the receipt half describes the block that was actually
     // appended — one flagged message in this conversation, cost estimated
     // from the composed block itself.
     expect(result.feedback).toEqual({
@@ -74,7 +74,7 @@ describe('applyAmbientContextToInput (#685)', () => {
     expect(applyAmbientContextToInput(parts as any, undefined).input).toBe(
       parts,
     );
-    // Nothing to apply is not an application (station#2649).
+    // Nothing to apply is not an application (archive#2649).
     expect(applyAmbientContextToInput('hello', undefined).applied).toBe(false);
   });
 
@@ -154,11 +154,11 @@ describe('applyCombinedContextToInput', () => {
     ]);
   });
 
-  // station#3344: the shape a captioned pasted image produces on the
+  // archive#3344: the shape a captioned pasted image produces on the
   // Station-engine path — `buildOutgoingUserMessage` emits the text part
   // first, then one file part per attachment, and the station-agent relay
   // (`buildRelayInput`) rebuilds the same order. Making images attachable
-  // must not turn an ordinary contextful turn into the #2743 drop: the
+  // must not turn an ordinary contextful turn into the archive#2743 drop: the
   // composed block still has to reach the model, and the image part still
   // has to survive alongside it.
   test('an image-bearing turn with a caption keeps its composed context and its image', () => {
@@ -201,7 +201,7 @@ describe('applyCombinedContextToInput', () => {
     ]);
   });
 
-  // station#2649 review fix (HIGH-1). This is the shape an uncaptioned
+  // archive#2649 review fix (HIGH-1). This is the shape an uncaptioned
   // attachment produces (`buildOutgoingUserMessage` pushes a text part only
   // `if (content)`): both appliers silently drop their whole block, and
   // `applied: false` is what stops the receipt from claiming the model read

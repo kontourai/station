@@ -140,7 +140,7 @@ describe('OllamaLLMProvider', () => {
     }
   });
 
-  // station#1430: Ollama's /api/show reports a real `capabilities` array
+  // archive#1430: Ollama's /api/show reports a real `capabilities` array
   // (ollama/ollama#10066) — the one provider in this repo whose API
   // genuinely says whether a model supports tool calling.
   test('populates supportsTools:true from a live /api/show capabilities array containing "tools"', async () => {
@@ -244,7 +244,7 @@ describe('OllamaLLMProvider', () => {
     }
   });
 
-  // station#1430 review, H-2: the opt-out that keeps a caller that only
+  // archive#1430 review, H-2: the opt-out that keeps a caller that only
   // needs ids/names (e.g. `OllamaAdapter.resolveModelId`) from paying for
   // capability lookups it will never read.
   test('skipCapabilityEnrichment performs zero /api/show calls and returns the base listing unmodified', async () => {
@@ -279,7 +279,7 @@ describe('OllamaLLMProvider', () => {
     }
   });
 
-  // station#1430 review, L-3: the ONE timing test proving the H-1 invariant
+  // archive#1430 review, L-3: the ONE timing test proving the H-1 invariant
   // holds — this is the assertion that was previously missing, and it fails
   // under the original 900ms-budget/800ms-timeout pair (see the fault
   // injection in the delivery report). Every requested model's /api/show
@@ -356,7 +356,7 @@ describe('OllamaLLMProvider', () => {
     }
   });
 
-  // station#1430 review, H-1 residual: the previous L-3 test alone couldn't
+  // archive#1430 review, H-1 residual: the previous L-3 test alone couldn't
   // distinguish "deadline anchored to catalog start" from "deadline anchored
   // to enrichment start," because its own `/api/tags` mock resolved
   // instantly (T_tags ~= 0) — both anchors land at the same instant when

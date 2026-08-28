@@ -91,7 +91,7 @@ describe('ProjectSidebarHeader', () => {
     // Desktop DOM order: home-button (logo + brand) -> collapse-button, so
     // the collapse button's own `margin-left: auto` pushes itself to the
     // header's right edge instead of pushing the brand name away from the
-    // logo (station#1629).
+    // logo (archive#1629).
     expect(homeIndex).toBeGreaterThanOrEqual(0);
     expect(
       children[homeIndex]?.querySelector('.sidebar__brand-name'),

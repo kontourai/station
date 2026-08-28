@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
 
 /**
- * station#4197: Ollama engine sessions used to silently discard reported
+ * archive#4197: Ollama engine sessions used to silently discard reported
  * usage — the shared producer never populated `LLMStreamChunk.usage` and
  * this adapter never published `token-usage.updated`. These tests drive the
  * REAL `sendTurn` path with a stubbed provider (the same `llm` seam every
@@ -120,7 +120,7 @@ describe('OllamaAdapter token-usage.updated emission (station#4197)', () => {
     // The openai-compatible SDK coerces `prompt_tokens ?? 0`: a schema-valid
     // wire usage carrying only completion_tokens normalizes to
     // inputTokens: 0, which is an SDK invention, not an engine report
-    // (review MEDIUM, station#4197).
+    // (review MEDIUM, archive#4197).
     const { events } = await runTurn({
       finishReason: 'stop',
       usage: {
@@ -139,7 +139,7 @@ describe('OllamaAdapter token-usage.updated emission (station#4197)', () => {
 
   test("an explicit wire null — the schema's other spelling of absence — is not a measurement either", async () => {
     // `prompt_tokens: null` parses (schema is nullish) and the SDK coerces
-    // it to 0 exactly like a missing key (delta-review MEDIUM, #4197).
+    // it to 0 exactly like a missing key (delta-review MEDIUM, archive#4197).
     const { events } = await runTurn({
       finishReason: 'stop',
       usage: {

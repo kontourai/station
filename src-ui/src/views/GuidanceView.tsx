@@ -14,8 +14,8 @@ import { SkillsView } from './SkillsView';
 type GuidanceRoute = Extract<NavigationView, { type: 'guidance' }>;
 
 /**
- * Guidance is one page with two tabs. station#4463 slice 1 (the 2026-08-26
- * shell audit) fixed the page's TITLE at 'Guidance' — it must not change when
+ * Guidance is one page with two tabs. archive#4463 (the 
+ *) fixed the page's TITLE at 'Guidance' — it must not change when
  * the tab changes, the same rule every other page-level view follows now: the
  * tab strip already names the section, and a title that flips between
  * 'Skills' and 'Commands' as the reader clicks a tab reads as two different
@@ -77,7 +77,7 @@ export function GuidanceView({ route }: { route: GuidanceRoute }) {
     try {
       sessionStorage.setItem(GUIDANCE_TAB_MEMORY_KEY, tab);
     } catch {
-      // Storage can be unavailable in privacy-restricted webviews.
+// Storage can be unavailable in privacy-restricted webviews.
     }
     if (route.redirectFromAlias || !route.tab) {
       navigate(
@@ -87,8 +87,8 @@ export function GuidanceView({ route }: { route: GuidanceRoute }) {
     }
   }, [activeTab, navigate, route]);
 
-  // A filter narrows the SKILLS list; it means nothing on Commands, and
-  // carrying it there would leave a live-looking param that narrows nothing.
+// A filter narrows the SKILLS list; it means nothing on Commands, and
+// carrying it there would leave a live-looking param that narrows nothing.
   const filter = activeTab === 'skills' ? route.filter : undefined;
   usePageHeader({
     title: PAGE_TITLE,
@@ -103,7 +103,7 @@ export function GuidanceView({ route }: { route: GuidanceRoute }) {
     try {
       sessionStorage.setItem(GUIDANCE_TAB_MEMORY_KEY, tab);
     } catch {
-      // The URL remains authoritative when storage is unavailable.
+// The URL remains authoritative when storage is unavailable.
     }
     navigate('/guidance', { tab, filter: null });
   }
@@ -114,9 +114,9 @@ export function GuidanceView({ route }: { route: GuidanceRoute }) {
         id={TABS_ID}
         className="guidance-view__tabs"
         aria-label="Agent resource type"
-        // Automatic activation: switching is a cheap in-place re-render
-        // (no route push), so an arrow key both moves focus and activates,
-        // per WAI-ARIA APG.
+// Automatic activation: switching is a cheap in-place re-render
+// (no route push), so an arrow key both moves focus and activates,
+// per WAI-ARIA APG.
         activation="automatic"
         items={[
           { key: 'skills', label: 'Skills' },

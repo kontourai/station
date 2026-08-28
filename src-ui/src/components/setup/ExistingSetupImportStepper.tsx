@@ -50,7 +50,7 @@ function formatBytes(bytes: number): string {
 }
 
 export interface ExistingSetupImportStepperProps {
-  /** A capability ID, not an engine or connection identity. */
+/** A capability ID, not an engine or connection identity. */
   sourceId?: string;
   compact?: boolean;
 }

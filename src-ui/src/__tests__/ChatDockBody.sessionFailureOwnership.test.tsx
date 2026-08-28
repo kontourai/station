@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3299 (defect 1): one stream failure rendered TWICE — once as the
+ * archive#3299 (defect 1): one stream failure rendered TWICE — once as the
  * turn-adjacent card in the transcript and again as the session failure
  * banner under the composer. Sharing the translation (`translateChatError`)
  * is right; what was missing is arbitration over which surface OWNS the
@@ -10,7 +10,7 @@
  * The decided ownership: the transcript surface (the `[CHAT_ERROR]` marker
  * card / the ephemeral failure notice / the projected error row) owns a
  * failure it already carries, because it sits with the turn it belongs to.
- * The banner is the COLD-ARRIVAL surface (station#3213: a deep link at an
+ * The banner is the COLD-ARRIVAL surface (archive#3213: a deep link at an
  * already-failed session whose transcript carries nothing) and must keep
  * rendering there — these tests pin both directions.
  */
@@ -27,8 +27,8 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
-  // station#3764: the dock's empty-transcript filler renders `ChatEmptyState`,
-  // which gates its guided variant on the catalog's loaded state.
+// archive#3764: the dock's empty-transcript filler renders `ChatEmptyState`,
+// which gates its guided variant on the catalog's loaded state.
   useAgentsLoaded: () => true,
 }));
 
@@ -167,9 +167,9 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
 }
 
 function failedOrchestrationSession(): OrchestrationSessionSummary {
-  // station#1778/#3241: no cast. The previous cast was hiding `status:
-  // 'errored'`, which the wire shape does not admit (the union spells it
-  // `error`), so this fixture described a session that cannot occur.
+ // archive#1778/archive#3241: no cast. The previous cast was hiding `status:
+// 'errored'`, which the wire shape does not admit (the union spells it
+// `error`), so this fixture described a session that cannot occur.
   return {
     threadId: 'failure-ownership-session',
     provider: 'claude',
@@ -216,10 +216,10 @@ function renderDock(
 
 describe('ChatDockBody session-failure ownership (station#3299)', () => {
   test('REPRO: a failure the transcript already carries renders exactly once — the banner defers to the turn-adjacent card', async () => {
-    // The live shape: `handleRuntimeErrorEvent` appended the failure marker
-    // into this chat's messages when the runtime.error arrived, and the
-    // server's session record folded to failed with the same cause mirrored
-    // in blockedReason. One failure, one rendering.
+// The live shape: `handleRuntimeErrorEvent` appended the failure marker
+// into this chat's messages when the runtime.error arrived, and the
+// server's session record folded to failed with the same cause mirrored
+// in blockedReason. One failure, one rendering.
     const session = buildSession({
       messages: [
         { role: 'user', content: 'summarize this repo', timestamp: 1 },
@@ -233,19 +233,19 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
 
     renderDock(session, failedOrchestrationSession());
 
-    // The transcript card renders the failure (translated). ChatMessageList
-    // mounts through a LazyBoundary, so wait for the card to appear.
+// The transcript card renders the failure (translated). ChatMessageList
+// mounts through a LazyBoundary, so wait for the card to appear.
     await waitFor(() =>
       expect(document.querySelector('.system-event')).toBeTruthy(),
     );
-    // The session banner defers: one failure must not have two surfaces and
-    // two dismiss/retry targets in the same frame.
+// The session banner defers: one failure must not have two surfaces and
+// two dismiss/retry targets in the same frame.
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
   });
 
   test('cold arrival at a failed session still renders the banner (station#3213 preserved)', () => {
-    // Deep link / tab switch: the transcript carries nothing about the
-    // failure — the banner is the only surface that can say it.
+// Deep link / tab switch: the transcript carries nothing about the
+// failure — the banner is the only surface that can say it.
     const session = buildSession({
       messages: [
         { role: 'user', content: 'summarize this repo', timestamp: 1 },
@@ -257,12 +257,12 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
     expect(screen.getByTestId('chat-dock-session-failure')).toBeTruthy();
   });
 
-  // UX audit V3 review (HIGH): the exact live shape. `handleRuntimeErrorEvent`
-  // writes the cause into the streaming shell AND flips `status` to `error` in
-  // the same update, which suppresses that shell — so the text was present in
-  // state, ownership stood down for it, and the reader saw a red Failed chip
-  // over a transcript that just stopped. Ownership must follow a VISIBLE
-  // element, not a string.
+// the exact live shape. `handleRuntimeErrorEvent`
+// writes the cause into the streaming shell AND flips `status` to `error` in
+// the same update, which suppresses that shell — so the text was present in
+// state, ownership stood down for it, and the reader saw a red Failed chip
+// over a transcript that just stopped. Ownership must follow a VISIBLE
+// element, not a string.
   test('REPRO: a failure that only exists in the suppressed streaming shell still gets a visible reason', () => {
     const session = buildSession({
       status: 'error',
@@ -315,20 +315,20 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
     },
   );
 
-  /**
-   * station#3769: the DURABLE arrival, beside the live one above. A thread
-   * cold-opened from its event window replays `turn.started` →
-   * `runtime.error` → `turn.aborted` through
-   * `packages/shared/src/runtime-event-projection.ts`, which writes the cause
-   * as an ordinary assistant text part carrying `runtimeError: true`. That row
-   * renders, so the banner must defer to it exactly as it does to the live
-   * `[CHAT_ERROR]` marker — otherwise the reader gets the raw cause under the
-   * turn AND a translated banner under that, one incident in two vocabularies.
-   *
-   * The existing "cold arrival" case above defines itself as a transcript that
-   * carries NOTHING about the failure, so this shape — transcript carries it,
-   * from events rather than from a marker — was untested.
-   */
+/**
+* archive#3769: the DURABLE arrival, beside the live one above. A thread
+* cold-opened from its event window replays `turn.started` →
+* `runtime.error` → `turn.aborted` through
+* `packages/shared/src/runtime-event-projection.ts`, which writes the cause
+* as an ordinary assistant text part carrying `runtimeError: true`. That row
+* renders, so the banner must defer to it exactly as it does to the live
+* `[CHAT_ERROR]` marker — otherwise the reader gets the raw cause under the
+* turn AND a translated banner under that, one incident in two vocabularies.
+*
+* The existing "cold arrival" case above defines itself as a transcript that
+* carries NOTHING about the failure, so this shape — transcript carries it,
+* from events rather than from a marker — was untested.
+*/
   test('REPRO: a failure replayed from the durable event window renders once — the banner defers to the projected row', () => {
     const session = buildSession({
       messages: [
@@ -353,11 +353,11 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
   });
 
-  /**
-   * The discriminating half: the SAME visible text with no projection marker
-   * on it is not a failure surface. Ownership follows the projection's own
-   * flag, so a message that merely quotes the cause cannot silence the banner.
-   */
+/**
+* The discriminating half: the SAME visible text with no projection marker
+* on it is not a failure surface. Ownership follows the projection's own
+* flag, so a message that merely quotes the cause cannot silence the banner.
+*/
   test('an unmarked row quoting the same cause does not silence the banner', () => {
     const session = buildSession({
       messages: [

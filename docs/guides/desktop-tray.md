@@ -80,7 +80,7 @@ verification](native-shell-verification.md); physical tray/second-launch
 deferral and diagnostic/relaunch behavior remain **NOT_VERIFIED** on packaged
 Stable, Beta, and Nightly builds.
 
-## Logging (#1899)
+## Logging (archive#1899)
 
 The native shell (Rust/Tauri process — the tray, the notification watch, the
 credential/profile bridge, `bundled_server_status`) logs through

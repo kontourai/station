@@ -156,7 +156,7 @@
   border-color: var(--k-brand);
 }
 
-/* station#3341: the refused-clipboard colour, paired with this button's own
+/* archive#3341: the refused-clipboard colour, paired with this button's own
    class. This one happened to win on source order in today's chunking; pairing
    it makes that independent of how the bundler splits chunks tomorrow. */
 .flow-gate-card__copy-btn.copy-affordance--failed {

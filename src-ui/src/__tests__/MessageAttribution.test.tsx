@@ -32,11 +32,11 @@ describe('MessageAttribution (station#1424)', () => {
       <MessageAttribution agent={{ name: 'Unresolved Agent' }} engine={null} />,
     );
     expect(screen.getByText('Unresolved Agent')).toBeTruthy();
-    // No engine chip rendered at all: neither a resolved name nor any
-    // stray pill markup leaks through when `engine` is null. Scoped to this
-    // render's own container (station#1424 review round 3, NEW-5) — a
-    // `document`-wide query would still pass today but silently stop
-    // meaning anything the moment a sibling test leaves markup mounted.
+// No engine chip rendered at all: neither a resolved name nor any
+// stray pill markup leaks through when `engine` is null. Scoped to this
+// render's own container (archive#1424 3) — a
+// `document`-wide query would still pass today but silently stop
+// meaning anything the moment a sibling test leaves markup mounted.
     expect(container.querySelector('.engine-chip')).toBeNull();
   });
 

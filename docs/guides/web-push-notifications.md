@@ -27,8 +27,8 @@ paired phone gets a push, and tapping it lands on the attention inbox
   the route gets `403 {error: 'device_pairing_required'}`. This is the
   structural guarantee behind "no pushes to unpaired browsers."
 
-  A caller can also be refused one layer earlier, and since station#1123
-  slice 3 (#1189) a revoked device is refused there: the runtime auth gate
+  A caller can also be refused one layer earlier, and since archive#1123
+  slice 3 (archive#1189) a revoked device is refused there: the runtime auth gate
   verifies any *presented, well-formed* credential regardless of peer class,
   so a revoked credential fails it and gets
   `401 {error: {code: 'authentication_required'}}` without ever reaching the
@@ -41,19 +41,19 @@ paired phone gets a push, and tapping it lands on the attention inbox
   device again" because on this surface every reachable cause needs that same
   recovery — a revoked credential cannot be re-authenticated, and a caller
   with no credential was never paired. Whether the gate should distinguish
-  the two on the wire is open in station#1212.
+  the two on the wire is open in archive#1212.
 - **Sender**: `wireWebPushDelivery` (`src-server/services/notifications/web-push-delivery.ts`)
   is a decoupled `EventBus` subscriber on `NOTIFICATION_DELIVERED`, filtered
   to any category the attention-ranked outcome model classifies
   (`classifyNotificationCategory`, `@kontourai/station-shared/notification-priority`)
   — today that's `approval-request` (outcome `needs-input`) and `job-failure`
-  (outcome `failed`; station#1100). It fans out over every paired device's
+  (outcome `failed`; archive#1100). It fans out over every paired device's
   subscription, self-heals a 404/410 ("this subscription is gone") by
   clearing it, and catches everything — a push failure can never affect the
   in-app SSE/toast delivery path. `needs_input`/`review_pending` are polled
   projections with no discrete delivery event, so they are **not** pushed
   (deferred to a follow-up).
-- **Payload composition (station#1100)**: `composeWebPushPayload`
+- **Payload composition (archive#1100)**: `composeWebPushPayload`
   (`src-server/services/notifications/push-payload-composer.ts`) builds the
   title/body/deep-link/TTL:
   - **Ranking (AC1)**: when composing from more than one pending notification,
@@ -121,7 +121,7 @@ a real phone before shipping a change that touches this surface.
    though the tab is closed.
 6. **Tap the notification.** Confirm it opens (or focuses) Station and lands
    on the exact session the approval belongs to when the notification's
-   metadata resolves one (station#1100 AC3), or the attention inbox
+   metadata resolves one (archive#1100 AC3), or the attention inbox
    (`/notifications`) otherwise — never a blank tab or the root route.
 7. **Revoke the device** from the host's paired-devices list (Settings →
    Notifications → Mobile Pairing, or the pairing management panel).

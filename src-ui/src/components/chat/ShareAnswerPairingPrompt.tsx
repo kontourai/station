@@ -6,7 +6,7 @@ import { errorText } from '../../utils/errorText';
 
 /**
  * The pairing path offered when minting a share is refused for want of a
- * credential (station#1423, security review N-4).
+ * credential (archive#1423).
  *
  * **It performs the REQUEST and never the confirm, and that is the whole
  * design.** The same-origin browser-continuity flow ends in a credential
@@ -15,7 +15,7 @@ import { errorText } from '../../utils/errorText';
  * share". The host-side confirm step follows a public access request; it does
  * not create protected-route authority from a loopback position. Auto-
  * confirming here — under a per-answer button, to get past a 401 — would
- * functionally reopen H-1, the hole this slice exists to close. The operator
+ * functionally reopen, the hole this slice exists to close. The operator
  * approves it themselves, on
  * the pairing surface, having seen what they are approving.
  *
@@ -38,9 +38,9 @@ export function ShareAnswerPairingPrompt() {
   const requestAccess = async () => {
     setState({ phase: 'requesting' });
     try {
-      // The browser sets `Origin` itself and forbids scripts from overriding
-      // it, so no explicit origin is passed here — see
-      // `requestCurrentStationAccess`'s own note on the CLI's different case.
+// The browser sets `Origin` itself and forbids scripts from overriding
+// it, so no explicit origin is passed here — see
+// `requestCurrentStationAccess`'s own note on the CLI's different case.
       await requestCurrentStationAccess({
         endpoint: apiBase,
         deviceName: 'This browser',

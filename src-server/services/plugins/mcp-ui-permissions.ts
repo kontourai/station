@@ -11,7 +11,7 @@
  * plugins, and render is always an explicit operator choice (never auto-granted
  * like passive plugin permissions).
  *
- * Storage is FAIL-CLOSED (station#1835, via {@link GrantsFileStore}). The
+ * Storage is FAIL-CLOSED (archive#1835, via {@link GrantsFileStore}). The
  * headline contract: **revoked stays revoked** — a MISSING store means "no
  * server was ever revoked" and answers allowed, but an unreadable, corrupt, or
  * ill-shaped store must never answer "allowed" for a server that may have been

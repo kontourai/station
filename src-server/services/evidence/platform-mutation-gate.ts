@@ -4,7 +4,7 @@
  *
  * Why this seam: station-control tool calls reach execution over several
  * dispatch paths — regular managed agents (hooked), the default agent (a
- * temp agent, hooked since station#1834), voice agents (hooked since #2016
+ * temp agent, hooked since archive#1834), voice agents (hooked since archive#2016
  * closed: `voice-session.ts`'s `beforeToolCall` delegates to the supplied
  * hooks and fails closed on a gate error), and the raw REST dispatch
  * `POST /agents/:slug/tools/:toolName` (`tool.execute()` directly). The

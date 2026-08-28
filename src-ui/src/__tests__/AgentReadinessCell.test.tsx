@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * #3843 T2 — the Agents row's fixing verb on a paired device.
+ * archive#3843 — the Agents row's fixing verb on a paired device.
  *
  * "Set up" sends the user to Connections, which a paired device can browse
  * perfectly well, so this is a remote-safe affordance: the verb stays, and it
@@ -51,8 +51,8 @@ describe('AgentReadinessCell — the one verb, host-named', () => {
     const button = screen.getByRole('button', {
       name: 'Set up Claude Code on workshop',
     });
-    // The one-verb contract: the VISIBLE label is untouched, and there is
-    // exactly one control on the row.
+// The one-verb contract: the VISIBLE label is untouched, and there is
+// exactly one control on the row.
     expect(button.textContent).toBe('Set up');
     expect(actions()).toHaveLength(1);
     expect(button.getAttribute('title')).toBe('Set up Claude Code on workshop');
@@ -89,9 +89,9 @@ describe('AgentReadinessCell — the one verb, host-named', () => {
   });
 
   test('a verb whose repair is not the host engine setup is not host-named', () => {
-    // Connecting a model is a Station-side configuration, not a CLI on the
-    // host's disk. Naming the host there would be a sentence about the wrong
-    // thing.
+// Connecting a model is a Station-side configuration, not a CLI on the
+// host's disk. Naming the host there would be a sentence about the wrong
+// thing.
     render(
       <AgentReadinessCell
         agent={MODEL_MISSING}
@@ -108,7 +108,7 @@ describe('AgentReadinessCell — the one verb, host-named', () => {
 });
 
 /**
- * station#4521 review round 2 (design ruling): a caution row's HEADER chip
+* archive#4521 (design ruling): a caution row's HEADER chip
  * must still read caution at a glance, so it keeps a short, chip-native
  * label ("Not set up") instead of the full server sentence — but the
  * DECISION of which states shorten to which label lives here, in
@@ -123,10 +123,10 @@ describe('AgentReadinessCell — the compact header form (station#4521)', () => 
       label: 'Not set up',
       tone: 'caution',
     });
-    // The full form for the same agent still carries the server's sentence —
-    // proves the compact form is a DIFFERENT read, not a mutation of the
-    // shared derivation every other consumer (the list row, the New Chat
-    // picker) still calls.
+// The full form for the same agent still carries the server's sentence —
+// proves the compact form is a DIFFERENT read, not a mutation of the
+// shared derivation every other consumer (the list row, the New Chat
+// picker) still calls.
     expect(agentReadinessState(MODEL_MISSING)).toEqual({
       label: 'Needs: No model connection is configured.',
       tone: 'caution',

@@ -15,7 +15,7 @@ import {
 } from './registryCatalogModel';
 // Side-effect import: this module applies the `page` root class below, and
 // page-layout.css reached the bundle only because its single parent view
-// happens to import it — the load-order dependency station#3306 removes.
+// happens to import it — the load-order dependency archive#3306 removes.
 import '../../views/page-layout.css';
 import { Button } from '../Button';
 
@@ -116,7 +116,7 @@ export function RegistryCatalog({
     managePlugins: actions.managePlugins,
     openProjects: actions.openProjects,
   };
-  // The tab decides the description; the frame decides where it renders.
+// The tab decides the description; the frame decides where it renders.
   usePageHeader({ subtitle: getRegistryTabCopy(activeTab).description });
   const isInstalled = (item: RegistryItem, id: string) => {
     const override = installationOverrides.get(`${activeTab}:${id}`);
@@ -124,7 +124,7 @@ export function RegistryCatalog({
   };
   return (
     <>
-      {/* The page header is the frame's (SHELL-11); what is left here is the
+{/* The page header is the frame's ; what is left here is the
           tab's own action, which travels to the header's action cell, as the
           one shared `Button` rather than a page-scoped button class. */}
       <PageFrameActions>
@@ -138,16 +138,16 @@ export function RegistryCatalog({
         id={TABS_ID}
         aria-label="Registry catalog"
         sticky
-        // Automatic activation: switching tabs is a cheap in-place list
-        // swap (no route push), matching Guidance/Memory below.
-        //
-        // station#4463 slice 2 review: whether ACTIVATION itself should
-        // clear the search box is a real, open UX question (an arrow-key
-        // journey through the strip clears it on every intermediate tab
-        // under automatic activation, same as a click always did) — kept
-        // as-is per arbiter decision, not silently changed here. What
-        // changed is only that this can no longer fire on mere focus
-        // movement without activation, which manual-mode hosts now do.
+// Automatic activation: switching tabs is a cheap in-place list
+// swap (no route push), matching Guidance/Memory below.
+//
+// archive#4463: whether ACTIVATION itself should
+// clear the search box is a real, open UX question (an arrow-key
+// journey through the strip clears it on every intermediate tab
+// under automatic activation, same as a click always did) — kept
+// as-is per arbiter decision, not silently changed here. What
+// changed is only that this can no longer fire on mere focus
+// movement without activation, which manual-mode hosts now do.
         activation="automatic"
         items={TABS}
         activeKey={activeTab}

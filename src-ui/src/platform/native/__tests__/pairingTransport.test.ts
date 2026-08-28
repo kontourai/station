@@ -60,13 +60,13 @@ describe('native pairing transport', () => {
     });
   });
 
-  /**
-   * station#1818 R3 — the parity gap the owner's follow-up flagged: a
-   * rejected `invoke('station_native_pairing_exchange')` (Rust's
-   * `NativeCommandError`, thrown before any `{ ok:false }` server envelope
-   * exists) used to reach here as an unconverted `String(error)` /
-   * un-coded rejection with no `code`. This proves the code now survives.
-   */
+/**
+ * archive#1818 — the parity gap the owner's follow-up flagged: a
+* rejected `invoke('station_native_pairing_exchange')` (Rust's
+* `NativeCommandError`, thrown before any `{ ok:false }` server envelope
+* exists) used to reach here as an unconverted `String(error)` /
+* un-coded rejection with no `code`. This proves the code now survives.
+*/
   test('preserves the NativeCommandError code from a rejected invoke', async () => {
     bridge.invoke.mockImplementation(async (command: string) => {
       if (command === 'station_native_pairing_exchange') {
@@ -82,18 +82,18 @@ describe('native pairing transport', () => {
     });
   });
 
-  /**
-   * station#1818 R3 — the actual behavioral parity fix: the HTTP pairing
-   * path's `pairingFetch` marks a request that never reached the Station
-   * with `transport: true`, and `JoinDevicePairingPanel` uses
-   * `isTransportFailure` to retry-with-backoff instead of failing fatally.
-   * `station_native_pairing_exchange_blocking`'s own network failure now
-   * reuses the SAME `network_unreachable` code
-   * (`src-desktop/src/lib.rs`), and this is the TypeScript half: the
-   * native transport must mark it the same way, or the exact same failure
-   * gets a WORSE outcome (fatal "Pairing failed") on desktop than in a
-   * browser.
-   */
+/**
+ * archive#1818 — the actual behavioral parity fix: the HTTP pairing
+* path's `pairingFetch` marks a request that never reached the Station
+* with `transport: true`, and `JoinDevicePairingPanel` uses
+* `isTransportFailure` to retry-with-backoff instead of failing fatally.
+* `station_native_pairing_exchange_blocking`'s own network failure now
+* reuses the SAME `network_unreachable` code
+* (`src-desktop/src/lib.rs`), and this is the TypeScript half: the
+* native transport must mark it the same way, or the exact same failure
+* gets a WORSE outcome (fatal "Pairing failed") on desktop than in a
+* browser.
+*/
   test('marks a network_unreachable rejection as a transport failure, matching the HTTP path', async () => {
     bridge.invoke.mockImplementation(async (command: string) => {
       if (command === 'station_native_pairing_exchange') {
@@ -109,13 +109,13 @@ describe('native pairing transport', () => {
     expect(isTransportFailure(caught)).toBe(true);
   });
 
-  /**
-   * station#1818 review round 1 (LOW): a legacy/uncoded rejection's raw
-   * prose must NOT become `.code` — that would let a future `.code`
-   * consumer accidentally match on a sentence, reopening the FFI-boundary
-   * prose-matching this mechanism replaced. The message itself is still
-   * preserved for logs/humans.
-   */
+/**
+ * archive#1818 1 : a legacy/uncoded rejection's raw
+* prose must NOT become `.code` — that would let a future `.code`
+* consumer accidentally match on a sentence, reopening the FFI-boundary
+* prose-matching this mechanism replaced. The message itself is still
+* preserved for logs/humans.
+*/
   test('leaves .code unset (never the raw prose) for a legacy (uncoded) invoke rejection', async () => {
     bridge.invoke.mockImplementation(async (command: string) => {
       if (command === 'station_native_pairing_exchange') {

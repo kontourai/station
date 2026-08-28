@@ -43,7 +43,7 @@ export function filterMonitoringEvents(
         // `|| ''` made it match a bucket nobody can select. It now answers to
         // the same '(unnamed)' name /api/insights reports — via the SHARED
         // rule, so a fourth surface cannot re-derive it differently
-        // (station#3086).
+        // (archive#3086).
         if (
           !agentsToFilter.includes(
             monitoringAgentName(event as Record<string, unknown>),
@@ -162,8 +162,7 @@ export function getRunningConversations(
 
 /**
  * Monitoring's Active/Running counts, derived from the SAME orchestration
- * session read-model the chat dock and Developer → Archive read
- * (audit 6-OPS-26).
+ * session read-model the chat dock and Developer → Archive read.
  *
  * They used to come from `/monitoring/stats`'s own agent projection, which is
  * folded from the monitoring event store — a different substrate that stayed

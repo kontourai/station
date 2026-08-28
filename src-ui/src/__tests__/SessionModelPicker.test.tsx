@@ -512,10 +512,10 @@ describe('SessionModelPicker', () => {
         name: 'Remove Claude Sonnet (Bedrock · Prod) from favorites',
       }),
     ).toBeTruthy();
-    // station#settings-revamp slice 3 (#1359 convergence): model-picker
-    // preferences now live in the registry-driven envelope's
-    // `modelPickerPreferences` entry, not the retired
-    // `station.device-settings` root.
+ // archive#settings-revamp (archive#1359 convergence): model-picker
+// preferences now live in the registry-driven envelope's
+// `modelPickerPreferences` entry, not the retired
+// `station.device-settings` root.
     expect(
       deviceSettingsStore.get('modelPickerPreferences').favorites,
     ).toContain('bedrock-prod\u001fclaude-sonnet');
@@ -535,14 +535,14 @@ describe('SessionModelPicker', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  // station#1806: the Thinking effort <select> and the Adaptive
-  // thinking/Fast mode/Auto mode checkboxes rendered as bare, unstyled
-  // native controls inside an otherwise fully themed surface. The select
-  // must carry the app's shared themed-select class (`editor-select`,
-  // `editor-controls.css`), and every checkbox must render through the
-  // app's existing themed `Checkbox` component (`cb`/`cb__box`/`cb__input`,
-  // `components/Checkbox.tsx`) — real, accessible, keyboard-operable form
-  // controls, not bespoke divs.
+// archive#1806: the Thinking effort <select> and the Adaptive
+// thinking/Fast mode/Auto mode checkboxes rendered as bare, unstyled
+// native controls inside an otherwise fully themed surface. The select
+// must carry the app's shared themed-select class (`editor-select`,
+// `editor-controls.css`), and every checkbox must render through the
+// app's existing themed `Checkbox` component (`cb`/`cb__box`/`cb__input`,
+// `components/Checkbox.tsx`) — real, accessible, keyboard-operable form
+// controls, not bespoke divs.
   test("themes the Thinking effort select and every checkbox with the app's shared controls", () => {
     renderPicker({
       models: [
@@ -568,18 +568,18 @@ describe('SessionModelPicker', () => {
     for (const name of ['Adaptive thinking', 'Fast mode', 'Auto mode']) {
       const checkbox = screen.getByRole('checkbox', { name });
       expect(checkbox.className).toContain('cb__input');
-      // The themed control's visible box sibling — proves this rendered
-      // through the shared `Checkbox` component, not a bare `<input>`.
+// The themed control's visible box sibling — proves this rendered
+// through the shared `Checkbox` component, not a bare `<input>`.
       expect(checkbox.nextElementSibling?.className).toContain('cb__box');
       expect((checkbox as HTMLInputElement).type).toBe('checkbox');
     }
   });
 
-  // station#1806: the selected-model check glyph used to fall into the
-  // grid's implicit placement (sharing only the model-name row), pinning it
-  // to the top of the two-line name+id cell instead of centering against
-  // the option's full height. It must render through a class the CSS can
-  // explicitly span both rows and center on.
+// archive#1806: the selected-model check glyph used to fall into the
+// grid's implicit placement (sharing only the model-name row), pinning it
+// to the top of the two-line name+id cell instead of centering against
+// the option's full height. It must render through a class the CSS can
+// explicitly span both rows and center on.
   test('renders the selected-model check glyph through its centering class', () => {
     renderPicker();
 

@@ -1,7 +1,7 @@
 /**
  * Host-binding resolution + never-authority + consent-gating + subject-ref
  * trust tests for Station's `createStationHostIntentBindings` (roadmap
- * #585, part of epic #580, S5).
+ * archive#585, part of epic archive#580, S5).
  *
  * Uses a real `TaskGraphService` against a runtime-fs temp dir (matching
  * `task-graph-service.test.ts`'s own fixture convention) and a stub

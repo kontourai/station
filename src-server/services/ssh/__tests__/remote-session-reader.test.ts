@@ -58,7 +58,7 @@ describe('listConnectedRemoteSessions', () => {
         {
           environmentId: 'env-1',
           environmentName: 'Brian media',
-          // station#1778: the reader normalizes an undecorated remote session at
+          // archive#1778: the reader normalizes an undecorated remote session at
           // the wire boundary, so the decoration appears here even though the
           // fetcher above returned none.
           sessions: [
@@ -189,7 +189,7 @@ describe('listConnectedRemoteSessions', () => {
     expect(fetchSessions).not.toHaveBeenCalled();
   });
 
-  // LOW (station#1097 review round 2): a large saved-profile list must not
+  // LOW (archive#1097 review round 2): a large saved-profile list must not
   // open an unbounded number of simultaneous outbound connections from one
   // Home-view read.
   test('never runs more than MAX_CONCURRENT_REMOTE_ENVIRONMENTS fetches at once, and still resolves every environment', async () => {
@@ -705,7 +705,7 @@ describe('federated message search', () => {
 });
 
 /**
- * station#1778 delta review, finding 3 — THE WIRE BOUNDARY THE COMPILER
+ * archive#1778 delta review, finding 3 — THE WIRE BOUNDARY THE COMPILER
  * CANNOT SEE.
  *
  * `answerability` is a REQUIRED member of `OrchestrationSessionSummary`, and

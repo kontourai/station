@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3 — the envelope fold. These tests exist because the
+ * archive#1398 — the envelope fold. These tests exist because the
  * fold is where the two behaviors §4.5 bans outright would land if they
  * landed anywhere: a silent fallback, and a dropped exclusion.
  */
@@ -207,7 +207,7 @@ describe('the envelope names where a turn ran, and on what kind of evidence', ()
 });
 
 /**
- * station#1556. `no-eligible-candidates` used to be the fallthrough for every
+ * archive#1556. `no-eligible-candidates` used to be the fallthrough for every
  * non-succeeded outcome without a fleet attempt, so Dispatch's `exhausted`
  * — "candidates were tried and none succeeded" — rendered as "nothing was
  * eligible to try". A single non-retryable local model failure produces that
@@ -251,7 +251,7 @@ describe('a failure code states what actually happened (station#1556)', () => {
         .attemptsMade,
     ).toBe(true);
     expect(envelope.failure?.message).toContain('attempted');
-    // station#1556 review (M5): the message must not assert that NO fleet
+    // archive#1556 review (M5): the message must not assert that NO fleet
     // candidate was attempted. `fleetAttempted` is matched against this
     // Station's REPLICA of the candidate list, which the design explicitly
     // allows to diverge from Dispatch's own set — so a Dispatch attempt on a

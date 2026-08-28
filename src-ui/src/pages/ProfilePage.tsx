@@ -118,26 +118,26 @@ export function ProfilePage() {
   const totalCost = usageStats?.lifetime.totalCost || 0;
   const [showUserLookup, setShowUserLookup] = useState(false);
 
-  // Header first, skeleton only the awaited body (6-OPS-23). The whole page —
-  // eyebrow, name, every section heading — used to be replaced by the string
-  // "Loading profile...", which is both a twelfth loading vocabulary and a
-  // route that renders nothing identifying itself while it waits.
+// Header first, skeleton only the awaited body (6-). The whole page —
+// eyebrow, name, every section heading — used to be replaced by the string
+// "Loading profile...", which is both a twelfth loading vocabulary and a
+// route that renders nothing identifying itself while it waits.
   if (loading && !usageStats) {
     return (
-      // The header C2 wrote here is the FRAME's now (SHELL-11): the route
-      // renders it above this body, on screen throughout the wait, so a
-      // second one below it would be the page's name printed twice.
+ // The header wrote here is the FRAME's now : the route
+// renders it above this body, on screen throughout the wait, so a
+// second one below it would be the page's name printed twice.
       <div className="profile-page">
         <SkeletonBlock count={3} label="Loading profile" />
       </div>
     );
   }
 
-  // Review M2: `useAnalytics` already derived this error and the page ignored
-  // it, so a failed usage read settled with no stats and was drawn as "No
-  // usage data yet" — a claim about the user's activity over a read that
-  // never answered. Same header-first shape as the wait above: the frame's
-  // header stays up, the body carries the failure.
+ // `useAnalytics` already derived this error and the page ignored
+// it, so a failed usage read settled with no stats and was drawn as "No
+// usage data yet" — a claim about the user's activity over a read that
+// never answered. Same header-first shape as the wait above: the frame's
+// header stays up, the body carries the failure.
   if (error && !usageStats) {
     return (
       <div className="profile-page">
@@ -167,7 +167,7 @@ export function ProfilePage() {
               <div>
                 <div className="profile-card__info">
                   <div className="profile-card__name-row">
-                    {/* The page title is the frame's; this is the card's own
+{/* The page title is the frame's; this is the card's own
                         heading, one level down. Classes unchanged, so the
                         rendered size is exactly what it was. */}
                     <h2 className="profile-hero-title profile-card__name">

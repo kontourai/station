@@ -1,5 +1,5 @@
 /**
- * station#1778 delta review, finding 2 — `observedBy` IS the argument.
+ * archive#1778 delta review, finding 2 — `observedBy` IS the argument.
  *
  * The whole reason `answerability: false` carries an observer and a timestamp
  * is that "no adapter for this provider" is a fact about ONE process at ONE

@@ -81,13 +81,13 @@ export async function reloadRuntimeAgents({
   try {
     for (const metadata of agentMetadataList) {
       // Mirror the cold-boot skip (`runtime-agent-registry.ts`,
-      // station#954) — an external-engine-bound agent has no Station-engine
+      // archive#954) — an external-engine-bound agent has no Station-engine
       // model to build. Without this skip the reload path unconditionally
       // attempted `prepareVoltAgentInstance`, which threw
       // `ManagedModelUnavailableError` and marked the agent "unavailable
       // until a model is configured" even though it is fully launchable
-      // through orchestration (station#977).
-      // station#3662: and the reserved `station` record, whose one instance is
+      // through orchestration (archive#977).
+      // archive#3662: and the reserved `station` record, whose one instance is
       // `bootstrapRuntimeDefaultAgent`'s under the internal `default` key.
       if (hasNoStationEngineInstanceToBuild(metadata)) {
         logger.debug?.('Skipping agent record with no instance to build', {
@@ -147,7 +147,7 @@ export async function reloadRuntimeAgents({
   const registeredAgentIds: string[] = [];
   const removedAgentIds: string[] = [];
   try {
-    // Gate BEFORE the first registry write, not only after it (station#3622).
+    // Gate BEFORE the first registry write, not only after it (archive#3622).
     // A pass whose activation was abandoned at its deadline can wake up while
     // a successor pass is publishing; asserting only after the register/remove
     // loops meant it wrote into the shared registry and then rolled those

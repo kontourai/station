@@ -1,5 +1,5 @@
 /**
- * station#1818 R2 — a rejected Tauri `invoke()` of a command returning
+ * archive#1818 — a rejected Tauri `invoke` of a command returning
  * Rust's `NativeCommandError` (`src-desktop/src/lib.rs`) resolves the
  * rejection to the JSON-deserialized value directly: a plain object shaped
  * `{ code: string, message: string }`, NOT an `Error` instance. Every
@@ -12,7 +12,7 @@
  * (`packages/connect/src/core/connectionFailureClassification.ts`'s
  * `classifyNativeTransportRefusal` reads `.code` off a thrown `Error`).
  *
- * This is the one seam both files funnel a raw `invoke()` rejection through
+* This is the one seam both files funnel a raw `invoke` rejection through
  * before wrapping it back into a JS `Error` for callers. A command not yet
  * converted to `NativeCommandError` (or an older bundle) still rejects with
  * a bare string — that shape is preserved as `message` with `code`

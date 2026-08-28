@@ -78,16 +78,16 @@ describe('SessionPickerModal', () => {
     });
   });
 
-  // station#771 regression: this used to render the SAME "No conversations
-  // found" a genuinely-empty inventory shows, with no indication the read
-  // had failed — `AutoSelectModal` has no error prop of its own, so the
-  // fix distinguishes the two facts in the empty-message text itself.
-  //
-  // station#771 fix round (review MEDIUM): the first-pass copy said "Try
-  // again." with no button behind it — a fabricated affordance. The modal
-  // is conditionally mounted by its parent (`{showSessionPicker && (...)}`),
-  // so closing and reopening it genuinely remounts the query; the copy now
-  // names that real affordance instead of an absent one.
+// archive#771 regression: this used to render the SAME "No conversations
+// found" a genuinely-empty inventory shows, with no indication the read
+// had failed — `AutoSelectModal` has no error prop of its own, so the
+// fix distinguishes the two facts in the empty-message text itself.
+//
+// archive#771: the first-pass copy said "Try
+// again." with no button behind it — a fabricated affordance. The modal
+// is conditionally mounted by its parent (`{showSessionPicker && (...)}`),
+// so closing and reopening it genuinely remounts the query; the copy now
+// names that real affordance instead of an absent one.
   test('says the read failed and names the real retry affordance, not a fabricated one', () => {
     vi.mocked(sdk.useConversationInventoryQuery).mockReturnValue({
       data: undefined,
@@ -112,8 +112,8 @@ describe('SessionPickerModal', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText('No conversations found')).toBeNull();
-    // No button-shaped retry affordance exists on this SDK component — the
-    // copy must not imply one that isn't there.
+// No button-shaped retry affordance exists on this SDK component — the
+// copy must not imply one that isn't there.
     expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
   });
 });

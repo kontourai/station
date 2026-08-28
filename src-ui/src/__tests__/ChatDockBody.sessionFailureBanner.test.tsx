@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3213. The chat dock had NO failure surface. Its only failure
+ * archive#3213. The chat dock had NO failure surface. Its only failure
  * rendering was `turnHandlers.ts`'s append of a LIVE `runtime.error` into the
  * streaming bubble, so a user who reached an already-failed session any way
  * other than watching it die — a project deep link, a tab switch, resuming
@@ -32,7 +32,7 @@ vi.mock('@kontourai/station-connect', () => ({
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agentsMock.current,
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+// archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 
@@ -239,7 +239,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     chatInputPropsMock.current = null;
   });
 
-  /** The reported defect, exactly: nothing live, and nothing shown. */
+/** The reported defect, exactly: nothing live, and nothing shown. */
   test('a cold arrival at an already-failed session says so', () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
@@ -249,7 +249,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     const banner = screen.getByTestId('chat-dock-session-failure');
     expect(banner.getAttribute('role')).toBe('alert');
-    // Same copy shape the session detail uses for the same fact.
+// Same copy shape the session detail uses for the same fact.
     expect(within(banner).getByText('Failed:')).toBeTruthy();
     expect(banner.textContent).toContain(LONG_UNBREAKABLE_REASON);
   });
@@ -275,12 +275,12 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     ).toContain('No failure detail was recorded for this session.');
   });
 
-  /**
-   * The reuse claim, in the direction that can actually fail: a second
-   * derivation reading only the session record would show the mirror here.
-   * The shared fold prefers the feed's own `runtime.error`, so the dock and
-   * the detail quote the same sentence for the same session.
-   */
+/**
+* The reuse claim, in the direction that can actually fail: a second
+* derivation reading only the session record would show the mirror here.
+* The shared fold prefers the feed's own `runtime.error`, so the dock and
+* the detail quote the same sentence for the same session.
+*/
   test('the live feed`s runtime.error wins over the server-side mirror, exactly as the detail folds it', () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
@@ -317,15 +317,15 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(banner.textContent).not.toContain('a stale mirrored reason');
   });
 
-  /**
-   * Composer honesty, traced rather than assumed:
-   * `SESSION_LIFECYCLE_TRANSITIONS` declares `failed: ['queued', 'running']`
-   * and the send path's only terminal gate rejects `completed` alone
-   * (`orchestration-service.ts`'s `sendTurn` case), so sending into a failed
-   * session really does try to resume it. The banner therefore says the user
-   * can continue, and the composer is NOT disabled — disabling it would be a
-   * second untruth in the opposite direction.
-   */
+/**
+* Composer honesty, traced rather than assumed:
+* `SESSION_LIFECYCLE_TRANSITIONS` declares `failed: ['queued', 'running']`
+* and the send path's only terminal gate rejects `completed` alone
+* (`orchestration-service.ts`'s `sendTurn` case), so sending into a failed
+* session really does try to resume it. The banner therefore says the user
+* can continue, and the composer is NOT disabled — disabling it would be a
+* second untruth in the opposite direction.
+*/
   test('the banner says the session can be continued, and the composer stays usable', () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
@@ -355,11 +355,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     );
   });
 
-  /**
-   * A chat the serving Station has no session for — a chat before its first
-   * send, or the direct `/chat` path. Nothing is known about a failure here,
-   * and the honest render of that is silence, not a fabricated one.
-   */
+/**
+* A chat the serving Station has no session for — a chat before its first
+* send, or the direct `/chat` path. Nothing is known about a failure here,
+* and the honest render of that is silence, not a fabricated one.
+*/
   test('a chat with no server session record renders no banner', () => {
     renderDock({ orchestrationSession: null });
 
@@ -383,11 +383,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     );
   });
 
-  // UX audit T5 (live): `orchestrationSessionStarted` IS rehydrated from
-  // storage, and the sessions query's `data` defaults to `[]` until it
-  // resolves — so a healthy session claimed "Session record missing" on EVERY
-  // reload for about a second. Absence is only established once the read has
-  // succeeded.
+// `orchestrationSessionStarted` IS rehydrated from
+// storage, and the sessions query's `data` defaults to `[]` until it
+// resolves — so a healthy session claimed "Session record missing" on EVERY
+// reload for about a second. Absence is only established once the read has
+// succeeded.
   test('says nothing about a missing record while the session read is still pending', () => {
     renderDock({
       orchestrationSession: null,
@@ -418,8 +418,8 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(onRetryOrchestrationSessions).toHaveBeenCalledTimes(1);
   });
 
-  // The transcript is empty exactly when this state is reachable (a cold
-  // reload), so the last-known turn needs a source that survives one.
+// The transcript is empty exactly when this state is reachable (a cold
+// reload), so the last-known turn needs a source that survives one.
   test('falls back to the last message this client sent when the transcript is empty', () => {
     renderDock({
       orchestrationSession: null,

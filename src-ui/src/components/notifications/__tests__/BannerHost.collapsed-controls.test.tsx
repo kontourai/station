@@ -16,7 +16,7 @@ import { bannerStore } from '../../../contexts/banner-store';
 import { BannerHost } from '../BannerHost';
 
 /**
- * station#4470 review round (H2) — the collapsed-banner acceptance the
+ * archive#4470 — the collapsed-banner acceptance the
  * three-action identity-mismatch banner failed against a real, cascade-
  * resolved layout: `.banner-host__action` is `flex: none` inside
  * `.banner-host__actions`, which has no `flex-wrap`, and the collapsed card
@@ -24,10 +24,10 @@ import { BannerHost } from '../BannerHost';
  * (BannerHost.css) — three non-shrinkable action buttons plus the
  * chevron/dismiss controls do not fit that row at 390px: the message column
  * clips to 0px width and the third action pushes chevron/dismiss past the
- * clipped edge, unreachable for the rest of the session (the review round's
+ * clipped edge, unreachable for the rest of the session (the 's
  * probe measured this against the pre-fix three-action set).
  *
- * Fixed by dropping to two actions (station#4470's H2 fix, mirrored by
+ * Fixed by dropping to two actions (archive#4470's fix, mirrored by
  * ConnectionBannerSource.test.tsx's jsdom-level assertion of the exact
  * action list) — this is the real-layout proof the acceptance asked for:
  * render the actual `BannerHost` with the actual two-action shape, force it
@@ -36,7 +36,7 @@ import { BannerHost } from '../BannerHost';
  * clipped-safe box AND real-hit-testable (`elementFromPoint` at its own
  * center resolves back to itself, not something clipped in front of it).
  * Compares against the authentication-failed two-action shape too — "the
- * authentication-failed two-action banner proves it" (review round) — so a
+ * authentication-failed two-action banner proves it" — so a
  * future regression narrowing to one shared fixture cannot silently stop
  * covering the other.
  */
@@ -80,7 +80,7 @@ function renderCollapsedFixtureMarkup(input: {
 }
 
 /**
- * station#4470 micro-round (M2) — the armed "Remove" confirm renders THREE
+* archive#4470 — the armed "Remove" confirm renders THREE
  * actions ("Pair again"/"Confirm"/"Cancel"), which only ever appear once
  * arming has force-expanded the card (ConnectionBannerSource.tsx) — never
  * collapsed, so this deliberately does NOT call `setCollapsed`.
@@ -193,7 +193,7 @@ describe.skipIf(!chromiumAvailable)(
           expect(await item.getAttribute('data-collapsed')).toBe('true');
           const itemBox = await item.boundingBox();
           expect(itemBox, '.banner-host__item not visible').not.toBe(null);
-          // The whole point of the collapsed height: one fixed-height bar.
+// The whole point of the collapsed height: one fixed-height bar.
           expect(itemBox!.height).toBeCloseTo(52, 0);
 
           const messageBox = await page
@@ -260,17 +260,17 @@ describe.skipIf(!chromiumAvailable)(
       },
     );
 
-    /**
-     * station#4470 micro-round (M2) — the armed "Remove" confirm's three
-     * actions ("Pair again"/"Confirm"/"Cancel") render in the row's
-     * EXPANDED width (~345px) rather than the collapsed bar's constrained
-     * ~244px: arming force-expands a collapsed card, and delta review (M1)
-     * closed the remaining way an armed card could still end up collapsed
-     * — collapsing the chevron while armed now disarms
-     * (ConnectionBannerSource.tsx's `onCollapse`) instead of leaving this
-     * row reachable behind the 52px bar. Proves the three-button row fits
-     * on one line, unclipped and hittable, at 390px.
-     */
+/**
+* archive#4470 — the armed "Remove" confirm's three
+* actions ("Pair again"/"Confirm"/"Cancel") render in the row's
+* EXPANDED width (~345px) rather than the collapsed bar's constrained
+ * ~244px: arming force-expands a collapsed card, and 
+* closed the remaining way an armed card could still end up collapsed
+* collapsing the chevron while armed now disarms
+* (ConnectionBannerSource.tsx's `onCollapse`) instead of leaving this
+* row reachable behind the 52px bar. Proves the three-button row fits
+* on one line, unclipped and hittable, at 390px.
+*/
     test('the armed three-action row (Pair again / Confirm / Cancel) fits on one line, expanded, at 390px', async () => {
       const actionLabels = ['Pair again', 'Confirm', 'Cancel'] as const;
       const markup = renderExpandedFixtureMarkup({
@@ -294,9 +294,9 @@ describe.skipIf(!chromiumAvailable)(
           .locator('.banner-host__actions')
           .boundingBox();
         expect(actionsRow, '.banner-host__actions not visible').not.toBe(null);
-        // Single line: three actions did not wrap to a second row (the H2
-        // failure mode). One row of 44px-tall buttons is ~44px tall, not
-        // ~96px (two wrapped rows) or ~140px (three).
+ // Single line: three actions did not wrap to a second row (the 
+// failure mode). One row of 44px-tall buttons is ~44px tall, not
+// ~96px (two wrapped rows) or ~140px (three).
         expect(actionsRow!.height).toBeLessThan(60);
 
         const actionBoxes = await page.locator('.banner-host__action').all();

@@ -60,7 +60,7 @@ export function ScheduleView() {
   } = useSchedulerStatus();
   const { data: providers = [] } = useSchedulerProviders();
   const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
-  // The same server-derived signal that raises the chrome capacity notice.
+// The same server-derived signal that raises the chrome capacity notice.
   const { data: resourcePosture } = useResourcePostureQuery();
   const schedulerAvailable = !jobsError && !statusError;
   const { isRunning, markErrorShown, getMissedCount } =
@@ -128,10 +128,10 @@ export function ScheduleView() {
     );
   }, [matchedDeepLinkedJob, runTarget, setFilterText]);
 
-  // T5 / SHELL-16: failure was already acknowledged, success was not — so
-  // pressing Run now on a healthy job produced no feedback at all, and the
-  // only evidence the run happened was a row that eventually changed. Both
-  // outcomes get a toast; a primary action the user pressed always answers.
+ // / : failure was already acknowledged, success was not — so
+// pressing Run now on a healthy job produced no feedback at all, and the
+// only evidence the run happened was a row that eventually changed. Both
+// outcomes get a toast; a primary action the user pressed always answers.
   const handleRun = useCallback(
     (name: string) => {
       runJob.mutate(name, {
@@ -147,8 +147,8 @@ export function ScheduleView() {
     [runJob, showToast, markErrorShown],
   );
 
-  // Both scheduler reads failed. What we may say about that is derived from
-  // the errors themselves, not assumed — see `selectSchedulerFailure`.
+// Both scheduler reads failed. What we may say about that is derived from
+// the errors themselves, not assumed — see `selectSchedulerFailure`.
   if (jobsError && statusError) {
     const notice = selectSchedulerFailure(jobsFailure, statusFailure);
     return (
@@ -175,20 +175,20 @@ export function ScheduleView() {
   ) as { lastTickAt?: string } | undefined;
   const totalRuns = stats?.summary?.totalRuns ?? 0;
   const successRate = totalRuns > 0 ? (stats?.summary?.successRate ?? -1) : -1;
-  // Undefined unless the host is under the pressure that defers scheduled
-  // runs; the kind carries which words this posture gets (banner and Schedule
-  // share that derivation).
+// Undefined unless the host is under the pressure that defers scheduled
+// runs; the kind carries which words this posture gets (banner and Schedule
+// share that derivation).
   const hostPressure = hostPressureKind(resourcePosture);
-  // Scoped to the job actually being run: React Query reports the in-flight
-  // mutation's own variables, so one job's request cannot disable every other
-  // job's Run button.
+// Scoped to the job actually being run: React Query reports the in-flight
+// mutation's own variables, so one job's request cannot disable every other
+// job's Run button.
   const runPendingJob = runJob.isPending
     ? (runJob.variables as string | undefined)
     : undefined;
 
   return (
     <div className="schedule">
-      {/* The header, its eyebrow and its first-run anchor are the frame's
+{/* The header, its eyebrow and its first-run anchor are the frame's
           (SHELL-11); the action travels to the frame's action cell, as the
           one shared `Button`. */}
       <PageFrameActions>

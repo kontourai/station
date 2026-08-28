@@ -101,18 +101,18 @@ describe('MonitoringContext historical hydration', () => {
     expect(remounted.result.current.events[0]?.timestamp).toBe('newer remount');
   });
 
-  /*
-   * Review MEDIUM-3: Retry used to re-derive the live default (`now - 5m`) at
-   * click time, so a hydration of 11:55–12:00 that failed and was retried at
-   * 12:08 asked for 12:03–12:08 and skipped the failed window forever. The
-   * recorded bounds are re-asked instead; the END may widen to now, the START
-   * never advances.
-   *
-   * Real timers on purpose: RTL's `waitFor` does not detect vitest's fake
-   * timers and hangs. The discriminating claim is EQUALITY of the two start
-   * bounds — pre-fix the retry's start is `Date.now() - 5m` recomputed after
-   * the delay below, so it is strictly later by that delay.
-   */
+/*
+ * Retry used to re-derive the live default (`now - 5m`) at
+* click time, so a hydration of 11:55–12:00 that failed and was retried at
+* 12:08 asked for 12:03–12:08 and skipped the failed window forever. The
+* recorded bounds are re-asked instead; the END may widen to now, the START
+* never advances.
+*
+ * Real timers on purpose: `waitFor` does not detect vitest's fake
+* timers and hangs. The discriminating claim is EQUALITY of the two start
+* bounds — pre-fix the retry's start is `Date.now - 5m` recomputed after
+* the delay below, so it is strictly later by that delay.
+*/
   const elapse = (ms: number) =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -138,9 +138,9 @@ describe('MonitoringContext historical hydration', () => {
     const retryCall = fetchHistorical.mock.calls.at(-1)!;
     const retryStart = retryCall[0] as Date;
     const retryEnd = retryCall[1] as Date;
-    // The failed interval is re-asked, not skipped.
+// The failed interval is re-asked, not skipped.
     expect(retryStart.getTime()).toBe(failedStart.getTime());
-    // ...and the end widened through the elapsed time rather than staying put.
+//.and the end widened through the elapsed time rather than staying put.
     expect(retryEnd.getTime()).toBeGreaterThan(failedEnd.getTime());
 
     await waitFor(() => expect(mounted.result.current.readError).toBeNull());
@@ -164,18 +164,18 @@ describe('MonitoringContext historical hydration', () => {
       expect(fetchHistorical.mock.calls.length).toBeGreaterThan(before),
     );
 
-    // No failure was recorded, so this is an ordinary refresh and the live
-    // window moves with the clock.
+// No failure was recorded, so this is an ordinary refresh and the live
+// window moves with the clock.
     const refreshStart = fetchHistorical.mock.calls.at(-1)![0] as Date;
     expect(refreshStart.getTime()).toBeGreaterThan(firstStart.getTime());
   });
 
-  /*
-   * Review MEDIUM-4: a successful hydration ASSIGNED its snapshot over the
-   * shared list, so an event the live stream had already shown the operator
-   * disappeared the moment a lagging disk snapshot came back — and with an
-   * empty snapshot the view then drew "No events yet" over it.
-   */
+/*
+ * a successful hydration ASSIGNED its snapshot over the
+* shared list, so an event the live stream had already shown the operator
+* disappeared the moment a lagging disk snapshot came back — and with an
+* empty snapshot the view then drew "No events yet" over it.
+*/
   test('a lagging hydration snapshot does not erase an event the live stream delivered', async () => {
     fetchHistorical.mockRejectedValueOnce(new Error('event log unreadable'));
     box.apiBase = 'https://monitoring-sse-merge.example.test';
@@ -184,7 +184,7 @@ describe('MonitoringContext historical hydration', () => {
     await waitFor(() => expect(mounted.result.current.readError).toBeTruthy());
     expect(sse.onMessage).toBeTypeOf('function');
 
-    // The live stream delivers an event while the failure is on screen.
+// The live stream delivers an event while the failure is on screen.
     act(() =>
       sse.onMessage?.({ data: JSON.stringify(event('live arrival')[0]) }),
     );
@@ -194,23 +194,23 @@ describe('MonitoringContext historical hydration', () => {
       ),
     );
 
-    // Retry succeeds, but disk persistence lags and returns nothing.
+// Retry succeeds, but disk persistence lags and returns nothing.
     fetchHistorical.mockResolvedValue([]);
     act(() => mounted.result.current.retryRead());
     await waitFor(() => expect(mounted.result.current.readError).toBeNull());
 
-    // The live event survives, so the view cannot claim there are none.
+// The live event survives, so the view cannot claim there are none.
     expect(mounted.result.current.events.map((e) => e.timestamp)).toEqual([
       'live arrival',
     ]);
   });
 
-  /*
-   * Delta review MEDIUM-2, end to end: two tool events emitted in the same
-   * millisecond on the same trace. Under the four-field identity they
-   * collided, so a snapshot carrying only the first confirmed BOTH and the
-   * second vanished.
-   */
+/*
+ * end to end: two tool events emitted in the same
+* millisecond on the same trace. Under the four-field identity they
+* collided, so a snapshot carrying only the first confirmed BOTH and the
+* second vanished.
+*/
   test('a same-millisecond sibling is not confirmed away by the first event', async () => {
     fetchHistorical.mockResolvedValueOnce([]);
     box.apiBase = 'https://monitoring-same-ms.example.test';
@@ -233,7 +233,7 @@ describe('MonitoringContext historical hydration', () => {
     act(() => sse.onMessage?.({ data: JSON.stringify(second) }));
     await waitFor(() => expect(mounted.result.current.events).toHaveLength(2));
 
-    // Persistence has caught up with the FIRST event only.
+// Persistence has caught up with the FIRST event only.
     fetchHistorical.mockResolvedValue([first]);
     act(() => mounted.result.current.retryRead());
     await waitFor(() =>
@@ -248,13 +248,13 @@ describe('MonitoringContext historical hydration', () => {
     expect(toolCallIds).toContain('call-2');
   });
 
-  /*
-   * Delta review MEDIUM-4: hydration returns oldest-first, SSE arrivals were
-   * prepended newest-first, and the merge concatenated them unchanged — so
-   * 10:00/10:01 from history plus 10:03 then 10:02 from the stream rendered
-   * as 10:03, 10:02, 10:00, 10:01, and rows jumped again once a later
-   * snapshot confirmed them.
-   */
+/*
+ * hydration returns oldest-first, SSE arrivals were
+* prepended newest-first, and the merge concatenated them unchanged — so
+* 10:00/10:01 from history plus 10:03 then 10:02 from the stream rendered
+* as 10:03, 10:02, 10:00, 10:01, and rows jumped again once a later
+* snapshot confirmed them.
+*/
   test('the reconciled list is chronological however the events arrived', async () => {
     const at = (name: string, iso: string) => ({
       timestamp: name,
@@ -269,7 +269,7 @@ describe('MonitoringContext historical hydration', () => {
     const mounted = renderHook(() => useMonitoring(), { wrapper });
     await waitFor(() => expect(fetchHistorical).toHaveBeenCalled());
 
-    // The stream delivers 10:03 BEFORE 10:02 (a late-arriving row).
+// The stream delivers 10:03 BEFORE 10:02 (a late-arriving row).
     act(() =>
       sse.onMessage?.({
         data: JSON.stringify(at('10:03', '2026-08-21T10:03:00.000Z')),
@@ -282,8 +282,8 @@ describe('MonitoringContext historical hydration', () => {
     );
     await waitFor(() => expect(mounted.result.current.events).toHaveLength(2));
 
-    // History catches up with the two older rows, oldest-first as the route
-    // returns them.
+// History catches up with the two older rows, oldest-first as the route
+// returns them.
     fetchHistorical.mockResolvedValue([
       at('10:00', '2026-08-21T10:00:00.000Z'),
       at('10:01', '2026-08-21T10:01:00.000Z'),
@@ -296,18 +296,18 @@ describe('MonitoringContext historical hydration', () => {
     ).toEqual(['10:00', '10:01', '10:02', '10:03']);
   });
 
-  /*
-   * Delta review MEDIUM-3: the route returns rows oldest-first, so
-   * `slice(0, 1000)` kept the OLDEST thousand and silently dropped the newest
-   * of a 1,500-row day.
-   */
-  /*
-   * Delta2 review MEDIUM-4: identity is derived by canonicalizing the whole
-   * event, and hydration used to do that for EVERY returned row before the
-   * cap ran — including the rows it was about to throw away — on the UI
-   * thread. These two tests count the work by giving each row a getter that
-   * fires when its payload is read.
-   */
+/*
+ * the route returns rows oldest-first, so
+* `slice(0, 1000)` kept the OLDEST thousand and silently dropped the newest
+* of a 1,500-row day.
+*/
+/*
+ * identity is derived by canonicalizing the whole
+* event, and hydration used to do that for EVERY returned row before the
+* cap ran — including the rows it was about to throw away — on the UI
+* thread. These two tests count the work by giving each row a getter that
+* fires when its payload is read.
+*/
   function countingRow(
     name: string,
     timeMs: number,
@@ -341,7 +341,7 @@ describe('MonitoringContext historical hydration', () => {
 
     const mounted = renderHook(() => useMonitoring(), { wrapper });
     await waitFor(() => expect(fetchHistorical).toHaveBeenCalled());
-    // One unconfirmed arrival, so reconciliation really runs.
+// One unconfirmed arrival, so reconciliation really runs.
     act(() =>
       sse.onMessage?.({
         data: JSON.stringify({
@@ -362,8 +362,8 @@ describe('MonitoringContext historical hydration', () => {
       expect(mounted.result.current.events).toHaveLength(1000),
     );
 
-    // 1,500 rows came back; only the 1,000 that survive the cap may be
-    // canonicalized, and each of those exactly once (the identity cache).
+// 1,500 rows came back; only the 1,000 that survive the cap may be
+// canonicalized, and each of those exactly once (the identity cache).
     expect(counter.reads).toBeLessThanOrEqual(1000);
     expect(counter.reads).toBeGreaterThan(0);
   });
@@ -381,8 +381,8 @@ describe('MonitoringContext historical hydration', () => {
     const mounted = renderHook(() => useMonitoring(), { wrapper });
     await waitFor(() => expect(mounted.result.current.events).toHaveLength(5));
 
-    // No live arrival is awaiting confirmation, so there is nothing to
-    // reconcile and no identity to compute.
+// No live arrival is awaiting confirmation, so there is nothing to
+// reconcile and no identity to compute.
     expect(counter.reads).toBe(0);
   });
 
@@ -423,7 +423,7 @@ describe('MonitoringContext historical hydration', () => {
       ),
     );
 
-    // The next snapshot has caught up and carries the same event.
+// The next snapshot has caught up and carries the same event.
     fetchHistorical.mockResolvedValue([live]);
     act(() => mounted.result.current.retryRead());
     await waitFor(() =>
@@ -433,21 +433,21 @@ describe('MonitoringContext historical hydration', () => {
     expect(mounted.result.current.events[0]?.timestamp).toBe('converging');
   });
 
-  /*
-   * Review verification gap: the generation/abort guards were only exercised
-   * for two successes racing. A late-settling SUPERSEDED read must not
-   * disturb the outcome of the read that replaced it, in either direction —
-   * that is what keeps a stale failure from painting an error over live data,
-   * and a stale success from clearing an error the operator is looking at.
-   *
-   * Each test forces a notification (one SSE arrival) after the late settle
-   * before asserting. Without it these tests cannot see the defect at all: a
-   * superseded read never reaches the `notify()` in its own `finally`, so a
-   * poisoned `readError` sits in the store invisible to React until the next
-   * notification — which in production is the very next live event. The first
-   * version of these tests asserted that stale React snapshot and passed
-   * against deliberately removed guards.
-   */
+/*
+* Review verification gap: the generation/abort guards were only exercised
+* for two successes racing. A late-settling SUPERSEDED read must not
+* disturb the outcome of the read that replaced it, in either direction —
+* that is what keeps a stale failure from painting an error over live data,
+* and a stale success from clearing an error the operator is looking at.
+*
+* Each test forces a notification (one SSE arrival) after the late settle
+* before asserting. Without it these tests cannot see the defect at all: a
+* superseded read never reaches the `notify` in its own `finally`, so a
+* poisoned `readError` sits in the store invisible to React until the next
+* notification — which in production is the very next live event. The first
+* version of these tests asserted that stale React snapshot and passed
+* against deliberately removed guards.
+*/
   test('an older failure settling after a newer success leaves no error behind', async () => {
     const older = settleable<unknown[]>();
     const newer = settleable<unknown[]>();
@@ -470,10 +470,10 @@ describe('MonitoringContext historical hydration', () => {
       older.reject(new Error('older read failed late'));
       await older.promise.catch(() => undefined);
     });
-    // The next live event is what flushes the store to the view.
+// The next live event is what flushes the store to the view.
     act(() => sse.onMessage?.({ data: JSON.stringify(event('flush a')[0]) }));
     await waitFor(() =>
-      // Arrivals land at the END now — the list is chronological.
+// Arrivals land at the END now — the list is chronological.
       expect(mounted.result.current.events.at(-1)?.timestamp).toBe('flush a'),
     );
 
@@ -505,7 +505,7 @@ describe('MonitoringContext historical hydration', () => {
     await act(async () => older.resolve(event('older success')));
     act(() => sse.onMessage?.({ data: JSON.stringify(event('flush b')[0]) }));
     await waitFor(() =>
-      // Arrivals land at the END now — the list is chronological.
+// Arrivals land at the END now — the list is chronological.
       expect(mounted.result.current.events.at(-1)?.timestamp).toBe('flush b'),
     );
 

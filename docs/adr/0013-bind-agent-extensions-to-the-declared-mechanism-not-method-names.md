@@ -2,7 +2,7 @@
 
 ## Context
 
-station#1815 asks how Station consumes ACP agent extensions — Kiro's
+archive#1815 asks how Station consumes ACP agent extensions — Kiro's
 `_kiro/*` methods today — so that a second agent shipping a similar
 capability, or ACP standardizing one, is an integration rather than a
 rewrite. The issue proposed three layers and asked for one decision to be
@@ -11,7 +11,7 @@ that cut on investigation evidence, and names the failure modes.
 
 All wire evidence below was re-gathered live for this ADR (2026-08-03,
 `kiro-cli 2.16.0`, macOS; probe scripts in the session scratchpad, results
-summarized on #1815). Nothing is inherited from the issue text unverified.
+summarized on archive#1815). Nothing is inherited from the issue text unverified.
 
 ### What the spec makes normative (fetched 2026-08-03)
 
@@ -30,7 +30,7 @@ been absorbing session lifecycle into core: `session/list`, `session/close`,
 (`sessionCapabilities` in the v1 schema, present in the SDK Station already
 installs, `@agentclientprotocol/sdk@1.3.0`); `session/fork` remains an
 unstable RFD; session *history* is an open discussion (upstream discussions
-`#60`, `#841`); a `v2.0.0-alpha` schema is reworking the lifecycle again.
+`archive#60`, `archive#841`); a `v2.0.0-alpha` schema is reworking the lifecycle again.
 
 So the mechanism (underscore methods, `_meta` advertisement, `-32601`,
 ignore-unknown-notifications) is standard and stable; the methods are not;
@@ -59,7 +59,7 @@ One authenticated binary, two handshakes:
 - The namespace has drifted *within one vendor and within one binary*:
   docs say `_kiro.dev/`, v3 declares bare `_kiro/` methods, and v3 still
   *emits notifications* under `_kiro.dev/` (`_kiro.dev/mcp/server_init_failure`,
-  observed by the #1684 probe). Both spellings are live simultaneously.
+  observed by the archive#1684 probe). Both spellings are live simultaneously.
 - **Kiro v3 does not return `-32601` for unknown methods.** It returns
   `-32603 Internal error` with vendor-internal detail
   (`[PersistenceClassification] Ext method "..." has no persistence
@@ -76,14 +76,14 @@ One authenticated binary, two handshakes:
   `_kiro/auth/getAccessToken` (twice, before answering `initialize`) and
   `_kiro/terminal/shell_type`. Station's adapter currently answers *every*
   agent→client extension request with `{}` — a fabricated empty success
-  (`onExtMethod: () => ({})`, `acp-adapter.ts`). The #1684 security probe
+  (`onExtMethod: () => ({})`, `acp-adapter.ts`). The archive#1684 security probe
   established what `getAccessToken` is: Kiro's **own AWS model credential**
   (a decoy answer was transmitted upstream as a bearer credential and
   produced a validation error, not an auth rejection). Station holds
   nothing it could legitimately hand over; answering it is a
   credential-disclosure surface. Refusing it (`-32601`) leaves v3 turns
   unable to execute — a known Kiro compatibility break that already bites
-  other generic ACP clients (kirodotdev/Kiro#10416, #10543) and is not
+  other generic ACP clients (kirodotdev/Kiro#10416, archive#10543) and is not
   Station's to paper over.
 
 ### The ecosystem (surveyed 2026-08-03)
@@ -131,7 +131,7 @@ A typed pass-through over ACP's extension mechanism, in the ACP substrate
   (the next `_kiro/terminal/shell_type`) is observable, not silent. A
   reviewed, allowlisted handler is the only way to answer one, and the
   standing invariant is: **no Station-held credential is ever bridged into
-  an agent's extension request.** This matters more after #1684: once
+  an agent's extension request.** This matters more after archive#1684: once
   station-control tokens ride ACP sessions, "answer the agent's auth
   request" is one lazy handler away from handing the wrong principal's
   credential to a less-trusted process.
@@ -151,7 +151,7 @@ whose-process and when is a label.
 **Beside the matrix, not in it.** `EngineCapabilityMatrix` cells are
 static per engine *family*; the declared-extension set is falsified per
 connection and per *invocation* of one binary (v2 vs v3 above). The
-matrix's own precedent (unification §4.1b, station#1549) already splits
+matrix's own precedent (unification §4.1b, archive#1549) already splits
 policy-in-the-cell from evidence-on-the-connection for exactly this
 reason — and for extensions there is not even a static per-capability
 policy to put in a cell. The substrate mostly exists: the ACP probe cache
@@ -160,7 +160,7 @@ session record holds the live `initResult`. What Layer 2 adds is the typed
 projection with provenance, and the rule that **the live session's own
 `initResult` is the only delivery gate** — a stored observation may make a
 surface conservative or produce a skip-with-receipt, never a grant
-(same rule #1684 pins for MCP-over-HTTP).
+(same rule archive#1684 pins for MCP-over-HTTP).
 
 Three states stay structurally distinct and no path collapses them:
 
@@ -184,7 +184,7 @@ The issue's principle stands: **abstract only where a second
 implementation actually exists; pass through, vendor-scoped, where it does
 not.** Investigation moved four rows:
 
-| Extension | #1815 §4 proposed | Decided here | Why |
+| Extension | archive#1815 §4 proposed | Decided here | Why |
 |---|---|---|---|
 | `_kiro/session/history` (+ listing half of `/context`) | abstract over the extension | **bind to ACP core `sessionCapabilities.list` / `SessionInfo`** | Session listing is core protocol now; Kiro v3 declares core `list` alongside its private variant. The second implementation of this noun is the spec itself. Binding the vendor spelling would build on the leg that is being standardized away. |
 | `_kiro/session/compact` | abstract (Station noun: sessions + event store) | **engine-action affordance, vendor-attributed; no Station semantic** | Verified: Station owns no session-compaction noun. Its event store is append-only and replay-pure (ADR 0012 leans on that); the only "compaction" in the tree is *rendering other engines' compaction status*. `StationSessionCompact` over one implementation would mean "Kiro's compact" while claiming to mean "compact". What Station can honestly abstract is the **mechanism**: "this live session declares an invocable action; here is a button attributed to the engine; here is its raw outcome" — semantics stay the vendor's. Strongest upstream candidate. |
@@ -194,7 +194,7 @@ not.** Investigation moved four rows:
 | MCP OAuth / server-init notifications | abstract into MCP host infra | **ratified at the rendering layer** | Already shipped as ephemeral transcript renderings; the hardcoded `_kiro.dev` spellings move into the rendering table. Deeper MCP-host integration waits for a consumer. |
 | `_kiro/codeIntelligence`, `_kiro/config/template` | passthrough | **ratified** | No Station noun. Named for the vendor (`kiro.codeIntelligence`), reachable through Layer 1, no dedicated surface until a consumer exists. Noted: ACP core is growing an NES (edit-suggestion) surface that may become code intelligence's core home later. |
 
-**Vendor notification rendering table (implemented by #1824).** The two shipped functional
+**Vendor notification rendering table (implemented by archive#1824).** The two shipped functional
 renderings (`_kiro.dev/mcp/oauth_request`, `_kiro.dev/compaction|clear/status`)
 plus the adapter's `_kiro.dev/commands/available` mapping currently live as
 string constants in three files. They become one data table of
@@ -232,7 +232,7 @@ exercises it against a live agent and observes the contract it claims,
 never once someone writes it down. Today no mapping is needed because no
 two vendors implement the same extension.
 
-### The knowledge authority question (#1815 precondition)
+### The knowledge authority question (archive#1815 precondition)
 
 Two knowledge bases exist: Station's canonical stores (ADR 0009: stores
 canonical, index derived) and Kiro's engine-internal knowledge (surfaced
@@ -305,7 +305,7 @@ reason to render it.
 Third: refusing inbound extension requests can break an agent that
 requires a client-side answer to function — Kiro v3 is *already* this case
 (turns fail without the auth callback). That is disclosed as the vendor's
-compatibility break (their #10416), not absorbed; the alternative
+compatibility break (their archive#10416), not absorbed; the alternative
 (answering unknowable requests with fabricated success, or with
 credentials) fails worse in the invisible direction.
 
@@ -332,7 +332,7 @@ credentials) fails worse in the invisible direction.
 ## Consequences
 
 - The implementation is sliced as station issues cross-referenced on
-  #1815 (Collaboration Channels milestone): Layer 1 channel + inbound
+  archive#1815 (Collaboration Channels milestone): Layer 1 channel + inbound
   refusal; Layer 2 record with provenance; core session-list binding;
   declared session-action affordances with trip-wires; the vendor
   rendering table. Each slice carries a rejection path a test executes.
@@ -344,6 +344,6 @@ credentials) fails worse in the invisible direction.
   since that is the path the ACP project actually uses) is staged in
   `docs/strategy/acp-extension-upstream-proposal.md`. Filing it is an
   owner call; nothing in this arc blocks on it.
-- #1684 is deliberately untouched: its slice remains one indivisible
+- archive#1684 is deliberately untouched: its slice remains one indivisible
   cell+wire change. The inbound-refusal invariant here *supports* its
   security posture (no credential bridging) without entering its scope.

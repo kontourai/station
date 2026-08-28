@@ -109,10 +109,10 @@ export function NotificationsPage() {
         attentionItems.map((item) => acknowledgeAttentionItem(item.id)),
       ),
     onSuccess: async () => {
-      // The confirm is answered; leaving it open re-rendered it against the
-      // now-empty queue as "Dismiss 0 items needing attention?" over a page
-      // that had already dismissed them — a live confirmation for an action
-      // with nothing left to act on.
+// The confirm is answered; leaving it open re-rendered it against the
+// now-empty queue as "Dismiss 0 items needing attention?" over a page
+// that had already dismissed them — a live confirmation for an action
+// with nothing left to act on.
       setShowDismissConfirm(false);
       await queryClient.invalidateQueries({ queryKey: ['attention'] });
     },
@@ -138,11 +138,11 @@ export function NotificationsPage() {
     return () => window.removeEventListener('popstate', syncFromLocation);
   }, []);
 
-  // 6-OPS-23 shape: the frame a page owns is known before its data is. This
-  // used to replace the WHOLE page — header, title, settings link and all —
-  // with one grey sentence, so for the length of the read the route rendered
-  // nothing that identified it. Header first, skeleton only the list the page
-  // is actually waiting on.
+// 6- shape: the frame a page owns is known before its data is. This
+// used to replace the WHOLE page — header, title, settings link and all —
+// with one grey sentence, so for the length of the read the route rendered
+// nothing that identified it. Header first, skeleton only the list the page
+// is actually waiting on.
   if (inbox.attentionQuery.isLoading || inbox.notificationsQuery.isLoading) {
     return (
       <div className="notifications-page">
@@ -160,10 +160,10 @@ export function NotificationsPage() {
       </div>
     );
   }
-  // Review M2: the failure branch dropped the header the wait branch above
-  // deliberately preserves, so a read that failed took the route's own title,
-  // Clear and Settings controls down with it. The frame a page owns does not
-  // depend on the read (6-OPS-23) — in a wait OR in a failure.
+ // the failure branch dropped the header the wait branch above
+// deliberately preserves, so a read that failed took the route's own title,
+// Clear and Settings controls down with it. The frame a page owns does not
+// depend on the read (6-) — in a wait OR in a failure.
   if (loadError) {
     return (
       <div className="notifications-page">
@@ -207,7 +207,7 @@ export function NotificationsPage() {
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
         !approvalTarget ? (
-          /* D9: when BOTH regions are empty they collapse into one PROMINENT
+ /* when BOTH regions are empty they collapse into one PROMINENT
              empty, not a paragraph floating at the top of an empty page. */
           <Empty
             variant="prominent"
@@ -252,13 +252,13 @@ export function NotificationsPage() {
           </>
         )}
       </div>
-      {/*
-       * station#3779: the bulk action ACKNOWLEDGES, so it keeps the word
-       * "Dismiss" — read from the shared action model, which is now the only
-       * place either verb is chosen. This confirm exists because the action
-       * is bulk (N rows at once), not because the word was ambiguous; the
-       * destructive row action has its own confirm and its own word.
-       */}
+{/*
+* archive#3779: the bulk action ACKNOWLEDGES, so it keeps the word
+* "Dismiss" — read from the shared action model, which is now the only
+* place either verb is chosen. This confirm exists because the action
+* is bulk (N rows at once), not because the word was ambiguous; the
+* destructive row action has its own confirm and its own word.
+*/}
       <ConfirmModal
         isOpen={showDismissConfirm}
         title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} attention items`}

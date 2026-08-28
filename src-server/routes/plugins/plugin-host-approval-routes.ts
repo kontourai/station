@@ -1,6 +1,6 @@
 /**
  * Plugin host-approval routes — the FIRST consumer of the ConsentTransaction
- * module (station#3677).
+ * module (archive#3677).
  *
  * What lives here now: OPENING a trusted-permission request and POLLING its
  * status, both on the main API under the family's existing `access:manage`
@@ -136,7 +136,7 @@ export function registerPluginHostApprovalRoutes(
     transactionId: string,
     status: string,
   ) => {
-    // station#3752: the BROWSER's host, not the proxied one. Station's UI
+    // archive#3752: the BROWSER's host, not the proxied one. Station's UI
     // proxy rewrites `Host` to the upstream address, and a review URL built
     // from that names a host the browser has no transaction cookie for, so
     // the review page refused every operator.
@@ -147,7 +147,7 @@ export function registerPluginHostApprovalRoutes(
       }),
       transactionId,
     );
-    // station#3731: a review URL is the BROWSER's way in, and it is the only
+    // archive#3731: a review URL is the BROWSER's way in, and it is the only
     // way in for a browser. A caller that can decide in native OS chrome
     // needs none — the native routes never consult listener state — so
     // refusing it here made the native path's listener-independence
@@ -203,7 +203,7 @@ export function registerPluginHostApprovalRoutes(
     }
     const state = channel.state();
     // Same rule as the responder below: the listener being down only refuses
-    // a caller that would have needed it (station#3731).
+    // a caller that would have needed it (archive#3731).
     if (
       state.status !== 'listening' &&
       !isBoundLocalGrantMintedOperator(c.req.raw)
@@ -308,7 +308,7 @@ export function registerPluginHostApprovalRoutes(
         } catch (error) {
           if (error instanceof PluginGrantsUnavailableError) {
             // Nothing was granted; the transaction stays pending so it can be
-            // retried once the store is recovered (#1835).
+            // retried once the store is recovered (archive#1835).
             throw new ConsentCommitRefusedError(
               'The permission grants store could not be read, so nothing was granted. Recover the store and open the approval again.',
             );
@@ -319,14 +319,14 @@ export function registerPluginHostApprovalRoutes(
             // that says what happened: the plugin's tree became unreadable
             // between opening this approval and committing it, and a consent
             // to bytes cannot be recorded against bytes nobody can read
-            // (station#4288).
+            // (archive#4288).
             throw new ConsentCommitRefusedError(
               `This plugin's installed files could not be read, so nothing was granted. Reinstall or repair '${pluginName}' and open the approval again.`,
             );
           }
           throw error;
         }
-        // station#4288, delta review MEDIUM 2. An approval given against a
+        // archive#4288, delta review MEDIUM 2. An approval given against a
         // `changed` binding withdraws everything else the plugin held, so the
         // broadcast carries what was actually derived rather than leaving
         // every listener to assume an approval only ever adds.

@@ -135,7 +135,7 @@ vi.mock('@kontourai/station-sdk/resource-posture', () => ({
 // `connectionFailureCopy` is deliberately the REAL implementation: the
 // per-reason unavailable test below asserts the copy the user actually reads,
 // so a stub would let App wire the reason to nothing and still pass
-// (station#3711).
+// (archive#3711).
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   connectionFailureCopy: (
     await importOriginal<typeof import('@kontourai/station-connect')>()
@@ -268,7 +268,7 @@ vi.mock('../components/voice/VoicePill', () => ({ VoicePill: () => null }));
 // AgentsContext, which reaches the SDK and needs a second, larger mock —
 // so this stays a bare factory and simply has to stay complete. That is
 // the standing hazard: the next export added here fails in a file whose
-// author never opened this one (station#3112).
+// author never opened this one (archive#3112).
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
   useAgentsLoaded: () => true,
@@ -418,7 +418,7 @@ describe('App home route resolution', () => {
     });
   });
 
-  // station#3711: the old state here claimed "offline" for EVERY
+  // archive#3711: the old state here claimed "offline" for EVERY
   // non-connected status — an auth rejection against a reachable Station
   // became a false device-network claim. With no reason yet derived, the copy
   // claims nothing beyond unavailability; with a typed reason, it renders

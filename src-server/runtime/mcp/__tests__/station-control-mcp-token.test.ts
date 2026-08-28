@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe('station-control-mcp-token', () => {
-  // Review fix (station#1195 round 1, LOW): stationControlMcpTokenMinted
+  // Review fix (archive#1195 round 1, LOW): stationControlMcpTokenMinted
   // was declared in metrics.ts but never incremented anywhere.
   test('records stationControlMcpTokenMinted on every mint, distinguishing a fresh mint from one that replaced an already-live token', () => {
     mintStationControlMcpToken('thread-1', 'url-token');
@@ -43,7 +43,7 @@ describe('station-control-mcp-token', () => {
     expect(mockStationControlMcpTokenMintedAdd).toHaveBeenCalledTimes(2);
   });
 
-  // station#1684 review fix (M4): the refusal was already observable
+  // archive#1684 review fix (M4): the refusal was already observable
   // (`agentCapabilityUndelivered`); the GRANT was not, and one
   // undifferentiated mint counter made an ACP grant and a Codex grant the
   // same datum.
@@ -173,10 +173,10 @@ describe('station-control-mcp-token', () => {
   });
 
   /**
-   * station#1684 review fix (uncaught injections #8/#9).
+   * archive#1684 review fix (uncaught injections #8/#9).
    *
    * The three properties Station's station-control-over-ACP security argument
-   * inherits from station#1195 — a token PER SESSION, revocable, on a BOUNDED
+   * inherits from archive#1195 — a token PER SESSION, revocable, on a BOUNDED
    * default lifetime — had no test that could see them applied on the
    * production path. Every adapter test injects `mintStationControlMcpAuth`
    * as a `vi.fn()`, and the only non-test closure lived inline in

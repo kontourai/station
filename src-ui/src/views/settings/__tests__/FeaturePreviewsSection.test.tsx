@@ -29,7 +29,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { FeaturePreviewsSection } from '../FeaturePreviewsSection';
 
-// station#3313: the standalone /feature-previews view retired into this
+// archive#3313: the standalone /feature-previews view retired into this
 // Settings section; these are its behavior pins, carried over.
 describe('FeaturePreviewsSection', () => {
   test('renders the canonical loading rows while preview truth is pending', () => {

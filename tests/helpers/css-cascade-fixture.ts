@@ -3,8 +3,8 @@
  * resolved app stylesheet — not a hand-picked excerpt — composed with one
  * component's own CSS file, fed to a real Chromium page.
  *
- * Extracted from `BannerHost.touch-target.test.tsx` (station#3453) when
- * `NotificationContainer.touch-target.test.tsx` (station#3513) needed the
+ * Extracted from `BannerHost.touch-target.test.tsx` (archive#3453) when
+ * `NotificationContainer.touch-target.test.tsx` (archive#3513) needed the
  * identical machinery: `assertNoImportsSurvive`, `chromiumIsInstalled`, and
  * `playwrightBrowsersDirectory` were byte-identical copies, and
  * `resolveCssImports` differed only by an accidentally-dropped comment. A

@@ -49,9 +49,9 @@ function model(overrides: Record<string, unknown> = {}) {
     primaryWorkItem: undefined,
     continueWork: vi.fn(),
     ...overrides,
-    // Cast through `unknown` to the real prop type rather than `any`: the
-    // double is deliberately partial, but naming the target keeps a field
-    // rename visible here instead of silently absorbed.
+// Cast through `unknown` to the real prop type rather than `any`: the
+// double is deliberately partial, but naming the target keeps a field
+// rename visible here instead of silently absorbed.
   } as unknown as Parameters<typeof HomeSurface>[0]['model'];
 }
 
@@ -84,9 +84,9 @@ describe('HomeSurface composition', () => {
   });
 
   test('with no runnable agent the start card becomes a set-up CTA', () => {
-    // Finding 5: Home must not name an Agent the New Chat picker refuses one
-    // click later. On a home where nothing is runnable it stops recommending
-    // and asks for the setup instead — same destination, honest promise.
+// Finding 5: Home must not name an Agent the New Chat picker refuses one
+// click later. On a home where nothing is runnable it stops recommending
+// and asks for the setup instead — same destination, honest promise.
     renderHome({
       startReady: false,
       startIdentity: 'No agent is ready yet',
@@ -100,7 +100,7 @@ describe('HomeSurface composition', () => {
     );
     const cta = screen.getByRole('button', { name: /Set up an agent/ });
     expect(cta.textContent).toContain('Finish setting up an engine to chat');
-    // And it names no agent at all.
+// And it names no agent at all.
     expect(cta.textContent).not.toContain('Codex');
   });
 
@@ -116,20 +116,20 @@ describe('HomeSurface composition', () => {
     ).toBeTruthy();
     const recent = screen.getByRole('region', { name: 'Recent work' });
     expect(within(recent).getByText('Active now')).toBeTruthy();
-    // The one-list constraint, pinned: an item appears exactly once in the
-    // list. Two recent-work lists is the failure this composition exists to
-    // prevent, and it would read as a duplicate row rather than an error.
+// The one-list constraint, pinned: an item appears exactly once in the
+// list. Two recent-work lists is the failure this composition exists to
+// prevent, and it would read as a duplicate row rather than an error.
     expect(
       within(recent).getAllByText('Audit the ref translation'),
     ).toHaveLength(1);
   });
 
-  /**
-   * station#3227 A7, carried over: the "Projects" number and the chart's rows
-   * must fold the same list. Pinned as the INVARIANT, not a spot value — the
-   * fixture deliberately has ONE configured project against five distinct
-   * project labels, the populations the audit caught disagreeing.
-   */
+/**
+* archive#3227 A7, carried over: the "Projects" number and the chart's rows
+* must fold the same list. Pinned as the INVARIANT, not a spot value — the
+* fixture deliberately has ONE configured project against five distinct
+* project labels, the populations the audit caught disagreeing.
+*/
   test('the Projects count equals the project rows the chart renders', () => {
     renderHome({
       workItems: [
@@ -165,12 +165,12 @@ describe('HomeSurface composition', () => {
     );
   });
 
-  /**
-   * The counts and the list must come from ONE lane derivation. A second
-   * `useHomeWorkLanes` instance would carry its own snooze snapshot, so this
-   * pins the shared one through the observable consequence: a snoozed item is
-   * absent from the list AND counted as snoozed by the caption.
-   */
+/**
+* The counts and the list must come from ONE lane derivation. A second
+* `useHomeWorkLanes` instance would carry its own snooze snapshot, so this
+* pins the shared one through the observable consequence: a snoozed item is
+* absent from the list AND counted as snoozed by the caption.
+*/
   test('a snoozed item is hidden from the list and counted by the caption', () => {
     localStorage.setItem(
       'station.activity.snoozed',
@@ -192,20 +192,20 @@ describe('HomeSurface composition', () => {
     expect(snoozedStat?.querySelector('.home-pulse__value')?.textContent).toBe(
       '1',
     );
-    // …and it is absent from the chart too, which reads the same lanes.
+// …and it is absent from the chart too, which reads the same lanes.
     expect(
       document.querySelector('.home-heat__rows')?.textContent,
     ).not.toContain('Snoozed work');
   });
 
-  /**
-   * The sharper form of the same claim, with power over the duplication
-   * itself: waking a row is a RUNTIME lane change. Two `useHomeWorkLanes`
-   * instances read the same stored snoozes at mount, so a pre-snoozed
-   * fixture alone cannot tell one instance from two — but a wake mutates
-   * only the instance it was called on, so a second instance would leave the
-   * chart still hiding a row the list has just brought back.
-   */
+/**
+* The sharper form of the same claim, with power over the duplication
+* itself: waking a row is a RUNTIME lane change. Two `useHomeWorkLanes`
+* instances read the same stored snoozes at mount, so a pre-snoozed
+* fixture alone cannot tell one instance from two — but a wake mutates
+* only the instance it was called on, so a second instance would leave the
+* chart still hiding a row the list has just brought back.
+*/
   test('waking a row updates the chart, not just the list', () => {
     localStorage.setItem(
       'station.activity.snoozed',
@@ -217,8 +217,8 @@ describe('HomeSurface composition', () => {
         item('other', 'Visible work', 'Station', 6, 'Running'),
       ],
     });
-    // The newest item in the bucket names the bar, and while snoozy is
-    // hidden that is the other row.
+// The newest item in the bucket names the bar, and while snoozy is
+// hidden that is the other row.
     expect(
       screen.queryByRole('button', { name: /open Snoozed work/ }),
     ).toBeNull();
@@ -238,8 +238,8 @@ describe('HomeSurface composition', () => {
   test('a failed load offers a retry rather than counting nothing', () => {
     const { model: m } = renderHome({ workItems: [], workError: true });
     expect(screen.getByText('Recent work unavailable')).toBeTruthy();
-    // No counts at all: a caption for lanes that are not on the page would
-    // print four zeroes over an error.
+// No counts at all: a caption for lanes that are not on the page would
+// print four zeroes over an error.
     expect(document.querySelector('.home-pulse__stats')).toBeNull();
     screen.getByRole('button', { name: 'Open Activity' }).click();
     expect(m.retryWork).not.toHaveBeenCalled();
@@ -307,13 +307,13 @@ describe('HomeSurface: what is clickable', () => {
     });
   });
 
-  /**
-   * The label-vs-derivation guard. `sessionProjectLabel` prints a caveat when
-   * the project binding is a cross-machine NAME match; the session's own
-   * local `projectSlug` is a different fact. Linking the caveated label to
-   * the local project would answer the question the caveat exists to keep
-   * open.
-   */
+/**
+* The label-vs-derivation guard. `sessionProjectLabel` prints a caveat when
+* the project binding is a cross-machine NAME match; the session's own
+* local `projectSlug` is a different fact. Linking the caveated label to
+* the local project would answer the question the caveat exists to keep
+* open.
+*/
   test('a caveated project label is text, not a link', () => {
     renderHome({
       workItems: [
@@ -342,10 +342,10 @@ describe('HomeSurface: what is clickable', () => {
     expect(screen.queryByRole('button', { name: /Open the/ })).toBeNull();
   });
 
-  /**
-   * Counts are controls only where their population is on the page, and the
-   * accessible name says where it goes rather than repeating the number.
-   */
+/**
+* Counts are controls only where their population is on the page, and the
+* accessible name says where it goes rather than repeating the number.
+*/
   test('counts with a rendered lane are labelled controls; counts without one are not', () => {
     renderHome({
       workItems: [
@@ -363,8 +363,8 @@ describe('HomeSurface: what is clickable', () => {
         name: 'Projects, 1, show where the work has been',
       }),
     ).toBeTruthy();
-    // Nothing is snoozed and nothing is in the "Recently finished" lane, so
-    // neither renders and neither count offers a destination.
+// Nothing is snoozed and nothing is in the "Recently finished" lane, so
+// neither renders and neither count offers a destination.
     expect(screen.queryByRole('button', { name: /^Snoozed,/ })).toBeNull();
     expect(
       screen.queryByRole('button', { name: /^Just finished,/ }),
@@ -404,8 +404,8 @@ describe('HomeSurface: what is clickable', () => {
         item('b', 'Done work', 'Station', 3, 'Completed'),
       ],
     });
-    // "Just finished" is a rendered lane here, so its control must land on a
-    // real heading rather than scrolling nowhere.
+// "Just finished" is a rendered lane here, so its control must land on a
+// real heading rather than scrolling nowhere.
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Just finished, 1, show the Recently finished lane',
@@ -432,13 +432,13 @@ describe('HomeSurface: agent icons', () => {
     expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(1);
   });
 
-  /**
-   * The rule the brief and `home-view-model.ts`'s `safeAgentLabel` docblock
-   * both insist on: an unresolved agent gets NO icon. `agentLabel` is a
-   * display string that may already be an engine name; feeding it to
-   * `AgentIcon` would mint an identicon for an identity nothing derived —
-   * the defect that once put a Model-connection name beside a Station mark.
-   */
+/**
+* The rule the brief and `home-view-model.ts`'s `safeAgentLabel` docblock
+* both insist on: an unresolved agent gets NO icon. `agentLabel` is a
+* display string that may already be an engine name; feeding it to
+* `AgentIcon` would mint an identicon for an identity nothing derived —
+* the defect that once put a Model-connection name beside a Station mark.
+*/
   test('a row naming an agent this Station does not have draws no icon', () => {
     renderHome({
       workItems: [
@@ -448,7 +448,7 @@ describe('HomeSurface: agent icons', () => {
       ],
     });
     expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(0);
-    // …and the row still says who it was attributed to, in text.
+// …and the row still says who it was attributed to, in text.
     expect(screen.getAllByText(/Codex/).length).toBeGreaterThan(0);
   });
 

@@ -276,7 +276,7 @@ describe('resolveMCPToolUIRef', () => {
   });
 
   // Contract-verified against the real Kontour Survey MCP server
-  // (kontourai/survey src/mcp/review-mcp.ts, PR #87). Survey emits the SEP-1865
+  // (kontourai/survey src/mcp/review-mcp.ts, PR archive#87). Survey emits the SEP-1865
   // declared resource under the FLAT canonical `_meta["ui/resourceUri"]` key
   // (what @modelcontextprotocol/ext-apps `registerAppTool` emits) AND the
   // nested `_meta.ui.resourceUri` convenience key. The resolver must read both.

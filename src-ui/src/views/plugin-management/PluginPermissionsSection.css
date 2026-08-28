@@ -1,5 +1,5 @@
 /*
- * station#3815 — the held-permissions review.
+ * archive#3815 — the held-permissions review.
  *
  * Deliberately quiet: this is an audit surface, so the rows read as a
  * ledger rather than as controls competing for attention. Only the tier
@@ -103,7 +103,7 @@
   margin: 10px 0 0;
 }
 
-/* station#4288: the content-binding notice. Two variants — the neutral one
+/* archive#4288: the content-binding notice. Two variants — the neutral one
    states a bookkeeping gap, the `--changed` one states that approved code was
    replaced — so they must not read alike. */
 .plugin-permissions__binding {

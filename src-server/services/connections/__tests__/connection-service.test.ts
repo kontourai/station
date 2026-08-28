@@ -1031,7 +1031,7 @@ describe('ConnectionService', () => {
     expect(JSON.stringify(inventory)).not.toContain('must-not-escape');
   });
 
-  // station#1430: getModelToolSurface backs DispatchEvidenceSource.getModelToolSurface
+  // archive#1430: getModelToolSurface backs DispatchEvidenceSource.getModelToolSurface
   // (dispatch-model-policy.ts). Real ConnectionService instance, real
   // listLaunchableModelInventory() computation underneath — not a stub —
   // proving the deterministic accessor actually resolves a genuine

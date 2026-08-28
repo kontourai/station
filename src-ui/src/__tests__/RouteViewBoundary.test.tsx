@@ -57,7 +57,7 @@ describe('RouteViewBoundary', () => {
   });
 
   test('publishes the suspended route so the shell can mark it pending', () => {
-    // SHELL-05: the nav row the user clicked said nothing for the ~1.4 s a
+    // the nav row the user clicked said nothing for the ~1.4 s a
     // cold route chunk takes. The pending state is the mounted fallback
     // itself — a fact, not a timer started optimistically at click time — so
     // it must appear only while suspended and clear on resolution.
@@ -160,7 +160,7 @@ describe('RouteViewBoundary', () => {
   });
 
   /**
-   * SHELL-06: every failure used to say "Reload Station to retry the route
+   * every failure used to say "Reload Station to retry the route
    * download", which is only true for a chunk that could not be fetched, and
    * which throws away all UI state for the two cases where it is false.
    */

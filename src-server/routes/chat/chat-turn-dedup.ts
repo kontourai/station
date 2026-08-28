@@ -57,7 +57,7 @@ export function getChatTurnDedupStore(
       typeof eventStore === 'string'
         ? // Resolved, never spelled: a hand-assembled third copy of
           // `data/orchestration.sqlite` is a path the quarantine
-          // (station#3217) silently stops matching.
+          // (archive#3217) silently stops matching.
           orchestrationStorePath(eventStore)
         : eventStore,
     );

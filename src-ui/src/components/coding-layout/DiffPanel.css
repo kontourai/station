@@ -13,7 +13,7 @@
   color: var(--text-on-accent);
 }
 
-/* ── Change counts (panel-level total + per-file, station#3104) ── */
+/* ── Change counts (panel-level total + per-file, archive#3104) ── */
 
 .diff-stat {
   display: flex;
@@ -45,7 +45,7 @@
   color: var(--text-muted);
 }
 
-/* ── Per-file collapse/expand toggle (station#3104) ── */
+/* ── Per-file collapse/expand toggle (archive#3104) ── */
 
 .diff-file-collapse-toggle {
   display: inline-flex;

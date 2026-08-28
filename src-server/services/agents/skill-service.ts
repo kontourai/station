@@ -148,7 +148,7 @@ function frontmatterKey(line: string): string | undefined {
  * deliberately a separate prerequisite: this scanner preserves formatting;
  * it is not a YAML validator.
  *
- * Accepted limitation (station#2684 review round 2): unknown-key blocks keep
+ * Accepted limitation (archive#2684 review round 2): unknown-key blocks keep
  * their bytes verbatim but are re-emitted after the modeled fields, so their
  * ordering relative to modeled keys — and a comment's attachment to an
  * adjacent modeled key — is not preserved. Nothing is lost; position churns.

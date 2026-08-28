@@ -20,16 +20,16 @@ describe('lifecycle-priority (station#1100 AC4)', () => {
       'Current',
       'Ready',
       'Recent',
-      // station#1783: below every live state and above only `Completed` —
-      // nothing here can act on it, but it has not finished either.
+// archive#1783: below every live state and above only `Completed` —
+// nothing here can act on it, but it has not finished either.
       'Unanswerable',
       'Completed',
     ]);
   });
 
   test('lifecycleLabelText translates the one member that is not user language', () => {
-    // Review's secondary HIGH: every sibling is already the user's word, and
-    // `Unanswerable` was the only enum leaking verbatim to two surfaces.
+ // Review's secondary : every sibling is already the user's word, and
+// `Unanswerable` was the only enum leaking verbatim to two surfaces.
     expect(lifecycleLabelText('Unanswerable')).toBe("Can't answer here");
     for (const label of HOME_LIFECYCLE_LABELS) {
       if (label === 'Unanswerable') continue;
@@ -74,13 +74,13 @@ describe('lifecycle-priority (station#1100 AC4)', () => {
         'Unanswerable',
       ].sort(),
     );
-    // station#1783: chipped so a demoted row still says WHY it dropped.
-    // De-prioritizing without rendering the fact would be filtering under
-    // another name.
+// archive#1783: chipped so a demoted row still says WHY it dropped.
+// De-prioritizing without rendering the fact would be filtering under
+// another name.
     expect(LIFECYCLE_CHIP_LABELS.has('Unanswerable')).toBe(true);
-    // Completed (priority 0, the lowest) still renders a chip, while
-    // higher-priority Current/Ready/Recent render none — proves this set
-    // is not a numeric-priority threshold over LIFECYCLE_PRIORITY.
+// Completed (priority 0, the lowest) still renders a chip, while
+// higher-priority Current/Ready/Recent render none — proves this set
+// is not a numeric-priority threshold over LIFECYCLE_PRIORITY.
     expect(LIFECYCLE_CHIP_LABELS.has('Completed')).toBe(true);
     expect(LIFECYCLE_CHIP_LABELS.has('Failed')).toBe(true);
     expect(LIFECYCLE_CHIP_LABELS.has('Stopped')).toBe(true);

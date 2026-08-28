@@ -80,7 +80,7 @@ describe('runtime-provider-resolution', () => {
     expect(model).toEqual({ kind: 'model' });
   });
 
-  // station#1426 fix round (MB-2): the one-shot model-selection paths
+  // archive#1426 fix round (MB-2): the one-shot model-selection paths
   // (chat-model-override.ts, invoke.ts, invoke-agent.ts) route through this
   // function to reach `framework.createModel`. If it silently dropped
   // `dispatchEvidenceSource`/`logger`, every candidate on those paths would
@@ -167,7 +167,7 @@ describe('runtime-provider-resolution', () => {
   });
 
   /*
-   * station#3653: an OpenAI-compatible endpoint that serves chat and answers
+   * archive#3653: an OpenAI-compatible endpoint that serves chat and answers
    * `GET /models` with an empty list. `probeModelConnection` reads that as
    * "no catalogue", runs the one-token chat probe against the connection's
    * `defaultModel`, records a PASSED check and the connection reads Ready —
@@ -179,7 +179,7 @@ describe('runtime-provider-resolution', () => {
     vi.mocked(createLLMProvider).mockReturnValue({
       // What `OpenAICompatLLMProvider` derives for a self-hosted endpoint:
       // its empty list is not an enumeration. Per instance, not per class
-      // (station#3653 delta review HIGH-1).
+      // (archive#3653 delta review HIGH-1).
       emptyCatalogMeaning: 'no-catalog',
       listModels: vi.fn(async () => []),
     } as any);
@@ -983,7 +983,7 @@ describe('runtime-provider-resolution', () => {
 /**
  * The runtime side of the shared managed-model rule.
  *
- * station#3743's fix expressed this rule a second time in the agent editor,
+ * archive#3743's fix expressed this rule a second time in the agent editor,
  * and the copy drifted on the case that decides whether an agent can run at
  * all: the editor chose "the sole READY candidate" where this side counts
  * every ENABLED one and calls two of them ambiguous (sol review, HIGH). Both

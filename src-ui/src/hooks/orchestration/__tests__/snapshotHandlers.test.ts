@@ -12,12 +12,12 @@ const updateChat = vi.fn((threadId: string, updates: any) => {
 
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: {
-    // A COPY, matching `ActiveChatsStore.notify`'s `{ ...this.chats }`: the
-    // real store hands out a fresh map after every write, so a caller that
-    // captured `getSnapshot()` before one keeps reading the PRE-write chat.
-    // Returning the live map instead makes every captured snapshot silently
-    // read post-write, which is exactly the distinction the reconnect
-    // refetch loop below depends on (station#3352 review).
+// A COPY, matching `ActiveChatsStore.notify`'s `{...this.chats }`: the
+// real store hands out a fresh map after every write, so a caller that
+// captured `getSnapshot` before one keeps reading the PRE-write chat.
+// Returning the live map instead makes every captured snapshot silently
+// read post-write, which is exactly the distinction the reconnect
+ // refetch loop below depends on (archive#3352).
     getSnapshot: () => ({ ...chats }),
     updateChat: (...args: [string, any]) => updateChat(...args),
   },
@@ -81,12 +81,12 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     );
   });
 
-  // `rehydrateChatSession` returns immediately for a chat already marked
-  // `orchestrationSessionStarted`, and the status sync above sets that flag on
-  // every thread this snapshot names. Reading the post-sync map here would
-  // therefore make this loop unable to refetch anything at all — the one case
-  // it still serves is a locally tracked chat this client did not yet know had
-  // an orchestration session, and it can only see that on the PRE-sync chat.
+// `rehydrateChatSession` returns immediately for a chat already marked
+// `orchestrationSessionStarted`, and the status sync above sets that flag on
+// every thread this snapshot names. Reading the post-sync map here would
+// therefore make this loop unable to refetch anything at all — the one case
+// it still serves is a locally tracked chat this client did not yet know had
+// an orchestration session, and it can only see that on the PRE-sync chat.
   test('the reconnect refetch is handed the PRE-sync chat, not the one the status sync just marked started', () => {
     chats['thread-1'].orchestrationSessionStarted = false;
     applyOrchestrationSnapshot(
@@ -204,11 +204,11 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     );
   });
 
-  // station#3352's permanent case: the turn both streamed and COMPLETED
-  // inside the gap, so the session is idle at reconnect and its
-  // `turn.completed` — the only other thing that advances this revision — was
-  // never delivered. Skipping the bump here leaves the user their prompt and
-  // no answer until the dock remounts.
+// archive#3352's permanent case: the turn both streamed and COMPLETED
+// inside the gap, so the session is idle at reconnect and its
+// `turn.completed` — the only other thing that advances this revision — was
+// never delivered. Skipping the bump here leaves the user their prompt and
+// no answer until the dock remounts.
   test('a reconnect-fallback snapshot whose session is idle still bumps the history revision', () => {
     chats['thread-1'].orchestrationHistoryRevision = 2;
     applyOrchestrationSnapshot(
@@ -229,8 +229,8 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
       'thread-1',
       expect.objectContaining({ orchestrationHistoryRevision: 3 }),
     );
-    // No open turn means no shell to hand over: the suppression this flag
-    // disables is gated on `orchestrationTurnOpen`, which this payload clears.
+// No open turn means no shell to hand over: the suppression this flag
+// disables is gated on `orchestrationTurnOpen`, which this payload clears.
     expect(
       updateChat.mock.calls.some(
         ([, updates]) => 'openTurnShellSuperseded' in updates,
@@ -332,12 +332,12 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
     };
   });
 
-  // The type widened in `types.ts` (`delegation`/`createdAt`/`lastEventAt`)
-  // is declare-only for `buildOrchestrationSnapshotSyncPlan` — it reads none
-  // of those fields. This pins that a payload carrying them (as every real
-  // wire payload now does, station#1301 §1.3) folds into the EXACT same
-  // `updateChat` call as a payload that omits them (the pre-widening shape),
-  // so the new fields cannot silently perturb the existing chat-status sync.
+// The type widened in `types.ts` (`delegation`/`createdAt`/`lastEventAt`)
+// is declare-only for `buildOrchestrationSnapshotSyncPlan` — it reads none
+// of those fields. This pins that a payload carrying them (as every real
+ // wire payload now does, archive#1301 §1.3) folds into the EXACT same
+// `updateChat` call as a payload that omits them (the pre-widening shape),
+// so the new fields cannot silently perturb the existing chat-status sync.
   test('a session carrying the new fields updates the chat identically to one without them', () => {
     applyOrchestrationSnapshot({
       sessions: [

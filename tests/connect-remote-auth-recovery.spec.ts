@@ -513,7 +513,7 @@ for (const fixture of [
       .click();
 
     // The add flow now continues straight into authorising the new host
-    // (#986) instead of returning to the list. This test exercises the
+    // (archive#986) instead of returning to the list. This test exercises the
     // manual credential-recovery path (via Edit), so back out of the
     // pairing panel first without completing the exchange.
     await page
@@ -521,14 +521,14 @@ for (const fixture of [
       .getByRole('button', { name: 'Back' })
       .click();
 
-    // station#4512 review (M4): the health probe against this freshly-added,
+    // archive#4512 (M4): the health probe against this freshly-added,
     // not-yet-credentialed connection gets a real 401
     // (`{error:'authentication_required'}` above), which
     // `classifyHttpFailureResponse` reads as `authentication-failed` —
     // the same reason a REJECTED credential produces. The Stations sheet
     // card now names that reason distinctly ("Credential required" was the
     // generic bucket for a connection that has never had a lastError at
-    // all; this one has one), restoring the #3903 insight ("the address is
+    // all; this one has one), restoring the archive#3903 insight ("the address is
     // fine, this device isn't authorised there") the sheet used to carry
     // and this spec used to assert away.
     await expect(
@@ -595,7 +595,7 @@ for (const fixture of [
     assertNoApi401 = true;
     const codingReposStatus = await page.evaluate(async (endpoint) => {
       // The SDK barrel is published by the on-demand half of the shared-module
-      // bridge (station#883), and this Station has no plugins installed, so
+      // bridge (archive#883), and this Station has no plugins installed, so
       // nothing else would ever trigger that load. Awaiting the readiness
       // handle IS the contract for a page-level caller.
       await (window as any).__station_ai_shared_ready();

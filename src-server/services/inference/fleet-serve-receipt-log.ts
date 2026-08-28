@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3 — the SERVING Station's own receipt log
+ * archive#1398 — the SERVING Station's own receipt log
  * (`docs/design/inference-fleet.md` §3.4 "Both sides record").
  *
  * A consumer-authored record of a producer's behavior is a claim, not

@@ -7,15 +7,15 @@ export function MonitoringHeader({
   connectionStatus,
   children,
 }: {
-  /**
-   * Derived from the orchestration session read-model — the same projection
-   * the chat dock and Developer -> Archive read (audit 6-OPS-26). These used
-   * to be `stats.summary.activeAgents/runningAgents`, folded from the
-   * monitoring event store, which reported 0/0 while a real turn was running
-   * in the dock.
-   */
+/**
+* Derived from the orchestration session read-model — the same projection
+* the chat dock and Developer -> Archive read. These used
+* to be `stats.summary.activeAgents/runningAgents`, folded from the
+* monitoring event store, which reported 0/0 while a real turn was running
+* in the dock.
+*/
   sessionCounts: { activeSessions: number; runningTurns: number } | null;
-  /** The session read's own state — see the counts' honesty note below. */
+/** The session read's own state — see the counts' honesty note below. */
   sessionReadStatus: 'pending' | 'error' | 'success';
   onRetrySessionRead: () => void;
   connectionStatus: 'connected' | 'connecting' | 'disconnected' | 'error';
@@ -37,12 +37,12 @@ export function MonitoringHeader({
       }
     >
       <div className="monitoring-summary">
-        {/* audit 6-OPS-26 review: a number here is a claim about this Station.
+ {/* A number here is a claim about this Station.
             Until the read succeeds there is no number to make — `—` while it
             is in flight, and a retry when it failed, rather than a `0` that
             reads as "nothing is running". */}
         <span className="stat-item">
-          {/* Named for what is now counted: sessions, not agents. */}
+{/* Named for what is now counted: sessions, not agents. */}
           <span className="stat-label">Active sessions:</span>
           <span className="stat-value" data-testid="monitoring-active-sessions">
             {sessionCounts ? sessionCounts.activeSessions : '—'}

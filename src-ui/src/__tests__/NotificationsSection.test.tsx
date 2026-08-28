@@ -3,7 +3,7 @@
  *
  * `NotificationsSection` (`views/settings/VoiceFeaturesSection.tsx`) — the
  * "View the notifications inbox" cross-link this section gained in
- * station#settings-revamp slice 5. Only `NotificationsSection`'s own
+ * archive#settings-revamp. Only `NotificationsSection`'s own
  * dependencies are mocked; `pushNotificationsEnabled: false` keeps
  * `NotificationSubscribeButton` (a sibling export's concern) unmounted so
  * this file never needs to also stand up `usePushNotifications`.
@@ -38,8 +38,8 @@ const passthroughGuard = (callback: () => void) => callback();
 
 /**
  * `SettingsView.tsx`'s real shape: `useUnsavedGuard(hasChanges)`'s `guard`
- * passed straight into `NotificationsSection` — station#settings-revamp
- * slice 5 review finding HIGH 1.
+ * passed straight into `NotificationsSection` — archive#settings-revamp
+ * 1.
  */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
   const { guard, DiscardModal } = useUnsavedGuard(dirty);

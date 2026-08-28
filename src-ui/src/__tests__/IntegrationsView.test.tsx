@@ -49,7 +49,7 @@ function renderView() {
 }
 
 /**
- * station#771 regression. `IntegrationsView`'s `SplitPaneLayout` only wired
+ * archive#771 regression. `IntegrationsView`'s `SplitPaneLayout` only wired
  * `loading={isLoading}`, not `error`/`onRetry` — a settled read failure
  * rendered the same "No tool servers yet" empty state as a host with none
  * configured, with no error and no retry.

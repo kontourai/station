@@ -4,7 +4,7 @@ import { glob } from 'glob';
 import { describe, expect, it } from 'vitest';
 
 /**
- * station#3306: page-layout.css reaches the bundle only through side-effect
+ * archive#3306: page-layout.css reaches the bundle only through side-effect
  * imports, so a module that applies the `page` shell classes without importing
  * the stylesheet itself renders styled or unstyled depending on which module
  * happened to load first (FeaturePreviewsView and DeveloperView both shipped
@@ -45,16 +45,16 @@ function appliesPageRootClass(source: string): boolean {
  * number here in the same change that adds or removes a page-rooted module.
  */
 const SCAN_ROOTS = [
-  // Down from 18/2/1 in the station UX audit's C1 lane: the page root moved
-  // out of the views into `components/page-frame`, which is loaded by the
-  // shell and imports its own stylesheet, so almost nothing applies a page
-  // ROOT class any more. Two are the surfaces that keep their own
-  // full-viewport shell (a task workspace, the project editor); the third is
-  // the connections hub's Computers section (#3733), which arrived
-  // page-rooted without updating this count — the import RULE this guard
-  // exists for is satisfied there (it imports `page-layout.css` itself), so
-  // this is the bookkeeping that change skipped, not a relaxed rule. Whether
-  // a hub SECTION should own a page root at all is a question for that lane.
+ // Down from 18/2/1 in the station 's lane: the page root moved
+// out of the views into `components/page-frame`, which is loaded by the
+// shell and imports its own stylesheet, so almost nothing applies a page
+// ROOT class any more. Two are the surfaces that keep their own
+// full-viewport shell (a task workspace, the project editor); the third is
+ // the connections hub's Computers section (archive#3733), which arrived
+// page-rooted without updating this count — the import RULE this guard
+// exists for is satisfied there (it imports `page-layout.css` itself), so
+// this is the bookkeeping that change skipped, not a relaxed rule. Whether
+// a hub SECTION should own a page root at all is a question for that lane.
   { dir: 'views', pageRootedCount: 3 },
   { dir: 'pages', pageRootedCount: 0 },
   { dir: 'components', pageRootedCount: 0 },
@@ -75,9 +75,9 @@ const PAGE_ROOTED_FIXTURES = [
 const NOT_PAGE_ROOTED_FIXTURES = [
   'components/PageRow.tsx',
   'views/settings/FeaturePreviewsSection.tsx',
-  // All three applied a page root class before the frame took the page root
-  // over. Keeping them here is what proves the classifier reads the CURRENT
-  // markup rather than a remembered answer.
+// All three applied a page root class before the frame took the page root
+// over. Keeping them here is what proves the classifier reads the CURRENT
+// markup rather than a remembered answer.
   'views/SettingsView.tsx',
   'pages/ProfilePage.tsx',
   'components/registry/RegistryCatalog.tsx',
@@ -103,8 +103,8 @@ describe('page-layout.css import guard (station#3306)', () => {
   const allFiles = scanned.flatMap((root) => root.files);
 
   it('scans a real corpus (scope honesty)', () => {
-    // If a glob root ever drifts, every assertion below would pass over an
-    // empty list.
+// If a glob root ever drifts, every assertion below would pass over an
+// empty list.
     for (const fixture of [
       ...PAGE_ROOTED_FIXTURES,
       ...NOT_PAGE_ROOTED_FIXTURES,
@@ -117,8 +117,8 @@ describe('page-layout.css import guard (station#3306)', () => {
   });
 
   it('classifies the page-rooted modules, and only those', () => {
-    // The import rule below is vacuous unless this classification works, and
-    // a broken classifier is silent: it just stops finding anything to check.
+// The import rule below is vacuous unless this classification works, and
+// a broken classifier is silent: it just stops finding anything to check.
     for (const fixture of PAGE_ROOTED_FIXTURES) {
       expect(
         appliesPageRootClass(read(fixture)),
@@ -164,9 +164,9 @@ describe('page-layout.css import guard (station#3306)', () => {
 });
 
 /**
- * station#4463 slice 2 review LOW: `components/Tabs.tsx` and
+* archive#4463: `components/Tabs.tsx` and
  * `components/SectionNav.tsx` now self-import `page-layout.css` (so every
- * ADOPTER is covered automatically, the structural fix for station#3306's
+ * ADOPTER is covered automatically, the structural fix for archive#3306's
  * failure mode), but a module rendering the raw `page__tab`/`section-nav`
  * class TOKENS directly — bypassing the shared components — could still
  * regress into exactly the load-order bug those components exist to
@@ -224,14 +224,14 @@ describe('tab/section-nav class-token import guard (station#4463 slice 2)', () =
       classified += 1;
       if (!reachesPageLayoutCss(file, source)) missing.push(file);
     }
-    // Scope honesty for the classifier itself: the corpus assertion alone
-    // passes happily when usesTabToken stops classifying ANYTHING (the same
-    // vacuity the pageRootedCount guard above exists to prevent). Five files
-    // carry the literal class tokens today (the two owning components plus
-    // the hosts that render raw token strings — most hosts reach the CSS by
-    // importing Tabs/SectionNav instead). The floor reds if a rename strips
-    // the tokens from source and CSS together without updating this guard's
-    // vocabulary.
+// Scope honesty for the classifier itself: the corpus assertion alone
+// passes happily when usesTabToken stops classifying ANYTHING (the same
+// vacuity the pageRootedCount guard above exists to prevent). Five files
+// carry the literal class tokens today (the two owning components plus
+// the hosts that render raw token strings — most hosts reach the CSS by
+// importing Tabs/SectionNav instead). The floor reds if a rename strips
+// the tokens from source and CSS together without updating this guard's
+// vocabulary.
     expect(classified).toBeGreaterThanOrEqual(5);
     expect(
       missing,

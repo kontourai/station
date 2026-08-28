@@ -14,7 +14,7 @@ type Listener = (event: ServerEvent) => void;
 
 /**
  * How long one listener's repeated failure stays quiet before it is warned
- * about again (station#1284, round-3 review MEDIUM 4). Long enough that a
+ * about again (archive#1284, round-3 review MEDIUM 4). Long enough that a
  * per-token failure on `content.text-delta` cannot flood the console;
  * short enough that a persistent problem keeps announcing itself.
  */
@@ -53,7 +53,7 @@ export class EventBus {
   }
 
   /**
-   * A listener that throws KEEPS ITS SUBSCRIPTION (station#1284, HIGH 3).
+   * A listener that throws KEEPS ITS SUBSCRIPTION (archive#1284, HIGH 3).
    *
    * This bus previously deleted the throwing listener. Every subscriber
    * here is a boot-wired infrastructure singleton — the SSE fan-out, the

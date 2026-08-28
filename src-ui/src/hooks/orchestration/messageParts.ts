@@ -32,7 +32,7 @@ export function createAssistantStreamingMessage(): OrchestrationStreamingMessage
  *
  * That divergence was invisible while the transcript hoisted every work part
  * into a separate fold above the answer; rendering activity inline in reading
- * order (station#3690) is what makes the live array's order load-bearing.
+ * order (archive#3690) is what makes the live array's order load-bearing.
  *
  * Every consumer already filters-and-joins these parts rather than reading a
  * single one (`buildAssistantTurnContent`, `ChatDockBody`,

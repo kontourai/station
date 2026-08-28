@@ -5,7 +5,7 @@ import { AGENT_WORKFLOWS_CLI_COMMAND } from '../views/agent-editor/agentWorkflow
 
 /**
  * The Tools tab tells operators that agent workflow files are CLI-managed
- * (station#2693). Pin that claim to the CLI's own help text so a rename of the
+ * (archive#2693). Pin that claim to the CLI's own help text so a rename of the
  * command cannot leave the editor advertising something that does not exist.
  */
 describe('agent editor workflows note', () => {

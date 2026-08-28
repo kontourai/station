@@ -26,7 +26,7 @@ describe('createRuntimeSelfIntegration', () => {
         transport: 'stdio',
       }),
     );
-    // The #3063 invariant: no field of the persisted shape may derive from
+    // The archive#3063 invariant: no field of the persisted shape may derive from
     // the writing instance (dist path, bound port). Two co-homed servers
     // must produce byte-identical files or the cross-process reload
     // ping-pong returns.
@@ -55,7 +55,7 @@ describe('createRuntimeSelfIntegration', () => {
 });
 
 /**
- * station#1547 AC3. This block is the guard, not a description of the feature.
+ * archive#1547 AC3. This block is the guard, not a description of the feature.
  */
 describe('createRuntimeDocsIntegration', () => {
   const ENV_GUARD_FAILURE = [
@@ -89,7 +89,7 @@ describe('createRuntimeDocsIntegration', () => {
         transport: 'stdio',
       }),
     );
-    // station#3063: like station-control, the persisted shape carries no
+    // archive#3063: like station-control, the persisted shape carries no
     // instance identity — the dist path lives in the load-time overlay.
     expect(docsIntegration).not.toHaveProperty('command');
     expect(docsIntegration).not.toHaveProperty('args');
@@ -112,7 +112,7 @@ describe('createRuntimeDocsIntegration', () => {
 
   test('AC3 GUARD: station-docs declares no env — fails if anything ever adds one', () => {
     // Asserted against the real factory output AND the real load-time
-    // overlay (station#3063 moved command/args there), never a hand-copied
+    // overlay (archive#3063 moved command/args there), never a hand-copied
     // literal: a duplicated expectation can be updated in lockstep with the
     // defect it is supposed to catch, which would make this guard
     // decorative. The LOADED shape is what session-agent-resolution.ts
@@ -196,7 +196,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
   test('creates the integration, default agent, and runtime state', async () => {
     const configLoader = {
       saveIntegration: vi.fn(async () => {}),
-      // station#3063: a home with NO built-in files yet — bootstrap
+      // archive#3063: a home with NO built-in files yet — bootstrap
       // self-heals them (the only case in which a reload may write).
       hasIntegration: vi.fn(async () => false),
       getProjectHomeDir: vi.fn(() => '/tmp/project'),
@@ -245,7 +245,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
         id: 'station-control',
       }),
     );
-    // station#1547: the docs server is persisted alongside station-control, so
+    // archive#1547: the docs server is persisted alongside station-control, so
     // `resolveToolServer('station-docs')` can find a ToolDef for it.
     expect(configLoader.saveIntegration).toHaveBeenCalledWith(
       'station-docs',
@@ -258,13 +258,13 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       'default',
       expect.objectContaining({
         tools: expect.objectContaining({
-          // station#1547: authored on the built-in agent's spec — an id that is
+          // archive#1547: authored on the built-in agent's spec — an id that is
           // not authored here is never delivered to any engine.
           mcpServers: ['station-control', 'station-docs'],
         }),
       }),
     );
-    // #914: the agent must be built with the very adapter registered under its
+    // archive#914: the agent must be built with the very adapter registered under its
     // slug. A separate instance meant the agent wrote to the framework's own
     // in-process store while every read path went to the registered one — and
     // `default` is not in `agentSpecs`, so nothing else persists its turns.
@@ -277,7 +277,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
         name: 'default',
       }),
     );
-    // station#1834: the temp default agent must carry the REAL tool gate,
+    // archive#1834: the temp default agent must carry the REAL tool gate,
     // registered under its slug so chat streams can attach approval
     // requesters. Prove the wired hooks enforce the spec's autoApprove:
     // the read-only grant allows, anything else fails closed (unattended).
@@ -487,7 +487,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     expect(scenario.createModel).not.toHaveBeenCalled();
     expect(scenario.framework.createTempAgent).not.toHaveBeenCalled();
     // Stale prior-Station-engine state is cleared, never left dangling —
-    // including the tool-gate hooks (station#1834): a stale entry would let
+    // including the tool-gate hooks (archive#1834): a stale entry would let
     // chat streams register requesters against an instance no agent reads.
     expect(scenario.activeAgents.has('default')).toBe(false);
     expect(scenario.agentTools.has('default')).toBe(false);
@@ -540,11 +540,11 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
   });
 
   test('station#1547: the docs integration is self-healed on the external-engine path too — the early return happens AFTER the materialization', async () => {
-    // This is the path that matters most for #1547: an externally-bound
+    // This is the path that matters most for archive#1547: an externally-bound
     // built-in agent never reaches `defaultSpec`, so if the materialization
     // sat below the early return a missing docs ToolDef would stay
     // unresolvable for exactly the engines the feature exists to serve.
-    // station#3063: the write is existence-gated now, so this scenario is a
+    // archive#3063: the write is existence-gated now, so this scenario is a
     // home MISSING the file (hasIntegration → false).
     const saveIntegration = vi.fn(async () => {});
     const scenario = bindingScenario({

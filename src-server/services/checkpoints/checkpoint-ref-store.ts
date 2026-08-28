@@ -12,7 +12,7 @@ import {
 import { execGit, spawnGit } from '../../utils/git-exec.js';
 
 /**
- * Workspace checkpoint ref store (station#2802, slice 1).
+ * Workspace checkpoint ref store (archive#2802, slice 1).
  *
  * A checkpoint is a commit object snapshotting a repository's ENTIRE working
  * tree (tracked modifications plus untracked-but-not-ignored files) at a
@@ -151,7 +151,7 @@ async function resolveCommonGitDir(
   repoRoot: string,
   timeoutMs: number = CHECKPOINT_GIT_TIMEOUT_MS,
 ): Promise<string> {
-  // station#2802 M2: this sits on capture's post-ref-write cleanup path and
+  // archive#2802 M2: this sits on capture's post-ref-write cleanup path and
   // on every read path, so it must be bounded like its siblings. The
   // conditions that make a capture fail after the ref write (a wedged clean
   // filter, a hung network mount, a held index lock) are the same ones that
@@ -625,7 +625,7 @@ export class CheckpointRefStore {
       // pre-seeded `missing` verdicts in place; overwriting them below would
       // report `object_pruned` — a definite claim about git state derived
       // from having observed nothing, which is the exact defect this
-      // annotation exists to prevent (station#2802 M3).
+      // annotation exists to prevent (archive#2802 M3).
       if (stdout === null) return verdicts;
       const existing = new Set(
         stdout

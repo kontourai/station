@@ -71,7 +71,7 @@ export function useSessionManagementViewModel(
 ) {
   const inventory = useConversationInventoryQuery({ enabled });
 
-  // Combine and sort all conversations
+// Combine and sort all conversations
   const conversations = useMemo(() => {
     const allConversations: EnrichedConversation[] = [];
 
@@ -79,9 +79,9 @@ export function useSessionManagementViewModel(
       const agent = agents.find(
         (candidate) => candidate.slug === conv.agentSlug,
       );
-      // A conversation can outlive a removed/temporarily unavailable Agent.
-      // Keep it visible and honest rather than losing history until the
-      // catalogue reloads.
+// A conversation can outlive a removed/temporarily unavailable Agent.
+// Keep it visible and honest rather than losing history until the
+// catalogue reloads.
       const resolvedAgent = agent ?? {
         slug: conv.agentSlug,
         name: conv.agentSlug,
@@ -101,12 +101,12 @@ export function useSessionManagementViewModel(
         agentContext = resolvedAgent.plugin;
         agentLabel = resolvedAgent.name;
       }
-      // MED-2/round-3: every resolved agent gets an engine chip, not just
-      // ACP ones — this surface used to render a literal "ACP" pill for
-      // the acp branch and no chip at all for Station/plugin-engine
-      // conversations; agentEngineDescriptor already returns null for an
-      // unresolvable engine, so an unresolved agent stays chipless the
-      // same way every other chip surface honors LOW-1.
+ // /: every resolved agent gets an engine chip, not just
+// ACP ones — this surface used to render a literal "ACP" pill for
+// the acp branch and no chip at all for Station/plugin-engine
+// conversations; agentEngineDescriptor already returns null for an
+// unresolvable engine, so an unresolved agent stays chipless the
+// same way every other chip surface honors.
       const agentEngine: EngineDescriptor | null =
         agentEngineDescriptor(resolvedAgent);
 
@@ -118,7 +118,7 @@ export function useSessionManagementViewModel(
         agentContext,
         agentEngine,
         agentIcon: resolvedAgent.icon,
-        // Normalize title — some conversations store message objects instead of strings
+// Normalize title — some conversations store message objects instead of strings
         title:
           typeof conv.title === 'string'
             ? conv.title
@@ -132,8 +132,8 @@ export function useSessionManagementViewModel(
       });
     }
 
-    // Every history source reaches this client projection. Keep its ordering
-    // deterministic even if a provider supplies an invalid or tied timestamp.
+// Every history source reaches this client projection. Keep its ordering
+// deterministic even if a provider supplies an invalid or tied timestamp.
     allConversations.sort(compareConversationRecency);
 
     return allConversations;

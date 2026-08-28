@@ -215,7 +215,7 @@ function parseLockRecord(value: unknown): EnvironmentSecurityLockRecord {
 
 /**
  * The exact `/api/pairing` leaves a promoted device may act on
- * (station#1887): read the pending-request list, and confirm or deny ONE
+ * (archive#1887): read the pending-request list, and confirm or deny ONE
  * pending request.
  *
  * Matched positively and exactly — no prefix, no wildcard. `/api/pairing` is
@@ -372,7 +372,7 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService?.credentialLocality(candidate);
   }
 
-  /** Pass-through to the pairing store's mint-kind lookup (station#3677 PR 3). */
+  /** Pass-through to the pairing store's mint-kind lookup (archive#3677 PR 3). */
   credentialMintKind(
     candidate: string,
   ): 'local-grant' | 'ui-bootstrap' | undefined {
@@ -381,11 +381,11 @@ export class EnvironmentSecurityService {
 
   /**
    * The space-delimited {@link PairingScope} string granted to a credential
-   * (station#1098), or `undefined` when the credential is invalid/revoked.
+   * (archive#1098), or `undefined` when the credential is invalid/revoked.
    * The operator bootstrap credential — which predates scoping — resolves to
    * {@link DEFAULT_GRANT_PAIRING_SCOPE}, the frozen historical four-token
    * string; a paired device resolves to whatever scope its grant was created
-   * with. Note since station#1398 slice 2 that the default grant is no longer
+   * with. Note since archive#1398 that the default grant is no longer
    * the whole vocabulary: the bootstrap credential deliberately does NOT
    * carry `inference:invoke`, because widening it on a build upgrade would
    * grant fleet invocation to a credential nobody re-consented for. Reaching
@@ -536,7 +536,7 @@ export class EnvironmentSecurityService {
   ): boolean {
     if (this.verifyOperatorCredential(candidate)) return true;
     if (request.path.startsWith('/api/pairing')) {
-      // station#1887: the family stays operator-only, with ONE narrow
+      // archive#1887: the family stays operator-only, with ONE narrow
       // exception. A device the operator explicitly promoted (scope carries
       // `access:approve`) may act on PENDING REQUESTS — list, confirm, deny —
       // and nothing else here: not creating offers, not revoking devices, not
@@ -594,7 +594,7 @@ export class EnvironmentSecurityService {
       // Additive: every field above is byte-identical to what pre-contract
       // clients already parse, so adding this cannot change their behavior.
       compatibility: { ...STATION_COMPATIBILITY },
-      // Additive (station#1095): same guarantee as `compatibility` above.
+      // Additive (archive#1095): same guarantee as `compatibility` above.
       // STATION_CAPABILITY_FLAGS is the single source of truth — add a flag
       // there, not here.
       capabilities: { ...STATION_CAPABILITY_FLAGS },

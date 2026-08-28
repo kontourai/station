@@ -15,13 +15,13 @@ interface ACPProbeLike {
 }
 
 /**
- * station#1908: the periodic sweep's default staleness gate. Before this,
+ * archive#1908: the periodic sweep's default staleness gate. Before this,
  * `runACPManagerProbes` re-probed — i.e. re-SPAWNED the connected engine
  * binary — for every registered connection on every single tick of
  * `ACPManager`'s 60-second timer, forever, with no regard for how recently
  * that connection had already been observed. Measured on the brian-media
  * dogfood host: ~2 spawns/minute of OpenCode's Bun-embedded binary, each
- * leaking an unreclaimed extracted `.so` (station#1908).
+ * leaking an unreclaimed extracted `.so` (archive#1908).
  *
  * A connection's live modes/config-options/capabilities genuinely can only
  * be learned by a real handshake (there is no cheaper capability record to
@@ -60,7 +60,7 @@ export async function runACPManagerProbes({
   if (dueProbes.length === 0) return;
 
   const before = getAvailableConnectionCount();
-  // station#3404: the sweep is the canonical `'background'` path — no HTTP
+  // archive#3404: the sweep is the canonical `'background'` path — no HTTP
   // request is awaiting it and it holds no configuration-mutation lock — so
   // it is where a connection that has never handshaked is allowed the cold
   // first-contact budget. It is also the path that ultimately establishes
@@ -96,7 +96,7 @@ export async function addACPManagerConnection({
   ) => ACPProbeLike;
   removeConnection: (id: string) => Promise<void>;
   /**
-   * station#3404: which path is adding this connection. `'request'` (the
+   * archive#3404: which path is adding this connection. `'request'` (the
    * default) for the connection routes and a registry install's mode
    * refresh, which an HTTP client is awaiting; `'background'` only for
    * boot-time `startAll`, where nothing is. Note this function REPLACES any
@@ -160,9 +160,9 @@ export async function reconnectACPManagerConnection({
   // this is the path a user takes right after installing the engine that was
   // missing when Station first probed it.
   //
-  // station#3404, said plainly rather than left to be discovered: on THAT
+  // archive#3404, said plainly rather than left to be discovered: on THAT
   // path — engine just installed, therefore stone cold — a Reconnect that
-  // starts its OWN probe cannot succeed. The engine #3404 measured took
+  // starts its OWN probe cannot succeed. The engine archive#3404 measured took
   // 40,001ms to answer `initialize` cold, and 10,000ms is all this path asks
   // to spend. No intermediate budget fixes it either: anything large enough
   // to cover a 40s cold start blows the 20s desktop-broker header bound and
@@ -204,7 +204,7 @@ export async function shutdownACPManager({
 
   // VESTIGIAL FOR THE REAL PROBE, and named as such rather than left to read
   // as live defence. `ACPProbe.dispose()` has no rejecting path left after
-  // station#3404: its first `retryPendingCleanup` is inside `try/catch {}`,
+  // archive#3404: its first `retryPendingCleanup` is inside `try/catch {}`,
   // the `probeFlight` join is `.catch(() => undefined)`, and
   // `retryPendingCleanup` itself delegates to `destroyProcessWithEscalation`,
   // which absorbs every rejection (see its own docblock). So against the only
@@ -218,7 +218,7 @@ export async function shutdownACPManager({
   // catch buys is the LOOP: without it the first rejection leaves every later
   // probe undisposed, which is the opposite of what a shutdown that exists to
   // reap engines should do. Retaining the failed probe in the map is
-  // deliberate for the same reason (station#3422's "keep a survivor" rule).
+  // deliberate for the same reason (archive#3422's "keep a survivor" rule).
   // If `ACPProbeLike` is ever narrowed to a non-throwing `dispose`, delete
   // this whole block with it.
   const failures: unknown[] = [];

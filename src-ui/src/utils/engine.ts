@@ -3,7 +3,7 @@ import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 /**
  * What executes an agent (docs/glossary.md — "the one question"): a display
  * name plus an optional distinguishing model. `model` is populated only for
- * ACP-connected agents (§A2 in the #894 plan) — it's the live current model,
+ * ACP-connected agents (§A2 in the archive#894 plan) — it's the live current model,
  * and precisely the fact that disambiguates two identically-named engine
  * connections (e.g. two "OpenCode" entries, one native, one ACP-connected on
  * a different model). Native rows already surface their model in the
@@ -33,12 +33,12 @@ export function agentEngineDescriptor(agent: {
 }): EngineDescriptor | null {
   if (agent.engineConnectionType === 'acp') {
     const resolvedName = agent.connectionName ?? agent.name ?? 'Custom engine';
-    // acp-manager-view.ts falls back the live-model field to the
-    // connection's own name/id when no current model has been reported yet
-    // (`model: modelConfig?.currentValue || config?.name || id`) — that
-    // fallback must never render as a self-referential "Kiro · Kiro" chip
-    // (MED-1), so suppress a model that's falsy or duplicates the name we
-    // just resolved or the raw connection id.
+// acp-manager-view.ts falls back the live-model field to the
+// connection's own name/id when no current model has been reported yet
+// (`model: modelConfig?.currentValue || config?.name || id`) — that
+// fallback must never render as a self-referential "Kiro · Kiro" chip
+ //so suppress a model that's falsy or duplicates the name we
+// just resolved or the raw connection id.
     const connectionId = agent.execution?.agentConnectionId;
     const isRedundantModel =
       !agent.model ||

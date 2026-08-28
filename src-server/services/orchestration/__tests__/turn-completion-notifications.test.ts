@@ -43,7 +43,7 @@ describe('resolveTurnCompletionOutcome', () => {
     expect(resolveTurnCompletionOutcome({ method: 'turn.aborted' })).toBe(
       'failed',
     );
-    // station#3442: this is the ONLY event a genuine stream/runtime failure
+    // archive#3442: this is the ONLY event a genuine stream/runtime failure
     // publishes while a turnId is known (bedrock/ollama's
     // `publishTurnFailure`, codex-adapter-notifications' `'error'` case and
     // its `turn.status === 'failed'` branch) — without this arm a failed
@@ -352,9 +352,9 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     expect(turnIds).toEqual(['turn-1', 'turn-2']);
   });
 
-  // station#3573: the stale-terminal companion to #3581/#3572. A codex
+  // archive#3573: the stale-terminal companion to archive#3581/#3572. A codex
   // session runs turn-1, then turn-2; turn-2 fails for real; turn-1's late
-  // `turn/completed` (codex's own protocol timing, #3572) then arrives naming
+  // `turn/completed` (codex's own protocol timing, archive#3572) then arrives naming
   // a turn the session has already moved past. Before this fix,
   // `resolveTurnCompletionOutcome` classified purely on method with no
   // identity check at all, so this listener fired a "Your agent finished"

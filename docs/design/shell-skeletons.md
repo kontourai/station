@@ -1,8 +1,8 @@
-# Design: Shell skeletons (#193 shell convergence)
+# Design: Shell skeletons (archive#193 shell convergence)
 
-> Status: **rule recorded, ratchet enforced** (Wave 1 of #242, opening #193's six-view
+> Status: **rule recorded, ratchet enforced** (Wave 1 of archive#242, opening archive#193's six-view
 > shell-convergence effort). This doc names the two canonical view skeletons, gives a usable
-> decision rule for choosing between them, maps all six #193 views to their target skeleton, and
+> decision rule for choosing between them, maps all six archive#193 views to their target skeleton, and
 > records the enforcement mechanism (`shell-conformance` ratchet) plus one explicit,
 > evidence-backed deviation from the original steal-list hypothesis (Knowledge).
 >
@@ -13,7 +13,7 @@
 
 ## 1. The two canonical skeletons
 
-Station's view shells converge on exactly two skeleton classes. Every #193 view targets one of
+Station's view shells converge on exactly two skeleton classes. Every archive#193 view targets one of
 these two — there is no third shape.
 
 ### 1.1 `SplitPaneLayout` — list + detail
@@ -26,7 +26,7 @@ these two — there is no third shape.
   and `src-ui/src/views/AgentConnectionView.tsx` render `<SplitPaneLayout>` directly as their
   list+detail shell. The former tool-management view was deleted and has no live UI consumer;
   its server routes remain live (no CLI equivalent exists for agent-tools
-  management — see station#2693).
+  management — see archive#2693).
 - **Also present, nested:** `src-ui/src/views/SkillsView.tsx` renders a `<SplitPaneLayout>` for
   its skills list *inside* an outer `.page--full` root wrapper (see §1.2) — the two skeletons are
   not mutually exclusive at different DOM levels; a page-layout root can host a `SplitPaneLayout`
@@ -52,7 +52,7 @@ these two — there is no third shape.
     its returned JSX) — this is the proven, shipping `DetailHeader` pattern the Knowledge port
     below reuses. Its own **root wrapper** is still the bespoke `<div className="project-settings">`
     (verified), not yet the literal `page` class — ProjectSettingsView.tsx is itself one of the
-    five views still tracked by the shell-conformance ratchet (§4) pending its own future #193
+    five views still tracked by the shell-conformance ratchet (§4) pending its own future archive#193
     port (steal-list order item 4). It is cited here only as the `DetailHeader`-adoption
     exemplar, not as an already-fully-converged root.
 
@@ -70,7 +70,7 @@ Ask one question about the view's **primary content**, not its settings-vs-non-s
   see its detail" → `page-layout.css` + `DetailHeader`. Any internal grouping is sections, tabs,
   or cards, not a navigable list.
 
-### 2.1 Heading ownership — who names the screen (#2931)
+### 2.1 Heading ownership — who names the screen (archive#2931)
 
 §2 says which **skeleton** a view gets. It did not say who owns the **heading** once the view is
 inside one, so every view decided independently and the same screen could print a collection name,
@@ -97,7 +97,7 @@ Consequences, in the order a view meets them:
   eyebrow at all) or several (a subpage, which keeps only its ancestor(s)). There is no second
   heading below the framed eyebrow for a restated crumb to precede, so keeping it is pure
   duplication — the self-referential `SCHEDULE`-above-**Schedule** pattern the 2026-08-26 shell
-  audit retired (station#4463 slice 1). A KEPT trailing crumb (one that does not restate the
+  audit retired (archive#4463 slice 1). A KEPT trailing crumb (one that does not restate the
   title) is still not assumed to be a real route, framed or not: only earlier, non-terminal
   segments auto-link.
 - **Inside a detail pane, use `DetailHeader` for the item title.** It renders one level down
@@ -116,7 +116,7 @@ cannot see it. Ownership is already correct there (the detail pane names the ite
 names the collection); only the level is inconsistent with the rule above. It is a follow-up, not a
 regression.
 
-The four views station#2931 named as suspected double headers — `SkillsView`,
+The four views archive#2931 named as suspected double headers — `SkillsView`,
 `ProviderSettingsView`, `ReviewQueueView`, `AgentConnectionView` — were captured as rendered before
 any change was made, and all four already satisfied the ownership rule: `SplitPaneLayout`'s title
 renders **inside the left list pane**, not as a page banner, so the shell title (0.92rem) and the
@@ -144,7 +144,7 @@ The rule now:
   right-aligned actions, at one x-origin (264px at 1440) and one top padding (2rem), stacking on
   mobile. The x-origin, top padding, and title/subtitle sizing are the treatment Schedule already
   had — the audit named it the canonical instance for the header's SHAPE. Schedule is no longer a
-  canonical instance of the EYEBROW specifically: station#4463 slice 1 retired its self-referential
+  canonical instance of the EYEBROW specifically: archive#4463 slice 1 retired its self-referential
   `SCHEDULE`-above-**Schedule** eyebrow (Schedule is top-level, so it now renders none). For a
   current eyebrow example, see a subpage instead — Connections → Models renders eyebrow
   `Connections`, title `Models`. That eyebrow is deliberately **static text**: an eyebrow ancestor
@@ -182,7 +182,7 @@ The rule now:
   hidden subtree — they are in the header. So the frame keys the action cell itself on the route
   too, and the cell leaves with the route whose actions were portaled into it.
 - **The body holds the frame's shape while the chunk is in flight.** The header names the
-  arriving route from ~8 ms; until #3660 the body under it was one generic six-row `SkeletonList`
+  arriving route from ~8 ms; until archive#3660 the body under it was one generic six-row `SkeletonList`
   for every route, so a split-pane destination announced itself as a full-width list and then
   jumped to a 280 px rail plus a detail pane. `app-shell/RoutePendingSkeleton.tsx` reads the shape
   off the destination's own `PageFrameSpec` — the SAME object `AppViewContent` hands `PageFrame`,
@@ -201,7 +201,7 @@ The rule now:
   boundary's previous children with `display: none` — when an **urgent** update suspends, and
   Station's navigation is urgent (`App.tsx` calls a plain `setCurrentView` for clicks and
   `popstate` alike; nothing wraps navigation in `startTransition`). Under a transition React keeps
-  the departing content revealed and renders no fallback, which is the #3660 symptom itself; both
+  the departing content revealed and renders no fallback, which is the archive#3660 symptom itself; both
   halves are pinned by test. And the fallback renders if and only if the outlet is suspended, so a
   warm transition shows no placeholder at all.
 - **A page action goes in the header's action slot**, via `<PageFrameActions>` or
@@ -223,7 +223,7 @@ name rather than a heading for a route, and the surfaces that own their whole vi
 `.page`/`.page--narrow`/`.page--full` remain only for those last self-shelled surfaces;
 `page-layout.css` keeps the section/card/tab/row families every view still uses.
 
-## 3. Six-view target mapping (#193)
+## 3. Six-view target mapping (archive#193)
 
 Root wrapper classes below are verified directly against the current tree (byte counts via
 `wc -c`, classes via direct file inspection) as of this doc's writing.
@@ -231,7 +231,7 @@ Root wrapper classes below are verified directly against the current tree (byte 
 | # | View | Current root wrapper (verified) | Target skeleton | Status |
 |---|---|---|---|---|
 | 1 | `src-ui/src/views/KnowledgeConnectionView.tsx` | `knowledge-view` (5,375-byte CSS) | **page-layout single-page** (`.page`/`.page--narrow` + `DetailHeader`) | Ports **this PR** — deviation from the steal-list's `SplitPaneLayout` hypothesis, see §3.1 |
-| 2 | Deleted tool-management view | No live UI surface | SplitPaneLayout | Historical port completed in #245; server routes and CLI remain live without a UI consumer |
+| 2 | Deleted tool-management view | No live UI surface | SplitPaneLayout | Historical port completed in archive#245; server routes and CLI remain live without a UI consumer |
 | 3 | Deleted workflow-management view | No live UI surface | SplitPaneLayout | Deleted; server routes and CLI remain live without a UI consumer |
 | 4 | `src-ui/src/views/ProjectSettingsView.tsx` | `project-settings` | page-layout, sectioned | Remaining — tracked by the ratchet ceiling |
 | 5 | `src-ui/src/views/ConnectionsHub.tsx` | `connections-hub` (9,160-byte CSS + 15,970-byte TSX) | page-layout, hub | Remaining — tracked by the ratchet ceiling |
@@ -256,7 +256,7 @@ Knowledge, reasoning from a surveyed knowledge-browser tree+reader pattern. This
   is judged against (before/after screenshots must match).
 - It would also require touching `src-ui/src/views/ConnectionsHub.tsx` (the list this view is
   reached from) to wire a new selectable-item affordance — `ConnectionsHub.tsx` is explicitly out
-  of scope for this PR (its own separate #193 port, mapping row 5 above).
+  of scope for this PR (its own separate archive#193 port, mapping row 5 above).
 
 This is recorded here as an **explicit, evidence-backed deviation**, not a silent scope change —
 flag it at PR review. If a reviewer disagrees, the fallback is a follow-up slice that revisits
@@ -295,7 +295,7 @@ is wired into `verify:static` immediately after `state-primitives:ratchet`.
   the header inside it, and because a fixed list cannot see a seventh view — a gap the script's own
   header disclosed. §2.2 moved the header out of the views, which is what makes the wider,
   simpler signal possible.
-- **Second counted signal — `stackedHeadingCeiling` (#2931):** over every git-tracked
+- **Second counted signal — `stackedHeadingCeiling` (archive#2931):** over every git-tracked
   `src-ui/src/**.tsx`, each file that renders `<DetailHeader>` or `<SplitPaneLayout>` (i.e. something
   in it already owns the page-level title for its screen) contributes one to the count for every
   page-level heading element (`<h1>`/`<h2>`) the file writes **itself**. Recorded at **0**, down from
@@ -303,7 +303,7 @@ is wired into `verify:static` immediately after `state-primitives:ratchet`.
   `TaskWorkspaceView.tsx` (1 section heading) moved to `<h3>` with their CSS selectors, so computed
   styles are unchanged. Scope honesty is asserted before any count is reported
   (`assertScopeIsHonest`, with both of those files pinned so the roots cannot be narrowed to hide
-  them). `bespokeShellCeiling` is deliberately unchanged at 0 — #2931 ported no view onto a new
+  them). `bespokeShellCeiling` is deliberately unchanged at 0 — archive#2931 ported no view onto a new
   skeleton, it only fixed heading levels inside skeletons already adopted. The counter is textual
   and therefore cannot see a heading reached through an indirection (a computed tag, or a heading in
   a child component that renders neither canonical header) — the `SessionDetailHeader.tsx` instance

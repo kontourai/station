@@ -89,7 +89,7 @@ export interface CooperativeStopDeps {
   /** Called, not captured: reads the LIVE `options.cooperativeStopBudgetMs`. */
   configuredBudgetMs: () => number | undefined;
   /**
-   * The projection read (station#3473), with the optional store and the
+   * The projection read (archive#3473), with the optional store and the
    * payload map absorbed at the ctor seam.
    */
   listSessionProjectionEvents: (threadId: string) => CanonicalRuntimeEvent[];
@@ -109,8 +109,8 @@ export interface CooperativeStopDeps {
    */
   loadedOrPersistedSession: (threadId: string) => ProviderSession | undefined;
   /**
-   * The DURABLE row alone (station#3493 residual 3): the `error` marker a
-   * failed start writes (station#1090) lands durably first, and the
+   * The DURABLE row alone (archive#3493 residual 3): the `error` marker a
+   * failed start writes (archive#1090) lands durably first, and the
    * in-memory row can lag it — a boot snapshot still saying `running`
    * shadows a durable `error` through the `??` above. The status
    * preservation in {@link persistResumableStoppedSession} must therefore
@@ -134,7 +134,7 @@ export interface CooperativeStopDeps {
 }
 
 /**
- * Cooperative stop & deferred interrupt (epic #4024 slice 10, #4204): the
+ * Cooperative stop & deferred interrupt (epic archive#4024, archive#4204): the
  * C4 cluster from the seam map — the FIRST extracted cluster owning live
  * mutable per-thread state: the one-stop-protocol-per-thread map, the
  * pending-interrupt map, and their timers all live here, with every write
@@ -144,7 +144,7 @@ export interface CooperativeStopDeps {
  * `publishCanonicalEvent` BEFORE the quarantine gate (T5) — pinned by a
  * source invariant in the orchestration suite.
  *
- * The `'stall'` `initiatedBy` arm is DORMANT plumbing (station#2959): stall
+ * The `'stall'` `initiatedBy` arm is DORMANT plumbing (archive#2959): stall
  * detection is observe-only by review decision, and the only live callers
  * pass `'user'` — see `interruptUserTurnCooperatively`'s docblock.
  *
@@ -173,7 +173,7 @@ export class CooperativeStop {
   constructor(private readonly deps: CooperativeStopDeps) {}
 
   /**
-   * The C2 spine's settle-read (epic #4024 slice 10): MUST be called in
+   * The C2 spine's settle-read (epic archive#4024): MUST be called in
    * `publishCanonicalEvent` BEFORE the quarantine gate — a stop must settle
    * even for an event the gate declines, or a stop on a quarantined thread
    * never settles and rides its full budget into a forced teardown of a
@@ -343,10 +343,10 @@ export class CooperativeStop {
    * this service's budget timer. No command input or adapter
    * payload can choose an outcome.
    *
-   * station#2959: `initiatedBy` composes station#2806's protocol with
+   * archive#2959: `initiatedBy` composes archive#2806's protocol with
    * turn-stall detection rather than inventing a second termination path.
-   * The `'stall'` arm is DORMANT plumbing held for the #2959 follow-up:
-   * stall detection (`TurnProgressTracker`, epic #4024 slice 1) is
+   * The `'stall'` arm is DORMANT plumbing held for the archive#2959 follow-up:
+   * stall detection (`TurnProgressTracker`, epic archive#4024) is
    * observe-only by review decision and currently calls nothing — the only
    * live callers pass `initiatedBy: 'user'`. The value is an explicit
    * parameter threaded straight through to the emitted
@@ -373,7 +373,7 @@ export class CooperativeStop {
       );
     }
 
-    // station#3473: `interruptibleTurnIdForEvents`, not `activeTurnIdForEvents`
+    // archive#3473: `interruptibleTurnIdForEvents`, not `activeTurnIdForEvents`
     // — Stop must still find a codex turn that is deferred-retriable (see
     // that function's doc), or it silently no-ops in exactly the window a
     // user is most likely to reach for it.
@@ -518,12 +518,12 @@ export class CooperativeStop {
   }
 
   /**
-   * station#3476: the engine-free half of {@link stopUserSessionImmediately},
+   * archive#3476: the engine-free half of {@link stopUserSessionImmediately},
    * for a session this process restored at boot and never started. It keeps
    * the same two guarantees the live path gives a user Stop — the row stays
    * resumable (`status: 'ready'`, `resumeCursor` intact) and the thread is no
    * longer live here — without spawning a process in order to kill it.
-   * The one exception (station#3493 residual 3): an `error` row keeps its
+   * The one exception (archive#3493 residual 3): an `error` row keeps its
    * `error` — see {@link persistResumableStoppedSession}.
    */
   stopDormantSessionImmediately(threadId: string): void {
@@ -546,7 +546,7 @@ export class CooperativeStop {
   }
 
   /**
-   * `provider` rather than the adapter it used to take (station#3476): this
+   * `provider` rather than the adapter it used to take (archive#3476): this
    * reads exactly one field, and the dormant-stop path above has a persisted
    * provider but deliberately no adapter.
    */
@@ -556,7 +556,7 @@ export class CooperativeStop {
   ): void {
     const current = this.deps.loadedOrPersistedSession(threadId);
     if (!current) return;
-    // station#3493 residual 3: `error` is station#1090's row-level marker
+    // archive#3493 residual 3: `error` is archive#1090's row-level marker
     // that a start failed, and recovery deliberately keeps retrying such
     // rows — a Stop must not manufacture readiness out of one. The
     // `runtime.error` event would survive either way, but the row's summary

@@ -1,5 +1,5 @@
 /**
- * "Reach another Station" — the chooser's second branch (audit CI-R9).
+* "Reach another Station" — the chooser's second branch.
  *
  * This is the old inline "Add Station" form, which sat unlabelled directly
  * below the "Add computer" button and bypassed the very chooser whose copy
@@ -17,15 +17,15 @@ import { Dialog } from '../../components/Dialog';
 import { knownEnvironmentRegistry } from './known-environment-registry';
 
 /**
- * Best-effort identity upgrade for a freshly-added manual entry (station#1096
- * AC1). Fires the well-known handshake in the background, AFTER the
+ * Best-effort identity upgrade for a freshly-added manual entry (archive#1096
+ *). Fires the well-known handshake in the background, AFTER the
  * synchronous local add already succeeded, and attaches `environmentId` only
  * on a clean, well-shaped response.
  *
  * Non-negotiable: the add itself never waits on this, and a failed, slow or
  * malformed response degrades the entry to silently unidentified rather than
  * surfacing an error — reachability is never a precondition for the
- * local-first add path (AC4).
+* local-first add path.
  */
 async function verifyAndAttachIdentity(
   registry: KnownEnvironmentRegistry,
@@ -46,7 +46,7 @@ async function verifyAndAttachIdentity(
       registry.attachEnvironmentDescriptor(id, environmentId);
     }
   } catch {
-    // Unreachable, slow, or malformed — leave the entry unidentified.
+// Unreachable, slow, or malformed — leave the entry unidentified.
   }
 }
 
@@ -65,7 +65,7 @@ export function StationAddressDialog({ onClose }: { onClose: () => void }) {
         httpBaseUrl: httpBaseUrl.trim(),
         source: 'manual',
       });
-      // Fire-and-forget: the add above already committed synchronously.
+// Fire-and-forget: the add above already committed synchronously.
       void verifyAndAttachIdentity(
         registry,
         created.id,

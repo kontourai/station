@@ -78,7 +78,7 @@ describe('classifyMutationRoute', () => {
   });
 
   it('scheduler and monitoring families are NOT exempted — only their GET SSE leaf is unbudgeted', () => {
-    // The original station#514 brief proposed exempting /scheduler/** and
+    // The original archive#514 brief proposed exempting /scheduler/** and
     // /monitoring/** wholesale as "streaming" families. That would have
     // unbudgeted every mutating verb under them: POST /scheduler/webhook,
     // POST /scheduler/jobs, PUT/DELETE /scheduler/jobs/:target (all real CRUD
@@ -123,7 +123,7 @@ describe('deriveBudgetPrincipal', () => {
   });
 
   it('the same secret produces the same key regardless of source label (bearer vs session)', () => {
-    // station#514 security review: the budget key MUST follow the credential
+    // archive#514 security review: the budget key MUST follow the credential
     // value, not the transport it arrived on. A holder of one credential who
     // can present it as EITHER a bearer token OR a device-session cookie must
     // NOT get two rate budgets — that is a deterministic 2× bypass the caller
@@ -254,7 +254,7 @@ describe('RuntimeMutationBudget', () => {
     });
   });
 
-  // station#1885: the streaming body ceiling and the attachment contract are
+  // archive#1885: the streaming body ceiling and the attachment contract are
   // NOT independent constants that must agree by coincidence — the default
   // ceiling is DERIVED from the contract (see runtime-request-security.ts).
   // This test pins that derivation: it fails if the default ever drops below

@@ -33,7 +33,7 @@ import type { AgentData } from '../contexts/AgentsContext';
  *
  * It derives NOTHING itself. It used to derive one thing — "an Agent with no
  * `agentConnectionId` has nowhere to run" — and that was a fourth reading of
- * the record contradicting the other three (station#3662). An absent binding
+ * the record contradicting the other three (archive#3662). An absent binding
  * is not "unbound": it is Station's own engine, which is what
  * `docs/design/agent-engine-unification.md` §7.1 says a Station-engine Agent
  * persists, what `resolveExecutionTarget` dispatches on (no binding →

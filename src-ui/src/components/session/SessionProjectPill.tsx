@@ -2,7 +2,7 @@ import './SessionProjectPill.css';
 
 /**
  * The project a session row belongs to, as a pill on the row instead of the
- * heading above it (station#3027 — the owner asked for it "more pill shaped
+ * heading above it (archive#3027 — the owner asked for it "more pill shaped
  * or popping out a little more.. and maybe even ability to filter on it so
  * you get the best of both worlds").
  *

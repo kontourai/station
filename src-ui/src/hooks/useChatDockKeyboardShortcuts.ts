@@ -44,10 +44,10 @@ interface UseChatDockKeyboardShortcutsOptions {
 /**
  * Chat's OWN keyboard shortcuts — new chat, open conversation, close tab,
  * session switching, cancel. `dock.toggle` / `dock.maximize` moved to
- * `useDockShellChrome` (station#4460): they are dock CHROME, not a Chat
+ * `useDockShellChrome` (archive#4460): they are dock CHROME, not a Chat
  * behavior, and Home/Activity need them working too.
  *
- * That hook's `registersDockShortcuts` flag (review round H1), not mount
+ * That hook's `registersDockShortcuts` flag, not mount
  * exclusivity, is what keeps those two ids single-registered: the ambient
  * `DockShell` and a full-screen `ChatWorkspacePane` are NOT mutually
  * exclusive (a `workspace-pane` route can render its own full-screen Chat
@@ -111,7 +111,7 @@ export function useChatDockKeyboardShortcuts({
     }, [activeSessionId, sessions, focusSession, removeChat]),
   );
 
-  // Session switching shortcuts (⌘1-9)
+// Session switching shortcuts (⌘1-9)
   useDockShortcut(
     'dock.session1',
     '1',
@@ -200,11 +200,11 @@ export function useChatDockKeyboardShortcuts({
     ['ctrl'],
     'Cancel request',
     useCallback(() => {
-      // The same one derivation the composer's Stop control reads.
+// The same one derivation the composer's Stop control reads.
       if (!activeSession || !isTurnInFlight(activeSession)) return;
       const sessionId = activeSession.id;
-      // Same derivation as the composer's Stop button (UX audit T1): report
-      // what the stop settled as, never the intent that started it.
+ // Same derivation as the composer's Stop button : report
+// what the stop settled as, never the intent that started it.
       void cancelMessage(sessionId).then((outcome) => {
         if (outcome.kind === 'not-running') return;
         addEphemeralMessage(sessionId, {

@@ -163,7 +163,7 @@ export class FeedbackService {
   }
 
   /**
-   * station#2649: the guidelines string plus the reinforce/avoid counts that
+   * archive#2649: the guidelines string plus the reinforce/avoid counts that
    * describe THAT string, from ONE read of the summary — so the per-turn
    * context-injection receipt cannot report counts from a different summary
    * revision than the text actually injected.
@@ -246,7 +246,7 @@ ${avoid || '(none identified yet)'}
 
   /**
    * Fold analysis results onto the CURRENT store rather than writing back the
-   * snapshot the analysis was computed from (#2900). An analysis is an LLM
+   * snapshot the analysis was computed from (archive#2900). An analysis is an LLM
    * round-trip, which is long enough for a user to rate another message;
    * writing the snapshot back discarded that rating with no signal at all,
    * because `JsonFileStore` has no version check and its write is atomic —
@@ -314,7 +314,7 @@ ${avoid || '(none identified yet)'}
       });
       if (summary) {
         // Spread the CURRENT store, not `data`: ratings submitted during the
-        // analysis above must survive the summary write (#2900).
+        // analysis above must survive the summary write (archive#2900).
         this.store.write({ ...this.store.read(), summary });
       }
     } catch (error) {

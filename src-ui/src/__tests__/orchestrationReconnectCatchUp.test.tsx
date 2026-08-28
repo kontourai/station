@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3352 — end-to-end proof that text which streamed while the client
+ * archive#3352 — end-to-end proof that text which streamed while the client
  * was disconnected actually becomes VISIBLE again after the reconnect, rather
  * than merely that some counter moved.
  *
@@ -22,7 +22,7 @@ const fetchWindow = vi.fn();
 const fetchLegacyWindow = vi.fn();
 
 /**
- * station#3967. `fetchWindow` used to stand for the ONE window read. #3843's
+ * archive#3967. `fetchWindow` used to stand for the ONE window read. #3843's
  * conversation handoff made `fetchOrchestrationConversationEventWindow` the
  * primary route and demoted the session window to a 404-only fallback for a
  * channel server too old to advertise it (`useSessionEventWindow.ts:55-78`).
@@ -31,7 +31,7 @@ const fetchLegacyWindow = vi.fn();
  * unlisted export a hard throw — so the hook threw before reading anything,
  * `fetchWindow` was called zero times, and all three cases failed with an
  * empty DOM. Fifth instance of that hazard in this repo (b6388fa56,
- * ProjectSidebar in fbbdf6738, then three more in station#3895).
+ * ProjectSidebar in fbbdf6738, then three more in archive#3895).
  *
  * `fetchWindow` now drives the CURRENT primary route, so these cases keep
  * testing what they were written for — a reconnect gap ends with the missed text on

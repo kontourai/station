@@ -51,12 +51,12 @@ function renderSection() {
 }
 
 /**
- * station#771 fix round (independent verifier finding): the presentational
+* archive#771 (independent verifier finding): the presentational
  * `ProjectKnowledgeRulesEditor` test drives the error state through direct
  * props, and the only other importer of `ProjectKnowledgeSection` mocks it
  * to `<div/>` — nothing exercised the CONTAINER wiring that reads
  * `useKnowledgeSearchQuery`'s `isError`/`error` and threads them down as
- * `rulesError`/`rulesFailure`. A fault injection at those two prop lines
+ * `rulesError`/`rulesFailure`. A at those two prop lines
  * (rulesError={false}, rulesFailure={undefined}) came back green across
  * the whole corpus for exactly that reason.
  */

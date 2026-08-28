@@ -67,7 +67,7 @@ async function main() {
   // anything older than a day before doing anything else. Best-effort: a
   // failure here must never block boot.
   void sweepStationTempRoot().catch(() => {});
-  // station#1863: an engine child spawned with `detached: true` outlives a
+  // archive#1863: an engine child spawned with `detached: true` outlives a
   // SIGKILLed/crashed Station, and none of that Station's in-process cleanup
   // ever runs. Reap orphaned engine processes a PREVIOUS Station on this host
   // recorded but never cleaned up. The sweep is provably scoped — it only
@@ -154,7 +154,7 @@ async function main() {
       stdoutBrokenPipe = true;
     }
 
-    // The read side of station#1903: a self-update that never confirmed the
+    // The read side of archive#1903: a self-update that never confirmed the
     // new server was healthy used to leave no trace at all past a log line
     // from a process that had already exited. A no-op for anything other
     // than a source-checkout install with a failed or stale-pending record.

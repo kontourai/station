@@ -1,5 +1,5 @@
 /**
- * Read side of Station's own server-log NDJSON store (station#1896, logging
+ * Read side of Station's own server-log NDJSON store (archive#1896, logging
  * slice 2 — the self-read path over slice 1's write side,
  * `server-log-store.ts`).
  *
@@ -32,14 +32,14 @@
  *    `redactDeep` (secret-NAMED fields, e.g. nested `config.apiKey`) and
  *    `redactSecrets` on every string leaf (secret-SHAPED text inside
  *    free-form fields like `msg`/`err.message`/`err.stack`). Filed as
- *    station#1922: this is the only path that ever serves those lines
+ *    archive#1922: this is the only path that ever serves those lines
  *    back out over an API boundary, so this redaction is load-bearing,
  *    not decorative, for every remote/paired caller. `query({ redact:
  *    false })` is reserved for a caller that has already been classified
  *    local by the bound `isLocalRuntimeCaller` flag; it is never a query-string
  *    flag a client can set. Critically, `q` is matched against the
  *    rendering the caller will actually receive, never the other one
- *    (station#1896 review round 2, HIGH #1): a remote caller can only
+ *    (archive#1896 review round 2, HIGH #1): a remote caller can only
  *    search what a remote caller could see, otherwise `q` is a
  *    character-by-character oracle over content the response claims to
  *    have hidden. Redaction only runs on entries that already passed the
@@ -47,7 +47,7 @@
  * 3. **Honest about what it did not read.** A day file the scan could not
  *    even open (permission error, disappeared mid-scan) is counted in
  *    `unreadableFiles`, not silently skipped — and forces `truncated: true`
- *    (station#1896 review round 2, HIGH #2), because the scan cannot claim
+ *    (archive#1896 review round 2, HIGH #2), because the scan cannot claim
  *    completeness for a day it never verified. A line that isn't valid
  *    JSON, or is valid JSON missing a recognizable `level`/`timestamp`, is
  *    skipped and counted in `skippedMalformedLines` rather than silently
@@ -72,7 +72,7 @@ export const DEFAULT_SERVER_LOG_QUERY_LIMIT = 200;
 export const MAX_SERVER_LOG_QUERY_LIMIT = 1000;
 
 /**
- * Per-query cap on total bytes read off disk (station#1896 review round 2,
+ * Per-query cap on total bytes read off disk (archive#1896 review round 2,
  * HIGH #4). A single day file can legitimately reach the write side's
  * retention ceiling (256 MiB — `DEFAULT_SERVER_LOG_RETENTION.maxBytes` in
  * `server-log-store.ts`); reading one that large — even in chunks — is
@@ -253,7 +253,7 @@ const NEWLINE_BYTE = 0x0a;
 /**
  * Yields lines of `filePath` from the END of the file backward (most
  * recent line first), reading in bounded `REVERSE_READ_CHUNK_BYTES` chunks
- * rather than loading the whole file into memory at once (station#1896
+ * rather than loading the whole file into memory at once (archive#1896
  * review round 2, HIGH #4). Splitting only ever happens on a literal `\n`
  * (0x0a) byte, which is safe against UTF-8 multi-byte boundaries — 0x0a
  * never occurs as a continuation byte in valid UTF-8, only as a real
@@ -408,7 +408,7 @@ class FsServerLogReader implements ServerLogReader {
 
           // Redact only AFTER the cheap level/time filters pass (keeps the
           // hot path lean), and apply `q` to the SAME rendering the
-          // caller will receive — station#1896 review round 2, HIGH #1:
+          // caller will receive — archive#1896 review round 2, HIGH #1:
           // matching `q` against pre-redaction text while returning a
           // redacted body lets a remote caller confirm an exact secret
           // character-by-character via match/no-match. Local callers
@@ -444,7 +444,7 @@ class FsServerLogReader implements ServerLogReader {
 
     // Stable sort by parsed timestamp — a multi-process/multi-writer day
     // file is not guaranteed to be in strict timestamp order just because
-    // it's in append order (station#1896 review round 2, MEDIUM #5).
+    // it's in append order (archive#1896 review round 2, MEDIUM #5).
     matches.sort((left, right) => left.timeMs - right.timeMs);
 
     return {

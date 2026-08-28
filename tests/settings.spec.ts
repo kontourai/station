@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 async function goToSettings(page: import('@playwright/test').Page) {
   await page.goto('/');
-  // #1009: the header gear is an SVG glyph now — target the accessible name.
+  // archive#1009: the header gear is an SVG glyph now — target the accessible name.
   await page.waitForSelector('button[aria-label="Open settings"]', {
     timeout: 10_000,
   });
@@ -164,7 +164,7 @@ test.describe('Settings', () => {
 
   // station#settings-revamp slice 3: the /settings IA restructure — three
   // registry-driven scope groups (Station / Defaults / This device) with a
-  // persistence-tier caption each, replacing the flat nav. station#1826
+  // persistence-tier caption each, replacing the flat nav. archive#1826
   // dropped the three-card scope legend (it restated this grouping) and
   // reworded the Defaults/device captions in product terms; the captions are
   // now the only place the persistence tiers are explained, so this test
@@ -184,7 +184,7 @@ test.describe('Settings', () => {
       nav.locator('.settings__nav-group-title', { hasText: 'This device' }),
     ).toBeVisible();
 
-    // The Station group's nav leads with what a person changes (#1826).
+    // The Station group's nav leads with what a person changes (archive#1826).
     await expect(
       nav
         .locator('.settings__nav-group')
@@ -217,7 +217,7 @@ test.describe('Settings', () => {
       ),
     ).toBeVisible();
 
-    // The old three-card legend must not return (station#1826).
+    // The old three-card legend must not return (archive#1826).
     await expect(page.getByLabel('Where settings are saved')).toHaveCount(0);
   });
 
@@ -486,7 +486,7 @@ test.describe('Settings', () => {
       .getByRole('button', { name: 'Replace' })
       .click();
 
-    // station#settings-revamp slice 3 (#1359 convergence): shortcut
+    // station#settings-revamp slice 3 (archive#1359 convergence): shortcut
     // overrides now live in the registry-driven device-settings envelope's
     // `shortcutOverrides` entry, not the retired `station.device-settings`
     // root.
@@ -554,11 +554,11 @@ test.describe('Settings', () => {
   });
 
   test('export includes device settings', async ({ page }) => {
-    // Slice 2 (station#1271) unified the raw per-key localStorage settings
+    // Slice 2 (archive#1271) unified the raw per-key localStorage settings
     // into one versioned envelope; the export payload carries that envelope
     // instead of the old 4-key `_localStorage` map. Slice 3 review finding 1
     // bumped the envelope to v2 (a v1 -> v2 ladder step backfills the
-    // #1359 shortcut/model-picker root for already-upgraded devices).
+    // archive#1359 shortcut/model-picker root for already-upgraded devices).
     const envelope = await page.evaluate(() => {
       const raw = localStorage.getItem('station-device-settings-v1');
       return raw ? JSON.parse(raw) : null;

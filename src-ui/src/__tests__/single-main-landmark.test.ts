@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * SHELL-14: the shell gained a `main` landmark (`App.tsx`'s `#station-main`)
+ * the shell gained a `main` landmark (`App.tsx`'s `#station-main`)
  * because a landmark scan of the running app returned only the sidebar's
  * `nav` and the toolbar's `header` — there was no way for a screen reader to
  * jump to the route, and no target for a skip control.
@@ -26,18 +26,18 @@ const SRC = join(import.meta.dirname, '..');
  * one landmark rather than a second one. Each replaces the whole shell.
  */
 const PRE_SHELL_MAIN_OWNERS = new Set([
-  // The whole-window access gate, rendered instead of `<App>`.
+// The whole-window access gate, rendered instead of `<App>`.
   'components/LocalUiSessionGate.tsx',
-  // Rendered by that gate, in place of the shell.
+// Rendered by that gate, in place of the shell.
   'components/first-run/UnpairedSampleWorkspace.tsx',
-  // Standalone public share routes; they mount their own document shell.
+// Standalone public share routes; they mount their own document shell.
   'views/share/SharedAnswerView.tsx',
   'views/share/SharedAnswerBoundary.tsx',
-  // The shell's own landmark.
+// The shell's own landmark.
   'App.tsx',
-  // Unreferenced by any route or component (kept out of the sweep's scope
-  // rather than silently blessed: if it is ever mounted, this entry is the
-  // thing to re-check).
+// Unreferenced by any route or component (kept out of the sweep's scope
+// rather than silently blessed: if it is ever mounted, this entry is the
+// thing to re-check).
   'components/TasksLayout.tsx',
 ]);
 
@@ -74,9 +74,9 @@ describe('single main landmark', () => {
   });
 
   test('the guard sees role="main", not only the element', () => {
-    // Fault-injection in permanent form: the pattern itself is asserted
-    // against both spellings, so a future "simplification" of the regex that
-    // drops the role branch fails here rather than silently going blind.
+// Fault-injection in permanent form: the pattern itself is asserted
+// against both spellings, so a future "simplification" of the regex that
+// drops the role branch fails here rather than silently going blind.
     expect(MAIN_LANDMARK.test('<main className="x">')).toBe(true);
     expect(MAIN_LANDMARK.test('<main>')).toBe(true);
     expect(MAIN_LANDMARK.test('<div role="main">')).toBe(true);

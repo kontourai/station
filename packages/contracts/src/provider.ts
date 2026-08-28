@@ -113,7 +113,7 @@ export const EFFECTIVE_MODEL_OPTIONS_METADATA_KEY = 'effectiveModelOptions';
 /** An independently observed provider model identity. */
 export const REPORTED_MODEL_METADATA_KEY = 'reportedModel';
 /**
- * station#2649: the `/chat` execution engine's own dispatch-time record of
+ * archive#2649: the `/chat` execution engine's own dispatch-time record of
  * what Station composed into the model input (see
  * `CONTEXT_INJECTION_METADATA_KEY` in `turn-provenance.ts` — same string,
  * re-declared here only to avoid a contracts-internal import cycle; the
@@ -123,7 +123,7 @@ export const REPORTED_MODEL_METADATA_KEY = 'reportedModel';
  */
 export const CONTEXT_INJECTION_RESERVED_METADATA_KEY = 'contextInjection';
 /**
- * station#2821 hardening L3: a server-owned visibility choice for
+ * archive#2821 hardening L3: a server-owned visibility choice for
  * machine-triggered turns (currently only the inbound webhook seam). Reserved
  * so a public `startSession`/`chat` caller cannot forge it into the untyped
  * `metadata` bag and mark its own ordinary session ephemeral (hidden from
@@ -295,7 +295,7 @@ export function resolveModelLaunchPlan(
         : capabilities.omissionPerTurn;
   if (omission === 'retain-session-model') {
     if (!retainedModelId) {
-      // station#1995: a session can legitimately hold no accepted model yet —
+      // archive#1995: a session can legitimately hold no accepted model yet —
       // an engine-selected start deliberately defers model choice to the
       // engine (`defaultAtStart: 'engine-selected'`, provider.ts:54), and the
       // engine that could serve that start can equally serve a later omitted
@@ -409,7 +409,7 @@ export const PROVIDER_OLLAMA = 'ollama';
 export const PROVIDER_MUSE = 'muse';
 
 /**
- * station#978 — the per-provider `modelOptions` keys each adapter actually
+ * archive#978 — the per-provider `modelOptions` keys each adapter actually
  * reads and applies (not a wishlist of what a wire channel could carry).
  * Derived directly from each adapter's own `modelOptions` reads, cited here
  * so this table can't silently drift from adapter behavior:
@@ -435,7 +435,7 @@ export const PROVIDER_MUSE = 'muse';
  *   interactive `session/request_permission` handshake, unrelated to a
  *   settable `modelOptions.approvalMode`.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
- *   passthrough is explicitly excluded from station#978's scope, so it is
+ *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
  *   `systemPrompt` is rejected as unsupported for every provider (review r1
  *   HIGH fix — see `unsupportedModelOptionKeys`'s docblock).
@@ -473,11 +473,11 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
  * absent from the map returns an empty array (no restriction known), never
  * "every key" — see the map's docblock.
  *
- * station#978 review r1 (HIGH fix): this is now unconditional, with NO
- * scope-exempt keys — an earlier revision exempted `systemPrompt`
- * unconditionally so `OrchestrationService.runConnectionSmoke`'s internal
- * connectivity-check `startSession` (which sets `modelOptions.systemPrompt`)
- * would keep working. That exemption applied to every caller of this
+ * archive#978: this is unconditional, with NO
+ * scope-exempt keys — an exemption of `systemPrompt`
+ * (so `OrchestrationService.runConnectionSmoke`'s internal
+ * connectivity-check `startSession`, which sets `modelOptions.systemPrompt`,
+ * would keep working) applied to every caller of this
  * function, not just the internal one: `ollama`/`bedrock` genuinely read
  * and apply `modelOptions.systemPrompt` as the session's system prompt and
  * are reachable as ordinary Engine connections (`station chat
@@ -492,7 +492,7 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
  */
 /**
  * Providers deliberately exempt from the support table, listed rather than
- * inferred from absence (station#2839).
+ * inferred from absence (archive#2839).
  *
  * `station-agent` is the Station-owned agent relay: it forwards to `/chat`,
  * which owns its own option handling, so the table has nothing to say about
@@ -527,7 +527,7 @@ export function unsupportedModelOptionKeys(
  * Canonical 400 wording for an unsupported `modelOptions` key — used
  * identically by the orchestration command intake (chat/runtime sessions)
  * and the delegation service so a caller sees the same shape regardless of
- * path (station#978 AC4).
+ * path (archive#978 AC4).
  */
 export function unsupportedModelOptionError(
   provider: ProviderKind,
@@ -553,7 +553,7 @@ export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
 /**
  * `RuntimeErrorEvent.code` published when a provider adapter's own
  * STRUCTURED result signals that the underlying engine binding can never
- * make progress again (station#1827) — e.g. the Claude Agent SDK's `result`
+ * make progress again (archive#1827) — e.g. the Claude Agent SDK's `result`
  * message reporting `is_error: true` for a `--resume`d session whose native
  * transcript no longer exists ("No conversation found with session ID:
  * ..."). Classified from the SDK's own structured `is_error` flag, never
@@ -562,7 +562,7 @@ export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
  * disclosure); this code is what the recovery path and the UI act on.
  *
  * Distinct from `SESSION_RECOVERY_FAILED_CODE`
- * (`orchestration-session-state.ts`, station#1090): that code marks a
+ * (`orchestration-session-state.ts`, archive#1090): that code marks a
  * session `status: 'error'` and KEEPS replaying it on every boot, because
  * the failure is a config problem a person can fix (an ACP connection's
  * changed args, a missing credential) — the same binding may work again
@@ -671,7 +671,7 @@ export type CapabilityUndeliveredReason =
   | 'binary-not-found' // channel-stage: command missing on PATH
   | 'materialization-skipped' // channel-stage: skills copy skipped (detail carries the module's reason)
   | 'global-config-target-refused' // channel-stage: workspace materialization target resolves into the user's global engine config (agent-engine-unification.md §6.1 hard guard)
-  | 'engine-capability-absent' // channel-stage: the connected engine's live handshake did not advertise the capability this delivery mechanism requires (station#1684: an ACP CLI with no `mcpCapabilities.http`) — distinct from 'engine-unsupported', which is a static property of the engine CLASS
+  | 'engine-capability-absent' // channel-stage: the connected engine's live handshake did not advertise the capability this delivery mechanism requires (archive#1684: an ACP CLI with no `mcpCapabilities.http`) — distinct from 'engine-unsupported', which is a static property of the engine CLASS
   | 'delivery-failed'; // channel-stage: unexpected resolution/materialization error
 
 export interface CapabilityUndelivered {
@@ -689,7 +689,7 @@ export interface CapabilityDeliveryChannelReport {
   delivered?: string[];
   /**
    * Ids Station added on its OWN account, delivered without anyone having
-   * requested them (station#1547 AC5: the credential-free `station-docs`
+   * requested them (archive#1547 AC5: the credential-free `station-docs`
    * server on an engine that can never run the built-in assistant).
    *
    * A separate field rather than an extra entry in `requested` or a third
@@ -732,7 +732,7 @@ export interface ProviderSessionStartInput {
   provider: ProviderKind;
   cwd?: string;
   /**
-   * station#1174: true when `cwd` was NOT resolved from an explicit
+   * archive#1174: true when `cwd` was NOT resolved from an explicit
    * caller-supplied directory or a project's own `workingDirectory` —
    * i.e. `orchestration-service.ts`'s `resolveStartSessionCwd` fell through
    * to its home-directory default (or, on a degenerate host where even that
@@ -838,7 +838,7 @@ export interface ProviderSendTurnInput {
   recoveryCorrelationId?: string;
   signal?: AbortSignal;
   /**
-   * station#1224 (offline slice 2): a client-generated per-turn idempotency
+   * A client-generated per-turn idempotency
    * key (minted once per turn client-side, reused verbatim on retry/replay —
    * see `useActiveChatSessionMessaging.ts`). Optional and additive: absent
    * for any caller that predates this field. The dispatch layer
@@ -856,8 +856,8 @@ export interface ProviderSession {
   provider: ProviderKind;
   threadId: string;
   /**
-   * station#1827: `'dead'` is distinct from `'error'` and MUST stay that
-   * way. `'error'` (station#1090) means the failure may be user-recoverable
+   * archive#1827: `'dead'` is distinct from `'error'` and MUST stay that
+   * way. `'error'` (archive#1090) means the failure may be user-recoverable
    * — a config problem (an ACP connection's changed args, a missing
    * credential) that the SAME persisted `resumeCursor` can retry once fixed
    * — so recovery keeps replaying it on every boot. `'dead'` means the
@@ -868,7 +868,7 @@ export interface ProviderSession {
    * recovery must stop replaying it. Collapsing the two back into one
    * value would either resume a binding that structurally cannot resume
    * (the bug this fixes) or stop retrying a config problem a user just
-   * fixed (the station#1090 regression this must not reintroduce).
+   * fixed (the archive#1090 regression this must not reintroduce).
    */
   status: 'connecting' | 'ready' | 'running' | 'error' | 'dead' | 'closed';
   model?: string;

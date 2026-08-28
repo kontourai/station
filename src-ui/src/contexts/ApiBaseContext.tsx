@@ -1,6 +1,6 @@
 /**
  * ApiBaseContext — thin backward-compat wrapper over @kontourai/station-connect.
- * Consumers continue to call useApiBase() / <ApiBaseProvider> with the same API shape.
+* Consumers continue to call useApiBase / <ApiBaseProvider> with the same API shape.
  */
 
 import {
@@ -46,8 +46,8 @@ const lazyNativeAuthenticatedTransport: typeof fetch = async (input, init) => {
   const { nativeAuthenticatedTransport } = await import(
     '../platform/native/authenticatedTransport'
   );
-  // Importing the native bridge is asynchronous. Do not let a connection
-  // switch while it loads turn this request into the newly active authority.
+// Importing the native bridge is asynchronous. Do not let a connection
+// switch while it loads turn this request into the newly active authority.
   authorityGuard?.();
   return nativeAuthenticatedTransport(input, init);
 };
@@ -87,17 +87,17 @@ const DEFAULT_API_BASE =
 export function ApiBaseProvider({ children }: { children: ReactNode }) {
   const profile = usePlatformProfile();
   if (profile.isTauri) {
-    // Purge credentials written by older desktop builds before constructing a
-    // ConnectionStore snapshot. Native bearers now remain host-owned only.
+// Purge credentials written by older desktop builds before constructing a
+// ConnectionStore snapshot. Native bearers now remain host-owned only.
     defaultCredentialStorage.remove(DEFAULT_CONNECTION_CREDENTIAL_KEY);
   }
   const profileStoreEpoch = useNativeProfileStoreEpoch();
   const prepareNativeActiveConnection = useNativeProfileSelection();
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
 
-  // Resolve one host-supplied, never-persisted connection. An explicit CLI
-  // base is deliberate user intent and therefore always wins over desktop
-  // ownership. Otherwise unified native status supplies the local owner.
+// Resolve one host-supplied, never-persisted connection. An explicit CLI
+// base is deliberate user intent and therefore always wins over desktop
+// ownership. Otherwise unified native status supplies the local owner.
   const injectedConnection = useMemo<InjectedConnection | null>(() => {
     if (CLI_INJECTED_BASE) {
       return {
@@ -176,10 +176,10 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
       prepareActiveConnection={
         profile.isTauri ? prepareNativeActiveConnection : undefined
       }
-      // station#1286: `packages/connect` is platform-blind, so the already-
-      // resolved platform profile (awaited past any capability-report race)
-      // is the source of truth for whether the page is a native shell —
-      // not an inline `window` check re-derived downstream.
+// archive#1286: `packages/connect` is platform-blind, so the already-
+// resolved platform profile (awaited past any capability-report race)
+// is the source of truth for whether the page is a native shell —
+// not an inline `window` check re-derived downstream.
       nativeShell={profile.isTauri}
     >
       <StationCredentialBridge>{children}</StationCredentialBridge>
@@ -199,45 +199,45 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   } = useConnections();
   const profile = usePlatformProfile();
 
-  // Keep the shared SDK transport aligned above OnboardingGate. SDKAdapter
-  // cannot do this while the gate is showing a blocking connection error.
+// Keep the shared SDK transport aligned above OnboardingGate. SDKAdapter
+// cannot do this while the gate is showing a blocking connection error.
   _setApiBase(apiBase);
 
-  // The native host notification watch is **dormant** — deliberately not
-  // started. The live blocker is #917 (the FCM/APNs dependency decision;
-  // #3088, which corrected this record, is closed). It is blocked
-  // three ways on Android (the cached-app
-  // freezer kills the poller thread when backgrounded, the foreground service
-  // that would prevent that is blocked by tauri#11609/#15671, and native Rust
-  // cannot resolve DNS there at all). Calling it today would fail every poll
-  // and log an error on every launch.
-  //
-  // This is where it goes when it is switched on: an effect that starts the
-  // watch from `platform/native/notify` with `apiBase` and the active
-  // credential, guarded on `profile.isTauri`, stopping it on cleanup.
-  //
-  // One trap worth keeping: read the credential during *render*, not inside
-  // the effect. `credentialProvider` keeps a stable identity across a pairing
-  // completing, so depending on the provider rather than the value it returns
-  // leaves the watch unstarted until something unrelated re-runs the effect.
-  //
-  // (Written prose rather than commented-out code on purpose — the dormancy
-  // guard in native-notification-watch.test.ts greps for the call.)
+// The native host notification watch is **dormant** — deliberately not
+ // started. The live blocker is archive#917 (the FCM/APNs dependency decision;
+ // archive#3088, which corrected this record, is closed). It is blocked
+// three ways on Android (the cached-app
+// freezer kills the poller thread when backgrounded, the foreground service
+ // that would prevent that is blocked by tauri#11609/archive#15671, and native Rust
+// cannot resolve DNS there at all). Calling it today would fail every poll
+// and log an error on every launch.
+//
+// This is where it goes when it is switched on: an effect that starts the
+// watch from `platform/native/notify` with `apiBase` and the active
+// credential, guarded on `profile.isTauri`, stopping it on cleanup.
+//
+// One trap worth keeping: read the credential during *render*, not inside
+// the effect. `credentialProvider` keeps a stable identity across a pairing
+// completing, so depending on the provider rather than the value it returns
+// leaves the watch unstarted until something unrelated re-runs the effect.
+//
+// (Written prose rather than commented-out code on purpose — the dormancy
+// guard in native-notification-watch.test.ts greps for the call.)
 
-  // Install the process-wide SDK boundary before any descendant layout effect
-  // can start a connection-health probe. A parent layout effect runs after its
-  // children's layout effects, which let the first native request escape to
-  // raw fetch and terminal-stop on 401 even though the keyring was healthy.
+// Install the process-wide SDK boundary before any descendant layout effect
+// can start a connection-health probe. A parent layout effect runs after its
+// children's layout effects, which let the first native request escape to
+// raw fetch and terminal-stop on 401 even though the keyring was healthy.
   useInsertionEffect(() => {
     setClientCredentialResolver(() => {
-      // The resolver body runs when a request is ABOUT TO BE ISSUED, so this
-      // ONE live read is the connection, address, credential and generation
-      // that request is actually authenticated against. `activeConnection` and
-      // `apiBase` are render captures and are the wrong subject for a result
-      // that arrives later — and mixing a live credential with a rendered
-      // address would leave a window, between a synchronous connection switch
-      // and React committing it, where one connection's credential is sent to
-      // another's origin.
+// The resolver body runs when a request is ABOUT TO BE ISSUED, so this
+// ONE live read is the connection, address, credential and generation
+// that request is actually authenticated against. `activeConnection` and
+// `apiBase` are render captures and are the wrong subject for a result
+// that arrives later — and mixing a live credential with a rendered
+// address would leave a window, between a synchronous connection switch
+// and React committing it, where one connection's credential is sent to
+// another's origin.
       const evidence = captureCredentialEvidence();
       const credential = profile.isTauri ? undefined : evidence?.credential;
       const nativeBinding =
@@ -273,9 +273,9 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
       return {
         credential,
         origin: evidence?.origin ?? apiBase,
-        // The host-supplied `managed-loopback` connection and every saved
-        // desktop connection use native authenticated transport so bearer
-        // credentials remain host-owned.
+// The host-supplied `managed-loopback` connection and every saved
+// desktop connection use native authenticated transport so bearer
+// credentials remain host-owned.
         ...(profile.isTauri
           ? {
               transport: nativeBinding
@@ -287,15 +287,15 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         ...(profile.isTauri && nativeBinding
           ? { transportBindingIsCurrent: nativeBindingIsCurrent }
           : {}),
-        // Reported against the evidence captured ABOVE, at request issue —
-        // the SDK no longer re-resolves at response time. Without that, a 401
-        // from a request that left before a pairing completed came back bound
-        // to the NEW credential and deleted it; for a device session both
-        // values are `undefined`, so only the generation can tell them apart.
-        // Returns the transition so the SDK can resolve the response after it
-        // (#3601/#3602 review, MEDIUM). On a page with Web Locks the store
-        // applies this inside a lock callback; without the hand-back, code
-        // that awaited the request could read the state the 401 replaced.
+// Reported against the evidence captured ABOVE, at request issue —
+// the SDK no longer re-resolves at response time. Without that, a 401
+// from a request that left before a pairing completed came back bound
+// to the NEW credential and deleted it; for a device session both
+// values are `undefined`, so only the generation can tell them apart.
+// Returns the transition so the SDK can resolve the response after it
+// (archive#3601/archive#3602). On a page with Web Locks the store
+// applies this inside a lock callback; without the hand-back, code
+// that awaited the request could read the state the 401 replaced.
         onUnauthorized: () =>
           evidence
             ? markCredentialRequired(
@@ -304,22 +304,22 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                 evidence.generation,
               )
             : undefined,
-        // A previous request's failure is evidence, not a local authority to
-        // reject a new write. Let the Station answer the attempt; an accepted
-        // authenticated response then retires that stale evidence — BOTH
-        // halves of it: `lastError`, and the `credentialState: 'required'`
-        // that `onUnauthorized` above set and that actually renders the
-        // "Request access to reconnect" banner.
-        //
-        // The acceptance is reported with the generation captured above and
-        // the URL the Station actually accepted, and the store drops it if
-        // either has been overtaken — a slow 2xx cannot erase a 401 recorded
-        // after it left, and a 2xx from an address the connection no longer
-        // points at cannot recover the new one. The staleness question itself
-        // is answered inside the store from CURRENT state, so reading a
-        // render-captured `activeConnection.lastError` here (which would skip
-        // the recovery whenever the failure was recorded after this closure
-        // was installed — the normal cold-boot ordering) is not needed either.
+// A previous request's failure is evidence, not a local authority to
+// reject a new write. Let the Station answer the attempt; an accepted
+// authenticated response then retires that stale evidence — BOTH
+// halves of it: `lastError`, and the `credentialState: 'required'`
+// that `onUnauthorized` above set and that actually renders the
+// "Request access to reconnect" banner.
+//
+// The acceptance is reported with the generation captured above and
+// the URL the Station actually accepted, and the store drops it if
+// either has been overtaken — a slow 2xx cannot erase a 401 recorded
+// after it left, and a 2xx from an address the connection no longer
+// points at cannot recover the new one. The staleness question itself
+// is answered inside the store from CURRENT state, so reading a
+// render-captured `activeConnection.lastError` here (which would skip
+// the recovery whenever the failure was recorded after this closure
+// was installed — the normal cold-boot ordering) is not needed either.
         onAuthenticated: (url) =>
           evidence
             ? recordAuthenticatedSuccess(
@@ -346,23 +346,23 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     recordAuthenticatedSuccess,
   ]);
 
-  // station#1094 (closing the SSE-stream half of the hot-loop-on-401 fix):
-  // wake every `fetchSSE` stream currently blocked on a terminal auth
-  // failure once the SAME connection's credential regains authority —
-  // mirrors `@kontourai/station-connect`'s `useConnectionStatus` equivalent
-  // wake for the health-poll path (R3/R4, already shipped in PR #1107).
-  // Keyed on the connection id too, so switching to a different connection (a
-  // legitimately different credential) does not spuriously fire this.
-  //
-  // station#3602: this used to compare the saved credential VALUE, which a
-  // browser device session never changes — `undefined` before pairing and
-  // `undefined` after — so a terminally parked stream stayed parked through
-  // the re-pairing that was supposed to release it. The authority generation
-  // counts the connection GAINING a credential able to authenticate it, which
-  // is the fact a parked stream is waiting for; it is also why this no longer
-  // excludes native shells, where the value is host-owned and never readable
-  // here at all (`commitVerifiedPairing` already notifies for its own path,
-  // and a duplicate wake only re-runs a stream that is genuinely blocked).
+// archive#1094 (closing the SSE-stream half of the hot-loop-on-401 fix):
+// wake every `fetchSSE` stream currently blocked on a terminal auth
+// failure once the SAME connection's credential regains authority —
+// mirrors `@kontourai/station-connect`'s `useConnectionStatus` equivalent
+ // wake for the health-poll path (/, already shipped in).
+// Keyed on the connection id too, so switching to a different connection (a
+// legitimately different credential) does not spuriously fire this.
+//
+// archive#3602: this used to compare the saved credential VALUE, which a
+// browser device session never changes — `undefined` before pairing and
+// `undefined` after — so a terminally parked stream stayed parked through
+// the re-pairing that was supposed to release it. The authority generation
+// counts the connection GAINING a credential able to authenticate it, which
+// is the fact a parked stream is waiting for; it is also why this no longer
+// excludes native shells, where the value is host-owned and never readable
+// here at all (`commitVerifiedPairing` already notifies for its own path,
+// and a duplicate wake only re-runs a stream that is genuinely blocked).
   const connectionId = activeConnection?.id;
   const authority = connectionId
     ? credentialAuthorityGeneration(connectionId)
@@ -429,12 +429,12 @@ export function useHostRequestAuthorityScope() {
         )
       : null;
 
-  // `captureCredentialEvidence` and the native repository intentionally
-  // return snapshots.  Their object identities are therefore not an authority
-  // change: using them as memo dependencies would replace every subscriber on
-  // each ordinary render.  Retain the lexical snapshot until one of its
-  // public authority facts changes, so late work remains bound to the
-  // authority it captured rather than adopting a newer one.
+// `captureCredentialEvidence` and the native repository intentionally
+// return snapshots.  Their object identities are therefore not an authority
+// change: using them as memo dependencies would replace every subscriber on
+// each ordinary render.  Retain the lexical snapshot until one of its
+// public authority facts changes, so late work remains bound to the
+// authority it captured rather than adopting a newer one.
   const authorityApiBase = evidence?.origin;
   const connectionId = evidence?.connectionId;
   const activationEpoch = evidence?.activationEpoch;
@@ -442,7 +442,7 @@ export function useHostRequestAuthorityScope() {
   const credentialState = evidence?.credentialState;
   const nativeBindingId = nativeBinding?.bindingId;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: snapshot allocation is intentionally excluded; this hook's authority identity is the primitive tuple below.
+// biome-ignore lint/correctness/useExhaustiveDependencies: snapshot allocation is intentionally excluded; this hook's authority identity is the primitive tuple below.
   return useMemo(() => {
     if (!evidence || (profile.isTauri && !nativeBinding)) return undefined;
     return {

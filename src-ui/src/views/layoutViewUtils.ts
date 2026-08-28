@@ -7,8 +7,8 @@ import type { AgentData } from '../contexts/AgentsContext';
  * (`ready`, `agents` is the real filter value — `undefined` here
  * legitimately means "no filter, every global agent allowed") from "not
  * settled yet, or errored" (`unknown`). Collapsing these into a single
- * `readonly string[] | undefined` (the original HIGH-2 fix's mistake, and
- * the closure-round-2 residual) makes an in-flight or failed
+ * `readonly string[] | undefined` (the original fix's mistake, and
+ * the closure- residual) makes an in-flight or failed
  * `useProjectQuery` indistinguishable from a project that legitimately has
  * no filter — both looked like "allow every global agent," which fails
  * OPEN during the exact window the filter can't yet be trusted.
@@ -19,7 +19,7 @@ export type ProjectAgentFilterState =
 
 /**
  * §3.3 two-input rule applied at layout prompt/action launch time
- * (station#1004 review HIGH-2, closure-review residuals): a prompt/action's
+* (archive#1004): a prompt/action's
  * `agent` ref (or the layout's `defaultAgent` fallback) must resolve to an
  * agent actually AVAILABLE in this project under the SAME rule the
  * new-chat picker and project-settings filter apply — owned by this
@@ -46,7 +46,7 @@ export function resolveLayoutLaunchAgent(
 /**
  * Visible-unavailable marker for a layout prompt/action whose `agent` ref
  * is not available in this project — never silently hidden (the orphan-
- * visibility family's discipline elsewhere in station#1004), so the user
+ * visibility family's discipline elsewhere in archive#1004), so the user
  * can see the layout authored a reference that doesn't resolve here rather
  * than wondering why a button vanished. While `projectFilter.status` is
  * `'unknown'`, the marker reads "pending" rather than "unavailable" — the

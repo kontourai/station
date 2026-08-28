@@ -5,12 +5,12 @@ import {
 } from '../schema-definitions/content.js';
 
 /**
- * station#1503 delta review, R1 — a TRIPWIRE, not a behaviour test.
+ * archive#1503 delta review, R1 — a TRIPWIRE, not a behaviour test.
  *
  * The knowledge-namespace CRUD routes write straight into
  * `project.knowledgeNamespaces` with no validation. A `repoRoot` naming a repo
  * the project does not declare makes the composed manifest UNREADABLE, which
- * fails every project seam at once — so station#1503 refuses one on the PROJECT
+ * fails every project seam at once — so archive#1503 refuses one on the PROJECT
  * write path, where the declared resource set is available.
  *
  * These routes are safe today ONLY because their schema is a plain `z.object`

@@ -18,7 +18,7 @@ When an operator configures `STATION_TELEMETRY_ENDPOINT`, Station POSTs batches 
 
 Consequences while it happens: unique-installation counts can be overstated, and one installation's events can be split across two identities, fragmenting funnels, retention and per-install sequences. Treat `distinct_id` as a stable installation identity **except** across a repair.
 
-This is a deliberate trade, not an oversight. Serializing the repair means a cross-process lock, and station#2238 removed exactly that primitive after concluding a hand-rolled filesystem lock without owner identity or stale-lock recovery is not one bug from correct: a crash while holding it strands the lock, and every later repair then fails permanently — telemetry that never sends again. A bounded identity split is preferable to a permanent failure mode for an anonymous analytics identifier.
+This is a deliberate trade, not an oversight. Serializing the repair means a cross-process lock, and archive#2238 removed exactly that primitive after concluding a hand-rolled filesystem lock without owner identity or stale-lock recovery is not one bug from correct: a crash while holding it strands the lock, and every later repair then fails permanently — telemetry that never sends again. A bounded identity split is preferable to a permanent failure mode for an anonymous analytics identifier.
 
 # Event inventory
 

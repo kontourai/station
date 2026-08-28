@@ -14,7 +14,7 @@ import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
 /**
- * Shared answers (station#1423) — the operator's own list of the answer
+ * Shared answers (archive#1423) — the operator's own list of the answer
  * permalinks they have minted, and the place they turn one off.
  *
  * Modelled on `PairedDevicesPanel`/`PairedDeviceList`, which is the repo's

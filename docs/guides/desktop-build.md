@@ -100,9 +100,9 @@ hashes/nonces that bundled assets require.
 | --- | --- |
 | `default-src 'none'` | Fail closed for any resource class Station has not named explicitly. |
 | `script-src 'self' 'wasm-unsafe-eval'` | Bundled UI/WebAssembly only; no remote scripts, `unsafe-inline`, or `unsafe-eval`. |
-| `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. Fonts are self-hosted (#2648), so no external stylesheet origin is allowlisted. |
+| `style-src` | Existing runtime/plugin styles require inline styles; this exception does not apply to scripts. Fonts are self-hosted (archive#2648), so no external stylesheet origin is allowlisted. |
 | `connect-src` | Tauri's `ipc:`/`http://ipc.localhost` transports plus Station user-selected `http:`, `https:`, `ws:`, and `wss:` endpoints. |
-| `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (#2648); no remote font CDN. |
+| `font-src` | Bundled/data fonts only — UI faces are vendored under `src-ui/public/fonts/` (archive#2648); no remote font CDN. |
 | `img-src`, `media-src`, `frame-src` | Tauri `asset:`/`http://asset.localhost` where applicable, plus existing `data:`, `blob:`, `http:`, and `https:` content. MCP frames retain their separate sandbox and policy. |
 | `worker-src` | Bundled and blob-backed diff workers. |
 | `manifest-src`, `form-action` | Same-origin application metadata and forms only. |
@@ -111,7 +111,7 @@ hashes/nonces that bundled assets require.
 Dynamic installed plugins no longer receive Station's shell nonce **in a
 browser**: a same-origin bundle is loaded by plain `<script src>`, which
 `script-src 'self'` admits on its own, and the server no longer publishes the
-response nonce as a page global at all (station#4287). Handing a nonce to
+response nonce as a page global at all (archive#4287). Handing a nonce to
 plugin code let it mint further nonce'd scripts, remote ones included, so the
 policy constrained everything except the code it was written for.
 

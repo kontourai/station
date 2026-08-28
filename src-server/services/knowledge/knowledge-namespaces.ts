@@ -74,7 +74,7 @@ export function resolveKnowledgeStorageDir(
   // a literal `~` directory inside Station's install root. Of the whole
   // unexpanded-path class this is the only member that writes to the wrong
   // place rather than failing closed, so it silently created and populated
-  // a directory the user never named (station#3155).
+  // a directory the user never named (archive#3155).
   if (namespace?.storageDir) {
     const expanded = resolve(expandTilde(namespace.storageDir));
     // MIGRATION DISCLOSURE. Before this expansion a `~/notes` namespace

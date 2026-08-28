@@ -34,8 +34,8 @@ describe('coding evidence unavailable copy (station#3158)', () => {
     expect(copy).toContain('not granted');
   });
 
-  // The defect this replaced was one sentence for every cause; a future edit
-  // that collapses two of them back reads as a passing suite otherwise.
+// The defect this replaced was one sentence for every cause; a future edit
+// that collapses two of them back reads as a passing suite otherwise.
   test('no two reasons share a description', () => {
     const descriptions = REASONS.map(
       (reason) => CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS[reason],
@@ -45,7 +45,7 @@ describe('coding evidence unavailable copy (station#3158)', () => {
 });
 
 /**
- * station#3158 review. The map's three strings were proven to differ, and the
+ * archive#3158. The map's three strings were proven to differ, and the
  * composition was proven to emit the right reason — but nothing connected
  * them. Hardcoding the renderer's lookup to `['capability-unavailable']`
  * restored the exact pre-fix defect with every test green.
@@ -61,9 +61,9 @@ describe('the lookup uses the reason it was handed', () => {
   });
 
   test('a grant-denied pane is never described as unreachable', () => {
-    // The discriminating case: these two are the pair a user must be able to
-    // tell apart, because one is something they can grant their way out of
-    // and the other is not.
+// The discriminating case: these two are the pair a user must be able to
+// tell apart, because one is something they can grant their way out of
+// and the other is not.
     const denied = codingEvidenceUnavailableCopy({
       category: 'diff',
       reason: 'grant-denied',

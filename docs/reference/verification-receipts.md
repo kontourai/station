@@ -14,7 +14,7 @@ in `scripts/lib/verification-receipt.mjs` and by the `"const": 3` constraint in
 `schemas/verification-receipt.schema.json`. A receipt records its
 `schemaVersion` as its first field; a producer or consumer that sees any other
 value must reject it. Bumping the version is a breaking change to every
-recorded receipt — version 3 (station#3584) added `terminal.indeterminate`
+recorded receipt — version 3 (archive#3584) added `terminal.indeterminate`
 under `$defs.terminal`'s `additionalProperties: false`, which is not
 additively compatible in either direction: a pre-3 schema rejects a receipt
 carrying the field, and the version-3 `assertReceiptSemantics` (which requires
@@ -25,7 +25,7 @@ falls through to real execution) but makes a live join across the version
 boundary throw `'owner finished without a valid canonical receipt'` — a
 caller sees the CLI's generic exit 2 rather than the exit 1 a real failure
 would produce. That window closes once every coordinator on a host has
-upgraded past station#3584.
+upgraded past archive#3584.
 
 ## Producer ownership
 
@@ -165,7 +165,7 @@ still re-derives that same key, and `workspaceDigest` (the dominant term in
 that key) hashes the tracked-file diff plus untracked files. For a
 **directly-executed** run, "later" is just its own runtime, so instability
 there means the tracked-file tree moved out from under the run while it
-executed (station#3584) — a real ambiguity the phase's own output cannot
+executed (archive#3584) — a real ambiguity the phase's own output cannot
 speak to, not a defect the run reported.
 
 A **joiner** faces the same ambiguity after waiting on another owner to
@@ -178,7 +178,7 @@ execution, since the prior owner has already vacated) rather than publish a
 stale-`before` projection. `indeterminate` is the residual ambiguity that
 retry cannot resolve — a directly-executed run drifting during its own
 runtime — not the common join outcome; an earlier version of this fix and of
-station#3584's diagnosis had that backwards, attributing indeterminate
+archive#3584's diagnosis had that backwards, attributing indeterminate
 receipts to "a joiner adopting an owner that never reached a valid terminal
 state", which `publishJoinedReceipt`'s validation of the owner's receipt
 (`receiptValidator` + `assertReceiptSemantics`, both required before a joiner
@@ -451,7 +451,7 @@ and CPU contention. Terminal output is a bounded redacted summary. A bounded
 redacted prefix of stdout/stderr and approved text attachments lives under
 `.kontourai/verification-output/<request-key>/` and is referenced by digest.
 
-The bounded summary's `firstCausalExcerpt` (station#1871/#2591/#3189) names the
+The bounded summary's `firstCausalExcerpt` (archive#1871/#2591/#3189) names the
 single most actionable diagnostic line found in the captured output, scoped to
 the step that actually failed. Station#4249 adds `causalExcerpts` alongside
 it: every distinct failure-shaped excerpt genuinely observed in that same
@@ -530,7 +530,7 @@ outputs.
 
 ## Relationship to Flow Agents
 
-This is the Station-side producer contract. Flow Agents issue **#1111** is
+This is the Station-side producer contract. Flow Agents issue **archive#1111** is
 separate consumer work: it will read verification receipts as Builder evidence
 through the trust-reconcile manifest, not by reaching into these modules. Until
 that consumer lands, a verification receipt is a recorded artifact that

@@ -1,8 +1,8 @@
 # Plugin-contributed Knowledge stores
 
 Status: **proposed for owner/architecture ratification**  
-Issue: [#529](https://github.com/kontourai/station/issues/529)  
-Parent: [#252](https://github.com/kontourai/station/issues/252)
+Issue: [archive#529](https://github.com/kontourai/station/issues/529)  
+Parent: [archive#252](https://github.com/kontourai/station/issues/252)
 
 ## Decision summary
 

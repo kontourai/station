@@ -1,5 +1,5 @@
 /**
- * AC4 — the New Chat picker, the Agents list, and Home's "Start direct chat"
+* the New Chat picker, the Agents list, and Home's "Start direct chat"
  * card must not disagree about whether an Agent can run.
  *
  * They used to. Home named `flatList[0]` with no readiness question asked at
@@ -77,7 +77,7 @@ const CONNECTION_DOWN: AgentData = {
 
 /**
  * No engine binding — which is not "unbound", it is Station's own engine
- * (station#3662, `docs/design/agent-engine-unification.md` §7.1). The server
+ * (archive#3662, `docs/design/agent-engine-unification.md` §7.1). The server
  * makes no complaint about it, so it runs.
  */
 const STATION_ENGINE: AgentData = {
@@ -128,15 +128,15 @@ describe('agentRunnability', () => {
   });
 
   test('an Agent with no engine binding is a STATION-engine Agent (#3662)', () => {
-    // It used to derive "This agent is not bound to an engine connection."
-    // from an absent `agentConnectionId` — a fourth reading of the record,
-    // contradicting `agentEngineDescriptor` (which renders "Station" for
-    // exactly this shape) and the server's dispatch resolver (which routes
-    // exactly this shape to Station's engine). The seeded Station Agent has
-    // this shape, so that derivation refused the default Agent on every home.
+// It used to derive "This agent is not bound to an engine connection."
+// from an absent `agentConnectionId` — a fourth reading of the record,
+// contradicting `agentEngineDescriptor` (which renders "Station" for
+// exactly this shape) and the server's dispatch resolver (which routes
+// exactly this shape to Station's engine). The seeded Station Agent has
+// this shape, so that derivation refused the default Agent on every home.
     expect(agentRunnability(STATION_ENGINE)).toEqual({ runnable: true });
-    // And it is not blanket permission: the SERVER can still refuse it, and
-    // then its own sentence is the reason.
+// And it is not blanket permission: the SERVER can still refuse it, and
+// then its own sentence is the reason.
     expect(agentRunnability(STATION_ENGINE_NO_MODEL)).toEqual({
       runnable: false,
       reason: 'No chat-capable model connection is configured.',
@@ -144,11 +144,11 @@ describe('agentRunnability', () => {
   });
 
   test('the picker offers the Station Agent on a home with NO engine connections', () => {
-    // The live #3662 repro, as a fixture: a fresh home with a Ready model
-    // connection and no engine CLI on PATH. Every engine-connection list is
-    // empty; the only Agent is the seeded Station one; the picker showed
-    // "Nothing to chat with yet" while /api/system/status called the home
-    // chat-ready.
+ // The live archive#3662 repro, as a fixture: a fresh home with a Ready model
+// connection and no engine CLI on PATH. Every engine-connection list is
+// empty; the only Agent is the seeded Station one; the picker showed
+// "Nothing to chat with yet" while /api/system/status called the home
+// chat-ready.
     const { chatReadyAgents } = selectProjectScopedChatAgents({
       agents: [STATION_ENGINE],
       agentConnections: [],
@@ -157,12 +157,12 @@ describe('agentRunnability', () => {
   });
 
   test('it never re-derives readiness from the connection inventory (found live)', () => {
-    // The regression this pins: a client-side "…and its connection must be
-    // status:ready" clause labelled three working engines Not set up for the
-    // window before their connections finished connecting, and labelled ALL
-    // of them Not set up when the connections query 401'd (it resolves to []
-    // on failure). Only the server, which can see readiness, may make that
-    // claim — and it does, through `available`/`unavailableReason`.
+// The regression this pins: a client-side "…and its connection must be
+// status:ready" clause labelled three working engines Not set up for the
+// window before their connections finished connecting, and labelled ALL
+// of them Not set up when the connections query 401'd (it resolves to []
+// on failure). Only the server, which can see readiness, may make that
+// claim — and it does, through `available`/`unavailableReason`.
     const boundToAnUnknownConnection = {
       slug: 'connecting',
       name: 'Connecting',
@@ -171,7 +171,7 @@ describe('agentRunnability', () => {
     expect(agentRunnability(boundToAnUnknownConnection)).toEqual({
       runnable: true,
     });
-    // The picker's DISPATCH question is separately, and strictly, stricter.
+// The picker's DISPATCH question is separately, and strictly, stricter.
     const { chatReadyAgents } = selectProjectScopedChatAgents({
       agents: [boundToAnUnknownConnection],
       agentConnections: CONNECTIONS,
@@ -184,7 +184,7 @@ describe('agentRunnability', () => {
       runnable: false,
       enable: { engineConnectionId: 'claude' },
     });
-    // Same prose, no signal — no enable. Reason text is not authorization.
+// Same prose, no signal — no enable. Reason text is not authorization.
     const { enable: _dropped, ...withoutSignal } = NOT_SET_UP as any;
     expect(agentRunnability(withoutSignal)).not.toHaveProperty('enable');
   });
@@ -205,11 +205,11 @@ describe('the three consumers agree on one fixture set', () => {
 
   test('the Agents list renders exactly one server-derived readiness state', () => {
     const items = buildAgentsViewItems(FIXTURES, []);
-    // DESIGN.md §2: exactly one state per row, and exactly three of them.
-    // An engine row with no Agent behind it is `Not set up`; anything else
-    // that cannot run says what it needs, in the server's own words. The row
-    // carries it once, in its trailing badge — `subtitle` is deliberately
-    // empty so the state is not printed twice.
+ // DESIGN.md §2: exactly one state per row, and exactly three of them.
+// An engine row with no Agent behind it is `Not set up`; anything else
+// that cannot run says what it needs, in the server's own words. The row
+// carries it once, in its trailing badge — `subtitle` is deliberately
+// empty so the state is not printed twice.
     expect(items.every((item) => item.subtitle === '')).toBe(true);
     const flagged = FIXTURES.filter(
       (agent) => agentReadinessState(agent).label !== 'Ready',
@@ -220,16 +220,16 @@ describe('the three consumers agree on one fixture set', () => {
       ),
     );
     expect(agentReadinessState(NOT_SET_UP).label).toBe('Not set up');
-    // And it prints the SAME reason the picker would speak.
+// And it prints the SAME reason the picker would speak.
     expect(agentReadinessState(CONNECTION_DOWN).label).toContain(
       "Needs: Engine connection 'kiro' is unavailable.",
     );
   });
 
   test('a duplicate engine binding does not displace the readiness state', () => {
-    // The server decides which row is canonical; the list only renders that
-    // verdict. Two rows reading identically for one engine is the state this
-    // marker exists to stop.
+// The server decides which row is canonical; the list only renders that
+// verdict. Two rows reading identically for one engine is the state this
+// marker exists to stop.
     const items = buildAgentsViewItems(
       [
         READY,
@@ -257,8 +257,8 @@ describe('the three consumers agree on one fixture set', () => {
   });
 
   test('Home never recommends an Agent the picker calls Not set up', () => {
-    // The order is the defect's own shape: the unrunnable engine row came
-    // first, so `flatList[0]` recommended it.
+// The order is the defect's own shape: the unrunnable engine row came
+// first, so `flatList[0]` recommended it.
     const { agent } = resolveNewChatDefaultSelection({
       flatList: [NOT_SET_UP, CONNECTION_DOWN, READY],
       agentConnections: CONNECTIONS,
@@ -270,11 +270,11 @@ describe('the three consumers agree on one fixture set', () => {
   });
 
   test('with nothing runnable, Home recommends NOTHING (it renders the set-up CTA)', () => {
-    // The earlier version of this test blessed a `?? flatList[0]` fallback,
-    // which put the contradiction back exactly where it hurts most: a fresh
-    // install where nothing is set up yet would have Home name an Agent the
-    // picker refuses one click later. When no Agent can run, the honest card
-    // is a call to action, not a recommendation.
+// The earlier version of this test blessed a `?? flatList[0]` fallback,
+// which put the contradiction back exactly where it hurts most: a fresh
+// install where nothing is set up yet would have Home name an Agent the
+// picker refuses one click later. When no Agent can run, the honest card
+// is a call to action, not a recommendation.
     const { agent } = resolveNewChatDefaultSelection({
       flatList: [NOT_SET_UP, CONNECTION_DOWN],
       agentConnections: CONNECTIONS,

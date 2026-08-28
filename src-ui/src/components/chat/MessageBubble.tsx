@@ -47,18 +47,18 @@ const loadConnectedAnswerBasisAffordance = () =>
 interface Session {
   id: string;
   agentSlug: string;
-  /**
-   * station#1424 review fix (round 3 NEW-6): the session's own threaded
-   * agent name (`ChatSession.agentName`, already carries a slug/'Unknown
-   * Agent' attribution chain from `deriveSession`) — the attribution strip's
-   * fallback when `agents.find` misses (e.g. the agent was deleted after
-   * this session started), so the row stays attributable instead of
-   * silently dropping the identity text next to a now-orphaned owner chip.
-   */
+/**
+ * archive#1424 fix : the session's own threaded
+* agent name (`ChatSession.agentName`, already carries a slug/'Unknown
+* Agent' attribution chain from `deriveSession`) — the attribution strip's
+* fallback when `agents.find` misses (e.g. the agent was deleted after
+* this session started), so the row stays attributable instead of
+* silently dropping the identity text next to a now-orphaned owner chip.
+*/
   agentName?: string;
-  /** Project scope used to list eligible durable Tasks, when known. */
+/** Project scope used to list eligible durable Tasks, when known. */
   projectSlug?: string;
-  /** Present once a conversation can span replacement execution Sessions. */
+/** Present once a conversation can span replacement execution Sessions. */
   conversationId?: string;
   messages: ChatMessage[];
   isThinking?: boolean;
@@ -67,7 +67,7 @@ interface Session {
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 
-// Hoisted (station#1424 review fix N4) so `agent || FALLBACK_AGENT` doesn't
+// Hoisted (archive#1424 fix N4) so `agent || FALLBACK_AGENT` doesn't
 // allocate a fresh object — and therefore a fresh `<AgentIcon>` element
 // identity — on every render. Only feeds the avatar glyph (which needs some
 // name for its initials source); the attribution strip below never uses
@@ -92,13 +92,13 @@ interface MessageBubbleProps {
     action: 'once' | 'trust' | 'deny',
   ) => void;
   anchorKey?: string;
-  /**
-   * "via <Station>" row attribution (station#2585), resolved by callers from
-   * the active saved Station. Omitted call sites (e.g. a narrower test render)
-   * simply render no Station chip.
-   */
+/**
+* "via <Station>" row attribution (archive#2585), resolved by callers from
+* the active saved Station. Omitted call sites (e.g. a narrower test render)
+* simply render no Station chip.
+*/
   owner?: OwnerAttribution | null;
-  /** Display-only human accountability, shown in the expanded provenance. */
+/** Display-only human accountability, shown in the expanded provenance. */
   accountableHuman?: string | null;
 }
 
@@ -119,11 +119,11 @@ function MessageBubbleComponent({
 }: MessageBubbleProps) {
   const textContent = typeof msg.content === 'string' ? msg.content : '';
 
-  // Hoisted above the flowPart early-return (hooks can't be called
-  // conditionally) and stabilized so the memoized MessageContent below
-  // doesn't get a fresh closure — and therefore re-renders/re-parses its
-  // markdown — every time MessageBubble itself re-renders for an unrelated
-  // reason (e.g. a sibling message's isThinking flag flipping).
+// Hoisted above the flowPart early-return (hooks can't be called
+// conditionally) and stabilized so the memoized MessageContent below
+// doesn't get a fresh closure — and therefore re-renders/re-parses its
+// markdown — every time MessageBubble itself re-renders for an unrelated
+// reason (e.g. a sibling message's isThinking flag flipping).
   const handleContentToolApproval = useCallback(
     (part: MessageContentPart, action: 'once' | 'trust' | 'deny') => {
       if (!onToolApproval) return;
@@ -184,18 +184,18 @@ function MessageBubbleComponent({
   const hasTurnFooter =
     msg.role === 'assistant' &&
     (msg.provenance !== undefined || msg.turnId !== undefined);
-  // Historical assistant rows own their execution Session identity. In the
-  // legacy one-to-one shape only, the active Session is an equivalent
-  // fallback; once a conversation id is present, guessing would attach a
-  // historical answer to the wrong replacement Session.
+// Historical assistant rows own their execution Session identity. In the
+// legacy one-to-one shape only, the active Session is an equivalent
+// fallback; once a conversation id is present, guessing would attach a
+// historical answer to the wrong replacement Session.
   const answerSessionId =
     msg.sessionId ??
     (activeSession.conversationId === undefined ? activeSession.id : undefined);
-  // An execution Session is immutable history once it has produced a turn.
-  // A conversation can point at another current Session after a handoff, so
-  // resolving this row through `activeSession.agentSlug` would relabel old
-  // Codex answers as Claude. A one-session legacy transcript may still use
-  // its active session because no replacement Session exists in that shape.
+// An execution Session is immutable history once it has produced a turn.
+// A conversation can point at another current Session after a handoff, so
+// resolving this row through `activeSession.agentSlug` would relabel old
+// Codex answers as Claude. A one-session legacy transcript may still use
+// its active session because no replacement Session exists in that shape.
   const rowAgentSlug =
     msg.agentSlug ??
     (activeSession.conversationId === undefined
@@ -219,11 +219,11 @@ function MessageBubbleComponent({
     (rowAgentSlug
       ? {
           slug: rowAgentSlug,
-          // A deleted agent is not a nameless one: the session threaded a
-          // real `agentName` at turn time, and it names exactly this slug
-          // whenever the row's agent IS the session's agent. Reaching for
-          // the slug-derived placeholder first discards a human-readable
-          // name in favour of an identifier (station#1424 NEW-6).
+// A deleted agent is not a nameless one: the session threaded a
+// real `agentName` at turn time, and it names exactly this slug
+// whenever the row's agent IS the session's agent. Reaching for
+// the slug-derived placeholder first discards a human-readable
+ // name in favour of an identifier (archive#1424).
           name:
             rowAgentSlug === activeSession.agentSlug && activeSession.agentName
               ? activeSession.agentName
@@ -235,26 +235,26 @@ function MessageBubbleComponent({
   ) : (
     <UserIcon size={20} />
   );
-  // station#1424 review fix (M1), wired to its authority in station#1434:
-  // `msg` is a COMPLETED, persisted turn, so its engine chip reads only the
-  // turn's own provenance envelope (see `resolveTurnEngine`'s doc comment),
-  // never `agent`'s current live binding.
+ // archive#1424 fix, wired to its authority in archive#1434:
+// `msg` is a COMPLETED, persisted turn, so its engine chip reads only the
+// turn's own provenance envelope (see `resolveTurnEngine`'s doc comment),
+// never `agent`'s current live binding.
   const engine = isAssistant ? resolveTurnEngine(msg) : null;
-  // station#1434: this component composes the row's identity surfaces, so it
-  // is the one place that decides where each fact is stated — the strip
-  // states the engine, the badge row states the model(s), and the card's
-  // collapsed headline stands down for whatever they already said.
+// archive#1434: this component composes the row's identity surfaces, so it
+// is the one place that decides where each fact is stated — the strip
+// states the engine, the badge row states the model(s), and the card's
+// collapsed headline stands down for whatever they already said.
   const modelIdentity = resolveTurnModelIdentity(msg);
   const modelOptionsTitle = msg.modelOptions
     ? Object.entries(msg.modelOptions)
         .map(([key, value]) => `${key}: ${String(value)}`)
         .join(' · ')
     : undefined;
-  // `modelOptions` (effort, thinking, …) describe Station's REQUEST, so they
-  // ride the claim that names the requested model. When the envelope observed
-  // only the model the engine reported back, they ride that claim instead —
-  // never silently dropped (the pre-#1434 badge always carried them), and
-  // always prefixed so they cannot read as something the engine reported.
+// `modelOptions` (effort, thinking, …) describe Station's REQUEST, so they
+// ride the claim that names the requested model. When the envelope observed
+// only the model the engine reported back, they ride that claim instead —
+ // never silently dropped (the pre-archive#1434 badge always carried them), and
+// always prefixed so they cannot read as something the engine reported.
   const requestOptionsSlot =
     modelIdentity.source === 'envelope'
       ? (
@@ -262,10 +262,10 @@ function MessageBubbleComponent({
           modelIdentity.claims[0]
         )?.slot
       : undefined;
-  // If session lineage names an Agent that has since been deleted, `rowAgent`
-  // preserves its durable id and an identicon seed instead of borrowing the
-  // current Agent's name/icon. Only a legacy single-session transcript may
-  // use the threaded session display name as its historical fallback.
+// If session lineage names an Agent that has since been deleted, `rowAgent`
+// preserves its durable id and an identicon seed instead of borrowing the
+// current Agent's name/icon. Only a legacy single-session transcript may
+// use the threaded session display name as its historical fallback.
   const attributionAgentName =
     msg.agentDisplayName ??
     rowAgent?.name ??
@@ -344,7 +344,7 @@ function MessageBubbleComponent({
           />
         )}
 
-        {/* No readable envelope (an earlier message, a flag-off session, a
+{/* No readable envelope (an earlier message, a flag-off session, a
             payload this build cannot decode): the pre-station#1434 badge,
             unchanged — the row keeps stating the one model fact it holds. */}
         {isAssistant &&
@@ -355,7 +355,7 @@ function MessageBubbleComponent({
             </div>
           )}
 
-        {/* station#1434: with an envelope on the row, model identity comes
+{/* archive#1434: with an envelope on the row, model identity comes
             from it and only from it, and each slot it observed is named. */}
         {isAssistant &&
           modelIdentity.source === 'envelope' &&
@@ -371,7 +371,7 @@ function MessageBubbleComponent({
                       : claim.description
                   }
                 >
-                  {/* The space is a real text node, not CSS spacing: a
+{/* The space is a real text node, not CSS spacing: a
                       screen reader and a copy-paste both read the DOM text,
                       and "Requestedsonnet-latest" is not what a person sees. */}
                   <span className="message__model-claim-label">
@@ -395,7 +395,7 @@ function MessageBubbleComponent({
           }
         />
 
-        {/* Only a rehydrated, durable authored input has the exact identity
+{/* Only a rehydrated, durable authored input has the exact identity
             needed for an explicit Task pin. Optimistic/content-reconciled rows
             deliberately carry no surrogate action. */}
         {msg.role === 'user' &&
@@ -476,11 +476,11 @@ function MessageBubbleComponent({
           </details>
         )}
 
-        {/* station#1410: the answer's provenance, rendered only for a turn
+{/* archive#1410: the answer's provenance, rendered only for a turn
             Station actually observed through the canonical event store.
             A row with no envelope claims nothing rather than showing an
             empty card. */}
-        {/* station#2652 redesign: one quiet footer row holds every per-turn
+{/* archive#2652 redesign: one quiet footer row holds every per-turn
             meta affordance — the provenance disclosure leads (its collapsed
             line IS the takeaway) and the share control sits beside it, both
             text-weight and muted so the answer above stays the loudest thing
@@ -500,14 +500,14 @@ function MessageBubbleComponent({
               />
             )}
             <div className="turn-footer__actions">
-              {/* station#1423: sharing an answer is sharing it WITH its
+{/* archive#1423: sharing an answer is sharing it WITH its
                   receipts. Keep it in the one action row with Task, copy, and
                   feedback controls so narrow docks wrap deliberately instead
                   of centering a single long control on a second line. */}
               {msg.provenance !== undefined && (
                 <ShareAnswerButton provenance={msg.provenance} />
               )}
-              {/* A finalized assistant row carries its exact turn id. Attaching
+{/* A finalized assistant row carries its exact turn id. Attaching
                   stores only that identity tuple; it is not gated on execution
                   provenance, and it never calls provenance semantic support. */}
               {msg.turnId &&

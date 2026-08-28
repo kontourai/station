@@ -3,7 +3,7 @@
  *
  * Registered in `scripts/claim-fixture-ratchet.mjs`: every member of the two
  * phase switches must be exercised here, because the defect class this guards
- * (station#1166) was a capability sentence rendered for phases that could not
+ * (archive#1166) was a capability sentence rendered for phases that could not
  * support it — "can run delegated tasks here" printed beside "not connected".
  */
 

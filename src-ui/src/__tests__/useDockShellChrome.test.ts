@@ -30,20 +30,20 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: () => {},
 }));
 
-// station#4525: the project-deletion cleanup effect reads `useProjects()`
+// archive#4525: the project-deletion cleanup effect reads `useProjects`
 // directly. Mocked (matching this file's existing `useNavigation` mock
 // pattern) rather than wrapped in a real QueryClientProvider — this is a
 // hook-unit test, not an integration test, and the mock lets each test
 // control the pending/error/confirmed-loaded distinction precisely.
 //
-// Three independent knobs, mirroring the real `useProjects()` shape
+// Three independent knobs, mirroring the real `useProjects` shape
 // (`ProjectsContext.tsx`) exactly: `isLoading` and `isConfirmedLoaded` are
 // NOT simply each other's negation — the pending shape has both false-ish
 // in different ways than the error shape does, and `useDockShellChrome`
 // only ever reads `isConfirmedLoaded`. Defaulting it to `true` keeps every
 // test that isn't specifically about the pending/error distinction reading
-// as "steady state after a real, successful load" (station#4525 review
-// HIGH-1's fix: `isConfirmedLoaded` requires POSITIVE evidence — a
+// as "steady state after a real, successful load" (archive#4525
+// fix: `isConfirmedLoaded` requires POSITIVE evidence — a
 // successful, error-free load with real data — never merely `!isLoading`,
 // which the pre-fix guard used and which is ALSO true on error).
 let projectsForDockShellChrome: { slug: string }[] = [];
@@ -228,10 +228,10 @@ describe('useDockShellChrome', () => {
     });
   });
 
-  // station#4525 Phase 2: the dock's project binding is owned here, not by
-  // the occupant that reads it — these pin persistence, the deletion-cleanup
-  // contract, and (critically) that nothing here clears the binding on its
-  // own initiative.
+// archive#4525 Phase 2: the dock's project binding is owned here, not by
+// the occupant that reads it — these pin persistence, the deletion-cleanup
+// contract, and (critically) that nothing here clears the binding on its
+// own initiative.
   describe('activeProjectSlug', () => {
     test('defaults to null and persists an explicit bind via the device setting', async () => {
       projectsForDockShellChrome = [{ slug: 'alpha' }];
@@ -286,10 +286,10 @@ describe('useDockShellChrome', () => {
       act(() => result.current.setActiveProjectSlug('alpha'));
       expect(result.current.activeProjectSlug).toBe('alpha');
 
-      // The project list no longer names 'alpha' — deleted, via a
-      // SUCCESSFUL, confirmed load (the marker distinct from the error
-      // shape below: `isConfirmedLoaded: true` is the positive evidence
-      // this cleanup requires, not merely `[]`).
+// The project list no longer names 'alpha' — deleted, via a
+// SUCCESSFUL, confirmed load (the marker distinct from the error
+// shape below: `isConfirmedLoaded: true` is the positive evidence
+// this cleanup requires, not merely `[]`).
       projectsForDockShellChrome = [];
       projectsConfirmedLoadedForDockShellChrome = true;
       rerender();
@@ -307,10 +307,10 @@ describe('useDockShellChrome', () => {
       );
       act(() => result.current.setActiveProjectSlug('alpha'));
 
-      // A cold boot: the query resets to its pending shape (`[]`,
-      // `isLoading: true`, not yet confirmed) before it has answered. An
-      // empty array here must NOT read as "the project is gone" — only a
-      // CONFIRMED, genuinely-empty/mismatched list may clear the binding.
+// A cold boot: the query resets to its pending shape (`[]`,
+// `isLoading: true`, not yet confirmed) before it has answered. An
+// empty array here must NOT read as "the project is gone" — only a
+// CONFIRMED, genuinely-empty/mismatched list may clear the binding.
       projectsForDockShellChrome = [];
       projectsLoadingForDockShellChrome = true;
       projectsConfirmedLoadedForDockShellChrome = false;
@@ -318,15 +318,15 @@ describe('useDockShellChrome', () => {
       expect(result.current.activeProjectSlug).toBe('alpha');
     });
 
-    // station#4525 review HIGH-1: the pre-fix guard was `!isLoading`, which
-    // is ALSO true the moment the query settles into an ERROR —
-    // `ProjectsContext` folds the error shape's missing `data` to the same
-    // `[]` a confirmed-empty list produces, so `!isLoading && []` could not
-    // tell "deleted" from "the server errored" apart. This is the
-    // DISCRIMINATING case the fix exists for: `isLoading: false` (the query
-    // has settled) but `isConfirmedLoaded: false` (it settled into an
-    // error, not a success) must still leave the binding untouched — a
-    // pre-fix guard reading only `!isLoading` would wipe it here.
+// archive#4525: the pre-fix guard was `!isLoading`, which
+// is ALSO true the moment the query settles into an ERROR —
+// `ProjectsContext` folds the error shape's missing `data` to the same
+// `[]` a confirmed-empty list produces, so `!isLoading && []` could not
+// tell "deleted" from "the server errored" apart. This is the
+// DISCRIMINATING case the fix exists for: `isLoading: false` (the query
+// has settled) but `isConfirmedLoaded: false` (it settled into an
+// error, not a success) must still leave the binding untouched — a
+// pre-fix guard reading only `!isLoading` would wipe it here.
     test('does NOT clear the binding while the projects query has ERRORED (station#4525 review HIGH-1)', async () => {
       projectsForDockShellChrome = [{ slug: 'alpha' }];
       const useDockShellChrome = await freshUseDockShellChrome();
@@ -338,9 +338,9 @@ describe('useDockShellChrome', () => {
       );
       act(() => result.current.setActiveProjectSlug('alpha'));
 
-      // The error shape: settled (`isLoading: false`) but never confirmed
-      // (`isConfirmedLoaded: false`), `projects` folded to `[]` exactly as
-      // it is for a genuine deletion.
+// The error shape: settled (`isLoading: false`) but never confirmed
+// (`isConfirmedLoaded: false`), `projects` folded to `[]` exactly as
+// it is for a genuine deletion.
       projectsForDockShellChrome = [];
       projectsLoadingForDockShellChrome = false;
       projectsConfirmedLoadedForDockShellChrome = false;
@@ -364,9 +364,9 @@ describe('useDockShellChrome', () => {
 
       projectsForDockShellChrome = [];
       rerender();
-      // This local, non-ambient instance still reads the shared persisted
-      // value live; it just isn't the one reconciling it against deletion
-      // (station#4460's single-writer pattern, extended to this cleanup).
+// This local, non-ambient instance still reads the shared persisted
+// value live; it just isn't the one reconciling it against deletion
+// (archive#4460's single-writer pattern, extended to this cleanup).
       expect(result.current.activeProjectSlug).toBe('alpha');
     });
 
@@ -382,10 +382,10 @@ describe('useDockShellChrome', () => {
       act(() => mounted.result.current.setActiveProjectSlug('alpha'));
       mounted.unmount();
 
-      // Simulate an occupant switch away and back: a fresh mount of the SAME
-      // persistent hook instance (this is what `DockShell` actually does —
-      // it never unmounts on an occupant switch, only the Chat occupant
-      // does), several times over.
+// Simulate an occupant switch away and back: a fresh mount of the SAME
+// persistent hook instance (this is what `DockShell` actually does —
+// it never unmounts on an occupant switch, only the Chat occupant
+// does), several times over.
       for (let i = 0; i < 3; i += 1) {
         const remount = await freshUseDockShellChrome();
         const { result, unmount } = renderHook(() =>

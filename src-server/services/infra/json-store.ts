@@ -170,7 +170,7 @@ function fsyncFile(path: string): void {
   // descriptor, but Windows implements it as FlushFileBuffers, which requires
   // write access and fails with EPERM otherwise — so every durable write threw
   // on Windows and took startup down with it when a migration performed one
-  // (#1162: runStartupMigrations -> runDefaultAgentPromotionMigration ->
+  // (archive#1162: runStartupMigrations -> runDefaultAgentPromotionMigration ->
   // withAgentAliasLockAsync, errno -4048).
   const fd = openSync(path, 'r+');
   try {
@@ -184,7 +184,7 @@ function fsyncDirectory(path: string): void {
   // Delegates the platform logic to the shared helper, which skips the fsync
   // on win32 proactively rather than provoking an EPERM and catching it —
   // this file previously carried a third, weaker variant of a gotcha that
-  // helper exists to centralize (#1162 review).
+  // helper exists to centralize (archive#1162 review).
   //
   // The tolerant wrapper stays: directory fsync is not available on every
   // host/filesystem, and the file fsync plus same-directory rename still

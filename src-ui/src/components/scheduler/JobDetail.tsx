@@ -56,7 +56,7 @@ export function runStatusVisual(status: RunStatus): {
       // because the silent default this replaces returned `pending` -- so a
       // new terminal-failure status would have rendered as "still running",
       // which is the same defect this whole change exists to remove, one
-      // status later (station#3238).
+      // status later (archive#3238).
       const unhandled: never = status;
       // Runtime belt-and-braces for a value that escaped the type (a payload
       // from a newer server). `attention` rather than `pending`: an
@@ -399,7 +399,7 @@ export function JobDetail({
       {viewIdx !== null && (
         // Was a hand-rolled overlay: no focus trap, no Escape, no focus
         // restoration — a dialog in appearance only. On the shared `Dialog` it
-        // gets all three, plus the one dialog chrome (SHELL-02).
+        // gets all three, plus the one dialog chrome.
         <Dialog
           eyebrow="Schedule"
           title={`${name} — Run Output`}

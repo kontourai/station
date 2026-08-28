@@ -4,7 +4,7 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 /**
- * station#3794: these facts are a dependency of the resolved pane catalog's
+ * archive#3794: these facts are a dependency of the resolved pane catalog's
  * memo, so a fresh object literal here rebuilt `catalog.entries` — and every
  * availability object inside it — on every render of every consumer. That is
  * what made `useCallback(..., [catalog.entries])` inert at the pane-host call

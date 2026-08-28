@@ -1,6 +1,6 @@
 /**
  * The consent listener's contract tests model the ATTACKS the distinct-origin
- * surface exists to stop (station#3677). Each refusal is proven separately —
+ * surface exists to stop (archive#3677). Each refusal is proven separately —
  * nonce, Origin, and Fetch Metadata are three independent proofs, and a test
  * that only removed all three at once could not tell which one held.
  */
@@ -114,7 +114,7 @@ function decideHeaders(
     origin: CONSENT_ORIGIN,
     'sec-fetch-site': 'same-origin',
     'sec-fetch-mode': 'navigate',
-    // A real approve click sends this too (live trace, station#3752); the
+    // A real approve click sends this too (live trace, archive#3752); the
     // decide guard requires it so "top-level navigation" is derived.
     'sec-fetch-dest': 'document',
     'sec-fetch-user': '?1',
@@ -177,7 +177,7 @@ describe('consent listener review page', () => {
       'same-origin',
     );
     expect(response.headers.get('cache-control')).toBe('no-store');
-    // station#3752: `same-origin`, not `no-referrer`. Chromium computes a
+    // archive#3752: `same-origin`, not `no-referrer`. Chromium computes a
     // form submission's Origin under the referrer policy, so `no-referrer`
     // made this page's own approve click arrive as `Origin: null` and the
     // decide guard refused it — the page defeating its own check. The
@@ -339,7 +339,7 @@ describe('consent listener decision — the injections (each proven independentl
   });
 
   /**
-   * station#3752: `'null'` STAYS refused here, and the defect that made
+   * archive#3752: `'null'` STAYS refused here, and the defect that made
    * every real approve click arrive as `Origin: null` was fixed at its
    * source — the page's own `Referrer-Policy` (pinned by the test below).
    * Chromium computes a form submission's Origin under the document's

@@ -36,8 +36,8 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
       <QueuedMessages sessionId="s1" messages={['first', 'second', 'third']} />,
     );
 
-    // Displayed newest-queued-first (reverse of send order): 'third' (order
-    // 3) renders before 'first' (order 1, next to send).
+// Displayed newest-queued-first (reverse of send order): 'third' (order
+// 3) renders before 'first' (order 1, next to send).
     const orderNumbers = screen
       .getAllByText(/^[1-3]$/)
       .map((node) => node.textContent);
@@ -52,8 +52,8 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     const upButtons = screen.getAllByRole('button', {
       name: 'Move message up',
     }) as HTMLButtonElement[];
-    // Display order is reversed: 'third' (real last index) renders at the
-    // TOP — it cannot move visually up any further.
+// Display order is reversed: 'third' (real last index) renders at the
+// TOP — it cannot move visually up any further.
     expect(upButtons[0].disabled).toBe(true); // 'third' — already at top
     expect(upButtons[1].disabled).toBe(false); // 'second'
     expect(upButtons[2].disabled).toBe(false); // 'first'
@@ -67,8 +67,8 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     const downButtons = screen.getAllByRole('button', {
       name: 'Move message down',
     }) as HTMLButtonElement[];
-    // 'first' (real index 0, next to send) renders at the BOTTOM — it
-    // cannot move visually down any further.
+// 'first' (real index 0, next to send) renders at the BOTTOM — it
+// cannot move visually down any further.
     expect(downButtons[0].disabled).toBe(false); // 'third'
     expect(downButtons[1].disabled).toBe(false); // 'second'
     expect(downButtons[2].disabled).toBe(true); // 'first' — already at bottom
@@ -79,21 +79,21 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
       <QueuedMessages sessionId="s1" messages={['first', 'second', 'third']} />,
     );
 
-    // The rendered list is reversed (next-to-send at the bottom), so a
-    // VISUAL up-click must move the row to a HIGHER real index (drains
-    // later) = the hook's moveDown, and a visual down-click to a LOWER
-    // real index (drains sooner) = the hook's moveUp.
+// The rendered list is reversed (next-to-send at the bottom), so a
+// VISUAL up-click must move the row to a HIGHER real index (drains
+// later) = the hook's moveDown, and a visual down-click to a LOWER
+// real index (drains sooner) = the hook's moveUp.
     const upButtons = screen.getAllByRole('button', {
       name: 'Move message up',
     });
-    // Display position 1 is 'second', real index 1; visual up = moveDown.
+// Display position 1 is 'second', real index 1; visual up = moveDown.
     fireEvent.click(upButtons[1]);
     expect(moveDownMock).toHaveBeenCalledWith(1, 3);
 
     const downButtons = screen.getAllByRole('button', {
       name: 'Move message down',
     });
-    // Display position 0 is 'third', real index 2; visual down = moveUp.
+// Display position 0 is 'third', real index 2; visual down = moveUp.
     fireEvent.click(downButtons[0]);
     expect(moveUpMock).toHaveBeenCalledWith(2);
   });
@@ -162,9 +162,9 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     await act(async () => resolve(false));
   });
 
-  // UX audit T3: a retained follow-up used to sit in the queue with no reason
-  // and no way to send it — the automatic drain only fires on a later
-  // turn.completed, so a refusal the user has since fixed stranded it.
+ // a retained follow-up used to sit in the queue with no reason
+// and no way to send it — the automatic drain only fires on a later
+// turn.completed, so a refusal the user has since fixed stranded it.
   it('explains why the queue is held and offers a retry', () => {
     const onRetry = vi.fn();
     render(
@@ -182,9 +182,9 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     );
 
     expect(screen.getByText(/started without a workspace/i)).toBeTruthy();
-    // UX audit T3 review: on this refusal the action is not a plain retry —
-    // it continues the conversation without the workspace — so the label says
-    // that rather than promising a repeat of a deterministic failure.
+ // review: on this refusal the action is not a plain retry —
+// it continues the conversation without the workspace — so the label says
+// that rather than promising a repeat of a deterministic failure.
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Send the queued message to this conversation as it is',

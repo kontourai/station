@@ -273,7 +273,7 @@ label.
 ## Meeting notes: capture and recall
 
 **Meeting Notes** (`examples/meeting-notes/`) is the first real app built on the store/index model
-above — Knowledge K5 (issue #203). It is an installable plugin, not core: everything it does goes
+above — Knowledge K5 (issue archive#203). It is an installable plugin, not core: everything it does goes
 through the two layers this guide already describes (Kit records in a knowledge store, a
 retrieval index for search) plus one optional addition, a Neo4j-backed graph view. Read this section
 as a worked example of the store/index model, not a third layer.

@@ -1,5 +1,5 @@
 /**
- * OrchestrationStreamPresence — station#1225 (offline slice 3): tracks how
+ * OrchestrationStreamPresence — archive#1225 (offline): tracks how
  * many live `/api/orchestration/events` SSE subscribers each authorized
  * presence subject currently holds open.
  *
@@ -18,7 +18,7 @@
  * ordering-fence `pending` buffer) — there is exactly one Station server
  * process per instance, so this never needs to be durable or cross-process.
  *
- * station#4075 stage 3 slice 2: `connect()` additionally accepts the
+ * archive#4075 stage 3 slice 2: `connect()` additionally accepts the
  * caller's already-resolved `PrincipalRef` (the SAME value the stage-2
  * fail-closed resolver produced for this exact request — never re-resolved
  * here) and retains it per subject, bounded, so a session-agnostic "who's
@@ -159,7 +159,7 @@ export class OrchestrationStreamPresence {
    * existing personal-mode route wiring; hosted route wiring must pass the
    * opaque subject created from request authority above.
    *
-   * `principal` (station#4075 stage 3 slice 2) is the caller's already-
+   * `principal` (archive#4075 stage 3 slice 2) is the caller's already-
    * resolved `PrincipalRef` for this exact connection, retained (bounded,
    * see the class docblock) so `roster()` can report it. Optional and
    * additive: omitting it (every pre-existing caller, and the test-only
@@ -218,7 +218,7 @@ export class OrchestrationStreamPresence {
   }
 
   /**
-   * The session-agnostic "who's connected" roster (station#4075 stage 3
+   * The session-agnostic "who's connected" roster (archive#4075 stage 3
    * slice 2): every principal currently retained above, each with its
    * (possibly saturated — see the class docblock) live connection count.
    * Sorted by principal id for a deterministic response.

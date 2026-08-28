@@ -32,7 +32,7 @@ export const GLOBAL_CONTEXT = '__global__';
 /**
  * Where the chat about to be started will actually run.
  *
- * `'connection'` exists because of station#1089. The picker used to print
+ * `'connection'` exists because of archive#1089. The picker used to print
  * "~ (defaults to home)" for any project without a `workingDirectory`, and for
  * an engine connection carrying its own Working Directory that was simply
  * untrue: measured on origin/main, a chat in a directoryless project on a
@@ -43,7 +43,7 @@ export const GLOBAL_CONTEXT = '__global__';
  * The precedence below is a mirror of the server's, not a second opinion:
  * `orchestration-service.ts`'s `resolveStartSessionCwd` turns a project's
  * `workingDirectory` into the session's `cwd`, and `acp-adapter.ts` then
- * resolves `input.cwd || connectionCwd || safeHomeDirectory()`. So a project
+* resolves `input.cwd || connectionCwd || safeHomeDirectory`. So a project
  * directory outranks a connection default (verified live: project `bound`
  * + connection `oc-elsewhere` → `/tmp/s1089-project`), and a connection
  * default outranks `$HOME`.
@@ -75,11 +75,11 @@ export const NEW_CHAT_AGENT_NOT_SET_UP_LABEL = AGENT_NOT_SET_UP_LABEL;
  * characters, and five engine rows turned the picker into a wall of amber
  * prose that read as an explanation rather than a state. So the row's VISIBLE
  * treatment is chosen here:
- *   - `state`  — the row carries the machine-readable `enable` signal, so its
- *     condition is fully known ("no authored Agent yet"). Render the chip; the
- *     full sentence stays as the row's accessible description.
- *   - `reason` — anything else. The server's text is the only thing that knows
- *     what is wrong, so keep showing it, visually bounded to one line.
+*   - `state`  — the row carries the machine-readable `enable` signal, so its
+*     condition is fully known ("no authored Agent yet"). Render the chip; the
+*     full sentence stays as the row's accessible description.
+*   - `reason` — anything else. The server's text is the only thing that knows
+*     what is wrong, so keep showing it, visually bounded to one line.
  *
  * `description` is always the complete text either way: nothing is truncated
  * in the DOM, only in pixels, so `aria-describedby` is unaffected.
@@ -108,7 +108,7 @@ export function resolveNewChatAgentUnavailability(
  * already bound to this engine connection, if one is loaded. The alias row
  * itself carries the same binding, so engine defaults are excluded.
  *
- * AC7 note: this and the three `engineDefault` reads below are the surviving
+ * note: this and the three `engineDefault` reads below are the surviving
  * consumers of that flag, and every one of them is about PRESENTATION of a
  * virtual row — which Agent an alias stands in for, whether the alias should
  * still be shown, and which engine group a row belongs to. None is a lock.
@@ -129,7 +129,7 @@ export function findAuthoredAgentForEngineConnection(
 }
 
 /**
- * station#1089. Deliberately reports the CONNECTION directory rather than
+ * archive#1089. Deliberately reports the CONNECTION directory rather than
  * relocating the agent to `$HOME` to match the old copy. A project with no
  * `workingDirectory` is, in the server resolver's own words, "an
  * organizational/knowledge scope, not a directory binding" — the absence of a
@@ -178,10 +178,10 @@ export function resolveNewChatInitialContext(
   const activeProject = activeProjectSlug
     ? projects.find((project) => project?.slug === activeProjectSlug)
     : undefined;
-  // A direct chat must not inherit Station's placeholder/organisational
-  // project as an execution workspace. The server rightly rejects that
-  // target because it cannot resolve a working directory; global chat is the
-  // usable, explicit fallback until the person picks a real project.
+// A direct chat must not inherit Station's placeholder/organisational
+// project as an execution workspace. The server rightly rejects that
+// target because it cannot resolve a working directory; global chat is the
+// usable, explicit fallback until the person picks a real project.
   return activeProject?.workingDirectory?.trim()
     ? activeProject.slug
     : GLOBAL_CONTEXT;
@@ -270,12 +270,12 @@ export interface NewChatModalViewModel {
   currentContextOption: NewChatModalContextOption | undefined;
   groups: NewChatModalAgentGroup[];
   flatList: AgentData[];
-  /**
-   * The scope-filtered, pre-search eligible set (project ownership + agent
-   * filter applied). Enable's FIND must run over THIS set, not the raw
-   * agents prop, or an out-of-scope authored Agent could be silently
-   * selected into a context the scope policy excludes it from (#3027 M2).
-   */
+/**
+* The scope-filtered, pre-search eligible set (project ownership + agent
+* filter applied). Enable's FIND must run over THIS set, not the raw
+* agents prop, or an out-of-scope authored Agent could be silently
+ * selected into a context the scope policy excludes it from (archive#3027).
+*/
   scopedAgents: AgentData[];
   compatibilityMessage?: string;
 }
@@ -295,18 +295,18 @@ export function resolveNewChatDefaultSelection({
   projectDefaultModel?: string;
   lastChosenModelByBinding?: LastChosenModelMap;
 }) {
-  // The first RUNNABLE row, or NONE. `flatList` deliberately includes
-  // unavailable Agents (the picker lists them so their reason and repair path
-  // are visible), so `flatList[0]` recommended an Agent the very same modal
-  // labels "Not set up" — and Home's "Start direct chat" card, which reads
-  // this, printed exactly that.
-  //
-  // The first fix kept `?? flatList[0]` as a fallback so the card would still
-  // name something. That reintroduced the contradiction for exactly the home
-  // that suffers most from it — a fresh install where nothing is set up yet —
-  // and it is the wrong shape anyway: when no agent can run, the honest card
-  // is a SET-UP call to action, not a recommendation. `undefined` is that
-  // signal; Home renders the CTA (see `useHomeViewModel.startReady`).
+// The first RUNNABLE row, or NONE. `flatList` deliberately includes
+// unavailable Agents (the picker lists them so their reason and repair path
+// are visible), so `flatList[0]` recommended an Agent the very same modal
+// labels "Not set up" — and Home's "Start direct chat" card, which reads
+// this, printed exactly that.
+//
+// The first fix kept `?? flatList[0]` as a fallback so the card would still
+// name something. That reintroduced the contradiction for exactly the home
+// that suffers most from it — a fresh install where nothing is set up yet —
+// and it is the wrong shape anyway: when no agent can run, the honest card
+// is a SET-UP call to action, not a recommendation. `undefined` is that
+// signal; Home renders the CTA (see `useHomeViewModel.startReady`).
   const agent = flatList.find(
     (candidate) => agentRunnability(candidate).runnable,
   );
@@ -467,13 +467,13 @@ export function buildNewChatModalViewModel({
       eligibleAgents.set(agent.slug, agent);
     }
   }
-  // station#3027(c): an engine-default alias row exists to say "this engine
-  // has no authored Agent yet". Once an authored Agent bound to the same
-  // engine connection is in scope, the alias would sit as a permanently dead
-  // row beside the live one — hide it. Purely derived state: deleting the
-  // authored Agent un-hides the alias on the next build. Derived from the
-  // pre-search eligible set so typing a query matching only the alias cannot
-  // resurrect it.
+// archive#3027(c): an engine-default alias row exists to say "this engine
+// has no authored Agent yet". Once an authored Agent bound to the same
+// engine connection is in scope, the alias would sit as a permanently dead
+// row beside the live one — hide it. Purely derived state: deleting the
+// authored Agent un-hides the alias on the next build. Derived from the
+// pre-search eligible set so typing a query matching only the alias cannot
+// resurrect it.
   const authoredBoundConnectionIds = new Set<string>();
   for (const agent of eligibleAgents.values()) {
     const boundConnectionId = agent.execution?.agentConnectionId;
@@ -501,8 +501,8 @@ export function buildNewChatModalViewModel({
     return false;
   };
 
-  // Registry-owned defaults join their engine group by explicit marker.
-  // Presentation only — see `findAuthoredAgentForEngineConnection` (AC7).
+// Registry-owned defaults join their engine group by explicit marker.
+// Presentation only — see `findAuthoredAgentForEngineConnection`.
   const engineGroupSlugs = new Set(
     filtered
       .filter((agent) => isEngineProvenanceAgent(agent))
@@ -557,21 +557,21 @@ export function buildNewChatModalViewModel({
     });
   }
 
-  /*
-   * DESIGN.md §5: the picker is grouped "the same two ways" the Agents list
-   * is — `Engines on this machine` (the `engineDefault` provenance marker,
-   * command-backed engines included) and `Your agents`. It used to open one
-   * group PER ENGINE DISPLAY NAME plus a `Global` group, so a fresh install
-   * showed four one-row groups and an authored agent sat under a heading
-   * ("Global") that names a scope, not a kind. `engineDefault` is the same
-   * field `buildAgentsViewItems` bands on, so the two surfaces cannot band
-   * the same agent differently.
-   *
-   * `Recent` and a project layout's own group survive above them: those are
-   * CONTEXT groupings (what you used last here, what this layout offers),
-   * orthogonal to what an agent IS, and the list has no equivalent because
-   * it is not opened inside a context.
-   */
+/*
+ * DESIGN.md §5: the picker is grouped "the same two ways" the Agents list
+* is — `Engines on this machine` (the `engineDefault` provenance marker,
+* command-backed engines included) and `Your agents`. It used to open one
+* group PER ENGINE DISPLAY NAME plus a `Global` group, so a fresh install
+* showed four one-row groups and an authored agent sat under a heading
+* ("Global") that names a scope, not a kind. `engineDefault` is the same
+* field `buildAgentsViewItems` bands on, so the two surfaces cannot band
+* the same agent differently.
+*
+* `Recent` and a project layout's own group survive above them: those are
+* CONTEXT groupings (what you used last here, what this layout offers),
+* orthogonal to what an agent IS, and the list has no equivalent because
+* it is not opened inside a context.
+*/
   const notRecent = (agent: AgentData) =>
     !recentSet.has(agent.slug) || !!agentSearch;
   const engineBand = [...visibleEngineAgents, ...acpAgents.filter(notRecent)];
@@ -592,10 +592,10 @@ export function buildNewChatModalViewModel({
   }
 
   const visibleGroups = groups.filter((group) => group.agents.length > 0);
-  // Only warn about genuinely-degraded runtimes — not optional ones that are
-  // simply unconfigured (e.g. the always-present Bedrock runtime with no AWS
-  // creds). Flagging those nags every creds-free Ollama user with a scary
-  // "Setup required" banner they don't need to act on.
+// Only warn about genuinely-degraded runtimes — not optional ones that are
+// simply unconfigured (e.g. the always-present Bedrock runtime with no AWS
+// creds). Flagging those nags every creds-free Ollama user with a scary
+// "Setup required" banner they don't need to act on.
   const degradedRuntime = agentConnections.find(
     (connection) =>
       connection.type !== 'acp' &&
@@ -626,7 +626,7 @@ export function buildNewChatModalViewModel({
 }
 
 // Re-exported from their new entry-safe homes (hooks/lastChosenModel.ts;
-// ./new-chat-agent-enable.ts, whose own note explains why it moved) so
+///new-chat-agent-enable.ts, whose own note explains why it moved) so
 // existing modal-side importers keep working.
 export {
   buildLastChosenModelBindingKey,

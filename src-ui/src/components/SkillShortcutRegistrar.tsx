@@ -25,7 +25,7 @@ interface ShortcutTarget {
 
 /**
  * A chord typed INTO the composer is text, not a command; ditto inside a
- * terminal or under a dialog (sol review finding — dock shortcuts already
+* terminal or under a dialog (dock shortcuts already
  * declared this, these did not).
  *
  * Hoisted to a module constant because it is a dependency of the registering
@@ -93,8 +93,8 @@ export function SkillShortcutRegistrar({
 
   const targets: ShortcutTarget[] = useMemo(
     () =>
-      // Only command skills: a chord that "runs" a skill with no command word
-      // would have nothing to type into the composer.
+// Only command skills: a chord that "runs" a skill with no command word
+// would have nothing to type into the composer.
       skills.flatMap((skill) => {
         const command = resolveSkillCommandName(skill);
         return command
@@ -110,11 +110,11 @@ export function SkillShortcutRegistrar({
     [skills],
   );
 
-  // One child per skill, so each registration is a hook with its own
-  // lifecycle. The previous shape registered every skill inside ONE effect
-  // whose dependencies included the `onRun` callback identity; every render of
-  // the dock re-ran it, and while `register` still re-rendered the whole
-  // context that was an unbounded loop (React #185, station#3736).
+// One child per skill, so each registration is a hook with its own
+// lifecycle. The previous shape registered every skill inside ONE effect
+// whose dependencies included the `onRun` callback identity; every render of
+// the dock re-ran it, and while `register` still re-rendered the whole
+ // context that was an unbounded loop (React archive#185, archive#3736).
   return (
     <>
       {targets.map((target) => (

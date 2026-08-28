@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * #1162: a durable write fsync'd a descriptor opened read-only. POSIX allows
+ * archive#1162: a durable write fsync'd a descriptor opened read-only. POSIX allows
  * that, so every test on macOS/Linux passed; Windows implements fsync as
  * FlushFileBuffers, which requires write access and returns EPERM — taking
  * server startup down whenever a migration performed a durable write.
@@ -83,7 +83,7 @@ describe('durable write fsync open mode (#1162)', () => {
 });
 
 /**
- * station#1686 review round 1, MEDIUM 7: the project-resource shadow record
+ * archive#1686 review round 1, MEDIUM 7: the project-resource shadow record
  * is written once per session start, synchronously, on the event loop. At
  * `crash-safe` durability that is four fsyncs — measured at ~3.6ms each,
  * ~15.4ms per write on this repo's reference host — which is 4.5x the `git`

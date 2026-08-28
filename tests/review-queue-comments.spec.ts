@@ -84,7 +84,7 @@ test.describe('Review queue — diff comments', () => {
 
     await page.goto('/review-queue');
 
-    // station#4463 slice 1 fix round: the page is titled 'Review', matching
+    // archive#4463: the page is titled 'Review', matching
     // its nav item — 'Review Queue' disagreed with its own sidebar entry.
     await expect(
       page.getByRole('heading', { name: 'Review', level: 1, exact: true }),

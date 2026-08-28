@@ -202,7 +202,7 @@ export function createSpatialBoardOwnerResolver(
                 // A stored workingDirectory holds `~/...` verbatim, and Flow
                 // resolves a run directory relative to the cwd it is handed —
                 // so the raw value lists runs from a directory literally named
-                // `~` and reports the project as having none (station#3155).
+                // `~` and reports the project as having none (archive#3155).
                 const stored = projects.get(projectId)?.workingDirectory;
                 const workspace = stored
                   ? resolve(expandTilde(stored))

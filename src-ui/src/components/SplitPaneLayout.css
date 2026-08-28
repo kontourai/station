@@ -219,7 +219,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Desktop keeps the compact 24px control. Touch-sized controls belong only
+/* Desktop keeps the compact 24px control. Touch-sized controls belong only
      to the coarse/mobile branch below, so dense desktop lists retain their
      established vertical rhythm. */
   width: 24px;
@@ -258,7 +258,7 @@
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  /* Desktop retains its dense 38px rows. The coarse/mobile branch below owns
+/* Desktop retains its dense 38px rows. The coarse/mobile branch below owns
      the 44px touch-target minimum; consumers must not add page-local sizing. */
   min-height: 38px;
   padding: 0.3rem 0.55rem 0.3rem 0.75rem;
@@ -277,7 +277,7 @@
   color: inherit;
 }
 
-/* station#3305: --bg-tertiary (panel-raised) is nearly this list's own
+/* archive#3305: --bg-tertiary (panel-raised) is nearly this list's own
    panel background in dark mode — an invisible hover. --bg-hover-panel is
    the token derived for exactly this surface (index.css). */
 .split-pane__item:hover {
@@ -287,7 +287,7 @@
 .split-pane__item--selected {
   background: var(--accent-primary);
   border-color: var(--accent-primary);
-  /* --text-on-accent, not --bg-primary: dark mode's --bg-primary is
+/* --text-on-accent, not --bg-primary: dark mode's --bg-primary is
      near-black, which read as dark-on-accent text (station#3305). */
   color: var(--text-on-accent);
 }
@@ -356,7 +356,7 @@
   min-width: 0;
   width: auto;
   margin-right: 0;
-  /* The standalone item's own right padding (0.55rem) exists to keep a
+/* The standalone item's own right padding (0.55rem) exists to keep a
      row's content off the pane's edge. Inside a trailing row that edge is
      already the row's own gap + padding-right above, so the item's copy
      doubled the reserved space between the name and the action button and
@@ -372,12 +372,12 @@
  * characters or overflowing the pane — both observed before this cap existed.
  */
 .split-pane__item-trailing {
-  /*
-   * Never shrinks: a trailing label is short and cannot ellipsize gracefully
-   * mid-token, whereas the row's own name is a block that ellipsizes cleanly.
-   * So the ROW BUTTON absorbs all the shrink and the cap below is what keeps a
-   * long trailing label from starving it.
-   */
+/*
+* Never shrinks: a trailing label is short and cannot ellipsize gracefully
+* mid-token, whereas the row's own name is a block that ellipsizes cleanly.
+* So the ROW BUTTON absorbs all the shrink and the cap below is what keeps a
+* long trailing label from starving it.
+*/
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -425,7 +425,7 @@
 
 .split-pane__group-toggle:hover,
 .split-pane__group-toggle:focus-visible {
-  /* No outline suppression: keyboard users keep the focus-visible ring
+/* No outline suppression: keyboard users keep the focus-visible ring
      (focus-visible ratchet — new code conforms, it does not inventory
      an exception). */
   color: var(--accent-primary);
@@ -481,7 +481,7 @@
   opacity: 0.5;
 }
 
-/* station#4463 slice 2 fix round (M1, delta review round 3): the shared
+/* archive#4463: the shared
    SkeletonList row's default padding (10px 12px, Skeleton.css) sits on top
    of its content height (icon/text column, ~26.8px), landing at ~46.8px —
    visibly taller than a real `.split-pane__item` row. A `min-height: 38px`
@@ -547,7 +547,7 @@
     background: var(--bg-secondary);
   }
 
-  /* The sidebar footer (`sidebarActions` + the add block) must SHRINK when
+/* The sidebar footer (`sidebarActions` + the add block) must SHRINK when
      the pane's fixed parts exceed the height the shell leaves above the dock
      (--dock-bottom-clearance). Its automatic minimum size made it
      unshrinkable, so the whole left pane overflowed the route's dock
@@ -573,7 +573,7 @@
     scroll-padding-top: var(--split-pane-mobile-back-height);
   }
 
-  /* Only a framed sheet is portaled outside the route entrance transform. */
+/* Only a framed sheet is portaled outside the route entrance transform. */
   .split-pane__right--portaled {
     position: fixed;
     top: calc(
@@ -590,7 +590,7 @@
     z-index: var(--layer-sticky);
   }
 
-  /* A mobile detail sheet scrolls as one surface with its back affordance;
+/* A mobile detail sheet scrolls as one surface with its back affordance;
      a sticky item header inside it would pin independently and steal that
      clearance. Desktop detail headers keep their ordinary sticky treatment. */
   .split-pane__right--sheet .detail-header {
@@ -619,7 +619,7 @@
   }
 
   .split-pane__item {
-    /* Shared mobile/coarse-pointer touch-target contract. */
+/* Shared mobile/coarse-pointer touch-target contract. */
     min-height: 44px;
     margin-inline: 0.5rem;
     width: calc(100% - 1rem);

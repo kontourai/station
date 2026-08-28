@@ -102,10 +102,10 @@ describe('resolveWorkspacePaneCatalogPresentation', () => {
     });
   });
   test('a remote-isolation gate never reaches mcp-tool-ui or standard-data renderers', () => {
-    // "Not in the builtin registry" is not "plugin-provided": these two kinds
-    // are also absent from it, and enabling remote extensions repairs neither
-    // (sol delta review of #2640). Only kind 'plugin-component' may carry the
-    // gate.
+// "Not in the builtin registry" is not "plugin-provided": these two kinds
+// are also absent from it, and enabling remote extensions repairs neither
+ // (sol of archive#2640). Only kind 'plugin-component' may carry the
+// gate.
     const mcp = {
       id: 'plugin:third-party:mcp-issues',
       name: 'MCP issues',
@@ -509,9 +509,9 @@ describe('resolveWorkspacePaneCatalogPresentation', () => {
 });
 
 describe('direct plugin Pane occurrences (station#3543)', () => {
-  // The exact shapes the server now issues: the descriptor comes from the
-  // plugin manifest, the instance from readCurrentWorkspacePaneCatalog with
-  // the distribution service's on-disk contribution snapshot bound to it.
+// The exact shapes the server now issues: the descriptor comes from the
+// plugin manifest, the instance from readCurrentWorkspacePaneCatalog with
+// the distribution service's on-disk contribution snapshot bound to it.
   const directDescriptor = {
     version: '1.0',
     id: 'review-plugin-pane',
@@ -574,9 +574,9 @@ describe('direct plugin Pane occurrences (station#3543)', () => {
   });
 
   test('a foreign occurrence bound to a different plugin is refused even when a component is registered', () => {
-    // The server derives the bound contribution from the installed directory;
-    // when the descriptor's self-declared provenance names someone else, the
-    // two independent identities disagree and the renderer must not mount.
+// The server derives the bound contribution from the installed directory;
+// when the descriptor's self-declared provenance names someone else, the
+// two independent identities disagree and the renderer must not mount.
     expect(
       selectClientWorkspacePaneRenderer(directDescriptor, {
         mcpAppsEnabled: true,

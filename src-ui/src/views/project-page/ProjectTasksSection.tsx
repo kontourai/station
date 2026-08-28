@@ -26,8 +26,8 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
 
-/** Human-readable label for a claim actor (roadmap #584, part of epic #580,
- * S4) — used by both the local-task guard and the provider-item badge. */
+/** Human-readable label for a claim actor (part of,
+ *) — used by both the local-task guard and the provider-item badge. */
 function actorLabel(actor: {
   runtime: string;
   sessionId: string;
@@ -57,7 +57,7 @@ const starterWorkOperations = browserStarterWorkOperationStore();
  * `ProviderWorkItem.workItemRef`, e.g. `github:owner/repo#123`) — a bare,
  * unnamespaced id (no `:` separator) from a future backend could otherwise
  * collide with an unrelated local task's ref and false-hide a distinct
- * provider item (#583 review finding). Namespaced refs join local↔external
+ * provider item (archive#583 finding). Namespaced refs join local↔external
  * on purpose (that's the point of the shared vocabulary); unnamespaced ones
  * never participate in the hide/dedupe decision in either direction.
  */
@@ -66,13 +66,13 @@ function isNamespacedWorkItemRef(ref: string): boolean {
 }
 
 /**
- * Provider-backed work items to render alongside local tasks (#583, part of
- * epic #580, S3). Local-kind provider results are excluded — the local task
+ * Provider-backed work items to render alongside local tasks (archive#583, part of
+ *). Local-kind provider results are excluded — the local task
  * list above already renders those TaskRecords directly — and any item
  * whose (namespaced) `workItemRef` already matches a local task's
  * `workItemRef` is excluded too, so a task that has already joined its
  * upstream work item doesn't render twice. Read-only this slice: no
- * dispatch/write for these rows (S4/FA2-post-bump territory).
+ * dispatch/write for these rows (/FA2-post-bump territory).
  */
 function externalProviderItems(
   providers: Array<{ identity: { kind: string }; items: ProviderWorkItem[] }>,
@@ -125,9 +125,9 @@ export function ProjectTasksSection({
   >(null);
   const [starterLaunchReason, setStarterLaunchReason] = useState('');
   const queryClient = useQueryClient();
-  // Review H1: `= []` alone makes a failed read look like a project with no
-  // tasks, so both panes below claimed "No tasks yet." / "Select a task." over
-  // a read that never answered.
+ // `= []` alone makes a failed read look like a project with no
+// tasks, so both panes below claimed "No tasks yet." / "Select a task." over
+// a read that never answered.
   const {
     data: tasks = [],
     error: tasksError,
@@ -146,13 +146,13 @@ export function ProjectTasksSection({
     enabled: selectedTaskId.length > 0,
   });
 
-  // #582: resolve the selected task's flow-agents sidecar — durable
-  // workItemRef join first, then a collision-guarded title-slug heuristic
-  // (suppressed entirely when 2+ project tasks normalize to the same slug).
-  // Renders nothing when neither path yields a match.
-  // A project can intentionally have no local workspace binding. These
-  // sidecars resolve files from that binding, so do not ask their
-  // workspace-only endpoints until one exists (#1501).
+ // archive#582: resolve the selected task's flow-agents sidecar — durable
+// workItemRef join first, then a collision-guarded title-slug heuristic
+// (suppressed entirely when 2+ project tasks normalize to the same slug).
+// Renders nothing when neither path yields a match.
+// A project can intentionally have no local workspace binding. These
+// sidecars resolve files from that binding, so do not ask their
+ // workspace-only endpoints until one exists (archive#1501).
   const hasLocalWorkspace = Boolean(projectWorkingDirectory);
   const { data: workflowTasks = [] } = useWorkflowTasksQuery(slug, {
     enabled: hasLocalWorkspace,
@@ -161,10 +161,10 @@ export function ProjectTasksSection({
     ? resolveWorkflowTaskMatch(selectedTask, sortedTasks, workflowTasks)
     : undefined;
 
-  // #583: provider seam — local backend items render as the task list above
-  // (unchanged); provider-backed items from other backends (e.g. the
-  // flow-agents-contract GitHub backend) render as additional, visually
-  // distinguished rows below them.
+ // archive#583: provider seam — local backend items render as the task list above
+// (unchanged); provider-backed items from other backends (e.g. the
+// flow-agents-contract GitHub backend) render as additional, visually
+// distinguished rows below them.
   const { data: workItemsData } = useWorkItemsQuery(slug, {
     enabled: hasLocalWorkspace,
   });
@@ -176,12 +176,12 @@ export function ProjectTasksSection({
     (item) => item.id === selectedProviderItemId,
   );
 
-  // #584: AssignmentProvider claim state. The local task's own claim (keyed
-  // by taskId, so the guard also knows "claimed by me" vs "by another
-  // actor") drives the Dispatch guard; the selected provider item's claim
-  // (keyed by its raw workItemRef — it has no local task yet) is
-  // read-only/informational, matching that row's existing "dispatch is not
-  // available for this item yet" read-only detail pane.
+ // archive#584: AssignmentProvider claim state. The local task's own claim (keyed
+// by taskId, so the guard also knows "claimed by me" vs "by another
+// actor") drives the Dispatch guard; the selected provider item's claim
+// (keyed by its raw workItemRef — it has no local task yet) is
+// read-only/informational, matching that row's existing "dispatch is not
+// available for this item yet" read-only detail pane.
   const { data: taskClaim } = useTaskClaimQuery(selectedTaskId, {
     enabled: Boolean(selectedTask?.workItemRef),
   });
@@ -190,13 +190,13 @@ export function ProjectTasksSection({
     selectedProviderItem?.workItemRef,
   );
 
-  // Reconcile a stranded selection (#583 review finding): the 30s
-  // useWorkItemsQuery/useTasksQuery refetch can move, dedupe, or drop the
-  // currently selected row (provider board movement, a local task deletion,
-  // a provider going unavailable). Without this, the detail pane would keep
-  // rendering "Select a task" forever once the selected id no longer
-  // resolves against the latest data — clear it so the fallback below picks
-  // a sane default instead.
+ // Reconcile a stranded selection (archive#583 finding): the 30s
+// useWorkItemsQuery/useTasksQuery refetch can move, dedupe, or drop the
+// currently selected row (provider board movement, a local task deletion,
+// a provider going unavailable). Without this, the detail pane would keep
+// rendering "Select a task" forever once the selected id no longer
+// resolves against the latest data — clear it so the fallback below picks
+// a sane default instead.
   useEffect(() => {
     if (
       selectedTaskId &&
@@ -395,7 +395,7 @@ export function ProjectTasksSection({
           Add task
         </button>
       </form>
-      {/*
+{/*
         station#3965: these six sentences are what a person reads after
         pressing "Add task", and every one of them used to name the mechanism
         instead of the outcome — "Starter correlation is NOT_VERIFIED",
@@ -404,7 +404,7 @@ export function ProjectTasksSection({
         not confirm, and names the one thing they can do next. `NOT_VERIFIED`
         is an internal verification token; it stays on the wire and off the
         screen.
-      */}
+*/}
       {starterLaunchProblem === 'correlation' && (
         <p role="status">
           Your task was created and opened. We couldn’t confirm it is linked to
@@ -463,7 +463,7 @@ export function ProjectTasksSection({
               }
             />
           ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
-            /* empty-state action: task creation form is adjacent */
+/* empty-state action: task creation form is adjacent */
             <Empty variant="compact" label="No tasks yet." />
           ) : (
             <>
@@ -670,7 +670,7 @@ export function ProjectTasksSection({
               </div>
             </>
           ) : (
-            /* empty-state action: task selection list is adjacent */
+/* empty-state action: task selection list is adjacent */
             <Empty variant="compact" label="Select a task." />
           )}
         </div>

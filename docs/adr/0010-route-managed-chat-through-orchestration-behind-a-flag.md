@@ -62,13 +62,13 @@ connection choice — it is purely the execution vehicle for an agent the
 user already picked in New Chat (a Station agent). It is intentionally kept
 out of the public provider registry (`withPrivateOrchestrationAdapter`,
 `orchestration-adapter-registry.ts`): dispatchable via `get()`, absent from
-`register()`. Auditing every New-Chat/engine-inventory source (station#980
+`register()`. Auditing every New-Chat/engine-inventory source (archive#980
 Wave 0) found today's pickers are built from agents + engine connections,
 never from `GET /api/orchestration/providers` — so nothing currently leaks
 `station-agent` into inventory. `orchestration-service.listProviders()`
 (which backs that route) now filters `station-agent` out of its result
 defensively anyway, with a regression test pinning "station-agent absent
-from inventory" (station#980 AC3) so a future inventory-shaped consumer of
+from inventory" (archive#980 AC3) so a future inventory-shaped consumer of
 that endpoint cannot reintroduce the leak silently.
 
 **The cutover is flag-gated, not a rewrite.** `managed-chat-orchestration`
@@ -119,13 +119,13 @@ every managed agent going forward) and is explicitly not taken here.
   model discoverable off the session/event-store record — exactly like a
   delegated or external-agent run, with zero run-projection changes.
 - Approvals on the flipped path ride the orchestration `request.opened`/
-  `request.resolved` vocabulary (reusing station#979's CLI surfacing and the
+  `request.resolved` vocabulary (reusing archive#979's CLI surfacing and the
   UI's existing generic, provider-agnostic orchestration event consumption)
   instead of the managed-only `tool-approval-request` SSE chunk.
 - `--title` has no carrier through the `station-agent` adapter's relay to
   `/chat` today (it forwards `conversationId`/`userId`/`delegation`/`model`,
   plus `providerManagedFallback`/`providerModel` whenever a model override
-  is present (station#1288 — without them `/chat`'s model-override guard
+  is present (archive#1288 — without them `/chat`'s model-override guard
   400s every flipped turn that carries a model, which is essentially every
   turn once this flag is on), never `title`) — the CLI's flipped path fails
   loudly on `--title` rather than silently dropping it; closing that gap is

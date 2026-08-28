@@ -27,7 +27,7 @@ const MAX_REMEMBERED_ROUTES = 50;
  * Eight seconds, not the two this shipped with first: at two seconds it did
  * not restore Settings at runtime. Settings' 8,705 px column is still
  * arriving then — the audit measured route content settling 4.0–7.0 s
- * (SHELL-21).
+ *.
  */
 const RESTORE_WINDOW_MS = 8000;
 
@@ -76,7 +76,7 @@ export function useScrollRestoration(
     };
     element.addEventListener('scroll', save, { passive: true });
     // Navigation intent, saved BEFORE the route swap. `navigationStore.
-    // navigate()` pushes the URL and dispatches `popstate` synchronously,
+    // navigate` pushes the URL and dispatches `popstate` synchronously,
     // and React's resulting re-render is scheduled rather than applied, so
     // the container still holds the outgoing route's content here and its
     // `scrollTop` is still true. A `scroll` event is the only other save

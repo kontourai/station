@@ -193,7 +193,7 @@ npm run build:sdk
 ## Commit Messages
 
 Commit subjects follow the Conventional Commits grammar because the
-forthcoming deploy ledger (station#4572) will generate its changelog from
+forthcoming deploy ledger (archive#4572) will generate its changelog from
 them — a free-form subject is a broken release artifact, not a style nit:
 
 ```text

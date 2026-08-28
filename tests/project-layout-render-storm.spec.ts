@@ -6,14 +6,14 @@ import {
 } from './helpers/orchestration';
 
 /**
- * station#3781: `/projects/:slug/layouts/:layout` used to re-render forever
+ * archive#3781: `/projects/:slug/layouts/:layout` used to re-render forever
  * while nobody touched it. The workspace-pane host announced its document to
  * the layout on every render rather than on every document change, the layout
  * answered by storing a freshly built `Set` of the same instance ids, and the
  * committed state change rendered the host again — ~1,300 iterations a second.
  * The visible cost was elsewhere: React's Suspense retry lane was starved, so
  * a lazily-mounted modal whose chunk had already arrived committed up to 9.3s
- * later (station#3770).
+ * later (archive#3770).
  *
  * A commit that changes nothing is invisible except on an <input>, whose
  * `name`/`type` React re-assigns every time — so DOM mutation records are the

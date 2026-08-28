@@ -4,13 +4,13 @@ import { expect, type Page, test } from '@playwright/test';
  * Coverage for the Connections IA (`src-ui/src/views/connections-hub/connection-sections.ts`
  * + `ConnectionsSectionFrame.tsx`): the five sections it defines, the
  * `/connections` resolver, legacy-path redirects, and the frame contract each
- * section shares (one H1, one `Connections` eyebrow — station#4463 slice 1 fix
- * round: unlinked parent-context text, not the retired `Connections / <Section>`
+ * section shares (one H1, one `Connections` eyebrow — archive#4463:
+ * unlinked parent-context text, not the retired `Connections / <Section>`
  * breadcrumb-as-eyebrow — exactly one add action). Also covers the Models
  * add+test journey (b) and the Tools built-in-vs-user-server distinction (d)
  * that live inside those sections.
  *
- * The E2E regression lane added (c): the Engines section's rows — named by the
+ * The E2E regression lane adds (c): the Engines section's rows — named by the
  * ENGINE, carrying the server's state, offering the one inline repair — plus
  * the retired-vocabulary gate DESIGN §7 asks for. It extends `SECTIONS` and
  * `seedRoutes` rather than opening a second Connections spec.
@@ -44,7 +44,7 @@ interface ModelConnection {
 /**
  * The shape `/api/connections/agents` serves for one engine. `setup.state` is
  * what `AgentConnectionView` reads for the row's state, so a fixture without
- * it puts the app into a state a real Station never serves (station#3390).
+ * it puts the app into a state a real Station never serves (archive#3390).
  */
 interface EngineConnection {
   id: string;
@@ -76,8 +76,8 @@ interface Integration {
  * the ACCESSIBLE NAME of the one add action that section is supposed to
  * offer.
  *
- * sol review verification gap: this spec used to assert only that
- * `.page__actions` held exactly one button. A count is satisfied by ANY
+ * Verification gap: asserting only that
+ * `.page__actions` held exactly one button is satisfied by ANY
  * button — Engines, Tools and Knowledge could each have shipped the wrong
  * add action, or one wired to another section's creator, and this file would
  * still have been green. The name is the claim a user can act on, so the
@@ -319,7 +319,7 @@ test.describe('Connections IA', () => {
           exact: true,
         }),
       ).toBeVisible();
-      // station#4463 slice 1 fix round: 'Connections' only, unlinked — not
+      // archive#4463: 'Connections' only, unlinked — not
       // the retired 'Connections / <Section>' breadcrumb-as-eyebrow. Static
       // parent-context text, not a link: `/connections` is a redirect-only
       // resolver, so a click here would be a no-op or a sibling jump dressed
@@ -687,7 +687,7 @@ test.describe('Connections sections at 390x844', () => {
 });
 
 /**
- * station#3739: the Engines list read
+ * archive#3739: the Engines list read
  *
  *     Muse Code   Ready · None catalog · muse-runtime
  *

@@ -67,7 +67,7 @@ describe('AgentIcon deterministic identicon fallback (station#1424)', () => {
       );
       // Initials still render (the existing plain fallback)...
       expect(getByText('UA')).toBeTruthy();
-      // ...but never colorized from the live-typed name.
+      //...but never colorized from the live-typed name.
       expect(container.querySelector('.brand-icon--identicon')).toBeNull();
     });
 

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 
-// station#3545 review FIX 4: the earlier version of this file mocked
+// archive#3545 review FIX 4: the earlier version of this file mocked
 // `streamText` to return NO `finishReason` property at all, and titled
 // itself as proving the finish chunk "carries no finishReason key when the
 // ai-sdk response has no usable modelId" — modelId has nothing to do with
@@ -39,7 +39,7 @@ function fakeStreamTextResult(options: {
   text?: string[];
   finishReason: Promise<unknown>;
   /**
-   * station#3586: when set, the mocked `fullStream` enqueues this as a
+   * archive#3586: when set, the mocked `fullStream` enqueues this as a
    * mid-stream `{ type: 'error' }` PART (ai-sdk's real shape, verified
    * against `node_modules/ai/dist/index.mjs` — the stream ENQUEUES an error
    * part rather than rejecting/throwing) immediately after the text parts,
@@ -52,7 +52,7 @@ function fakeStreamTextResult(options: {
    */
   errorPart?: unknown;
   /**
-   * station#4197: the `result.usage` promise (`LanguageModelUsage`). When
+   * archive#4197: the `result.usage` promise (`LanguageModelUsage`). When
    * omitted the mocked result simply has no `usage` property — the same
    * absence the producer must translate into a finish chunk with NO
    * `usage` key at all (not `{}`, not zeros).
@@ -69,7 +69,7 @@ function fakeStreamTextResult(options: {
   options.finishReason.catch(() => {});
   options.usage?.catch(() => {});
   return {
-    // station#3586: `fullStream` yields the raw `TextStreamPart` union, not
+    // archive#3586: `fullStream` yields the raw `TextStreamPart` union, not
     // plain strings — `text-delta` carries its text on `.text`, matching
     // `node_modules/ai/dist/index.d.ts`'s `TextStreamPart<TOOLS>` shape.
     // `createStream` now consumes THIS getter, not `textStream`.
@@ -156,7 +156,7 @@ describe('AiSdkLLMProvider.createStream: station#3545 finishReason propagation',
     });
   });
 
-  // station#3545 review HIGH: this is the exact case the original,
+  // archive#3545 review HIGH: this is the exact case the original,
   // one-layer-up fix (absence collapsing to `'stop'` at the Bedrock adapter)
   // got wrong — because `createStream` never read `result.finishReason` at
   // all, a real token-ceiling truncation was indistinguishable from an
@@ -186,7 +186,7 @@ describe('AiSdkLLMProvider.createStream: station#3545 finishReason propagation',
     });
   });
 
-  // station#3545: if ai-sdk's own `finishReason` promise rejects (e.g. an
+  // archive#3545: if ai-sdk's own `finishReason` promise rejects (e.g. an
   // abort tore the stream down before it settled), the finish chunk must
   // carry no `finishReason` key at all — absence, not a guessed vocabulary
   // member, and specifically not `'stop'`.
@@ -202,7 +202,7 @@ describe('AiSdkLLMProvider.createStream: station#3545 finishReason propagation',
   });
 });
 
-// station#3586: `textStream`'s transform (`node_modules/ai/dist/index.mjs`)
+// archive#3586: `textStream`'s transform (`node_modules/ai/dist/index.mjs`)
 // enqueues ONLY `text-delta` parts, so a mid-stream `error` part — ai-sdk's
 // real shape for a settled-but-failed generation, verified against the
 // installed package: `consumeStream`'s `onError` only fires when the READER
@@ -258,7 +258,7 @@ describe('AiSdkLLMProvider.createStream: station#3586 mid-stream error parts', (
     );
   });
 
-  // station#3586 review "Recommended, and I want it": a REQUEST-TIME
+  // archive#3586 review "Recommended, and I want it": a REQUEST-TIME
   // failure (e.g. a 401 from the provider's own `doStream`, before any
   // `text-delta` part ever arrives) is a distinct, larger population from a
   // mid-stream failure — every text-generating turn from every
@@ -270,7 +270,7 @@ describe('AiSdkLLMProvider.createStream: station#3586 mid-stream error parts', (
   // `finishReason`/`reportedModel` — `turn.completed`, published for a
   // request that produced zero output and never even started generating.
   //
-  // station#3587 review NIT-A: against real `ai@6.0.235`, a request-time
+  // archive#3587 review NIT-A: against real `ai@6.0.235`, a request-time
   // failure actually produces `start | error` and the stream then CLOSES —
   // no `finish-step`/`finish` parts follow. This fixture does not model that
   // exact shape: it has no `start` part at all (it never emits one, in any
@@ -308,7 +308,7 @@ describe('AiSdkLLMProvider.createStream: station#3586 mid-stream error parts', (
   });
 });
 
-// station#3598: `createStream` used to pass `maxTokens` to `streamText`, but
+// archive#3598: `createStream` used to pass `maxTokens` to `streamText`, but
 // `ai@6.0.235`'s `CallSettings` field is `maxOutputTokens` — `maxTokens` does
 // not exist on that interface, so the fleet's declared output ceiling was
 // silently dropped for every ai-sdk-backed provider. This asserts the value

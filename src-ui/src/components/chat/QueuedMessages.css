@@ -116,7 +116,7 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  /* Queued steer controls must remain comfortably tappable on mobile. */
+/* Queued steer controls must remain comfortably tappable on mobile. */
   .queued-message {
     gap: var(--space-1);
   }
@@ -130,7 +130,7 @@
   }
 }
 
-/* UX audit T3: the reason a queued follow-up is still queued, rendered with
+/* the reason a queued follow-up is still queued, rendered with
    the message it is holding back rather than only as a transient notice. */
 .queued-messages__failure {
   display: flex;

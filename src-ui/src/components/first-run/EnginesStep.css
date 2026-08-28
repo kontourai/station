@@ -1,8 +1,8 @@
 /*
- * First-run "Which agents do you use?" checklist (station#3027).
+ * First-run "Which agents do you use?" checklist (archive#3027).
  *
  * Chrome and placement belong to `FirstRunHomeChapter`'s shared dialog (UX
- * audit SHELL-12) — this file styles the checklist and nothing else. The rows
+ * audit ) — this file styles the checklist and nothing else. The rows
  * are no longer `<label>`s wrapping a raw OS checkbox: only a row that can
  * genuinely be ticked mounts one, and it is the shared `Checkbox`.
  */

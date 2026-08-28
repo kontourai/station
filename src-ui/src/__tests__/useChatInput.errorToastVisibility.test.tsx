@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1294 review (SHOULD-FIX-4): `useChatInput`'s send-failure
+* archive#1294: `useChatInput`'s send-failure
  * `onError` callback used to suppress its generic toast whenever the
  * session merely EXISTED in the store — but store existence isn't
  * visibility. A send failing while the owning dock/tab is collapsed or in
@@ -37,8 +37,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useSkillDetailReader: () => vi.fn(),
 }));
 
-// station#1294: forwards into the REAL activeChatsStore singleton (imported
-// below) so the hook's own direct `activeChatsStore.getSnapshot()[sessionId]`
+// archive#1294: forwards into the REAL activeChatsStore singleton (imported
+// below) so the hook's own direct `activeChatsStore.getSnapshot[sessionId]`
 // read (the hasSessionContext check under test) and these context-hook
 // forwards stay consistent — mirrors the established pattern in
 // useActiveChatSessionMessaging.test.ts.

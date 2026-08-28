@@ -53,7 +53,7 @@ export class PullRequestRepositoryContextResolver {
         // derived from the raw project record — so the panel still sent
         // `~/dev/x`, realpathSync threw, and the panel reported itself
         // unavailable exactly as before. Expanding only the recorded side
-        // fixed the half nobody was hitting (station#3155 review).
+        // fixed the half nobody was hitting (archive#3155 review).
         const requestedRoot = realpathSync(
           resolve(expandTilde(input.requestedWorkingDirectory)),
         );

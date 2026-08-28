@@ -20,19 +20,19 @@ export function ProjectLayoutsSection({
 }: {
   slug: string;
   layouts: LayoutMetadata[];
-  /**
-   * True while the layouts query is still in flight. Without it an unresolved
-   * fetch is indistinguishable from a project that genuinely has no layouts,
-   * and the section states "No layouts yet" for a project that has some
-   * (#801).
-   */
+/**
+* True while the layouts query is still in flight. Without it an unresolved
+* fetch is indistinguishable from a project that genuinely has no layouts,
+* and the section states "No layouts yet" for a project that has some
+ * (archive#801).
+*/
   loading?: boolean;
-  /**
-   * True when the layouts query failed. A failure is not emptiness — react
-   * query clears `isLoading` on error, so without this the section would state
-   * "No layouts yet" for a project whose layouts merely could not be fetched
-   * (#801 review).
-   */
+/**
+* True when the layouts query failed. A failure is not emptiness — react
+* query clears `isLoading` on error, so without this the section would state
+* "No layouts yet" for a project whose layouts merely could not be fetched
+ * (archive#801).
+*/
   error?: boolean;
   onRetry?: () => void;
   setLayout: (projectSlug: string, layoutSlug: string) => void;
@@ -126,7 +126,7 @@ export function ProjectAddLayoutModal({
   available: AvailableLayout[];
   appliedLayouts?: LayoutMetadata[];
   adding: string | null;
-  /** The last apply failure, surfaced in the picker (4-HOME-014). */
+/** The last apply failure, surfaced in the picker (4-HOME-014). */
   applyError?: unknown;
   loading: boolean;
   catalogError: unknown;

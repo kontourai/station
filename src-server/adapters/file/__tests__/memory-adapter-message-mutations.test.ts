@@ -1,7 +1,7 @@
 /**
- * station#2252 — durable, serialized mutation of the message transcript.
+ * archive#2252 — durable, serialized mutation of the message transcript.
  *
- * The conversation document next door was hardened in #1566 (atomic
+ * The conversation document next door was hardened in archive#1566 (atomic
  * temp+rename, per-id serialized queue). The transcript never was, and the two
  * destructive operations — delete-by-id and remove-last — were read-modify-write
  * over the whole file with `writeFile(path)`. Two consequences:
@@ -18,7 +18,7 @@
  * instances sharing `~/.station` remain possible and remain lossy between
  * them. Because a lock protocol hand-rolled over NDJSON is the wrong shape:
  * when concurrent writers become a supported shape, the answer is an adapter
- * with real transactions (#2904).
+ * with real transactions (archive#2904).
  */
 
 import { readdirSync } from 'node:fs';

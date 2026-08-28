@@ -1,5 +1,5 @@
 /**
- * station#1501 slice 3b — the shared state→path adapter
+ * archive#1501 — the shared state→path adapter
  * (`docs/design/portable-project-identity.md` §2.2.1).
  *
  * This suite covers the mapping ONCE, on behalf of all three migrated seams
@@ -179,7 +179,7 @@ describe('project-workspace-path — the state → path-or-honest-absence mappin
       },
     ],
     [
-      // station#1594: this WAS `unbound`. It is now `missing` — a recorded
+      // archive#1594: this WAS `unbound`. It is now `missing` — a recorded
       // realization whose path is gone. Behaviour at THIS adapter is
       // unchanged (every non-`bound` state maps to no path), which is the
       // point: the split matters to the seams that must tell the two apart.
@@ -438,7 +438,7 @@ describe('the path-shaped seam adapter — transitions', () => {
 });
 
 // ---------------------------------------------------------------------------
-// station#1594 — THE DIRECTORY-QUESTION.
+// archive#1594 — THE DIRECTORY-QUESTION.
 //
 // The second of the two questions the module docblock separates. Its answer is
 // `path ?? unverifiedPath`, folded in exactly one place, and it is the one
@@ -522,7 +522,7 @@ describe('resolveProjectDirectoryOutcome — against the real resolver', () => {
   });
 
   test('THE S2 REVERT CASE: a manifested git project on a host with no `git` is available and UNVERIFIED, not a 404', async () => {
-    // This is the whole reason `unverifiedPath` exists. Before station#1594
+    // This is the whole reason `unverifiedPath` exists. Before archive#1594
     // this project resolved `stale` with no path, so every route that only
     // wanted a directory to read `.flow`/`.veritas` in answered 404 — for a
     // project whose directory is plainly there.
@@ -613,7 +613,7 @@ describe('resolveProjectDirectoryOutcome — against the real resolver', () => {
     if (outcome.available) throw new Error('unreachable');
     // The two populations above are the ones the seam must treat OPPOSITELY,
     // and this pair of tests is what proves the contract can now tell them
-    // apart at all. Before #1594 both answered `unbound`.
+    // apart at all. Before archive#1594 both answered `unbound`.
     expect(outcome.state).toBe('missing');
     expect(outcome.state === 'missing' && outcome.record).toBe(
       'working-directory',
@@ -641,7 +641,7 @@ describe('resolveProjectDirectoryOutcome — against the real resolver', () => {
     // The STATE is the load-bearing assertion (review round 1, HIGH-2), not
     // just the reason prose. Slice 3c maps `unbound` to `$HOME` +
     // `cwdDefaulted: true`; reporting it for a result that CLAIMED a directory
-    // would start a project-bound chat in $HOME — the #1011 fail-open class.
+    // would start a project-bound chat in $HOME — the archive#1011 fail-open class.
     // `error` maps to a throw, which is what "I cannot answer" owes a
     // fail-closed seam.
     const outcome = await resolveProjectDirectoryOutcome('acme', {

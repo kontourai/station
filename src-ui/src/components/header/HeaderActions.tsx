@@ -28,7 +28,7 @@ import type { HeaderHelpPrompt } from './utils';
  * statement is `if (!isOpen) return null`), so keeping it in the entry chunk
  * bought a panel the header only ever shows on click. Deferring it moves the
  * panel — and the notification/attention row components it pulls — into an
- * on-demand chunk. See station#2751 for the entry-budget measurement.
+ * on-demand chunk. See archive#2751 for the entry-budget measurement.
  *
  * It stays mounted after the first open (`hasOpenedNotifications` below) rather
  * than unmounting on close, because closing is NOT equivalent to unmounting
@@ -113,13 +113,13 @@ export function HeaderActions({
     probeEndpoint: probeServerConnection,
     pollInterval: 10_000,
   });
-  // station#4512 — the same locally-tracked pending-request fact
-  // `ConnectionBannerSource` already reads for the banner layer, so a pending
-  // access request against a REACHABLE host reads as "Awaiting approval"
-  // here too instead of the generic "Can't connect" a device with no
-  // credential yet otherwise produces (every probe 401s until it is
-  // approved). Review (M2): the hook decides its own tick from whether a
-  // pending record exists, not from `connStatus`.
+// archive#4512 — the same locally-tracked pending-request fact
+// `ConnectionBannerSource` already reads for the banner layer, so a pending
+// access request against a REACHABLE host reads as "Awaiting approval"
+// here too instead of the generic "Can't connect" a device with no
+// credential yet otherwise produces (every probe 401s until it is
+ // approved). : the hook decides its own tick from whether a
+// pending record exists, not from `connStatus`.
   const pendingApproval = usePendingPairingApproval(
     activeConnection?.url ?? apiBase,
   );
@@ -137,53 +137,53 @@ export function HeaderActions({
   const notificationBadge = notificationSurface.badge?.({
     attentionCount: attention?.pendingCount ?? 0,
   });
-  // Sticky: once the panel has been opened it stays mounted for the rest of the
-  // session, so closing it never runs its pending-dismiss unmount flush.
+// Sticky: once the panel has been opened it stays mounted for the rest of the
+// session, so closing it never runs its pending-dismiss unmount flush.
   const [hasOpenedNotifications, setHasOpenedNotifications] = useState(false);
   useEffect(() => {
     if (showNotifications) setHasOpenedNotifications(true);
   }, [showNotifications]);
 
-  // station#3311: the connection surface is self-describing — status dot +
-  // state as visible text + labeled identity — instead of an unlabeled name
-  // that vanished when it happened to be 'Default' and a tooltip-only
-  // "App only". Blocked/reconnecting are text, not title-only (station#1094).
-  //
-  // `connectionIndicatorState` (station#3297) owns every state the health
-  // coordinator can actually produce, including `needs-credential`, which it
-  // derives from the observed failure REASON rather than the coordinator's
-  // `blocked` scheduling flag. This component adds exactly one state on top of
-  // it, and only ever by downgrading `connecting`.
-  //
-  // `hasStation` is the SAME predicate that decides whether the mobile
-  // "No Station connected" banner renders (OnboardingGate). Without it the
-  // first-run device reads the coordinator's opening `connecting` and
-  // announces "Reconnecting" on a device that has never connected to
-  // anything, beside a banner saying the opposite. It is also what makes
-  // `idle` a state this chip actually reaches: `useConnectionStatus` only ever
-  // reports connecting/connected/error, so nothing else here can produce it.
-  //
-  // PRECEDENCE (delta review): `hasStation` is the LAST thing consulted, not
-  // the first. It deliberately excludes injected host connections (`cli-base`,
-  // `managed-loopback`), which can be the ACTIVE connection and can never earn
-  // a `lastSuccessAt` — so leading with it rendered a terminal auth failure,
-  // the one state demanding user action, as a calm "No Station", and printed
-  // an identity the state denied ("No Station · Station on this device").
-  // Anything the coordinator observed — needs-credential, error, connected —
-  // passes through untouched.
+// archive#3311: the connection surface is self-describing — status dot +
+// state as visible text + labeled identity — instead of an unlabeled name
+// that vanished when it happened to be 'Default' and a tooltip-only
+// "App only". Blocked/reconnecting are text, not title-only (archive#1094).
+//
+// `connectionIndicatorState` (archive#3297) owns every state the health
+// coordinator can actually produce, including `needs-credential`, which it
+// derives from the observed failure REASON rather than the coordinator's
+// `blocked` scheduling flag. This component adds exactly one state on top of
+// it, and only ever by downgrading `connecting`.
+//
+// `hasStation` is the SAME predicate that decides whether the mobile
+// "No Station connected" banner renders (OnboardingGate). Without it the
+// first-run device reads the coordinator's opening `connecting` and
+// announces "Reconnecting" on a device that has never connected to
+// anything, beside a banner saying the opposite. It is also what makes
+// `idle` a state this chip actually reaches: `useConnectionStatus` only ever
+// reports connecting/connected/error, so nothing else here can produce it.
+//
+ // PRECEDENCE : `hasStation` is the LAST thing consulted, not
+// the first. It deliberately excludes injected host connections (`cli-base`,
+// `managed-loopback`), which can be the ACTIVE connection and can never earn
+// a `lastSuccessAt` — so leading with it rendered a terminal auth failure,
+// the one state demanding user action, as a calm "No Station", and printed
+// an identity the state denied ("No Station · Station on this device").
+// Anything the coordinator observed — needs-credential, error, connected —
+// passes through untouched.
   const hasStation = hasRealSavedConnection(connections);
   const connState: ConnectionIndicatorState =
     connIndicator === 'connecting' && !hasStation ? 'idle' : connIndicator;
-  // The short visible text beside the dot. `needs-credential` takes
-  // station#3297's own `connectionIndicatorActionLabel` — the short visible
-  // word it defines for exactly this ("surfaces with room for one"), so this
-  // chip and ChatDockMobileConnection say the same thing. The rest restate
-  // `connectionIndicatorLabel`'s wording, which keeps its state phrases
-  // module-private; `HeaderActions.test.tsx` asserts every visible label is
-  // contained in the accessible name, which is what keeps the two from
-  // drifting apart. `idle` is this component's own state: upstream's word for
-  // it, "Not running", describes a supervised local server that was
-  // deliberately stopped, not a device that never had a Station.
+// The short visible text beside the dot. `needs-credential` takes
+// archive#3297's own `connectionIndicatorActionLabel` — the short visible
+// word it defines for exactly this ("surfaces with room for one"), so this
+// chip and ChatDockMobileConnection say the same thing. The rest restate
+// `connectionIndicatorLabel`'s wording, which keeps its state phrases
+// module-private; `HeaderActions.test.tsx` asserts every visible label is
+// contained in the accessible name, which is what keeps the two from
+// drifting apart. `idle` is this component's own state: upstream's word for
+// it, "Not running", describes a supervised local server that was
+// deliberately stopped, not a device that never had a Station.
   const connStateLabel: string =
     connectionIndicatorActionLabel(connState) ??
     {
@@ -192,38 +192,38 @@ export function HeaderActions({
       connecting: 'Reconnecting',
       error: "Can't connect",
       'needs-credential': 'Pair',
-      // Unreachable in practice — `connectionIndicatorActionLabel` never
-      // returns null for these two — kept only so this map stays total over
-      // `ConnectionIndicatorState` rather than an unsafe cast.
+// Unreachable in practice — `connectionIndicatorActionLabel` never
+// returns null for these two — kept only so this map stays total over
+// `ConnectionIndicatorState` rather than an unsafe cast.
       'awaiting-approval': 'Awaiting approval',
       'needs-repair': 'Needs re-pairing',
     }[connState];
-  // The sidecar fact is about the locally supervised bundled server, not about
-  // which Station the active connection points at — they are independent, so a
-  // desktop app supervising its sidecar while pointed at a REMOTE station used
-  // to render "Connected · App only", naming the wrong endpoint on the one
-  // surface whose job is to say which Station this is. It qualifies the
-  // identity now instead of replacing it.
-  //
-  // Both are suppressed in `idle`: that state asserts there is no Station, so
-  // naming one — or qualifying its lifetime — beside it contradicts the very
-  // sentence next to it.
+// The sidecar fact is about the locally supervised bundled server, not about
+// which Station the active connection points at — they are independent, so a
+// desktop app supervising its sidecar while pointed at a REMOTE station used
+// to render "Connected · App only", naming the wrong endpoint on the one
+// surface whose job is to say which Station this is. It qualifies the
+// identity now instead of replacing it.
+//
+// Both are suppressed in `idle`: that state asserts there is no Station, so
+// naming one — or qualifying its lifetime — beside it contradicts the very
+// sentence next to it.
   const isIdle = connState === 'idle';
   const isSidecar = !isIdle && bundledStatus?.ownership === 'sidecar';
   const connIdentity = isIdle ? undefined : activeConnection?.name;
-  // The accessible name must contain the visible text (WCAG 2.5.3), and since
-  // station#3311 the visible text is state + identity. `connectionIndicatorLabel`
-  // already satisfies that for the states it words — including
-  // `needs-credential`, where it deliberately names the REMEDY ("Pair this
-  // device again") because the control does something different there. The two
-  // it cannot: `connected`, which it collapses to the bare 'Manage Stations'
-  // (correct for a tooltip, but it would drop the visible "Connected"), and
-  // `idle`, which is this component's state. The bare string stays the `title`
-  // (station#3297's contract and the pointer affordance), so nothing keying on
-  // the tooltip changes.
-  //
-  // `idle` also takes the composed form for the TITLE: upstream words that
-  // state "Not running", which describes a stopped supervised server.
+// The accessible name must contain the visible text (WCAG 2.5.3), and since
+// archive#3311 the visible text is state + identity. `connectionIndicatorLabel`
+// already satisfies that for the states it words — including
+// `needs-credential`, where it deliberately names the REMEDY ("Pair this
+// device again") because the control does something different there. The two
+// it cannot: `connected`, which it collapses to the bare 'Manage Stations'
+// (correct for a tooltip, but it would drop the visible "Connected"), and
+// `idle`, which is this component's state. The bare string stays the `title`
+// (archive#3297's contract and the pointer affordance), so nothing keying on
+// the tooltip changes.
+//
+// `idle` also takes the composed form for the TITLE: upstream words that
+// state "Not running", which describes a stopped supervised server.
   const connTitle =
     connState === 'idle'
       ? `Manage Stations — ${connStateLabel}`
@@ -244,40 +244,40 @@ export function HeaderActions({
 
       <button
         type="button"
-        // No `app-toolbar__action--secondary`: station#3311 promotes the
-        // connection chip into the mobile toolbar and demotes the profile into
-        // the ⋯ overflow. (The full-screen mobile dock hides this whole
-        // toolbar; ChatDockMobileConnection is that surface's indicator.)
+// No `app-toolbar__action--secondary`: archive#3311 promotes the
+// connection chip into the mobile toolbar and demotes the profile into
+// the ⋯ overflow. (The full-screen mobile dock hides this whole
+// toolbar; ChatDockMobileConnection is that surface's indicator.)
         className={`app-toolbar__icon-btn app-toolbar__conn app-toolbar__conn--${connState}`}
-        // ChatDockMobileConnection names itself from the same
-        // `connectionIndicatorLabel`, so on a phone with the dock header up
-        // there are two controls whose accessible name starts "Manage
-        // Stations". This is how a test names THIS one, mirroring that
-        // component's own `chat-dock-mobile-connection`.
+// ChatDockMobileConnection names itself from the same
+// `connectionIndicatorLabel`, so on a phone with the dock header up
+// there are two controls whose accessible name starts "Manage
+// Stations". This is how a test names THIS one, mirroring that
+// component's own `chat-dock-mobile-connection`.
         data-testid="app-toolbar-connection"
         onClick={() => {
-          // station#3297: transient reachability no longer banners, so the
-          // banner's "Try now" is not there to be pressed. Tapping a failing
-          // indicator means "check again now", and the retry ladder's own
-          // backoff can be up to 10s away. A blocked credential is excluded:
-          // re-probing it can only fail again, and the modal this opens
-          // carries the remedy. Keyed on the coordinator's own state, not on
-          // `connState` — the `idle` downgrade above is presentation.
-          //
-          // station#4512: `needs-repair` (identity-mismatch) joins the
-          // exclusion for the same reason — the host answered with a
-          // different identity, and re-probing the same address proves
-          // nothing new; re-pairing (in the modal this still opens) is the
-          // only remedy. `awaiting-approval` stays IN the recheck set for a
-          // narrower reason than "recheck can answer it" — it cannot: this
-          // device has no credential to probe with yet, and a health
-          // recheck is not the mechanism that completes a pending exchange
-          // (the separate poll in `pendingPairingCompletion.ts` is). An
-          // extra harmless probe here just isn't worth carving out. What the
-          // tap actually does for this state is `onOpenConnections()` below,
-          // which surfaces the pending exchange itself. Whether that surface
-          // should pause the automatic reconciler while it's already open is
-          // a disclosed follow-up, not something this tap changes.
+// archive#3297: transient reachability no longer banners, so the
+// banner's "Try now" is not there to be pressed. Tapping a failing
+// indicator means "check again now", and the retry ladder's own
+// backoff can be up to 10s away. A blocked credential is excluded:
+// re-probing it can only fail again, and the modal this opens
+// carries the remedy. Keyed on the coordinator's own state, not on
+// `connState` — the `idle` downgrade above is presentation.
+//
+// archive#4512: `needs-repair` (identity-mismatch) joins the
+// exclusion for the same reason — the host answered with a
+// different identity, and re-probing the same address proves
+// nothing new; re-pairing (in the modal this still opens) is the
+// only remedy. `awaiting-approval` stays IN the recheck set for a
+// narrower reason than "recheck can answer it" — it cannot: this
+// device has no credential to probe with yet, and a health
+// recheck is not the mechanism that completes a pending exchange
+// (the separate poll in `pendingPairingCompletion.ts` is). An
+// extra harmless probe here just isn't worth carving out. What the
+// tap actually does for this state is `onOpenConnections` below,
+// which surfaces the pending exchange itself. Whether that surface
+// should pause the automatic reconciler while it's already open is
+// a disclosed follow-up, not something this tap changes.
           if (
             connIndicator !== 'connected' &&
             connIndicator !== 'needs-credential' &&
@@ -287,13 +287,13 @@ export function HeaderActions({
           }
           onOpenConnections();
         }}
-        // station#1094 kept this disambiguation in a `title`, noting the dot
-        // "can't distinguish an ordinary reconnect from a blocked
-        // (credential-required) one" without expanding its 3-colour contract.
-        // station#3297 expanded the contract instead: the dot now carries the
-        // state by SHAPE, so the distinction survives on a device with no
-        // hover, and station#3311 put the state in visible text as well. The
-        // title stays as the pointer convenience it always was.
+// archive#1094 kept this disambiguation in a `title`, noting the dot
+// "can't distinguish an ordinary reconnect from a blocked
+// (credential-required) one" without expanding its 3-colour contract.
+// archive#3297 expanded the contract instead: the dot now carries the
+// state by SHAPE, so the distinction survives on a device with no
+// hover, and archive#3311 put the state in visible text as well. The
+// title stays as the pointer convenience it always was.
         title={connTitle}
         aria-label={connAccessibleName}
       >
@@ -316,8 +316,8 @@ export function HeaderActions({
           <span
             className="app-toolbar__conn-note"
             data-testid="desktop-sidecar-indicator"
-            // The sidecar's lifetime explanation has no room inline and no
-            // longer fits in the button's own title, which station#3297 owns.
+// The sidecar's lifetime explanation has no room inline and no
+// longer fits in the button's own title, which archive#3297 owns.
             title="Runs while the Station app is open"
           >
             App only
@@ -366,7 +366,7 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* station#3311: secondary on mobile — the profile moves into the ⋯
+{/* archive#3311: secondary on mobile — the profile moves into the ⋯
           overflow menu there, freeing the toolbar slot the connection
           status now occupies. */}
       <div className="app-toolbar__action--secondary">

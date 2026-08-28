@@ -705,7 +705,7 @@
   cursor: pointer;
 }
 
-/* ═══ Home role section (station#3122 stage 3) ═══ */
+/* ═══ Home role section (archive#3122) ═══ */
 .plugins__home-role {
   display: flex;
   flex-direction: column;
@@ -1159,7 +1159,7 @@
 
 /* ── Mobile responsive ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  /* Install bar: stack onto one column so nothing overflows 390px. The
+/* Install bar: stack onto one column so nothing overflows 390px. The
      path-autocomplete wrapper must grow to full width when the row wraps. */
   .plugins__install {
     flex-wrap: wrap;
@@ -1189,7 +1189,7 @@
     max-width: none;
   }
 
-  /* Long names, sources, and git hashes must wrap instead of overflowing. */
+/* Long names, sources, and git hashes must wrap instead of overflowing. */
   .plugins__registry-name,
   .plugins__preview-header {
     flex-wrap: wrap;
@@ -1208,7 +1208,7 @@
     overflow-wrap: anywhere;
   }
 
-  /* Registry rows keep info + action side-by-side but allow the action to
+/* Registry rows keep info + action side-by-side but allow the action to
      shrink; the action button already gets a 44px tap target below. */
   .plugins__registry-info {
     min-width: 0;
@@ -1223,7 +1223,7 @@
     min-width: 44px;
   }
 
-  /* station#3783: `.editor-btn`'s touch floor is the primitive's
+/* archive#3783: `.editor-btn`'s touch floor is the primitive's
      (components/editor-controls.css), not this page's. */
 
   .plugins__install-btn,
@@ -1235,14 +1235,14 @@
     min-height: 44px;
   }
 
-  /* Collapsible section toggles (Providers / Changelog) as tap targets. */
+/* Collapsible section toggles (Providers / Changelog) as tap targets. */
   .plugins__providers-toggle {
     min-height: 44px;
     display: flex;
     align-items: center;
   }
 
-  /* Confirm / preview / assignment modal actions as tap targets. */
+/* Confirm / preview / assignment modal actions as tap targets. */
   .plugins__confirm-cancel,
   .plugins__confirm-delete,
   .plugins__assign-skip,
@@ -1252,7 +1252,7 @@
     min-height: 44px;
   }
 
-  /* Folder path row: let the path wrap above its select button on narrow
+/* Folder path row: let the path wrap above its select button on narrow
      screens instead of squeezing into one overflowing line. */
   .plugins__folder-path {
     flex-wrap: wrap;

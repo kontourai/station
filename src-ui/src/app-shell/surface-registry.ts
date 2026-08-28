@@ -43,7 +43,7 @@ export type SurfaceIconId =
   | 'settings';
 
 /**
- * station#3313: gates the Developer surfaces' sidebar/palette advertisement.
+ * archive#3313: gates the Developer surfaces' sidebar/palette advertisement.
  * Unlike the other `previewFlag` values (server feature-preview ids), this
  * flag is derived from the device setting `developerToolsEnabled` — see
  * `useSurfaceVisibilityFlags`, which composes both sources into the one
@@ -239,7 +239,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     label: () => 'Agents',
     keywords: ['agents', 'manage'],
     icon: 'agents',
-    // RT-13: the owner's #1 surface was two clicks deep behind a collapsed
+    // the owner's #1 surface was two clicks deep behind a collapsed
     // group labelled with a verb ("Customize") that does not obviously
     // contain "my agents".
     sidebar: primary(10),
@@ -283,7 +283,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     label: () => 'Connections',
     keywords: ['connections', 'providers', 'integrations'],
     icon: 'connections',
-    // RT-13: promoted alongside Agents.
+    // promoted alongside Agents.
     sidebar: primary(20),
     managementGroup: 'connections',
     palette: { order: 50 },
@@ -342,7 +342,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     keywords: ['notifications', 'inbox', 'alerts', 'attention'],
     icon: 'notifications',
     sidebar: system(30),
-    // 6-OPS-32: a top-level destination that ⌘K could not reach — "notif"
+    // 6-: a top-level destination that ⌘K could not reach — "notif"
     // returned zero results in a palette carrying 72 entries.
     palette: { order: 55 },
     managementGroup: 'notifications',
@@ -369,7 +369,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     view: { type: 'schedule' },
   },
   {
-    // station#3313 (Settings IA, option A): Feature Previews is a Settings
+    // archive#3313 (Settings IA, option A): Feature Previews is a Settings
     // section now, not a standalone surface. The old /feature-previews route
     // redirects in routing.ts (getLegacyPathRedirect); the palette entry
     // deep-links into the Settings section directly.
@@ -390,7 +390,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     label: () => 'Activity',
     keywords: ['activity', 'sessions', 'monitor', 'events'],
     icon: 'activity',
-    // SHELL-08 / lane 7's open question, decided yes: Activity resolved but
+    //  / lane 7's open question, decided yes: Activity resolved but
     // had no sidebar entry, so its only advertised entry point was ⌘K.
     sidebar: primary(30),
     palette: { order: 65 },
@@ -398,7 +398,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     managementViewTypes: ['activity'],
   },
   {
-    // station#3313: settings-gated ("Enable developer tools", a device
+    // archive#3313: settings-gated ("Enable developer tools", a device
     // setting). The flag only gates sidebar/palette advertisement — the
     // /developer routes stay resolvable as deep links either way.
     id: 'developer',
@@ -415,7 +415,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
   },
   {
     // Monitoring is the Developer surface's telemetry tab — it advertises
-    // and hides with the same flag (station#3313).
+    // and hides with the same flag (archive#3313).
     id: 'monitoring',
     route: '/developer/telemetry',
     label: () => 'Monitoring',
@@ -425,7 +425,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     palette: { order: 90 },
   },
   {
-    // station#3313 (Settings IA, option A): Settings takes the System
+    // archive#3313 (Settings IA, option A): Settings takes the System
     // sidebar slot Feature Previews and always-on Developer used to occupy.
     id: 'settings',
     route: '/settings',
@@ -475,7 +475,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     route: '/profile',
     label: () => 'Profile',
     keywords: ['profile', 'account', 'me', 'avatar'],
-    // 6-OPS-32: `hiddenFromNav` keeps it out of the sidebar; without a
+    // 6-: `hiddenFromNav` keeps it out of the sidebar; without a
     // `palette` key as well, the header avatar was its only entry point in
     // the entire app.
     palette: { order: 140 },

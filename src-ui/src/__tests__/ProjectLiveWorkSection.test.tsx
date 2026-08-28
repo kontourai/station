@@ -3,7 +3,7 @@
  */
 
 /**
- * station#3202. The sidebar badge named a number and the project page showed
+ * archive#3202. The sidebar badge named a number and the project page showed
  * none of what it counted — "what does the '6' next to kontour mean? should be
  * clear when I click into that how to 'resolve' those things", refined to "or
  * it's ongoing work that's active". These cover the destination: the two live
@@ -119,8 +119,8 @@ function liveSnapshot(
 
 describe('ProjectLiveWorkSection', () => {
   test('renders nothing at all when nothing is live in this project', () => {
-    // Never a "0 live" block: a permanent empty section costs every reader
-    // space to tell most of them there is nothing to read.
+// Never a "0 live" block: a permanent empty section costs every reader
+// space to tell most of them there is nothing to read.
     mocks.sessions.push(
       session({ threadId: 'finished', lifecycleState: 'completed' }),
       session({
@@ -156,8 +156,8 @@ describe('ProjectLiveWorkSection', () => {
 
     expect(screen.getByText('Needs you · 1')).toBeTruthy();
     expect(screen.getByText('Active now · 1')).toBeTruthy();
-    // Identity a reader can act on: the session's own title (never a thread
-    // id), whose it is, and what state it is in.
+// Identity a reader can act on: the session's own title (never a thread
+// id), whose it is, and what state it is in.
     expect(
       screen.getByRole('button', {
         name: /Reply needed on the migration.*Station.*Waiting on you/i,
@@ -172,13 +172,13 @@ describe('ProjectLiveWorkSection', () => {
     expect(screen.queryByText('running')).toBeNull();
   });
 
-  /**
-   * The owner asked that the two populations be distinguishable at a glance,
-   * not only by reading a heading. The lane modifier is what carries the rail
-   * colour and the filled-vs-outline state chip in CSS, and the call to action
-   * names the difference in one word: a Needs-you row is yours to discharge,
-   * an Active-now row is something to look at.
-   */
+/**
+* The owner asked that the two populations be distinguishable at a glance,
+* not only by reading a heading. The lane modifier is what carries the rail
+* colour and the filled-vs-outline state chip in CSS, and the call to action
+* names the difference in one word: a Needs-you row is yours to discharge,
+* an Active-now row is something to look at.
+*/
   test('marks the two lanes apart beyond their heading text', () => {
     mocks.sessions.push(
       session({
@@ -228,23 +228,23 @@ describe('ProjectLiveWorkSection', () => {
     expect(
       container.querySelectorAll('.project-page__live-work-icon'),
     ).toHaveLength(2);
-    // An unattributable session is named for its ENGINE, never dressed up as
-    // an agent it might not be and never shown as a bare thread id.
+// An unattributable session is named for its ENGINE, never dressed up as
+// an agent it might not be and never shown as a bare thread id.
     expect(
       screen.getByRole('button', { name: /Detached transcript.*Codex/i }),
     ).toBeTruthy();
   });
 
-  /**
-   * station#3227 A1. This section's row state used to be
-   * `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state,
-   * with none of the fold's overrides — while its lane heading came from the
-   * fold. So a row filed under "Needs you" said *Running*, and a session
-   * nothing could answer said *"Waiting on you"*.
-   *
-   * This walks the RENDERED lanes rather than asserting one word per shape:
-   * every row's state word must be one this heading is allowed to sit above.
-   */
+/**
+* archive#3227 A1. This section's row state used to be
+* `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state,
+* with none of the fold's overrides — while its lane heading came from the
+* fold. So a row filed under "Needs you" said *Running*, and a session
+* nothing could answer said *"Waiting on you"*.
+*
+* This walks the RENDERED lanes rather than asserting one word per shape:
+* every row's state word must be one this heading is allowed to sit above.
+*/
   test('no rendered row contradicts the lane heading above it', () => {
     const LANE_VOCABULARY: Record<string, string[]> = {
       needsYou: [
@@ -257,14 +257,14 @@ describe('ProjectLiveWorkSection', () => {
     };
 
     mocks.sessions.push(
-      // A1 shape 1 (#1069): attached, never ran a turn.
+ // A1 shape 1 (archive#1069): attached, never ran a turn.
       session({
         threadId: 'idle-running',
         displayTitle: 'Attached but idle',
         lifecycleState: 'running',
         hasActiveTurn: false,
       }),
-      // A1 shape 2: a review is pending while a turn is in flight.
+// A1 shape 2: a review is pending while a turn is in flight.
       session({
         threadId: 'review-while-running',
         displayTitle: 'Review pending mid-turn',
@@ -272,7 +272,7 @@ describe('ProjectLiveWorkSection', () => {
         hasActiveTurn: true,
         pendingReview: true,
       }),
-      // A1 shape 4 (#1783): nothing can answer it.
+ // A1 shape 4 (archive#1783): nothing can answer it.
       session({
         threadId: 'stranded',
         displayTitle: 'Stranded request',
@@ -322,8 +322,8 @@ describe('ProjectLiveWorkSection', () => {
       }));
     });
 
-    // Both lanes populated and every session accounted for — a walk over an
-    // empty render would pass while checking nothing.
+// Both lanes populated and every session accounted for — a walk over an
+// empty render would pass while checking nothing.
     expect(rendered).toHaveLength(6);
     expect(new Set(rendered.map((row) => row.laneId))).toEqual(
       new Set(['needsYou', 'activeNow']),
@@ -336,7 +336,7 @@ describe('ProjectLiveWorkSection', () => {
       ).toContain(row.word);
     }
 
-    // The three A1 shapes, by the word they used to print.
+// The three A1 shapes, by the word they used to print.
     expect(
       screen.getByRole('button', { name: /Attached but idle.*Ready/i }),
     ).toBeTruthy();
@@ -397,8 +397,8 @@ describe('ProjectLiveWorkSection', () => {
   });
 
   test('a session Station cannot reopen falls through to the sessions surface', () => {
-    // `read-only-attached` is the shared open policy's navigate branch. The
-    // row must still be actionable rather than silently no-oping.
+// `read-only-attached` is the shared open policy's navigate branch. The
+// row must still be actionable rather than silently no-oping.
     mocks.sessions.push(
       session({
         threadId: 'attached',

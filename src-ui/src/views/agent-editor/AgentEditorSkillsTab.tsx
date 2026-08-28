@@ -26,7 +26,7 @@ export function AgentEditorSkillsTab({
 > & {
   finding?: AgentEngineValidationFinding;
   /**
-   * Station#975 D-1 §4.2 engine-default hint: the bound connection's own
+   * archive#975 D-1 §4.2 engine-default hint: the bound connection's own
    * `config.provideSkills` count, shown only when the surface is
    * deliverable and the agent hasn't authored its own skills (so the
    * connection default will apply).

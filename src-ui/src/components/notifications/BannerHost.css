@@ -1,9 +1,9 @@
-/* Overlay under the app toolbar (station#3308 phase 1): banners hover above
+/* Overlay under the app toolbar (archive#3308 phase 1): banners hover above
  * `.main-content` instead of occupying a layout row, so presenting or
  * dismissing one never reflows the app. `--app-toolbar-total-height` already
  * tracks both the safe-area inset and toolbar visibility (mobile chat
  * fullscreen reduces it to the inset alone), so the overlay starts exactly
- * below the toolbar's interactive controls and never covers them (#2343). */
+ * below the toolbar's interactive controls and never covers them (archive#2343). */
 .banner-host {
   position: absolute;
   top: var(--app-toolbar-total-height, 46px);
@@ -32,7 +32,7 @@
  *
  * The fallback is `0px`, not a constant: with no banner presenting, the
  * property is removed and the content area is exactly where it was. That is
- * what separates this from station#2268's reserved rail, which held a blank
+ * what separates this from archive#2268's reserved rail, which held a blank
  * 104px on mobile whether or not there was anything to say. */
 .app__main > .main-content {
   padding-top: var(--banner-stack-height, 0px);
@@ -45,7 +45,7 @@
   transition: padding-top var(--motion-base) var(--ease-standard);
 }
 
-/* station#3432: the bound and the scroll both live on `.banner-host__stack`
+/* archive#3432: the bound and the scroll both live on `.banner-host__stack`
  * (below), never on `.banner-host` itself. A flex child shrinks to fit an
  * ancestor's max-height instead of overflowing it — `.banner-host` is
  * `display: flex; flex-direction: column`, so a max-height declared HERE only
@@ -55,18 +55,18 @@
  * `clientHeight`. Bounding the inner stack instead, with its items pinned to
  * `flex-shrink: 0`, is what makes the overflow real.
  *
- * station#3432 round 2: the stack's `pointer-events: auto` opt-in is NOT
+* archive#3432: the stack's `pointer-events: auto` opt-in is NOT
  * declared in these mode rules any more — see `.banner-host__stack--
  * scrollable` below. Making it unconditional here swallowed clicks over the
  * *entire* card area (message text, gaps between cards, the space below the
  * last card up to the bound) in the overwhelmingly common case where the
- * stack has nothing to scroll — a real regression of #3308's "transparent
+ * stack has nothing to scroll — a real regression of archive#3308's "transparent
  * unless there's a real control" property, caught by hit-testing
  * `document.elementFromPoint` against a non-scrolling stack. */
 
 /* Content sets the height. No floor: a floor is indistinguishable from a
  * blank rail when the store is empty, which is what pushed content down by
- * 104px on mobile (station#2268). The viewport cap only bounds a pathological
+ * 104px on mobile (archive#2268). The viewport cap only bounds a pathological
  * pile-up, and the host renders nothing at all when there is nothing to say. */
 .banner-host--connection-slot .banner-host__stack {
   max-height: 40vh;
@@ -92,7 +92,7 @@
   min-height: 0;
 }
 
-/* station#3432 round 2: the stack takes pointer events ONLY when it is
+/* archive#3432: the stack takes pointer events ONLY when it is
  * actually scrollable — `BannerHost.tsx` compares `scrollHeight` to
  * `clientHeight` (via `ResizeObserver`, so it tracks real layout, not a
  * declared bound) and applies this class itself. A CSS-only "is this mode
@@ -174,13 +174,13 @@
   grid-template-rows: 1fr;
   flex-shrink: 0;
   min-height: 0;
-  /* The collapsed end of the tween: one 44px control row (the tap-target
+/* The collapsed end of the tween: one 44px control row (the tap-target
      floor every control in this card already honours) plus its padding. It
      is a constant rather than a measurement because the collapsed layout is
      deterministic — one row, message clamped to one line — whereas the
      expanded height depends on the text. */
   --banner-collapsed-height: 52px;
-  /* The expanded end, written by `BannerHost.tsx` from the content row's own
+/* The expanded end, written by `BannerHost.tsx` from the content row's own
      `scrollHeight`. `auto` until something is measured, which is the state
      jsdom and any pre-layout frame sees; the card then behaves exactly as it
      did before this property existed. */
@@ -192,18 +192,18 @@
   border-radius: 10px;
   background: var(--bg-primary, #111827);
   overflow: hidden;
-  /* station#3432 round 2/3, LOW-2 (disclosed, not fixed): the CSS overflow
-   * shorthand computes `overflow-x: auto` alongside `.banner-host__stack`'s
-   * own `overflow-y: auto`, so this shadow is clipped on its sides whenever
-   * the stack is actually scrolling. Every apparent fix widens
-   * `.banner-host__item`'s own box — inline padding plus a compensating
-   * negative margin, or a wrapper around it — which is exactly the box
-   * HIGH-1 shrank down to its content; either one trades that click-through
-   * regression straight back in. `filter: drop-shadow()` changes nothing
-   * either: it is paint-only in every engine, same as `box-shadow` itself —
-   * this element already carries both `box-shadow` and `pointer-events:
-   * none` and is already visibly tinted AND click-through, which is the
-   * property this whole fix exists to keep. Accepted as a cosmetic gap. */
+ /* archive#3432 /3, (disclosed, not fixed): the CSS overflow
+* shorthand computes `overflow-x: auto` alongside `.banner-host__stack`'s
+* own `overflow-y: auto`, so this shadow is clipped on its sides whenever
+* the stack is actually scrolling. Every apparent fix widens
+* `.banner-host__item`'s own box — inline padding plus a compensating
+* negative margin, or a wrapper around it — which is exactly the box
+ * shrank down to its content; either one trades that click-through
+* regression straight back in. `filter: drop-shadow` changes nothing
+* either: it is paint-only in every engine, same as `box-shadow` itself —
+* this element already carries both `box-shadow` and `pointer-events:
+* none` and is already visibly tinted AND click-through, which is the
+* property this whole fix exists to keep. Accepted as a cosmetic gap. */
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   opacity: 1;
   transform: translate3d(var(--banner-swipe-x, 0), 0, 0);
@@ -223,20 +223,20 @@
  *
  * WHY `height` AND NOT SOMETHING TIDIER:
  * - `grid-template-rows: 1fr -> 0fr` is the technique this file already uses
- *   for the exit, and it is the right one THERE because both ends are flex
- *   values. Collapsing to a NON-ZERO bar is not expressible that way: `1fr`
- *   and a length do not interpolate, and the collapsed bar cannot be split
- *   into its own track because the thing that shrinks — the message going
- *   from N lines to one — is the same element in both states.
+*   for the exit, and it is the right one THERE because both ends are flex
+*   values. Collapsing to a NON-ZERO bar is not expressible that way: `1fr`
+*   and a length do not interpolate, and the collapsed bar cannot be split
+*   into its own track because the thing that shrinks — the message going
+*   from N lines to one — is the same element in both states.
  * - `max-height` between two constants tweens the constant, not the card:
- *   the visible change finishes early (or starts late) by however much the
- *   real height differs from the bound, and any bound tight enough to avoid
- *   that clips a long message outright.
- * - `interpolate-size: allow-keywords` / `calc-size()` would make this two
- *   lines of CSS and no measurement. Not used: Station ships into WKWebView
- *   and WebKitGTK as well as Chromium, and this is the animation quality of
- *   the primary interaction, not a flourish. It is worth revisiting once it
- *   is unconditional across the shipped webviews.
+*   the visible change finishes early (or starts late) by however much the
+*   real height differs from the bound, and any bound tight enough to avoid
+*   that clips a long message outright.
+* - `interpolate-size: allow-keywords` / `calc-size` would make this two
+*   lines of CSS and no measurement. Not used: Station ships into WKWebView
+*   and WebKitGTK as well as Chromium, and this is the animation quality of
+*   the primary interaction, not a flourish. It is worth revisiting once it
+*   is unconditional across the shipped webviews.
  * So: one measured length at each end and a plain `height` transition, which
  * degrades to an instant (correct, unclipped) snap wherever the measurement
  * is unavailable. */
@@ -351,7 +351,7 @@
   text-transform: uppercase;
 }
 
-/* station#3297 — the "one line, tap to expand" control. Inline with the
+/* archive#3297 — the "one line, tap to expand" control. Inline with the
    summary rather than in the action column: it reveals text, it does not act
    on the connection, and putting it beside "Try now" would read as a second
    remedy. It is a real 44px-tall tap target despite sitting in running text.
@@ -382,7 +382,7 @@
   pointer-events: auto;
 }
 
-/* station#4470b (review round): a small filled triangle, not the card
+/* archive#4470b: a small filled triangle, not the card
    chevron's two-border corner shape (`.banner-host__chevron` below) — the
    two controls must not read as the same affordance at a glance any more
    than they do by label. Rotates open/closed off `aria-expanded`, the same
@@ -441,7 +441,7 @@
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
-/* station#4470 review round (M1): `variant: 'danger'` rendered byte-identical
+/* archive#4470: `variant: 'danger'` rendered byte-identical
  * to every other action — nothing in this file styled the class the variant
  * produced. This is the one destructive banner action shipped so far
  * ("Remove connection"), so it earns real styling rather than a value with
@@ -515,7 +515,7 @@
 /* Exit: collapse row height so siblings reflow without a snap. */
 .banner-host__item--exiting {
   grid-template-rows: 0fr;
-  /* Beats the measured `--banner-natural-height` above (later rule, equal
+/* Beats the measured `--banner-natural-height` above (later rule, equal
      specificity). Without it the card holds its measured height all the way
      out and the row collapse has nothing to do — the exit reflow this file
      has always had would have been the casualty of adding a height at all. */
@@ -533,7 +533,7 @@
   padding-bottom: 0;
 }
 
-/* Declared unconditionally — see the note on `.app__main > .main-content`
+/* Declared unconditionally — see the note on `.app__main >.main-content`
    above: the motion primitive owns the reduced-motion decision.
    `height` in the list below is collapse/expand, and the tail of the exit.
    Both ends are lengths whenever a measurement exists; when one is `auto`
@@ -590,7 +590,7 @@
 }
 
 /* Dock coexistence. The host and `.chat-dock` are siblings inside `.app__main`
- * — which is `position: relative` with `z-index: auto`, so it opens no stacking
+* which is `position: relative` with `z-index: auto`, so it opens no stacking
  * context and the two boxes are compared in the root one, where the dock owns
  * the higher named layer (`--layer-dock` 9200 vs `--layer-notice` 9000).
  * Spanning the full shell therefore put the dismiss and action controls
@@ -622,25 +622,25 @@
     left: 36px;
   }
 
-  /* A bottom dock spans the full width UNDER the content, so there is no
-   * column to inset into and the rules above have nothing to bite on. Nor is
-   * there reliably a band to shrink into: the resize handle takes the dock to
-   * within a toolbar's height of the top (measured live at 854px of 900), so
-   * a height bound resolves toward its floor and lands the overlay back inside
-   * the dock — a notice clipped AND still underneath. The notice outranks the
-   * dock here instead, and stays bounded by its own caps above.
-   *
-   * The host itself is always `pointer-events: none` here, collapsed or
-   * expanded — see the docblock above `.banner-host__stack`. `.banner-host
-   * __stack` only takes pointer events (`.banner-host__stack--scrollable`,
-   * applied by `BannerHost.tsx` from a real `scrollHeight`/`clientHeight`
-   * comparison) when it is genuinely scrollable, so the dock loses pointer
-   * events across the stack's bounded box only for as long as there is
-   * actually something in it to scroll past — undone the moment the content
-   * fits, and in the expanded state also undone by Escape, an outside tap, or
-   * the collapse control. When it is not scrollable, only the literal
-   * dismiss, action and cap rectangles are taken and every other pixel still
-   * reaches the dock, in every state alike. */
+/* A bottom dock spans the full width UNDER the content, so there is no
+* column to inset into and the rules above have nothing to bite on. Nor is
+* there reliably a band to shrink into: the resize handle takes the dock to
+* within a toolbar's height of the top (measured live at 854px of 900), so
+* a height bound resolves toward its floor and lands the overlay back inside
+* the dock — a notice clipped AND still underneath. The notice outranks the
+* dock here instead, and stays bounded by its own caps above.
+*
+* The host itself is always `pointer-events: none` here, collapsed or
+* expanded — see the docblock above `.banner-host__stack`. `.banner-host
+* __stack` only takes pointer events (`.banner-host__stack--scrollable`,
+* applied by `BannerHost.tsx` from a real `scrollHeight`/`clientHeight`
+* comparison) when it is genuinely scrollable, so the dock loses pointer
+* events across the stack's bounded box only for as long as there is
+* actually something in it to scroll past — undone the moment the content
+* fits, and in the expanded state also undone by Escape, an outside tap, or
+* the collapse control. When it is not scrollable, only the literal
+* dismiss, action and cap rectangles are taken and every other pixel still
+* reaches the dock, in every state alike. */
   .app__main--dock-bottom > .banner-host {
     z-index: calc(var(--layer-dock) + 1);
   }
@@ -653,7 +653,7 @@
  * every column with `.main-content` set to `display: none`, and a bottom dock
  * claims the content row. A blocking pairing/credential banner must still be
  * readable and dismissible, so in THIS state only, the notice outranks the
- * dock. Scoped by `:has()` rather than raised on `.banner-host` itself, so the
+* dock. Scoped by `:has` rather than raised on `.banner-host` itself, so the
  * dock keeps its layer in every other state. */
 .app__main:has(> .chat-dock.is-maximized) > .banner-host {
   left: 0;
@@ -680,7 +680,7 @@
     line-height: 1.45;
   }
 
-  /* Collapsed on mobile: the actions come back up into the single row, which
+/* Collapsed on mobile: the actions come back up into the single row, which
      is most of the height this state gives back on a phone. */
   .banner-host__item--collapsed .banner-host__item-inner {
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -708,29 +708,29 @@
     width: 100%;
   }
 
-  /* station#3453: BOTH declarations below are inert, in both directions —
-   * not just "below the floor and harmless." `.banner-host__action` sits
-   * inside `.banner-host__actions`, which the global mobile touch-target net
-   * in index.css (`:is([class*="__actions"], ...) > :is(button, a, .button,
-   * [role="button"])`, same breakpoint) already matches at `(0,2,0)`
-   * specificity — strictly higher than this single-class rule's `(0,1,0)`.
-   * The cascade picks ONE winning declaration per property, not a min/max
-   * across competing rules, so whatever this rule says for `min-height` or
-   * `min-width` never applies, regardless of whether it is bigger or smaller
-   * than the net's 44px. (Measured: rendered width tracks label length —
-   * "OK" 49.02px, "Try now" 79.97px, "Request access" 129.34px at 390x844 —
-   * never this rule's 88px; the net's 44px is only ever a floor under
-   * content width, not the rendered value.) Both values are kept at the real
-   * floor anyway so a reader of this file never forms a wrong mental model
-   * from it, and so nothing regresses if this control's DOM nesting or the
-   * global net's selector vocabulary ever changes. */
+/* archive#3453: BOTH declarations below are inert, in both directions —
+* not just "below the floor and harmless." `.banner-host__action` sits
+* inside `.banner-host__actions`, which the global mobile touch-target net
+* in index.css (`:is([class*="__actions"],...) > :is(button, a,.button,
+* [role="button"])`, same breakpoint) already matches at `(0,2,0)`
+* specificity — strictly higher than this single-class rule's `(0,1,0)`.
+* The cascade picks ONE winning declaration per property, not a min/max
+* across competing rules, so whatever this rule says for `min-height` or
+* `min-width` never applies, regardless of whether it is bigger or smaller
+* than the net's 44px. (Measured: rendered width tracks label length —
+* "OK" 49.02px, "Try now" 79.97px, "Request access" 129.34px at 390x844 —
+* never this rule's 88px; the net's 44px is only ever a floor under
+* content width, not the rendered value.) Both values are kept at the real
+* floor anyway so a reader of this file never forms a wrong mental model
+* from it, and so nothing regresses if this control's DOM nesting or the
+* global net's selector vocabulary ever changes. */
   .banner-host__action {
     min-width: 44px;
     min-height: 44px;
     padding-inline: 14px;
   }
 
-  /* station#3453, carried through the #3122 controls split: the dismiss
+ /* archive#3453, carried through the archive#3122 controls split: the dismiss
  * control measured 40x40 on a real phone viewport, below the 43.99px floor
  * `tests/helpers/touch-target.ts` enforces elsewhere. It is a sibling of
  * `.banner-host__actions`, not a descendant of an `*__actions`/`*__footer`/
@@ -748,12 +748,12 @@
     margin-top: 0;
   }
 
-  /* No mobile size override for `.banner-host__dismiss` /
-   * `.banner-host__collapse`. #3511 added one here at 40x40, which sat three
-   * rules below its own comment saying both controls "carry the 44px floor
-   * explicitly in their own rules below" — the base rules do; this override
-   * undid them at exactly the viewport where the floor applies, re-opening
-   * #3453 for dismiss and shipping the new collapse control below the floor.
-   * Measured 40x40 at 390x844 before removal. The base rules stand, and
-   * `BannerHost.touch-target.test.tsx` measures both on every run. */
+/* No mobile size override for `.banner-host__dismiss` /
+ * `.banner-host__collapse`. archive#3511 added one here at 40x40, which sat three
+* rules below its own comment saying both controls "carry the 44px floor
+* explicitly in their own rules below" — the base rules do; this override
+* undid them at exactly the viewport where the floor applies, re-opening
+ * archive#3453 for dismiss and shipping the new collapse control below the floor.
+* Measured 40x40 at 390x844 before removal. The base rules stand, and
+* `BannerHost.touch-target.test.tsx` measures both on every run. */
 }

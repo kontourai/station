@@ -194,7 +194,7 @@ class TaskDispatchAdmissionError extends Error {
   }
 }
 
-// Async-compatible seam (#2646): the default is the ASYNC cross-process lock
+// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
 // so a contended acquisition yields the event loop; sync test fakes remain
 // assignable (awaiting a non-promise is a no-op).
 type TaskGraphMutationLock = (
@@ -228,7 +228,7 @@ interface TaskGraphServiceDeps {
   >;
   projectService?: Pick<ProjectService, 'getProject'>;
   execGit?: typeof execGit;
-  /** AssignmentProvider claim/release/status backend (roadmap #584). When
+  /** AssignmentProvider claim/release/status backend (roadmap archive#584). When
    * absent (e.g. most tests), dispatch of a workItemRef-bearing task simply
    * skips claim tracking rather than throwing. */
   assignmentClaimService?: Pick<
@@ -240,12 +240,12 @@ interface TaskGraphServiceDeps {
    * derive the AssignmentProvider `artifactRoot`
    * (`<workspace>/.kontourai/flow-agents`).
    *
-   * May be async since station#1501 slice 3b: production wires it to
+   * May be async since archive#1501: production wires it to
    * `resolveProjectWorkspacePath`, which performs live filesystem/git checks
    * (`docs/design/portable-project-identity.md` §2.2.1, consumer A7). */
   resolveProjectWorkspace?: WorkspacePathResolver;
   /**
-   * Read side of the workflow sidecar (station#189 S4), used ONLY to confirm
+   * Read side of the workflow sidecar (archive#189 S4), used ONLY to confirm
    * that a task's bare-slug `workItemRef` names a sidecar that already exists
    * before a dispatch declares `metadata.taskSlug`. Absent (e.g. most tests)
    * means dispatch declares no task slug — the S4 join then falls back to the
@@ -1345,7 +1345,7 @@ function validateTaskGraphStoreData(
 /**
  * A `ProjectResourceResolver` whose PROJECT source is the injected
  * `projectService` and whose manifest/binding stores live under
- * `projectHomeDir` (station#1501 slice 3b, seam S4).
+ * `projectHomeDir` (archive#1501, seam S4).
  *
  * Not the resolver's default (`new FileStorageAdapter(homeDir)`) deliberately.
  * In production the two are the same object graph — `runtime-routes.ts` wires
@@ -1379,7 +1379,7 @@ export class TaskGraphService {
   private readonly acquireMutationLock: TaskGraphMutationLock;
   private readonly projectService?: Pick<ProjectService, 'getProject'>;
   /**
-   * station#1501 slice 3b, seam S4. Captured with `projectService` at this
+   * archive#1501, seam S4. Captured with `projectService` at this
    * Module's construction seam, so the two can never answer differently about
    * the same project during this graph's lifetime.
    */
@@ -1429,16 +1429,16 @@ export class TaskGraphService {
   /**
    * The flow-agents task slug a dispatch of `task` should declare as
    * `metadata.taskSlug`, or undefined when there is none to declare
-   * (station#189 S4 — "populate `metadata.taskSlug` when Station starts a
+   * (archive#189 S4 — "populate `metadata.taskSlug` when Station starts a
    * builder session").
    *
    * Two conditions, both required, neither of them a heuristic:
    *
    *  1. `workItemRef` is a BARE flow-agents slug — the identity-grade join
-   *     #594/#582 already established. A namespaced ref (`github:owner/repo#1`)
+   *     archive#594/#582 already established. A namespaced ref (`github:owner/repo#1`)
    *     names a work item, not a sidecar directory, and the slugified-title
    *     fallback is explicitly not used here: this value binds a session to a
-   *     durable artifact, and #582 settled that a heuristic must never be
+   *     durable artifact, and archive#582 settled that a heuristic must never be
    *     presented as identity.
    *  2. That sidecar ALREADY EXISTS in the workspace THIS SESSION WILL RUN
    *     IN. `metadata.taskSlug` is create-or-resume downstream (`ensureTask`),
@@ -2432,7 +2432,7 @@ export class TaskGraphService {
    * callers configure both. With neither, binding stays fail-closed: a Task is
    * never created carrying a workspace nobody could verify.
    *
-   * station#1501 slice 3b, seam S4 (`docs/design/portable-project-identity.md`
+   * archive#1501, seam S4 (`docs/design/portable-project-identity.md`
    * §2.2.1). Both branches now route through `resolveProjectResource`.
    *
    * **The `Project not found: ${projectId}` throw is PRESERVED** — same
@@ -2496,7 +2496,7 @@ export class TaskGraphService {
       if (outcome.state === 'error') throw new Error(outcome.reason);
       // Every other state — `unbound` (nothing is recorded), `missing` (a
       // recorded realization, binding or declared workingDirectory, whose path
-      // is gone — station#1594 moved the second half of the old `unbound`
+      // is gone — archive#1594 moved the second half of the old `unbound`
       // here), `drifted`, `stale`, `ambiguous` — is a real answer: this
       // Project has no workspace we can vouch for right now. The binding
       // models that as `unavailable`, exactly as it modelled an absent
@@ -2568,7 +2568,7 @@ export class TaskGraphService {
    * workspace as it is right now, for the read paths (`readTaskForOpen`,
    * `readTaskGraph`). It never writes.
    *
-   * **station#1501 slice 3b review, FIX 5 — the pre-existing-Task
+   * **archive#1501 review, FIX 5 — the pre-existing-Task
    * consequence of the tilde fix.** Seam S4 made a `~`-stored project resolve
    * to a real directory. A Task created BEFORE that, against such a project,
    * persisted `availability: 'unavailable'` and no `workingDirectory`.
@@ -2798,7 +2798,7 @@ export class TaskGraphService {
    * Persist a short-lived `in_progress` reservation before any provider or
    * assignment-provider await. The lock is never held ACROSS that provider
    * await — the reservation, not the lock, is what gives other processes an
-   * authoritative reason to refuse a duplicate start. Since #2646 the
+   * authoritative reason to refuse a duplicate start. Since archive#2646 the
    * acquisition itself is awaited rather than busy-waited, so a contended
    * reservation yields the event loop instead of freezing the listener; the
    * critical section it guards is still only the read-modify-write.
@@ -3113,7 +3113,7 @@ export class TaskGraphService {
    * path so both derive the SAME actor/artifactRoot, never a second,
    * drifting computation.
    *
-   * It performs no I/O of its OWN; since station#1501 slice 3b the injected
+   * It performs no I/O of its OWN; since archive#1501 the injected
    * `resolveProjectWorkspace` does (a live filesystem/git check through
    * `resolveProjectResource`), which is why this is async. It is still a pure
    * function of the task, the session and that resolver — it reads no store
@@ -3433,7 +3433,7 @@ export class TaskGraphService {
 
   /**
    * Releases a task's AssignmentProvider claim on orchestration session end
-   * or cancel (roadmap #584) — fires only for a REAL orchestrated session
+   * or cancel (roadmap archive#584) — fires only for a REAL orchestrated session
    * (`session.exited`); the default `'task-dispatch'` seeded path never
    * reaches this trigger at all (see `updateTaskStatus`'s doc comment) and
    * relies on `releaseClaimForTask` instead. Never throws; idempotent since
@@ -3525,14 +3525,14 @@ export class TaskGraphService {
    * race against a new task being dispatched onto the subject while the
    * sweep is still running.
    *
-   * Residual gap (accepted limitation, ties to kontourai/station#592's
+   * Residual gap (accepted limitation, ties to kontourai/archive#592's
    * `@kontourai/flow-agents` bump): a crash between `claim()` succeeding
    * and the dispatch's task-store write landing leaves NO dispatch record
    * at all for that attempt, so this sweep cannot prove ownership of it —
    * by design (never guess), that claim is left alone rather than reclaimed
    * on weaker evidence. The pinned 3.4.3 bare `assignment-provider claim`
    * has no TTL/liveness of its own to fall back on here; closing this fully
-   * needs the typed, liveness-aware provider (#592).
+   * needs the typed, liveness-aware provider (archive#592).
    */
   async reconcileStaleAssignmentClaims(): Promise<{
     releasedSubjects: string[];
@@ -3622,7 +3622,7 @@ export class TaskGraphService {
 
   /**
    * Read-time AssignmentProvider claim status for a task's `workItemRef`
-   * (roadmap #584) — independent of dispatch history, so the Tasks board
+   * (roadmap archive#584) — independent of dispatch history, so the Tasks board
    * can show claim state and guard dispatch BEFORE the user attempts it.
    */
   async readClaimStatus(taskId: string): Promise<TaskClaimStatus> {

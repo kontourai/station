@@ -67,7 +67,7 @@ interface AgentConnectionViewProps {
 
 /**
  * Whether this Station has ADDED an engine, as opposed to merely supporting it
- * (station#3981).
+ * (archive#3981).
  *
  * `available` means "supported here, but not yet added or usable"
  * (`AgentConnectionView['setup']`), so the configured list is right to omit
@@ -880,7 +880,7 @@ function ClaudeSkillsMaterializationField({
  * App-home profile opt-in (#896,
  * docs/design/agent-engine-unification.md §6.1's overlay model): a
  * Station-managed config home for the connection's sessions, off by
- * default. Parameterized over `engineLabel` (#896 wave 2 — claude-runtime
+ * default. Parameterized over `engineLabel` (#896  — claude-runtime
  * and codex-runtime both render this field). Import is a separate,
  * explicit user action — never triggered by the toggle or a form save —
  * and always renders its copied/skipped report, never silent.
@@ -1220,7 +1220,7 @@ function CredentialRecoveryManagement({
   if (state.isLoading) {
     return <SkeletonBlock count={2} label="Loading credential entries" />;
   }
-  // station#771: this used to fall straight through to the (empty) management
+  // archive#771: this used to fall straight through to the (empty) management
   // UI on a settled error, reading as "no credential entries" instead of "the
   // read failed". A retry that never had cached data has nothing to preserve.
   if (state.isError && !state.recovery) {

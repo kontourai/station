@@ -1,8 +1,8 @@
 /**
- * station#1284 / station#1745 — the orphaned-request cancellation, as a
+ * archive#1284 / archive#1745 — the orphaned-request cancellation, as a
  * READ-TIME PROJECTION.
  *
- * station#1284 fixed a stranded "Tool call awaiting approval" card by
+ * archive#1284 fixed a stranded "Tool call awaiting approval" card by
  * WRITING, at boot, a synthetic `request.resolved{status:'cancelled'}` for
  * every open request on a session that was provably not live. That write was
  * irreversible, and every artifact the four review rounds added existed only
@@ -11,7 +11,7 @@
  * the synthetic event could not erase a recorded `failed`, and an ordering
  * argument for the whole startup chain.
  *
- * station#1745 projects the same fact instead. `projectRequestAnswerability`
+ * archive#1745 projects the same fact instead. `projectRequestAnswerability`
  * (`open-requests.ts`) answers, at each read, whether anything in THIS
  * process could still answer the request; the attention projection drops the
  * card while the answer is no. Nothing is written, so nothing has to be
@@ -19,11 +19,11 @@
  * adapter after boot) now self-heals on the next read, which is a property
  * the barrier could never provide.
  *
- * WHAT THIS SUITE STILL PROVES, AND WHAT MOVED. Every behaviour #1338 pinned
+ * WHAT THIS SUITE STILL PROVES, AND WHAT MOVED. Every behaviour archive#1338 pinned
  * is either preserved below or, where the code it guarded no longer exists,
  * replaced by a test of the property it was protecting:
  *
- *  - AC1, AC2, the liveness-guard conjunct, the #1090 retriable-failure
+ *  - AC1, AC2, the liveness-guard conjunct, the archive#1090 retriable-failure
  *    shape, the predicate pin, the runs fold, cross-boot convergence, the
  *    live-subscribed path, `readRequestOutcome`'s totality and
  *    `resolveSessionProjectSlug`'s delegation precedence: PRESERVED, restated
@@ -154,7 +154,7 @@ class FakeAdapter implements ProviderAdapterShape {
   constructor(
     readonly provider: 'claude' | 'codex',
     /**
-     * station#1284 review finding 1(b): lets a test simulate the #1090
+     * archive#1284 review finding 1(b): lets a test simulate the archive#1090
      * recovery-failure shape -- an adapter genuinely registered for the
      * provider whose `startSession` throws for a SPECIFIC thread this boot
      * (`orchestration-session-state.ts`'s recovery catch block then marks
@@ -277,7 +277,7 @@ const WRITE_ABSENCE_OBSERVATION_MS = 200;
  * `await new Promise(resolve => setImmediate(resolve))` proves only that
  * every pending MICROtask has run, so a negative assertion made after it
  * holds exactly as long as nothing in the startup chain crosses a macrotask
- * boundary — which nothing enforces. Independent verification of #1338
+ * boundary — which nothing enforces. Independent verification of archive#1338
  * measured that a single `setTimeout(r, 0)` inserted into that chain left an
  * assertion of this shape green while the behaviour it denied had happened.
  */
@@ -369,7 +369,7 @@ function stateChangedEvent(
 const OBSERVED_BY = 'test-instance#0';
 const OBSERVED_AT = '2026-07-20T12:00:00.000Z';
 
-/** The basis every negative arm must carry on the wire (station#1778). */
+/** The basis every negative arm must carry on the wire (archive#1778). */
 const OBSERVATION_BASIS = {
   observedBy: OBSERVED_BY,
   observedAt: OBSERVED_AT,
@@ -455,7 +455,7 @@ describe('projectRequestAnswerability — the derivation itself (station#1745)',
 
   /**
    * `failed` is the state the two same-sounding contract predicates disagree
-   * about, and the one whose retriability station#1090 depends on. Pinned
+   * about, and the one whose retriability archive#1090 depends on. Pinned
    * separately from the table so its rationale is not buried in a row.
    */
   test('a retriable `failed` session stays answerable while its provider is registered', async () => {
@@ -471,7 +471,7 @@ describe('projectRequestAnswerability — the derivation itself (station#1745)',
   });
 
   /**
-   * station#1778: the negative arm is a RECORD OF AN OBSERVATION, not a
+   * archive#1778: the negative arm is a RECORD OF AN OBSERVATION, not a
    * timeless property. Without `observedBy`/`observedAt` a consumer reads
    * "this session is unanswerable" (universal) where the truth is "the
    * serving process held no adapter for it at T" — the label-vs-derivation
@@ -528,7 +528,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   /**
    * AC1, IN PRODUCTION'S OWN ORDER (initialize, settle, THEN wire the inbox).
    *
-   * The ordering is kept from #1338 for the reason it was introduced: wiring
+   * The ordering is kept from archive#1338 for the reason it was introduced: wiring
    * the inbox first would let a live bus subscription do work production has
    * nobody listening for. It matters differently now — there is no emission
    * at all — but keeping it makes the "nothing was heard" claim structural
@@ -538,14 +538,14 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
    *   - NO `request.resolved` is appended. The projection writes nothing, so
    *     idempotency across boots is not a property to maintain, it is a
    *     property there is no way to violate.
-   *   - `lifecycleState` stays `review_pending`. #1338 stamped `canceled`
+   *   - `lifecycleState` stays `review_pending`. archive#1338 stamped `canceled`
    *     here; nothing did cancel it, and the synthetic stamp is exactly the
-   *     irreversibility station#1745 removed.
+   *     irreversibility archive#1745 removed.
    *   - the ATTENTION PROJECTION drops the card. This is the user-visible
-   *     defect station#1284 was filed for (the bell badge reads
+   *     defect archive#1284 was filed for (the bell badge reads
    *     `AttentionProjectionService.list()`, not the notification store), and
    *     it is now the whole fix.
-   *   - the notification row is still `delivered`, NOT `actioned`. #1338's
+   *   - the notification row is still `delivered`, NOT `actioned`. archive#1338's
    *     synthetic resolution drove the inbox sweep to mark it `actioned` — a
    *     claim that a decision was made, when the whole premise is that nobody
    *     could make one. The row now says what happened: nothing.
@@ -648,7 +648,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
 
   /**
    * THE PROPERTY THE `providerRegistrationSettled` BARRIER WAS BOUGHT TO
-   * PROTECT (station#1284 HIGH 4), now held without it.
+   * PROTECT (archive#1284 HIGH 4), now held without it.
    *
    * The barrier existed because `adapterRegistry.get(provider) === undefined`
    * means "registration has not finished" before plugin loading settles and
@@ -841,7 +841,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       approvalNotificationFor(threadId),
     );
 
-    // station#3476: boot recovery no longer starts an engine per persisted
+    // archive#3476: boot recovery no longer starts an engine per persisted
     // row, so "this process is holding it" has to be a real fact for the
     // fixture to mean anything. An adapter that already holds the thread is
     // now exactly what makes recovery record the session as attached — the
@@ -900,10 +900,10 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * Review finding 1(b) (MERGE-BLOCKING, round 2 of #1338): "no adapter
+   * Review finding 1(b) (MERGE-BLOCKING, round 2 of archive#1338): "no adapter
    * record for this thread" alone is not proof a session is provably ended.
    * A session whose OWN recovery attempt genuinely fails THIS boot (an
-   * adapter IS registered for its provider — station#1090's shape) is marked
+   * adapter IS registered for its provider — archive#1090's shape) is marked
    * `lifecycleState: 'failed'` deliberately so it stays retriable for the
    * NEXT restart, and `failed -> queued|running` is legal by contract.
    */
@@ -936,7 +936,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     await waitForReceipt(
       (receipt) => receipt.kind === 'session.attachment.settled',
     );
-    // station#3476: the resume this session cannot survive is now attempted
+    // archive#3476: the resume this session cannot survive is now attempted
     // when the conversation is next used rather than at boot. The shape it
     // leaves behind — `status: 'error'`, retryable, still projecting — is
     // unchanged, which is what the assertions below pin.
@@ -947,7 +947,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       }),
     ).rejects.toThrow();
 
-    // Sanity: this really is the #1090 shape — the resume was attempted (the
+    // Sanity: this really is the archive#1090 shape — the resume was attempted (the
     // adapter IS registered) and genuinely failed, folding to `failed`
     // rather than being left untouched at `running`.
     const detail = await service.readSession(
@@ -956,7 +956,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     );
     expect(detail?.session.lifecycleState).toBe('failed');
     // Read off the emitted summary, not a service back-channel: the wire
-    // decoration is what every consumer sees (station#1778).
+    // decoration is what every consumer sees (archive#1778).
     expect(detail?.session.answerability).toEqual({ answerable: true });
 
     const projection = new AttentionProjectionService(
@@ -969,7 +969,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * PREDICATE PIN (station#1548 convergence — this test exists to fail if
+   * PREDICATE PIN (archive#1548 convergence — this test exists to fail if
    * someone swaps the predicate for the one whose NAME matches).
    *
    * The fixture is built so ONLY the lifecycle predicate can decide: the
@@ -980,8 +980,8 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
    *
    * `isSessionLifecycleStateTerminal` answers false for `canceled`, so
    * swapping it in leaves the canceled thread's card on screen — the exact
-   * report station#1284 was filed against. The opposite direction — widening
-   * to `isSessionLifecycleStateStopped` — is pinned by the #1090 test above.
+   * report archive#1284 was filed against. The opposite direction — widening
+   * to `isSessionLifecycleStateStopped` — is pinned by the archive#1090 test above.
    */
   test('predicate pin: a canceled session past resuming is projected unanswerable, while a blocked session that can still resume is left alone', async () => {
     const canceledThreadId = 'thread-canceled';
@@ -1142,7 +1142,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
 
   /**
    * NOTHING IS STAMPED, FOR ANY LIFECYCLE STATE — the replacement for
-   * #1338's resting-state matrix.
+   * archive#1338's resting-state matrix.
    *
    * That matrix asserted which `sessionState` the synthetic `request.resolved`
    * stamped, and existed because the stamp could erase a recorded `failed`
@@ -1230,10 +1230,10 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * The single case #1338's resting-state guard existed for, in its own
+   * The single case archive#1338's resting-state guard existed for, in its own
    * natural shape: a session that FAILED while holding an open APPROVAL
    * request. Under the pre-guard code the synthetic event stamped `canceled`,
-   * erasing the recorded failure and hiding station#1548's `session-failed`
+   * erasing the recorded failure and hiding archive#1548's `session-failed`
    * attention item. Nothing stamps anything now, so the failure survives by
    * construction — and this pins the consequence that mattered: the
    * `session-failed` item is still projected, while the request-derived
@@ -1289,7 +1289,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * THE RUNS FOLD (station#1284 HIGH 1, carried forward).
+   * THE RUNS FOLD (archive#1284 HIGH 1, carried forward).
    *
    * HIGH 1 was: a synthetic `request.resolved` folding to `running` put a
    * dead thread on `listAgentRuns` as the freshest ACTIVE work with no
@@ -1341,7 +1341,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     expect(run?.status).toBe('failed');
     expect(run?.status).not.toBe('running');
     // `completedAt` survives, and is now STRICTLY more truthful: it is the
-    // recorded transition's own timestamp. #1338 produced one by stamping the
+    // recorded transition's own timestamp. archive#1338 produced one by stamping the
     // moment the reconciliation pass RAN, which is not when the session
     // ended — a value with no truthful source, on every reconciled session.
     expect(run?.completedAt).toBe('2026-07-20T00:00:02.000Z');
@@ -1350,7 +1350,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     // A session that simply STOPPED — no `session.exited`, no errored
     // transition, just an open request and a process that died, which is
     // AC1's own fixture — keeps reading `waiting_for_approval` on the runs
-    // board. #1338's boot pass changed that incidentally, by writing a
+    // board. archive#1338's boot pass changed that incidentally, by writing a
     // cancellation whose `completedAt` was the moment the pass ran rather
     // than the moment the session ended. Removing the write returns the runs
     // board to what the log actually says. It is NOT the HIGH-1 symptom
@@ -1376,9 +1376,9 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   /**
    * `recoveryCoordinator.reconcile()` IS NEVER SKIPPED.
    *
-   * #1338 pinned this as a consequence of the orphan pass's error isolation
+   * archive#1338 pinned this as a consequence of the orphan pass's error isolation
    * ("one poisoned append must not skip reconcile()"). Both the pass and its
-   * isolation are gone, but the requirement is not — and station#1745 has its
+   * isolation are gone, but the requirement is not — and archive#1745 has its
    * own reason to hold it: `reconcile()` used to sit BEHIND the provider-
    * registration barrier, delayed by plugin asset loading it has no
    * dependency on. It now runs as soon as recovery settles.
@@ -1427,7 +1427,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * station#1779 delta review, MEDIUM — THE FAIL-OPEN WINDOW MUST CLOSE EVEN
+   * archive#1779 delta review, MEDIUM — THE FAIL-OPEN WINDOW MUST CLOSE EVEN
    * WHEN THE STARTUP CHAIN REJECTS.
    *
    * `sessionAttachmentSettled` used to be set on the SUCCESS path of an
@@ -1568,7 +1568,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     ).not.toBe('actioned');
 
     // A REAL resolution, the way an adapter's event stream delivers one.
-    // #1338 used the orphan pass's synthetic event for this; with the pass
+    // archive#1338 used the orphan pass's synthetic event for this; with the pass
     // gone the live path has to be exercised by a live event, which is what
     // it was always meant to cover.
     eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
@@ -1594,7 +1594,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * CROSS-BOOT CONVERGENCE, WITH NO LIVE EVENT AT ALL (station#1284,
+   * CROSS-BOOT CONVERGENCE, WITH NO LIVE EVENT AT ALL (archive#1284,
    * HIGH 2). The strongest form of the proof: `initialize()` is never
    * called, so no reconciliation pass runs and nothing is ever emitted on
    * the bus. The event store simply already contains what a PREVIOUS boot
@@ -1755,7 +1755,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       request: expect.objectContaining({ requestId: 'req-1' }),
     });
 
-    // Fault the method the read path ACTUALLY calls. station#1867 moved this
+    // Fault the method the read path ACTUALLY calls. archive#1867 moved this
     // read off `listEvents` onto the targeted `listEventsForRequest`
     // projection, so stubbing `listEvents` stopped faulting anything: the
     // read succeeded and returned a real 'open' verdict, and this case

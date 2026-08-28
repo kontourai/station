@@ -6,7 +6,7 @@
  *
  * It is split accordingly. The structural guard needs no notification at all
  * and is asserted unconditionally. The delivery guard needs the host's
- * notification stream to be alive, which — per #970, where FSEvents delivered
+ * notification stream to be alive, which — per archive#970, where FSEvents delivered
  * zero directory events to any process for hours — is not something a test can
  * assume. See `armWatcher` for exactly how the two are told apart.
  */
@@ -103,14 +103,14 @@ const WATCH_TEST_TIMEOUT_MS = 40_000;
 
 /**
  * Regression guard for the chokidar v4 glob removal: watching
- * `agents/&#42;/agent.json` resolves to watching *nothing* — `getWatched()` returns
+ * `agents/&archive#42;/agent.json` resolves to watching *nothing* — `getWatched()` returns
  * `{}` and no event ever fires — which is indistinguishable from a quiet
  * system. The two halves of that are asserted separately below, because only
  * one of them is within the test's power to guarantee.
  *
  * One watcher serves both. Standing up a second watcher in this file doubled
  * the filesystem-notification load, and each close is a synchronous 0.5-17s
- * block of the JS thread (#956), for no extra coverage.
+ * block of the JS thread (archive#956), for no extra coverage.
  */
 describe('isAgentOrIntegrationConfigPath (station#983 scoped advance)', () => {
   it('matches an agent.json path', () => {
@@ -191,7 +191,7 @@ describe('config watch roots', () => {
   }, 60_000);
 
   // Half one of the glob guard, and the half that matters: it needs no
-  // notification at all, so it holds on every host including a #970 one. A glob
+  // notification at all, so it holds on every host including a archive#970 one. A glob
   // watch resolves to an empty watched set; the directory form must resolve to
   // the three roots *and* recurse one level into `agents/writer`.
   it('resolves the directory watch form to real config directories', () => {
@@ -286,7 +286,7 @@ describe('config watch roots', () => {
  *
  * # Telling a broken host from a broken watch form
  *
- * That last claim held right up until #970, where FSEvents delivered zero
+ * That last claim held right up until archive#970, where FSEvents delivered zero
  * directory events to *any* process on the machine for several hours — against
  * `fs.watch` recursive, `fs.watch` non-recursive, and the native `fsevents`
  * module alike — and then recovered with no code change. On such a host this
@@ -314,7 +314,7 @@ describe('config watch roots', () => {
  * `ready`. The cost is stated plainly: this test no longer covers auto-discovery
  * of a directory created while the watcher is running. That behaviour is not
  * reliable on macOS, and the production watcher's answer to it — the bounded
- * post-`ready` reconciliation of #952 — is covered deterministically in
+ * post-`ready` reconciliation of archive#952 — is covered deterministically in
  * `config-loader-reconcile.test.ts` rather than by a test that fails 1 run in 8.
  */
 async function armReal({

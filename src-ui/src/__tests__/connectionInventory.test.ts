@@ -8,7 +8,7 @@ import {
 
 describe('connectionInventory', () => {
   it('excludes vectordb-only connections from the model inventory', () => {
-    // station#3747: membership is decided once, in the contract the server
+    // archive#3747: membership is decided once, in the contract the server
     // filters `/api/connections/models` with — not re-derived per surface.
     expect(isLlmModelConnection({ capabilities: ['vectordb'] })).toBe(false);
     expect(isLlmModelConnection({ capabilities: ['llm'] })).toBe(true);

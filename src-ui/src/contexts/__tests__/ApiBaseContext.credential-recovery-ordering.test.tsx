@@ -1,5 +1,5 @@
 /**
- * #3601/#3602 delta review (MEDIUM) — the response boundary is ordered after
+ * archive#3601/archive#3602 — the response boundary is ordered after
  * the state it reports, in a browser that HAS the Web Locks API too.
  *
  * `ConnectionStore` serializes its shared-storage writes under a Web Lock, so
@@ -107,9 +107,9 @@ function installLockManager() {
   const manager = {
     request(name: string, callback: () => void | Promise<void>) {
       const queue = queues.get(name) ?? Promise.resolve();
-      // Deferred to a MACROTASK, not a microtask: `act` drains microtasks, so
-      // a microtask-only lock would let the transition land whether or not the
-      // SDK awaited it, and this file would assert nothing.
+// Deferred to a MACROTASK, not a microtask: `act` drains microtasks, so
+// a microtask-only lock would let the transition land whether or not the
+// SDK awaited it, and this file would assert nothing.
       const run = queue
         .then(() => new Promise((resolve) => setTimeout(resolve, 0)))
         .then(() => callback());
@@ -166,7 +166,7 @@ describe('with Web Locks installed, the banner follows the awaited response', ()
       </ApiBaseProvider>,
     );
     await screen.findByText('App');
-    // The store the provider built must be the one using the installed manager.
+// The store the provider built must be the one using the installed manager.
     expect(window.navigator.locks).toBe(lockManager);
     const active = connections?.activeConnection;
     if (!active) throw new Error('no active connection to base the test on');
@@ -179,7 +179,7 @@ describe('with Web Locks installed, the banner follows the awaited response', ()
     await act(async () => {
       await authenticatedFetch(`${origin}/api/boot`);
     });
-    // No `waitFor`: the 401 does not resolve before the rejection it reports.
+// No `waitFor`: the 401 does not resolve before the rejection it reports.
     expect(screen.queryByRole('alert')?.textContent ?? 'NO BANNER').toMatch(
       BANNER,
     );

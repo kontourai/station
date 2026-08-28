@@ -63,15 +63,15 @@ const baseProps = {
   region: 'us-east-1',
   regionError: undefined,
   onRegionChange: vi.fn(),
-  // Pass-through by default (the "not dirty" case) — tests below that need
-  // the intercepting behavior render `GuardedHarness` instead.
+// Pass-through by default (the "not dirty" case) — tests below that need
+// the intercepting behavior render `GuardedHarness` instead.
   guard: (callback: () => void) => callback(),
 };
 
 /**
  * `SettingsView.tsx`'s real shape: `useUnsavedGuard(dirty)`'s `guard` passed
  * straight into `AgentDefaultsSection`, with `<DiscardModal />` rendered
- * alongside it — station#settings-revamp slice 5 review finding HIGH 1's
+ * alongside it — archive#settings-revamp 1's
  * repro ("dirty the Defaults model field, click 'Open Agents' → unsaved edit
  * silently discarded") reproduced and proven fixed against the REAL hook,
  * not a mock of it.
@@ -165,7 +165,7 @@ describe('AgentDefaultsSection', () => {
     expect(screen.queryByText('Global System Instructions')).toBeNull();
   });
 
-  // station#settings-revamp slice 5 review finding HIGH 1.
+ // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the "Open Agents" cross-links', () => {
     test('both Default model and Default region captions navigate to /agents when the page is not dirty', () => {
       navigateMock.mockClear();

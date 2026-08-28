@@ -32,7 +32,7 @@ export type ModelProviderOption = {
  * `openai/gpt-5` — and splitting those on '-' produces
  * "Us.anthropic.claude Sonnet 4 5 20250929 V1:0", which is not a prettier name
  * but a fabricated one. For those the id itself is the most honest thing we
- * have, so it is returned unchanged (station#3391 review B-3).
+ * have, so it is returned unchanged (archive#3391).
  */
 export function prettifyModelId(modelId: string): string {
   const id = modelId.trim();
@@ -45,13 +45,13 @@ export function prettifyModelId(modelId: string): string {
     .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
     .join(' ');
   const label = oneM ? `${base} (1M)` : base;
-  // 'claude-' prettifies to '' — a stripped prefix and nothing else. A blank
-  // Home card is worse than the raw id (station#3391 review B-2).
+// 'claude-' prettifies to '' — a stripped prefix and nothing else. A blank
+ // Home card is worse than the raw id (archive#3391).
   return label.trim() || id;
 }
 
 /**
- * The one derivation of "what do we call this model id" (station#3391).
+ * The one derivation of "what do we call this model id" (archive#3391).
  *
  * Home rendered two answers for one session: the start card resolved the id
  * against the catalog and read "Selected Test Model" while the continue card
@@ -73,14 +73,14 @@ export function modelDisplayLabel(
   const known = catalog.find(
     (model) => model.id === id || model.originalId === id,
   );
-  // `|| id` is the last guard: a catalog entry with an empty `name` would
-  // otherwise render blank, and an entry that exists is not a reason to show
-  // nothing.
+// `|| id` is the last guard: a catalog entry with an empty `name` would
+// otherwise render blank, and an entry that exists is not a reason to show
+// nothing.
   return known?.name || prettifyModelId(id) || id;
 }
 
 /**
- * Human label for what an alias/default entry concretely resolves to (#1012):
+ * Human label for what an alias/default entry concretely resolves to (archive#1012):
  * prefer the catalog's own display name for the resolved id; otherwise
  * prettify the raw id ('claude-opus-5[1m]' → 'Opus 5 (1M)'). Undefined when
  * the entry is already concrete.
@@ -103,7 +103,7 @@ export function resolvedModelLabel(
 
 export type NewChatModelChoice = {
   modelId?: string;
-  /** Exact Station model-connection instance selected before launch. */
+/** Exact Station model-connection instance selected before launch. */
   providerId?: string;
   providerType?: string;
   providerOptions: Record<string, unknown>;

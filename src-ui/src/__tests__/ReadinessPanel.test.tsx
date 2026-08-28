@@ -209,7 +209,7 @@ describe('ReadinessPanel', () => {
     expect(mutateMock).toHaveBeenCalledTimes(1);
   });
 
-  // station#3092 — a project switch must not blank a populated panel, and
+  // archive#3092 — a project switch must not blank a populated panel, and
   // the held content must be unmistakably marked as belonging to the
   // OUTGOING project while the new one loads.
   describe('key change: holding previous data honestly', () => {

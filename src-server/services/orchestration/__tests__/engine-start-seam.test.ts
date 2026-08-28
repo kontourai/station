@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#3549: every path that starts a provider engine must apply the
+ * archive#3549: every path that starts a provider engine must apply the
  * session agent's credential-profile pin first.
  *
  * Four review rounds produced the same defect three times, and the last of

@@ -26,7 +26,7 @@ interface Conversation {
   agentContext?: string;
   agentIcon?: string;
   agentEngine?: EngineDescriptor | null;
-  /** S1 of #1302: the project this conversation was created in/for, if any. */
+ /** of archive#1302: the project this conversation was created in/for, if any. */
   projectSlug?: string;
   title?: string;
   updatedAt: string;
@@ -174,7 +174,7 @@ export function SessionConversationItem({
 
   return (
     <div className={`session-item ${isActive ? 'is-active' : ''}`}>
-      {/* biome-ignore lint/a11y/useSemanticElements: composite conversation row contains an independent provenance action, so it cannot be a native button. */}
+{/* biome-ignore lint/a11y/useSemanticElements: composite conversation row contains an independent provenance action, so it cannot be a native button. */}
       <div
         className="session-item__content"
         onClick={onSelect}
@@ -198,7 +198,7 @@ export function SessionConversationItem({
           </span>
         </div>
         <div className="session-item__meta">
-          {/* Round-3: every resolved agent's conversation gets an engine
+{/* Round-3: every resolved agent's conversation gets an engine
               chip now (not just ACP ones) — the Layout/Global badge below
               is a different axis (workspace scope, not engine identity) and
               stays alongside it unchanged. */}
@@ -343,7 +343,7 @@ export function SessionConversationItem({
               ? "Can't copy"
               : 'ID'}
         </button>
-        {/* The button's own name is fixed, so its label change is never
+{/* The button's own name is fixed, so its label change is never
             announced; this sibling carries the outcome. */}
         <span role="status" className="copy-status-sr">
           {copyState === 'copied'

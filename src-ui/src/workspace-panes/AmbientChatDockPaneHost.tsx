@@ -91,7 +91,7 @@ const ambientChatDockPaneDocument = createAmbientChatDockPaneDocument();
  * `occupantInstanceId` is the host's own document state (its
  * `activeInstanceId`), republished on every occupant change so route
  * placements can derive "my pane is away" from the one source of truth
- * (station#4090 M5). `undockOccupant` restores the slot's baseline occupant.
+ * (archive#4090). `undockOccupant` restores the slot's baseline occupant.
  */
 export function ambientWorkspacePaneDockAction(
   dockPane: (
@@ -111,8 +111,8 @@ export function ambientWorkspacePaneDockAction(
 
 /**
  * The ambient host is the sole writer of the shell geometry variables
- * (station#3902/#3929 pin exactly one writer). `DockShell` is now the SINGLE
- * geometry authority regardless of occupant (station#4460) — it reports its
+ * (archive#3902/archive#3929 pin exactly one writer). `DockShell` is now the SINGLE
+ * geometry authority regardless of occupant (archive#4460) — it reports its
  * live geometry through `onGeometryChange`; this host's only remaining job is
  * applying that report to the CSS variables the rest of the shell reads. No
  * dual chat-vs-derived path anymore: there is nothing left to derive, because
@@ -158,10 +158,10 @@ const LazyActivityWorkspacePane = lazy(() =>
 /**
  * The dock-placement control every non-Chat occupant shares — factored out
  * so Home and Activity, which have no other header content, don't each
- * hand-roll the same `ChatDockHeader` call (station#4460). `occupantPicker`
+ * hand-roll the same `ChatDockHeader` call (archive#4460). `occupantPicker`
  * is NOT included: it is occupant-specific (a different `current` per
  * occupant) and already lives, pre-rendered, on `shellChrome.occupantPicker`
- * — see `AmbientDockShellApi`.
+* see `AmbientDockShellApi`.
  */
 function ambientNonChatHeaderProps(shellChrome: AmbientDockShellApi) {
   return {
@@ -179,21 +179,21 @@ function AmbientActivityDock({
 }: {
   shellChrome: AmbientDockShellApi;
 }) {
-  // The same occurrence the `/activity` route places; only the placement
-  // differs. While Activity occupies the dock, the `/activity` route renders
-  // its away state instead of a second co-mounted copy (station#4090 M5).
+// The same occurrence the `/activity` route places; only the placement
+// differs. While Activity occupies the dock, the `/activity` route renders
+ // its away state instead of a second co-mounted copy (archive#4090).
   const { apiBase } = useApiBase();
   return (
     <>
-      {/* station#4460: the SAME shared header Chat renders through — resize,
+{/* archive#4460: the SAME shared header Chat renders through — resize,
           maximize/collapse, placement and the occupant picker all come from
           it, not a second hand-rolled copy. */}
       <ChatDockHeader {...ambientNonChatHeaderProps(shellChrome)} />
-      {/* No routed sessionId: a deep-linked selection belongs to the route
+{/* No routed sessionId: a deep-linked selection belongs to the route
           placement, and the dock occupant starts at the list. */}
       <div className="dock-slot__body">
         <ActivityWorkspacePaneBindingProvider binding={{ apiBase }}>
-          {/* Activity is already the ambient occupant. Only the header's
+{/* Activity is already the ambient occupant. Only the header's
               picker may replace it, so the occupant itself does not offer a
               meaningless second "Dock this pane" control. */}
           <WorkspacePaneDockContext.Provider value={null}>
@@ -221,9 +221,9 @@ function AmbientHomeDock({
   onNavigate: (view: NavigationView) => void;
   shellChrome: AmbientDockShellApi;
 }) {
-  // This renderer remains behind the ambient host's lazy boundary. While Home
-  // occupies the dock, `/` renders its away state instead of a second
-  // co-mounted copy — station#4090's open question, answered by M5.
+// This renderer remains behind the ambient host's lazy boundary. While Home
+// occupies the dock, `/` renders its away state instead of a second
+// co-mounted copy — archive#4090's open question, answered by.
   const model = useHomeViewModel(onNavigate);
   return (
     <>
@@ -232,7 +232,7 @@ function AmbientHomeDock({
         <HomeWorkspacePaneBindingProvider
           binding={{ model, continuation, onNavigate }}
         >
-          {/* Home is already the ambient occupant. Only the header's picker
+{/* Home is already the ambient occupant. Only the header's picker
               may replace it, so the occupant itself does not offer a
               meaningless second "Dock this pane" control. */}
           <WorkspacePaneDockContext.Provider value={null}>
@@ -253,11 +253,11 @@ function AmbientHomeDock({
  * replace action, and `occupantPicker`, a pre-rendered `DockOccupantPicker`
  * naming THIS occupant (a different node per occupant — Chat's names "Chat",
  * Home's names "Home"). Every occupant (Chat, Home, Activity) receives
- * exactly this shape (station#4460) — one contract, not three per-occupant
+ * exactly this shape (archive#4460) — one contract, not three per-occupant
  * ones.
  *
- * `occupantPicker` is pre-rendered, not `{current, onChoose}` data (review
- * round M4): `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and all
+ * `occupantPicker` is pre-rendered, not `{current, onChoose}` data (
+ * round): `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and all
  * three pane-descriptor contracts modules, and this host is the one place
  * that chunk stays LAZY — passing the raw data through would let a consumer
  * (`ChatDockHeader`, which the EAGER `ChatDock.tsx` imports) reconstruct the
@@ -308,18 +308,18 @@ export function AmbientChatDockPaneHost({
   const writeDockSlotGeometry = useAmbientDockSlotGeometryWriter();
   const dockPane = useCallback(
     (descriptor: WorkspacePaneDescriptor, instance: WorkspacePaneInstance) => {
-      // `ambientDockDescriptorFor` already folds in the modes-satisfiability
-      // derivation, so the request is refused unless the occurrence is the
-      // canonical one of an ambient-satisfiable pane this host renders AND
-      // the caller's descriptor is that exact declaration.
+// `ambientDockDescriptorFor` already folds in the modes-satisfiability
+// derivation, so the request is refused unless the occurrence is the
+// canonical one of an ambient-satisfiable pane this host renders AND
+// the caller's descriptor is that exact declaration.
       if (ambientDockDescriptorFor(instance) !== descriptor || !replace) return;
       replace(instance);
     },
     [replace],
   );
-  // "Remove from the dock" = restore the slot's baseline occupant, which is
-  // Chat — the same occurrence the baseline document places. Owned by the
-  // host so a route's away state never imports Chat's machinery to offer it.
+// "Remove from the dock" = restore the slot's baseline occupant, which is
+// Chat — the same occurrence the baseline document places. Owned by the
+// host so a route's away state never imports Chat's machinery to offer it.
   const undockOccupant = useCallback(() => {
     dockPane(
       WORKSPACE_CHAT_PANE_DESCRIPTOR,
@@ -331,9 +331,9 @@ export function AmbientChatDockPaneHost({
       onDockActionChange?.(null);
       return;
     }
-    // Republished on every occupant change: `activeInstanceId` in the
-    // published action is how route placements learn their pane is away
-    // (and, just as load-bearing, when it no longer is).
+// Republished on every occupant change: `activeInstanceId` in the
+// published action is how route placements learn their pane is away
+// (and, just as load-bearing, when it no longer is).
     onDockActionChange?.(
       ambientWorkspacePaneDockAction(
         dockPane,
@@ -344,17 +344,17 @@ export function AmbientChatDockPaneHost({
     return () => onDockActionChange?.(null);
   }, [activeInstanceId, dockPane, onDockActionChange, replace, undockOccupant]);
   const host = (
-    // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
-    // chrome shell (station#4460): root box, resize handle, geometry/snap/
-    // drag state, `dock.toggle`/`dock.maximize`. Its `onGeometryChange` is
-    // the ambient host's only remaining geometry job — apply the shell's
-    // single live report to the CSS variables (station#3902/#3929: exactly
-    // one writer).
+// DockShell wraps every occupant (Chat, Home, Activity) — the one dock
+// chrome shell (archive#4460): root box, resize handle, geometry/snap/
+// drag state, `dock.toggle`/`dock.maximize`. Its `onGeometryChange` is
+// the ambient host's only remaining geometry job — apply the shell's
+ // single live report to the CSS variables (archive#3902/archive#3929: exactly
+// one writer).
     <DockShell onGeometryChange={writeDockSlotGeometry}>
       {(shellChrome) => {
-        // `occupantPicker` is built PER OCCUPANT below, not once here: each
-        // one names a different `current` descriptor (review round M4) — see
-        // `AmbientDockShellApi`'s doc for why it is pre-rendered at all.
+// `occupantPicker` is built PER OCCUPANT below, not once here: each
+ // one names a different `current` descriptor — see
+// `AmbientDockShellApi`'s doc for why it is pre-rendered at all.
         const shellApiFor = (
           current: WorkspacePaneDescriptor,
         ): AmbientDockShellApi => ({
@@ -369,11 +369,11 @@ export function AmbientChatDockPaneHost({
             document={ambientChatDockPaneDocument}
             presentation="chromeless"
             admitRestoredInstance={admitsAmbientDockInstance}
-            // Wrapped in an updater on purpose: the payload IS a function, and a
-            // bare `setReplace` would make React call it as an updater —
-            // `controller.replace(previousState)` — leaving `replace` a boolean and
-            // the published dock action permanently null. That exact miswiring
-            // shipped and kept "Dock this pane" off every route (station#4090).
+// Wrapped in an updater on purpose: the payload IS a function, and a
+// bare `setReplace` would make React call it as an updater —
+// `controller.replace(previousState)` — leaving `replace` a boolean and
+// the published dock action permanently null. That exact miswiring
+// shipped and kept "Dock this pane" off every route (archive#4090).
             onDockSlotActionChange={(action) => setReplace(() => action)}
             onDocumentChange={(document) =>
               setActiveInstanceId(document.activeInstanceId)

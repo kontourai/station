@@ -1,5 +1,5 @@
 /**
- * station#3677 inverted this file's original claim. The old test modeled two
+ * archive#3677 inverted this file's original claim. The old test modeled two
  * Sec-Fetch headers as SUFFICIENT to approve a trusted-permission grant from
  * the main origin — exactly the property that let same-origin plugin code
  * approve itself. The contract now: the main API only OPENS requests and
@@ -277,7 +277,7 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
       true,
     );
     // The broadcast carries what the commit DERIVED, not just the name
-    // (station#4288, delta review MEDIUM 2): an approval given against a
+    // (archive#4288, delta review MEDIUM 2): an approval given against a
     // `changed` binding withdraws everything else the plugin held, and a
     // listener must not have to assume an approval only ever adds.
     expect(emit).toHaveBeenCalledWith('plugins:grants-changed', {
@@ -643,7 +643,7 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
   });
 
   /**
-   * station#4288. The commit's `PluginContentUnavailableError` branch is
+   * archive#4288. The commit's `PluginContentUnavailableError` branch is
    * production-reachable: the target is revalidated when the operator decides
    * and the grant is committed immediately after, so a transient read failure
    * in that window (the tree removed, a permissions change, a disk error)

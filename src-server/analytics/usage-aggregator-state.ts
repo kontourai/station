@@ -15,9 +15,9 @@ export interface DailyStats {
 
 /**
  * What the lifetime figures below are a sum OVER, for the half of the corpus
- * where "not reported" is a real state (station#3245).
+ * where "not reported" is a real state (archive#3245).
  *
- * A lifetime total is a sum, and a sum is exactly where station#3201's rule —
+ * A lifetime total is a sum, and a sum is exactly where archive#3201's rule —
  * *optional/`undefined` = never reported; a number, including `0` = reported*
  * — silently dies: adding an absent measurement as `0` turns "nobody measured
  * this" back into "measured zero", which is the defect that issue exists to
@@ -27,7 +27,7 @@ export interface DailyStats {
  * than a zero.
  *
  * The denominator counts ENGINE (orchestration) sessions only, and that is
- * the same rule rather than a convenient scope: station#3201 defines
+ * the same rule rather than a convenient scope: archive#3201 defines
  * `station-memory` absence as Station's own recorded zero with nothing to
  * disclose, and `engine-events` absence as a question nobody asked
  * (`SessionMeasurementView.source` in
@@ -52,7 +52,7 @@ export interface EngineUsageCoverage {
  * who to attribute it to, and the ONE shared derivation of what it used
  * (`foldUsageEvents`, reached through `OrchestrationService.readSessionUsage`).
  * There is deliberately no reducer, scope handling, or event access here —
- * station#3245's whole point is that the aggregator gains a consumer of the
+ * archive#3245's whole point is that the aggregator gains a consumer of the
  * existing fold rather than a second one.
  */
 export interface OrchestrationSessionUsage {
@@ -64,7 +64,7 @@ export interface OrchestrationSessionUsage {
    * `agents/<slug>/memory/sessions/<conversationId>.ndjson`.
    */
   conversationId: string;
-  /** Absent when the session reported none (station#3082); never a literal. */
+  /** Absent when the session reported none (archive#3082); never a literal. */
   agentSlug?: string;
   usage: SessionUsageAggregate;
 }
@@ -77,7 +77,7 @@ export interface UsageStats {
     totalOutputTokens: number;
     /**
      * Prompt-cache tokens engines reported, kept as SEPARATE counters
-     * (station#4196). Deliberately never blended into `totalInputTokens`:
+     * (archive#4196). Deliberately never blended into `totalInputTokens`:
      * whether a provider's input figure already contains its cache figures
      * differs per provider and is unresolved for some
      * (`PROVIDER_PROMPT_CACHE_INCLUSIVITY`,
@@ -85,7 +85,7 @@ export interface UsageStats {
      * input counter would double-count a subset reporter invisibly.
      * Optional because older persisted stores predate them and absence
      * means "no session ever reported a cache figure", not a measured zero
-     * (station#3201).
+     * (archive#3201).
      */
     totalCacheReadTokens?: number;
     totalCacheWriteTokens?: number;
@@ -446,9 +446,9 @@ export function applyMessageToUsageStats(
 
 /**
  * Add the orchestration substrate's already-folded session totals to a
- * rescan's stats (station#3245). Orchestration sessions — every
+ * rescan's stats (archive#3245). Orchestration sessions — every
  * external-engine turn — had no path into lifetime analytics at all, so the
- * Profile read zero for that traffic even after station#3243 made the
+ * Profile read zero for that traffic even after archive#3243 made the
  * per-session numbers real.
  *
  * **No double counting, by construction.** `alreadyCountedConversationIds` is
@@ -474,7 +474,7 @@ export function applyMessageToUsageStats(
  * `SessionUsageAggregate` is a whole-session derivation with no per-day
  * resolution, so charging a multi-day session's usage to one calendar day
  * would invent a distribution nothing measured. The date-bucketed surfaces
- * stay honestly memory-only until station#3093 builds a period selector on a
+ * stay honestly memory-only until archive#3093 builds a period selector on a
  * substrate that can answer it.
  */
 export function applyOrchestrationUsageToUsageStats(
@@ -531,7 +531,7 @@ export function applyOrchestrationUsageToUsageStats(
       stats.lifetime.totalOutputTokens += usage.outputTokens;
       if (model) model.outputTokens += usage.outputTokens;
     }
-    // station#4196: separate cache counters, never added to
+    // archive#4196: separate cache counters, never added to
     // totalInputTokens — see the field docblock on UsageStats.lifetime.
     // A counter comes into existence only when a session actually reports
     // the figure.
@@ -655,7 +655,7 @@ export function mergeRescannedUsageStats(
   );
   // Optional cache counters: max when both sides have one, whichever exists
   // when only one does, and STILL ABSENT when neither does — a merge must
-  // not invent a zero counter nothing reported (station#3201/#4196).
+  // not invent a zero counter nothing reported (archive#3201/#4196).
   existing.lifetime.totalCacheReadTokens = maxOptionalCounter(
     existing.lifetime.totalCacheReadTokens,
     rescanned.lifetime.totalCacheReadTokens,

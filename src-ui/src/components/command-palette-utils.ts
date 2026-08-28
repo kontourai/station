@@ -103,7 +103,7 @@ const LABEL_PREFIX_FLOOR = 500;
  * Best score across a command's label and keywords, with the label winning
  * whenever it is what the user actually typed.
  *
- * 6-OPS-31: typing `monitor` returned `["Activity", "Monitoring"]` in that
+ * 6-: typing `monitor` returned `["Activity", "Monitoring"]` in that
  * order and Enter navigated to Activity. Activity's `keywords` include
  * "monitor", which scored an exact 1000, while Monitoring's LABEL only scored
  * a prefix match — so a keyword synonym outranked the literal name on screen.

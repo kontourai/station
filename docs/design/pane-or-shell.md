@@ -1,6 +1,6 @@
 # Pane or shell: the criterion
 
-Status: adopted with epic station#4142 (owner direction, 2026-08-25). This is
+Status: adopted with epic archive#4142 (owner direction, 2026-08-25). This is
 step 5 of that epic, written early so surfaces stop being argued one at a time.
 
 Station is converging on one composition model: **work surfaces are panes**,
@@ -54,7 +54,7 @@ Pane (work surface — target state; most are routes today and stay routable):
 | --- | --- |
 | Home | descriptor already exists (`workspace-home-pane.ts`); placement is epic slice M2 |
 | Chat | already a pane; the dock and the fullscreen layout are placements |
-| Activity | station#3193 asks for exactly this |
+| Activity | archive#3193 asks for exactly this |
 | Console Board | already a Console Kit view behind D8; first extraction candidate |
 | Agents | list+detail work surface |
 | Connections | work surface, though its recovery flows are shell (test 1 splits pages, not areas) |
@@ -85,11 +85,11 @@ answering its test explicitly.
 - The order of migration (the epic owns sequencing: modes contract first,
   then Home, then Activity, then Board extraction).
 - Multi-mode semantics, per-mode availability, or any new pane mode
-  (station#4090).
+  (archive#4090).
 - Whether officially-extracted plugins ship in-repo or out; that is a
   packaging decision for the Board slice.
 
-## Runtime tiers (owner decision, 2026-08-25, epic station#4142 M4)
+## Runtime tiers (owner decision, 2026-08-25, epic archive#4142 M4)
 
 "Official surfaces become plugins" raised the question of what runtime a
 plugin pane gets — and the answer is tiered, not singular. **The in-process
@@ -99,7 +99,7 @@ destination for everyone.
 
 1. **Published contracts — everyone.** Descriptors, modes, the manifest, the
    declared data surfaces. Runtime-agnostic; this is the layer the modes
-   contract (#4154) and the placed panes ride.
+   contract (archive#4154) and the placed panes ride.
 2. **In-process React + SDK — first-party packages.** Full
    `@kontourai/station-sdk` hooks inside Station's own React tree, no
    isolation tax. The Board extraction (M4a) proves this tier: the package

@@ -264,7 +264,7 @@ describe('safeListModelCatalog', () => {
 });
 
 /*
- * station#3653 — the launchability half of "usable". `probeModelConnection`
+ * archive#3653 — the launchability half of "usable". `probeModelConnection`
  * already reads an empty `GET /models` as "this endpoint does not enumerate"
  * and earns Ready from a real one-token chat turn against the connection's
  * configured `defaultModel`. This is the derivation that used to disagree

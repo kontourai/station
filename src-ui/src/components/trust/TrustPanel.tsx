@@ -12,14 +12,14 @@ import { Empty, SkeletonBlock } from '../state';
 import './TrustPanel.css';
 
 // ─── TrustPanel ───────────────────────────────────────────────────────────────
-// Surface trust state for project artifacts (roadmap S2). Renders the trust
+// Surface trust state for project artifacts (roadmap). Renders the trust
 // bundles a project's plugins/tools have written (workspace
 // `.station/trust-bundles/` plus the station-home fallback) as a Surface
 // TrustReport: claim summary by status, claims with evidence drill-down, and
 // transparency gaps. Secondary, collapsible surface — it sits next to the
 // readiness panel in the coding layout without crowding it.
 //
-// Styled on the Console Kit contract (S2 item 4): `.panel`/`.panel-head`
+// Styled on the Console Kit contract : `.panel`/`.panel-head`
 // chrome, `Badge` + tone classes for claim statuses, `Empty` for the empty
 // state, `--k-*` tokens throughout (primitives from @kontourai/ui/react;
 // see TrustPanel.css for the adoption notes).
@@ -202,9 +202,9 @@ export function TrustPanel({ projectSlug }: { projectSlug: string }) {
   } = useTrustReportQuery(projectSlug, expanded ? activeId : null);
 
   const countLabel = bundles ? ` (${bundles.length})` : '';
-  // True only for the held render of a PRIOR project's bundle list or a
-  // prior bundle's report while the newly selected one is in flight
-  // (station#3092) — never true for a same-key background refetch.
+// True only for the held render of a PRIOR project's bundle list or a
+// prior bundle's report while the newly selected one is in flight
+// (archive#3092) — never true for a same-key background refetch.
   const showingPreviousData = bundlesStale || reportStale;
 
   return (

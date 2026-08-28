@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 /**
- * station#4288 — the pre-install decision.
+ * archive#4288 — the pre-install decision.
  *
  * `requestInstallConsent` is asked about a plugin that does NOT exist yet, so
  * approving it cannot record anything: a grant binds to the content of an
@@ -78,8 +78,8 @@ function ask(permissions = TRUSTED_AND_ACTIVE) {
 
 beforeEach(() => {
   fetchMock.mockReset();
-  // Any call at all is the defect: if the prompt reached a server surface it
-  // would be granting against a plugin that is not installed.
+// Any call at all is the defect: if the prompt reached a server surface it
+// would be granting against a plugin that is not installed.
   fetchMock.mockImplementation(() => {
     throw new Error('the pre-install prompt must not call the server');
   });
@@ -96,8 +96,8 @@ test('names the plugin as not yet installed, and offers Install rather than Appr
   expect(screen.queryByRole('button', { name: 'Review trusted access' })).toBe(
     null,
   );
-  // The trusted note says where that tier is actually decided, which is not
-  // here: this prompt cannot authorize it.
+// The trusted note says where that tier is actually decided, which is not
+// here: this prompt cannot authorize it.
   expect(
     screen.getByText(/after the install, a separate host-owned review page/),
   ).toBeTruthy();
@@ -123,7 +123,7 @@ test('declining resolves false and reaches no server surface', async () => {
 });
 
 /**
- * station#4288, review LOW 4. A plugin whose ONLY pending permission is
+ * archive#4288, review 4. A plugin whose ONLY pending permission is
  * trusted still opens this prompt — the decision it takes is "install these
  * bytes", which the trusted tier has nothing to do with. So the pre-install
  * copy has to render here too, and the button must not read "Review trusted
@@ -146,7 +146,7 @@ test('renders the pre-install copy when the only pending permission is trusted',
 
   fireEvent.click(screen.getByRole('button', { name: 'Install' }));
   await waitFor(() => expect(results).toEqual([true]));
-  // Approving an install decision grants nothing — least of all the trusted
-  // tier this prompt just said it cannot decide.
+// Approving an install decision grants nothing — least of all the trusted
+// tier this prompt just said it cannot decide.
   expect(fetchMock).not.toHaveBeenCalled();
 });

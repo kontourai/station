@@ -1,4 +1,4 @@
-/* Shared pill primitive (station#1424 review fix N1) for the row-attribution
+/* Shared pill primitive (archive#1424 fix N1) for the row-attribution
    badge family — `OwnerChip` and `PermissionPostureBadge` were near-identical
    copies of `EngineChip`'s pill; consolidated here with a tone modifier
    instead of two duplicated stylesheets. `EngineChip` deliberately keeps its
@@ -24,7 +24,7 @@
   line-height: 1.4;
   background: var(--bg-tertiary);
   color: var(--text-muted);
-  /* station#1424 review fix S6: a long owner display name must truncate
+ /* archive#1424 fix : a long owner display name must truncate
      inside the message bubble's own 70%-width cap on a narrow dock, not
      overflow it — `flex-shrink: 0` (the previous rule) prevented exactly
      that shrink. */

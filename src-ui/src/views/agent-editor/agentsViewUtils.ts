@@ -31,28 +31,28 @@ type AgentLike = {
   region?: string;
   guardrails?: AgentFormData['guardrails'] | Record<string, unknown> | null;
   maxSteps?: number | string | null;
-  /**
-   * Sourced from the contract rather than redeclared. A local copy of this
-   * shape omitted `aliases`, so `formFromAgent` could not see a field the
-   * contract, the API, and `src-ui/src/types.ts` all define — which is how the
-   * editor silently discarded an agent's aliases (station#2693).
-   */
+/**
+* Sourced from the contract rather than redeclared. A local copy of this
+* shape omitted `aliases`, so `formFromAgent` could not see a field the
+* contract, the API, and `src-ui/src/types.ts` all define — which is how the
+* editor silently discarded an agent's aliases (archive#2693).
+*/
   toolsConfig?: Partial<AgentTools>;
   delegation?: AgentDelegationPolicy;
   execution?: {
     agentConnectionId?: string;
-    /** `null` is how the catalog projection spells "explicitly none". */
+/** `null` is how the catalog projection spells "explicitly none". */
     modelConnectionId?: string | null;
     runtimeOptions?: Record<string, unknown>;
     modelOptions?: Record<string, unknown>;
     modelId?: string | null;
-    /**
-     * station#3530. This local shape is a narrowing of the real
-     * `AgentExecutionConfig`, and the docblock above already records what that
-     * costs: a field the editor's types do not carry is a field the editor
-     * silently discards (station#2693, aliases). A pinned account dropped by
-     * an unrelated save is the same failure with credentials attached.
-     */
+/**
+* archive#3530. This local shape is a narrowing of the real
+* `AgentExecutionConfig`, and the docblock above already records what that
+* costs: a field the editor's types do not carry is a field the editor
+* silently discards (archive#2693, aliases). A pinned account dropped by
+* an unrelated save is the same failure with credentials attached.
+*/
     credentialProfileRef?: string | null;
   };
   icon?: string;
@@ -62,7 +62,7 @@ type AgentLike = {
 
 /**
  * Every persisted Agent field is deliberately classified before copying.
- * `satisfies Record<keyof AgentSpec, ...>` turns a new contract field into a
+* `satisfies Record<keyof AgentSpec,...>` turns a new contract field into a
  * compile failure until its copy policy is explicitly chosen.
  */
 export const AGENT_SPEC_COPY_CLASSIFICATION = {
@@ -112,7 +112,7 @@ export function createEmptyAgentForm(
 }
 
 /**
- * station#3662 review HIGH-2: an absent `agentConnectionId` is carried into
+* archive#3662: an absent `agentConnectionId` is carried into
  * the form AS ABSENT (`''`), which is how the form spells "runs on Station's
  * own engine". It used to be replaced with the default managed-runtime
  * connection id, so merely opening the healed Station Agent and saving an
@@ -217,7 +217,7 @@ export function isAgentFormDirty(
 }
 
 /**
- * Station#1003 (unification slice 6): the caller passes the already-
+ * archive#1003 (unification): the caller passes the already-
  * computed matrix-derived `requiresPrompt` (the engine's `systemPrompt.state
  * === 'native'`, `useAgentsViewModel.ts`) — no `agentType` classification
  * left here. Falls back to resolving it from `agentConnectionId` directly
@@ -230,10 +230,10 @@ export function validateAgentForm(
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!form.name.trim()) errors.name = 'Name is required';
-  // station#3662: the reserved `station` Agent is the one Station-engine
-  // Agent whose instance the runtime builds, not this record — so an empty
-  // prompt on it is Station's own prompt, not a missing one. Same predicate
-  // the persistence validator applies, so the form and the save agree.
+// archive#3662: the reserved `station` Agent is the one Station-engine
+// Agent whose instance the runtime builds, not this record — so an empty
+// prompt on it is Station's own prompt, not a missing one. Same predicate
+// the persistence validator applies, so the form and the save agree.
   const requiresPrompt = requiresAuthoredAgentPrompt(
     form.slug,
     options?.requiresPrompt ??
@@ -274,7 +274,7 @@ function buildToolsPayload(
     original !== undefined && original[key] !== undefined;
 
   const next: Partial<AgentTools> & Record<string, unknown> = {
-    // Unmodelled fields (e.g. `env`) survive the round trip.
+// Unmodelled fields (e.g. `env`) survive the round trip.
     ...(original ?? {}),
   };
 
@@ -300,7 +300,7 @@ function buildToolsPayload(
 }
 
 /**
- * `project` is the ownership field (station#1004, unification slice 7). A
+ * `project` is the ownership field (archive#1004, unification). A
  * non-empty select value is sent as-is. An empty ("Global") selection means
  * two different things depending on the request: on CREATE it's simply
  * omitted (undefined drops out of the JSON body — no project field at all,
@@ -337,9 +337,9 @@ function buildExecutionPayload(form: AgentFormData) {
     modelId: form.modelId || undefined,
     runtimeOptions,
     modelOptions,
-    // station#3530: nothing in this editor sets this, but this object is an
-    // explicit whitelist — omitting it DELETES a pinned account on any
-    // unrelated save.
+// archive#3530: nothing in this editor sets this, but this object is an
+// explicit whitelist — omitting it DELETES a pinned account on any
+// unrelated save.
     credentialProfileRef: form.execution.credentialProfileRef || undefined,
   };
   return Object.values(execution).some((value) => value !== undefined)
@@ -360,19 +360,19 @@ export function buildAgentPayload(
     region: form.region || undefined,
     guardrails: form.guardrails || undefined,
     maxSteps: form.maxSteps ? parseInt(form.maxSteps, 10) : undefined,
-    // Send `tools` when ANY of its fields carries state. Gating on
-    // mcpServers alone silently discarded available/autoApprove/aliases for
-    // an agent with no MCP servers — a save the editor reported as success
-    // (station#2693).
+// Send `tools` when ANY of its fields carries state. Gating on
+// mcpServers alone silently discarded available/autoApprove/aliases for
+// an agent with no MCP servers — a save the editor reported as success
+// (archive#2693).
     tools: buildToolsPayload(form),
     ...(form.delegation ? { delegation: form.delegation } : {}),
-    // station#3662 review HIGH-2: gated on the whole block carrying state, not
-    // on the binding alone. A Station-engine Agent has NO `agentConnectionId`
-    // and may still have a model pin or runtime options, and the old gate
-    // silently dropped them. `null` is the explicit clear — the same signal
-    // `project` uses below — so switching an Agent from an external engine TO
-    // Station actually removes the binding instead of leaving the server's
-    // merge to keep it.
+// archive#3662: gated on the whole block carrying state, not
+// on the binding alone. A Station-engine Agent has NO `agentConnectionId`
+// and may still have a model pin or runtime options, and the old gate
+// silently dropped them. `null` is the explicit clear — the same signal
+// `project` uses below — so switching an Agent from an external engine TO
+// Station actually removes the binding instead of leaving the server's
+// merge to keep it.
     execution: buildExecutionPayload(form),
     icon: form.icon || undefined,
     skills: form.skills.length > 0 ? form.skills : undefined,
@@ -402,7 +402,7 @@ export function groupAgentToolsByServer(agentTools: Tool[]) {
  * Can Station's engine run a chat on this connection RIGHT NOW? The server's
  * own facts, read as the server computed them.
  *
- * station#3747: the LLM-capability half used to be re-derived here. It is the
+ * archive#3747: the LLM-capability half used to be re-derived here. It is the
  * model inventory's own membership rule and the connections this is asked
  * about come from that inventory, so asking it again was a second derivation
  * of a question already answered upstream.
@@ -417,7 +417,7 @@ export function isModelConnectionRunnable(
  * Which model connection a Station-engine agent will actually run on — or why
  * it cannot run — from the LIVE connection list.
  *
- * station#3743/#3740: the Create gate used to test a connection id captured
+ * archive#3743/archive#3740: the Create gate used to test a connection id captured
  * into form state when "Chat with a model" was pressed. Pressed before the
  * connections query resolved, that captured the empty string and nothing ever
  * backfilled it, so the §3.3 picker listed a connection as Ready while Create
@@ -432,7 +432,7 @@ export function isModelConnectionRunnable(
  * it chose "the sole READY candidate" where the runtime counts every ENABLED
  * one and calls two of them ambiguous, so one ready connection beside one
  * enabled-but-degraded connection made Create pressable for an agent the
- * runtime would refuse to run (sol review, HIGH).
+* runtime would refuse to run.
  *
  * What is decided here is the SECOND question, and only about the connection
  * the shared rule named: can it run right now? That is this surface's to ask —
@@ -486,7 +486,7 @@ export function resolveStationModelBinding(input: {
       const connection = input.modelConnections.find(
         (candidate) => candidate.id === binding.connectionId,
       );
-      // The second question, about the connection the shared rule named.
+// The second question, about the connection the shared rule named.
       if (isModelConnectionRunnable(connection)) {
         return {
           kind: 'resolved',
@@ -517,9 +517,9 @@ export function resolveStationModelBinding(input: {
  */
 export function createEngineIsReady(input: {
   engineKind: 'model' | 'cli';
-  /** A managed Station-engine connection is selectable right now. */
+/** A managed Station-engine connection is selectable right now. */
   stationEngineSelectable: boolean;
-  /** The CLI connection this form named is selectable right now. */
+/** The CLI connection this form named is selectable right now. */
   namedCliEngineSelectable: boolean;
 }): boolean {
   return input.engineKind === 'model'
@@ -528,7 +528,7 @@ export function createEngineIsReady(input: {
 }
 
 /**
- * DESIGN.md §4, second half (station#3741): Create is also disabled while a
+ * DESIGN.md §4, second half (archive#3741): Create is also disabled while a
  * required field is empty.
  *
  * Create used to be pressable into `Can't save yet — please fix: System

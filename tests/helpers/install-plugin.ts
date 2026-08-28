@@ -1,7 +1,7 @@
 import { authenticatedE2EFetch } from './authenticated-request';
 
 /**
- * Installs a plugin the way Station's own client installs one (station#4288):
+ * Installs a plugin the way Station's own client installs one (archive#4288):
  * preview first, then install carrying the decision that preview produced.
  *
  * `POST /api/plugins/install` refuses a request with no `consent` — before it

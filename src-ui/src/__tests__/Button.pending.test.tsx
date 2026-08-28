@@ -18,9 +18,9 @@ describe('Button pending state (SHELL-01 / SHELL-12 / SHELL-16)', () => {
     const button = screen.getByRole('button');
     fireEvent.click(button);
 
-    // The whole point of the audit finding: Create fired with no
-    // acknowledgement for 6-8 seconds, which is what invited the
-    // double-submit that rendered as an error.
+// The whole point of the audit finding: Create fired with no
+// acknowledgement for 6-8 seconds, which is what invited the
+// double-submit that rendered as an error.
     expect(onClick).not.toHaveBeenCalled();
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(button.getAttribute('aria-busy')).toBe('true');
@@ -52,11 +52,11 @@ describe('Button pending state (SHELL-01 / SHELL-12 / SHELL-16)', () => {
     expect(screen.getByRole('button').getAttribute('aria-busy')).toBeNull();
   });
 
-  // Review of round 1 named two behaviours that were argued in the source
-  // ("a disabled submit button should not be the form's implicit Enter
-  // submitter", "the same DOM button survives the spinner/label swap") and
-  // asserted nowhere. Both are the difference between a pending state and a
-  // pending-looking one.
+ // Review of named two behaviours that were argued in the source
+// ("a disabled submit button should not be the form's implicit Enter
+// submitter", "the same DOM button survives the spinner/label swap") and
+// asserted nowhere. Both are the difference between a pending state and a
+// pending-looking one.
   test('Enter in a form field does not submit while the primary is pending', () => {
     const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
     function PendingForm({ pending }: { pending: boolean }) {
@@ -75,15 +75,15 @@ describe('Button pending state (SHELL-01 / SHELL-12 / SHELL-16)', () => {
     fireEvent.keyDown(field, { key: 'Enter', code: 'Enter' });
     fireEvent.submit(field.closest('form') as HTMLFormElement, {});
 
-    // jsdom does not implement implicit submission, so the meaningful
-    // assertion is the mechanism that governs it in a real browser: the only
-    // submit button is `disabled`, and a disabled control is never the form's
-    // default submitter.
+// jsdom does not implement implicit submission, so the meaningful
+// assertion is the mechanism that governs it in a real browser: the only
+// submit button is `disabled`, and a disabled control is never the form's
+// default submitter.
     const submit = screen.getByRole('button') as HTMLButtonElement;
     expect(submit.type).toBe('submit');
     expect(submit.disabled).toBe(true);
 
-    // And once it settles, it is a live submitter again.
+// And once it settles, it is a live submitter again.
     rerender(<PendingForm pending={false} />);
     const settled = screen.getByRole('button') as HTMLButtonElement;
     expect(settled.type).toBe('submit');
@@ -107,18 +107,18 @@ describe('Button pending state (SHELL-01 / SHELL-12 / SHELL-16)', () => {
     rerender(<Toggle pending />);
     const after = screen.getByRole('button');
 
-    // A remounted button would leave <body> focused — the station#1126
-    // outcome. Identity, not a re-query, is the fact being pinned.
+// A remounted button would leave <body> focused — the archive#1126
+// outcome. Identity, not a re-query, is the fact being pinned.
     expect(after).toBe(before);
     expect(after.textContent).toContain('Creating…');
     expect(document.activeElement).toBe(after);
   });
 
   test('an explicitly disabled button stays disabled without a spinner', () => {
-    // RT-05 measured a disabled `Save Changes` painted as a full-strength
-    // primary — `opacity: 1`, `cursor: pointer`, no tooltip. `disabled` must
-    // reach the DOM so `.button:disabled`'s treatment applies; it is not a
-    // pending state and must not grow a spinner.
+ // measured a disabled `Save Changes` painted as a full-strength
+// primary — `opacity: 1`, `cursor: pointer`, no tooltip. `disabled` must
+// reach the DOM so `.button:disabled`'s treatment applies; it is not a
+// pending state and must not grow a spinner.
     const { container } = render(
       <Button variant="primary" disabled>
         Save Changes

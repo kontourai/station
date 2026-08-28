@@ -141,8 +141,8 @@ describe('OutboundDispatchModule', () => {
     await expect(outboundDispatch.open()).resolves.toEqual([]);
     expect(state).toMatchObject({ turns: [], terminalEvidence: [] });
 
-    // The replay does not recreate early evidence after the completed tuple
-    // was consumed, so a later same tuple is not deleted on acceptance.
+// The replay does not recreate early evidence after the completed tuple
+// was consumed, so a later same tuple is not deleted on acceptance.
     await outboundDispatch.completeAcceptedTurn(
       'session-reuse',
       'provider-reused',
@@ -255,8 +255,8 @@ describe('OutboundDispatchModule', () => {
           lastError: expect.stringContaining('Migration: legacy accepted'),
         }),
       ]);
-      // A restart reads the persisted current-state form, never re-projecting
-      // the row as accepted or making it replayable.
+// A restart reads the persisted current-state form, never re-projecting
+// the row as accepted or making it replayable.
       _setOutboundQueueStorage(storage);
       await expect(outboundDispatch.open()).resolves.toEqual([
         expect.objectContaining({ status: 'may-have-started' }),
@@ -313,9 +313,9 @@ describe('OutboundDispatchModule', () => {
         state = next;
       },
       updateItem: async (_key, updater) => {
-        // This represents the drain's claim committing after the UI opened
-        // its editor but before the edit's transaction begins. The edit must
-        // decide from this observed write-time state, not a stale pre-check.
+// This represents the drain's claim committing after the UI opened
+// its editor but before the edit's transaction begins. The edit must
+// decide from this observed write-time state, not a stale pre-check.
         state = {
           ...(state as { version: 2; terminalEvidence: unknown[] }),
           turns: [
@@ -423,8 +423,8 @@ describe('OutboundDispatchModule', () => {
         state = next;
       },
       updateItem: async (_key, updater) => {
-        // Another renderer moves D before this renderer's click reaches the
-        // update. The user's intent remains "C up", not "C to index 1".
+// Another renderer moves D before this renderer's click reaches the
+// update. The user's intent remains "C up", not "C to index 1".
         if (concurrentMovePending) {
           concurrentMovePending = false;
           const prior = state as { turns: QueuedOutboundTurn[] };
@@ -597,8 +597,8 @@ describe('OutboundDispatchModule', () => {
       },
       updateItem: async (_key, updater) => {
         updateCount += 1;
-        // The pre-call claim was persisted, but its accepted transition is
-        // unavailable. The module must retain an in-memory fence.
+// The pre-call claim was persisted, but its accepted transition is
+// unavailable. The module must retain an in-memory fence.
         if (updateCount === 2)
           throw new Error('accepted transition unavailable');
         state = updater(state);
@@ -641,8 +641,8 @@ describe('OutboundDispatchModule', () => {
     const { storage } = memoryStorage();
     _setOutboundQueueStorage(storage);
     await outboundDispatch.completeAcceptedTurn('session-a', 'provider-early');
-    // Simulate a fresh renderer: terminal evidence is inside the one durable
-    // queue record, not a loose provider-id cache.
+// Simulate a fresh renderer: terminal evidence is inside the one durable
+// queue record, not a loose provider-id cache.
     _setOutboundQueueStorage(storage);
     await outboundDispatch.enqueue(turn('early-terminal'));
 
@@ -673,8 +673,8 @@ describe('OutboundDispatchModule', () => {
       expect.objectContaining({ clientTurnId: 'wrong-session' }),
     ]);
 
-    // The first exact acceptance consumed the evidence. A later identical
-    // provider ID must not be deleted without a new canonical terminal.
+// The first exact acceptance consumed the evidence. A later identical
+// provider ID must not be deleted without a new canonical terminal.
     await outboundDispatch.enqueue(turn('same-id-later', 'session-a'));
     await outboundDispatch.flush(async (queued) =>
       queued.clientTurnId === 'same-id-later'
@@ -943,8 +943,8 @@ describe('OutboundDispatchModule', () => {
       }),
     ]);
 
-    // A fresh renderer has no process-local fence, but the durable claim is
-    // still non-replayable and projects as possible-effect evidence.
+// A fresh renderer has no process-local fence, but the durable claim is
+// still non-replayable and projects as possible-effect evidence.
     _setOutboundQueueStorage({
       getItem: async () => value,
       setItem: async (_key, next) => {
@@ -1194,7 +1194,7 @@ describe('OutboundDispatchModule', () => {
   it('keeps failed drafts editable and retryable before any provider invocation', async () => {
     await outboundDispatch.enqueue(turn('editable'));
     await outboundDispatch.flush(async () => notInvoked('local validation'));
-    // Exhaust pre-invocation attempts into the existing failed draft state.
+// Exhaust pre-invocation attempts into the existing failed draft state.
     for (let attempt = 0; attempt < 4; attempt += 1) {
       await outboundDispatch.flush(async () => notInvoked('local validation'));
     }
@@ -1214,11 +1214,11 @@ describe('OutboundDispatchModule', () => {
 });
 
 describe('classifyUndeliverableSend (station#3686)', () => {
-  // jsdom defines `onLine` on Navigator.prototype, not on the instance, so
-  // `getOwnPropertyDescriptor(navigator, 'onLine')` is undefined and a
-  // restore-if-present cleanup never runs — it silently leaks `onLine = false`
-  // into every later test in the file. Delete the injected own property
-  // instead (station#3686 review).
+// jsdom defines `onLine` on Navigator.prototype, not on the instance, so
+// `getOwnPropertyDescriptor(navigator, 'onLine')` is undefined and a
+// restore-if-present cleanup never runs — it silently leaks `onLine = false`
+// into every later test in the file. Delete the injected own property
+ // instead (archive#3686).
   function setOnLine(value: boolean) {
     Object.defineProperty(window.navigator, 'onLine', {
       configurable: true,
@@ -1236,11 +1236,11 @@ describe('classifyUndeliverableSend (station#3686)', () => {
     ).toBeUndefined();
   });
 
-  // The point of the split. `fetch` throws TypeError for every pre-response
-  // failure — a refused socket, a DNS failure, a TLS error, a rejected origin,
-  // the wrong port — none of which mean the device has no network. The old
-  // `isOffline` returned true here and the composer said "Offline" while the
-  // rest of the app kept working.
+// The point of the split. `fetch` throws TypeError for every pre-response
+// failure — a refused socket, a DNS failure, a TLS error, a rejected origin,
+// the wrong port — none of which mean the device has no network. The old
+// `isOffline` returned true here and the composer said "Offline" while the
+// rest of the app kept working.
   it('reports an unconfirmed send, not a network state, when a send threw', () => {
     setOnLine(true);
     expect(classifyUndeliverableSend(new TypeError('Failed to fetch'))).toBe(
@@ -1262,11 +1262,11 @@ describe('classifyUndeliverableSend (station#3686)', () => {
     );
   });
 
-  // A response is proof the address answered, so nothing about it is
-  // undeliverable — and that fact outranks `navigator.onLine`, which this
-  // repo's own connection layer refuses to trust. Before the review this
-  // returned 'device-offline' and queued an HTTP error for retry while
-  // telling the user they were offline, even though Station had replied.
+// A response is proof the address answered, so nothing about it is
+// undeliverable — and that fact outranks `navigator.onLine`, which this
+// repo's own connection layer refuses to trust. Before the review this
+// returned 'device-offline' and queued an HTTP error for retry while
+// telling the user they were offline, even though Station had replied.
   it('returns null for a response-bearing failure even when the browser claims offline', () => {
     setOnLine(false);
     const httpError = Object.assign(new Error('Unauthorized'), { status: 401 });
@@ -1281,8 +1281,8 @@ describe('classifyUndeliverableSend (station#3686)', () => {
     expect(classifyUndeliverableSend(undefined)).toBeNull();
   });
 
-  // A non-numeric `status` is not response evidence — it must not open a hole
-  // that drops a genuinely undeliverable send out of the durable queue.
+// A non-numeric `status` is not response evidence — it must not open a hole
+// that drops a genuinely undeliverable send out of the durable queue.
   it('does not treat a non-numeric status as a response', () => {
     setOnLine(true);
     const odd = Object.assign(new TypeError('Failed to fetch'), {

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * The page-header contract (station UX audit SHELL-11): one component renders
+ * The page-header contract (station ): one component renders
  * every page header, the route table decides which routes get one, and a view
  * may only publish the TEXT of a title it alone can know — never where it
  * sits, how big it is, or whether it exists.
@@ -165,10 +165,10 @@ describe('PageFrame', () => {
   });
 
   it('renders the route table’s first-run anchor on the frame root', () => {
-    // The coachmark the first-run tour points at. It moved off the view with
-    // the rest of the page shell (SHELL-11), so the frame is the only thing
-    // that renders it now — `tour-steps.test.ts` reads the same declaration
-    // from the route table and this is the half that proves it reaches DOM.
+// The coachmark the first-run tour points at. It moved off the view with
+// the rest of the page shell, so the frame is the only thing
+// that renders it now — `tour-steps.test.ts` reads the same declaration
+// from the route table and this is the half that proves it reaches DOM.
     const { container } = render(
       <PageFrame
         spec={{ title: 'Schedule', firstRunAnchor: 'schedule' }}
@@ -195,8 +195,8 @@ describe('PageFrame', () => {
       </PageFrame>,
     );
 
-    // Published subtitle, table-supplied title and eyebrow — the view did not
-    // have to restate what the table already knows.
+// Published subtitle, table-supplied title and eyebrow — the view did not
+// have to restate what the table already knows.
     expect(container.querySelector('.page__subtitle')?.textContent).toBe(
       'Discover agent definitions.',
     );
@@ -244,14 +244,14 @@ describe('PageFrame', () => {
   });
 
   describe('a title belongs to the route that published it', () => {
-    /** A route chunk that never arrives — the whole of a cold load. */
+/** A route chunk that never arrives — the whole of a cold load. */
     const NeverArrives = lazy(() => new Promise<never>(() => {}));
 
     it('renders the route table title while the route chunk is still loading', () => {
-      // The frame is ABOVE Suspense so the page keeps its header while its
-      // chunk downloads. That is only worth doing if the header says
-      // something: an `<h1>` rendered with nothing in it is a blank line
-      // where the page name goes.
+// The frame is ABOVE Suspense so the page keeps its header while its
+// chunk downloads. That is only worth doing if the header says
+// something: an `<h1>` rendered with nothing in it is a blank line
+// where the page name goes.
       render(
         <PageFrame spec={{ title: 'Agents' }} routeIdentity="agents">
           <Suspense fallback={<p>loading</p>}>
@@ -267,12 +267,12 @@ describe('PageFrame', () => {
     });
 
     it('drops a published title when the route changes, while the publisher is still mounted', () => {
-      // The publisher's own unmount cleanup is NOT what is under test: this
-      // child stays mounted across the route change, which is what really
-      // happens when the next route's chunk is slow — React keeps the
-      // departing view committed for the whole load (measured live at 1.5s).
-      // What stops it naming the new route is that a title belongs to the
-      // route its publisher mounted for.
+// The publisher's own unmount cleanup is NOT what is under test: this
+// child stays mounted across the route change, which is what really
+// happens when the next route's chunk is slow — React keeps the
+// departing view committed for the whole load (measured live at 1.5s).
+// What stops it naming the new route is that a title belongs to the
+// route its publisher mounted for.
       const child = <Publisher title="Agents · alpha" />;
       const { rerender } = render(
         <PageFrame spec={{ title: 'Agents' }} routeIdentity="agents">
@@ -295,10 +295,10 @@ describe('PageFrame', () => {
     });
 
     it('takes the departing route’s actions out of the header with its title', () => {
-      // The same still-mounted case as above, for the OTHER half of the
-      // header, under the same rule. An action belonging to the page the user
-      // has left is worse than a stale title: it is clickable. Measured live
-      // before this: 1.5s of "Review" beside Plugins' "+ Install Plugin".
+// The same still-mounted case as above, for the OTHER half of the
+// header, under the same rule. An action belonging to the page the user
+// has left is worse than a stale title: it is clickable. Measured live
+// before this: 1.5s of "Review" beside Plugins' "+ Install Plugin".
       const child = (
         <PageFrameActions>
           <button type="button">+ Install Plugin</button>
@@ -330,13 +330,13 @@ describe('PageFrame', () => {
     });
 
     it('replaces the action cell itself, so a portal nobody re-renders goes with it', () => {
-      // The case the contributor-side rule cannot reach. When the next
-      // route's chunk is slow React keeps the departing view mounted but
-      // HIDDEN: its effects are destroyed and it never renders again, so it
-      // can never withdraw its own portal — and the portal's children are not
-      // inside the hidden subtree, they are in the header. The stand-in for
-      // that here is a child appended straight to the cell's DOM node, which
-      // React will not re-render either.
+// The case the contributor-side rule cannot reach. When the next
+// route's chunk is slow React keeps the departing view mounted but
+// HIDDEN: its effects are destroyed and it never renders again, so it
+// can never withdraw its own portal — and the portal's children are not
+// inside the hidden subtree, they are in the header. The stand-in for
+// that here is a child appended straight to the cell's DOM node, which
+// React will not re-render either.
       const { container, rerender } = render(
         <PageFrame spec={{ title: 'Plugins' }} routeIdentity="plugins">
           <p>body</p>
@@ -385,8 +385,8 @@ describe('PageFrame', () => {
   });
 
   it('settles rather than looping when a publisher re-renders', () => {
-    // `usePageHeader` writes on every render; the store bails out on equal
-    // slots. A regression here is an infinite render loop, not a wrong title.
+// `usePageHeader` writes on every render; the store bails out on equal
+// slots. A regression here is an infinite render loop, not a wrong title.
     let renders = 0;
     function Counting() {
       renders += 1;
@@ -415,14 +415,14 @@ describe('PageFrame', () => {
 
     const action = container.querySelector('.page__actions button');
     expect(action?.textContent).toBe('+ Add Job');
-    // and nothing left behind in the body
+// and nothing left behind in the body
     expect(container.querySelectorAll('.page-frame__body button').length).toBe(
       0,
     );
 
-    // The action cell is a SIBLING of the header text block, which is the
-    // structure `page-frame.css`'s <=768px rule stacks into a column (the
-    // responsive-action-surfaces entry for this file cites exactly this).
+// The action cell is a SIBLING of the header text block, which is the
+// structure `page-frame.css`'s <=768px rule stacks into a column (the
+// responsive-action-surfaces entry for this file cites exactly this).
     const header = container.querySelector('.page__header');
     expect(header?.children.length).toBe(2);
     expect(header?.children[0]?.className).toBe('page__header-text');

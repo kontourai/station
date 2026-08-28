@@ -18,10 +18,10 @@ export type NavigationState = {
   activeConversation: string | null;
   activeChat: string | null;
   activeTab: string | null;
-  /** Active responsive Workspace Pane, owned by URL/history alongside every other selection. */
+/** Active responsive Workspace Pane, owned by URL/history alongside every other selection. */
   activeWorkspacePane: string | null;
   activeWorkspacePaneScope: string | null;
-  /** One exact, route-owned File Preview request. Consumers clear it after host admission. */
+/** One exact, route-owned File Preview request. Consumers clear it after host admission. */
   openFilePreviewIntent: OpenFilePreviewIntent | null;
   isDockOpen: boolean;
   isDockMaximized: boolean;
@@ -137,29 +137,29 @@ class NavigationStore {
   lastProject: string | null;
   lastProjectLayout: string | null;
   dockModeOverride: DockMode | null = null;
-  /**
-   * The most recently observed `true` value of `isDockMaximized`, kept
-   * independent of the URL's `maximize` param itself. A closed dock always
-   * has `maximize` cleared from the URL (`setDockState`'s own invariant,
-   * #795 review) — a closed-and-still-maximized dock renders as a blank
-   * full-height shell both in the desktop right-side-panel layout AND on
-   * mobile (index.css's `@media (max-width: 768px)` `.chat-dock.is-maximized`
-   * rule matches on `is-maximized` alone and forces `height` with
-   * `!important`, beating the plain inline height guard regardless of
-   * `is-collapsed` — #945 HIGH finding). So navigating away from a maximized
-   * dock and back (e.g. following a delegated task into `/activity`, then
-   * returning via the mobile task switcher) would otherwise lose the
-   * maximize preference for good once that param is gone. `commitState`
-   * refreshes this to `true` on every parsed navigation state that has it
-   * set (covering a direct `?maximize=true` load, not just an explicit
-   * `setDockState` call); `setDockState` is the only place that ever moves
-   * it back to `false`, on a caller's explicit non-maximized open/close.
-   * Restore paths that mean "reopen exactly as it was" (not "the user just
-   * asked for a specific size") read this instead of the momentarily-cleared
-   * `isDockMaximized` snapshot — every close (including the task switcher's)
-   * must still go through `setDockState` so the invariant above holds
-   * unconditionally.
-   */
+/**
+* The most recently observed `true` value of `isDockMaximized`, kept
+* independent of the URL's `maximize` param itself. A closed dock always
+* has `maximize` cleared from the URL (`setDockState`'s own invariant,
+ * archive#795) — a closed-and-still-maximized dock renders as a blank
+* full-height shell both in the desktop right-side-panel layout AND on
+* mobile (index.css's `@media (max-width: 768px)` `.chat-dock.is-maximized`
+* rule matches on `is-maximized` alone and forces `height` with
+* `!important`, beating the plain inline height guard regardless of
+ * `is-collapsed` — archive#945 finding). So navigating away from a maximized
+* dock and back (e.g. following a delegated task into `/activity`, then
+* returning via the mobile task switcher) would otherwise lose the
+* maximize preference for good once that param is gone. `commitState`
+* refreshes this to `true` on every parsed navigation state that has it
+* set (covering a direct `?maximize=true` load, not just an explicit
+* `setDockState` call); `setDockState` is the only place that ever moves
+* it back to `false`, on a caller's explicit non-maximized open/close.
+* Restore paths that mean "reopen exactly as it was" (not "the user just
+* asked for a specific size") read this instead of the momentarily-cleared
+* `isDockMaximized` snapshot — every close (including the task switcher's)
+* must still go through `setDockState` so the invariant above holds
+* unconditionally.
+*/
   lastDockMaximized = false;
   private layoutTabMemory: Record<string, string> = readLayoutTabMemory();
 
@@ -187,43 +187,43 @@ class NavigationStore {
         );
       }
       window.addEventListener('popstate', this.handlePopState);
-      // station#settings-revamp slice 4 review finding 1 (deliberate choice,
-      // documented per the reviewer's request — the alternative was "any
-      // navigation heals it," rejected because dockMode also drives
-      // immediately-visible layout: the `chat-dock--right`/`--bottom` class
-      // and the `--chat-dock-width`/`--dock-slot-size` CSS vars in
-      // `useChatDockState.ts`. Subscribing here gives it the same live-store
-      // guarantee `useDeviceSettings()` gives `useChatDockState`'s
-      // reasoning/tool-details/font-size fix in this same review round,
-      // instead of leaving dockMode stale until the next unrelated
-      // navigation happens to re-run `parseUrl()`.
+ // archive#settings-revamp (deliberate choice,
+// documented per the reviewer's request — the alternative was "any
+// navigation heals it," rejected because dockMode also drives
+// immediately-visible layout: the `chat-dock--right`/`--bottom` class
+// and the `--chat-dock-width`/`--dock-slot-size` CSS vars in
+// `useChatDockState.ts`. Subscribing here gives it the same live-store
+// guarantee `useDeviceSettings` gives `useChatDockState`'s
+ // reasoning/tool-details/font-size fix in this same,
+// instead of leaving dockMode stale until the next unrelated
+// navigation happens to re-run `parseUrl`.
       deviceSettingsStore.subscribe(this.handleDeviceSettingsChange);
     }
   }
 
-  /** Applies a freshly parsed state and refreshes `lastDockMaximized`
-   * alongside it (see the field doc above) — every code path that assigns
-   * `this.state` from a `parseUrl()` result routes through here so that
-   * memory stays in sync regardless of how the URL got there (initial load,
-   * `navigate`, `updateParams`, or a `popstate`). */
+/** Applies a freshly parsed state and refreshes `lastDockMaximized`
+* alongside it (see the field doc above) — every code path that assigns
+* `this.state` from a `parseUrl` result routes through here so that
+* memory stays in sync regardless of how the URL got there (initial load,
+* `navigate`, `updateParams`, or a `popstate`). */
   private commitState(state: NavigationState) {
     this.state = state;
     if (state.isDockMaximized) this.lastDockMaximized = true;
   }
 
-  /**
-   * Recomputes ONLY the `dockMode` fallback when the device-scope
-   * `dockSlotPlacement` setting changes (import, `set()`/`merge()`, or a
-   * cross-tab `storage` event — every device-store mutation path already
-   * converges on its own `notify()`). A no-op whenever a more specific
-   * source already governs `dockMode` for the current view (an explicit URL
-   * param, or `dockModeOverride`'s in-memory quiet layout preference) —
-   * `parseUrl()`'s precedence chain means the device-scope value isn't even
-   * being displayed in that case. Every other `NavigationState` field is
-   * derived from the URL alone, so a full `parseUrl()`/`commitState()` isn't
-   * needed here (and would be wrong: it would also fight a URL-based
-   * `fontSize` field that has nothing to do with this notification).
-   */
+/**
+* Recomputes ONLY the `dockMode` fallback when the device-scope
+* `dockSlotPlacement` setting changes (import, `set`/`merge`, or a
+* cross-tab `storage` event — every device-store mutation path already
+* converges on its own `notify`). A no-op whenever a more specific
+* source already governs `dockMode` for the current view (an explicit URL
+* param, or `dockModeOverride`'s in-memory quiet layout preference) —
+* `parseUrl`'s precedence chain means the device-scope value isn't even
+* being displayed in that case. Every other `NavigationState` field is
+* derived from the URL alone, so a full `parseUrl`/`commitState` isn't
+* needed here (and would be wrong: it would also fight a URL-based
+* `fontSize` field that has nothing to do with this notification).
+*/
   private handleDeviceSettingsChange = (): void => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -324,13 +324,13 @@ class NavigationStore {
       return getDefaultNavigationState();
     }
 
-    // Canonicalize legacy paths BEFORE deriving any state. This store is the
-    // pathname authority `useUrlSelection` consumes, and its popstate listener
-    // registers at module init — before App's — so a rewrite done only in
-    // App.tsx leaves this store holding the legacy pathname on initial load
-    // and Back/Forward (review round 2 finding). Rewriting here means every
-    // consumer sees only canonical paths; App's own rewrite remains as an
-    // idempotent belt for render paths that read window.location directly.
+// Canonicalize legacy paths BEFORE deriving any state. This store is the
+// pathname authority `useUrlSelection` consumes, and its popstate listener
+// registers at module init — before App's — so a rewrite done only in
+// App.tsx leaves this store holding the legacy pathname on initial load
+ // and Back/Forward ( 2 finding). Rewriting here means every
+// consumer sees only canonical paths; App's own rewrite remains as an
+// idempotent belt for render paths that read window.location directly.
     const legacyRedirect = getLegacyPathRedirect(
       `${window.location.pathname}${window.location.search}`,
     );
@@ -357,8 +357,8 @@ class NavigationStore {
       if (selectedProjectLayout) {
         selectedLayout = selectedProjectLayout;
       }
-      // A layout-qualified Pane route names its pane collection after the
-      // layout. That collection is route structure, not a layout tab.
+// A layout-qualified Pane route names its pane collection after the
+// layout. That collection is route structure, not a layout tab.
       if (projectMatch[3] && projectMatch[3] !== 'panes') {
         activeTab = projectMatch[3];
       }
@@ -393,16 +393,16 @@ class NavigationStore {
       ),
       isDockOpen: params.get('dock') === 'open',
       isDockMaximized: params.get('maximize') === 'true',
-      // station#settings-revamp slice 4 (docs/design/settings-architecture.md
-      // §3 S4 "Chat/session", §6 slice 4): dockMode gains a device-scope
-      // fallback so it survives a reload with no more specific override —
-      // precedence is URL param (explicit, this navigation) >
-      // `dockModeOverride` (in-memory quiet override — a layout's silently
-      // applied preference, or the resolved sessionStorage override behind
-      // it, see useDockModePreference.ts) > the device-scope default >
-      // 'bottom'. `deviceSettingsStore.get` always resolves to a real mode
-      // (the registry default is 'bottom'), so the trailing literal is a
-      // defensive fallback, not a reachable branch today.
+ // archive#settings-revamp (docs/design/settings-architecture.md
+ // §3 "Chat/session", §6): dockMode gains a device-scope
+// fallback so it survives a reload with no more specific override —
+// precedence is URL param (explicit, this navigation) >
+// `dockModeOverride` (in-memory quiet override — a layout's silently
+// applied preference, or the resolved sessionStorage override behind
+// it, see useDockModePreference.ts) > the device-scope default >
+// 'bottom'. `deviceSettingsStore.get` always resolves to a real mode
+// (the registry default is 'bottom'), so the trailing literal is a
+// defensive fallback, not a reachable branch today.
       dockMode:
         normalizeDockMode(params.get('dockSlotPlacement')) ||
         this.dockModeOverride ||
@@ -468,23 +468,23 @@ class NavigationStore {
 
     const url = new URL(window.location.href);
     const currentHash = url.hash;
-    // The pathname being LEFT, read from the live URL rather than
-    // `this.state.pathname`: the two agree except when something outside this
-    // store has written history (a `replaceState` elsewhere, or a test), and
-    // in exactly that case the stale field would report a route change that
-    // did not happen and strip the current route's own params.
+// The pathname being LEFT, read from the live URL rather than
+// `this.state.pathname`: the two agree except when something outside this
+// store has written history (a `replaceState` elsewhere, or a test), and
+// in exactly that case the stale field would report a route change that
+// did not happen and strip the current route's own params.
     const previousPathname = url.pathname;
     url.pathname = target.pathname;
     if (target.pathname !== previousPathname) {
-      // 6-OPS-30: a route change used to carry the SOURCE route's query string
-      // to the destination — `/settings?view=notifications` → "View the
-      // notifications inbox" landed on `/notifications?view=notifications`,
-      // and ⌘K from `/settings?view=developer-tools` landed on
-      // `/activity?view=developer-tools`. Harmless only for as long as the
-      // destination ignores the param it inherited; `/notifications` already
-      // reads `?category=` from the URL, so the next query-backed surface
-      // inherits a real bug. Only the shell-scoped params below outlive a
-      // route change — everything else describes the route being left.
+// 6-: a route change used to carry the SOURCE route's query string
+// to the destination — `/settings?view=notifications` → "View the
+// notifications inbox" landed on `/notifications?view=notifications`,
+// and ⌘K from `/settings?view=developer-tools` landed on
+// `/activity?view=developer-tools`. Harmless only for as long as the
+// destination ignores the param it inherited; `/notifications` already
+// reads `?category=` from the URL, so the next query-backed surface
+// inherits a real bug. Only the shell-scoped params below outlive a
+// route change — everything else describes the route being left.
       for (const key of [...url.searchParams.keys()]) {
         if (SHELL_SCOPED_QUERY_PARAMS.has(key)) continue;
         if (params && key in params) continue;
@@ -492,10 +492,10 @@ class NavigationStore {
       }
     }
 
-    // Destination query params describe the route being entered. Apply them
-    // after clearing the previous route's params, then let the structured
-    // `params` argument override them below when a caller explicitly needs
-    // to do so.
+// Destination query params describe the route being entered. Apply them
+// after clearing the previous route's params, then let the structured
+// `params` argument override them below when a caller explicitly needs
+// to do so.
     for (const key of new Set(target.searchParams.keys())) {
       url.searchParams.delete(key);
     }
@@ -519,10 +519,10 @@ class NavigationStore {
       ...(window.history.state ?? {}),
       [NAVIGATION_INDEX_KEY]: nextIndex,
     };
-    // A dialog's same-URL Back marker belongs only to the entry on which the
-    // dialog opened. Carrying it into a new route makes ordinary dialog
-    // cleanup treat the destination as its own marker and immediately Back
-    // out of the navigation (observed from New Chat's Connect repair).
+// A dialog's same-URL Back marker belongs only to the entry on which the
+// dialog opened. Carrying it into a new route makes ordinary dialog
+// cleanup treat the destination as its own marker and immediately Back
+// out of the navigation (observed from New Chat's Connect repair).
     delete nextHistoryState[DIALOG_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
@@ -548,8 +548,8 @@ class NavigationStore {
     if (url.search === prev) return;
 
     url.hash = currentHash;
-    // Query normalization is not a new entry, but it must retain the store's
-    // opaque index so later Back/Forward can restore and guard the real entry.
+// Query normalization is not a new entry, but it must retain the store's
+// opaque index so later Back/Forward can restore and guard the real entry.
     window.history.replaceState(
       {
         ...(window.history.state ?? {}),
@@ -562,7 +562,7 @@ class NavigationStore {
     this.notify();
   }
 
-  /** User pane selection is a history entry so browser Back/Forward restores it. */
+/** User pane selection is a history entry so browser Back/Forward restores it. */
   setActiveWorkspacePane(instanceId: string | null, scope: string | null) {
     if (
       instanceId !== null &&
@@ -593,8 +593,8 @@ class NavigationStore {
     this.navigate(tabId ? `${base}/${tabId}` : base);
   }
 
-  /** Persist the last tab a user opened within a layout so re-entering the
-   *  layout restores it instead of snapping back to the first tab. */
+/** Persist the last tab a user opened within a layout so re-entering the
+*  layout restores it instead of snapping back to the first tab. */
   private rememberLayoutTab(layoutSlug: string, tabId: string | null) {
     if (tabId) {
       this.layoutTabMemory[layoutSlug] = tabId;
@@ -629,8 +629,8 @@ class NavigationStore {
     const previewParams = options?.openFilePreviewIntent
       ? serializeOpenFilePreviewIntent(options.openFilePreviewIntent)
       : null;
-    // A plain layout switch clears every File Preview query field. The routed
-    // Project identity is authoritative, so a mismatched intent is not emitted.
+// A plain layout switch clears every File Preview query field. The routed
+// Project identity is authoritative, so a mismatched intent is not emitted.
     this.navigate(rememberedTab ? `${base}/${rememberedTab}` : base, {
       previewPath:
         options?.openFilePreviewIntent?.projectSlug === projectSlug
@@ -659,25 +659,25 @@ class NavigationStore {
     this.updateParams({ tab: tabId });
   }
 
-  /**
-   * A closed dock is never maximized (#795 review). `is-collapsed` and
-   * `is-maximized` are independent CSS classes and the maximized rule wins on
-   * height with `!important`, so the pair renders as a full-height dock with
-   * an emptied body — a blank shell covering the app. Callers used to have to
-   * remember this individually and one of them didn't, so the invariant lives
-   * here rather than at each call site. Reopening still restores the previous
-   * size: that is carried by the persisted `station.chatDock.snap`, not by
-   * this flag.
-   */
+/**
+ * A closed dock is never maximized (archive#795). `is-collapsed` and
+* `is-maximized` are independent CSS classes and the maximized rule wins on
+* height with `!important`, so the pair renders as a full-height dock with
+* an emptied body — a blank shell covering the app. Callers used to have to
+* remember this individually and one of them didn't, so the invariant lives
+* here rather than at each call site. Reopening still restores the previous
+* size: that is carried by the persisted `station.chatDock.snap`, not by
+* this flag.
+*/
   setDockState(open: boolean, maximized?: boolean) {
     const params: Record<string, string | null> = {
       dock: open ? 'open' : null,
     };
-    // Track the caller's stated intent, not the post-invariant effective
-    // value below — a close call that forwards the dock's current maximize
-    // state (the established pattern; see the Cmd+D toggle in
-    // `useChatDockKeyboardShortcuts`) is exactly the signal worth
-    // remembering for a later restore.
+// Track the caller's stated intent, not the post-invariant effective
+// value below — a close call that forwards the dock's current maximize
+// state (the established pattern; see the Cmd+D toggle in
+// `useChatDockKeyboardShortcuts`) is exactly the signal worth
+// remembering for a later restore.
     if (maximized !== undefined) {
       this.lastDockMaximized = maximized;
     }
@@ -688,39 +688,39 @@ class NavigationStore {
     this.updateParams(params);
   }
 
-  /**
-   * station#1298: collapse a maximized dock to its docked size WITHOUT
-   * closing it — `isDockOpen` is left exactly as it is — and WITHOUT
-   * touching `lastDockMaximized`.
-   *
-   * `setDockState`'s `maximized` argument always overwrites
-   * `lastDockMaximized` when defined (see that method's own doc): that is
-   * correct for a caller stating an explicit new preference (an explicit
-   * non-maximized open, or a close that forwards the live value per #945),
-   * but it is the wrong tool for a dock-owned navigation seam (an inbox row
-   * falling back to `/activity`, the project-context badge, a delegation
-   * toast) — the dock stays open the whole time, so there is no
-   * close-then-reopen round trip for `lastDockMaximized` to survive; it
-   * would just get clobbered to `false` on every such navigation. #1298's
-   * rule is explicit that restore is manual (the user re-engages, e.g.
-   * `focusSession`'s `setDockState(true, lastDockMaximized)`) — this method
-   * is what keeps that later read meaningful.
-   */
+/**
+* archive#1298: collapse a maximized dock to its docked size WITHOUT
+* closing it — `isDockOpen` is left exactly as it is — and WITHOUT
+* touching `lastDockMaximized`.
+*
+* `setDockState`'s `maximized` argument always overwrites
+* `lastDockMaximized` when defined (see that method's own doc): that is
+* correct for a caller stating an explicit new preference (an explicit
+ * non-maximized open, or a close that forwards the live value per archive#945),
+* but it is the wrong tool for a dock-owned navigation seam (an inbox row
+* falling back to `/activity`, the project-context badge, a delegation
+* toast) — the dock stays open the whole time, so there is no
+* close-then-reopen round trip for `lastDockMaximized` to survive; it
+ * would just get clobbered to `false` on every such navigation. archive#1298's
+* rule is explicit that restore is manual (the user re-engages, e.g.
+* `focusSession`'s `setDockState(true, lastDockMaximized)`) — this method
+* is what keeps that later read meaningful.
+*/
   collapseMaximizedDock() {
     this.updateParams({ maximize: null });
   }
 
   setDockMode(mode: DockMode) {
     this.dockModeOverride = null;
-    // Explicit user choices always write the param — even the default mode —
-    // so "explicit → URL" stays a single invariant now that the default is a
-    // real mode rather than the absence of one (#1043).
+// Explicit user choices always write the param — even the default mode —
+// so "explicit → URL" stays a single invariant now that the default is a
+ // real mode rather than the absence of one (archive#1043).
     this.updateParams({ dockSlotPlacement: mode });
-    // station#settings-revamp slice 4: an explicit dock-mode choice (⌘⇧M or
-    // the chat settings panel — both routes converge here) is also this
-    // device's new fallback for every other session/layout with no more
-    // specific override (see `parseUrl()` above). A same-value write is a
-    // no-op inside the store itself.
+ // archive#settings-revamp: an explicit dock-mode choice (⌘⇧M or
+// the chat settings panel — both routes converge here) is also this
+// device's new fallback for every other session/layout with no more
+// specific override (see `parseUrl` above). A same-value write is a
+// no-op inside the store itself.
     deviceSettingsStore.set('dockSlotPlacement', mode);
   }
 

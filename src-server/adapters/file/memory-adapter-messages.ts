@@ -22,7 +22,7 @@ interface UIMessageWithMetadata extends UIMessage {
 const logger = createLogger({ name: 'memory-adapter-messages' });
 
 /**
- * Serializes every mutation of one messages file (station#2252).
+ * Serializes every mutation of one messages file (archive#2252).
  *
  * The transcript is an append log, and appends are safe on their own. The
  * hazard is the two DESTRUCTIVE operations — delete-by-id and remove-last —
@@ -56,7 +56,7 @@ const logger = createLogger({ name: 'memory-adapter-messages' });
  * A cross-process lock is still the wrong answer: it would hand-roll, over
  * NDJSON, what a database gives for free. When concurrent writers become a
  * supported shape (collaboration), the answer is a different adapter with
- * real transactions — see #2904 — not a lock protocol taped to this one.
+ * real transactions — see archive#2904 — not a lock protocol taped to this one.
  */
 const messageFileMutations = new Map<string, Promise<unknown>>();
 
@@ -351,7 +351,7 @@ export async function removeLastStoredMessage({
 }
 
 /**
- * Delete messages by id (station#2252).
+ * Delete messages by id (archive#2252).
  *
  * Moved here from `FileMemoryAdapter` so that every mutation THROUGH THIS
  * MODULE goes through the one serialized, atomic seam. Other paths remove the

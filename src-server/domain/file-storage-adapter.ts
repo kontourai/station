@@ -45,7 +45,7 @@ import {
   type LayoutAgentReference,
 } from './storage-adapter.js';
 /**
- * The server-owned project order (station#3315): explicit positions first,
+ * The server-owned project order (archive#3315): explicit positions first,
  * ascending; projects without one after them, in name order. Exported so its
  * fallback arms are testable directly — a listProjects round-trip cannot
  * discriminate the name fallback when readdir order happens to coincide.
@@ -119,7 +119,7 @@ export class FileStorageAdapter implements IStorageAdapter {
           } satisfies ProjectMetadata,
         ];
       });
-    // Server-owned order (station#3315): explicit positions first, ascending;
+    // Server-owned order (archive#3315): explicit positions first, ascending;
     // projects without one append after them in name order, so directory
     // readdir order (arbitrary, machine-dependent) never reaches a consumer.
     return projects.sort(compareProjectListOrder);
@@ -194,7 +194,7 @@ export class FileStorageAdapter implements IStorageAdapter {
             name: config.name,
             icon: config.icon,
             description: config.description,
-            // station#1497 — `LayoutConfig.config` is required by the
+            // archive#1497 — `LayoutConfig.config` is required by the
             // contract, but a record persisted without one is reachable on
             // disk today (the create route only materialized it as a side
             // effect of copying a working directory in). Dereferencing it

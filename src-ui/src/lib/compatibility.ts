@@ -100,8 +100,8 @@ export async function checkHostCompatibility(
   signal?: AbortSignal,
   policy: StationClientCompatibilityPolicy = CLIENT_COMPATIBILITY_POLICY,
 ): Promise<StationCompatibilityResult> {
-  // Bounded like the modal's existing candidate review: this check sits in
-  // front of an Add button, and a black-hole host must not hang it.
+// Bounded like the modal's existing candidate review: this check sits in
+// front of an Add button, and a black-hole host must not hang it.
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });

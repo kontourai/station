@@ -62,7 +62,7 @@ const LANE_CALL_TO_ACTION: Record<string, string> = {
 
 /**
  * What is live in this project right now, at the top of its own page
- * (station#3202).
+ * (archive#3202).
  *
  * The sidebar badge named a number and then abandoned the reader: selecting
  * the project landed on a page that surfaced none of the sessions the number
@@ -127,7 +127,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
    * Opening is the resolution for a waiting row: it reopens the session
    * through the shared open policy — rehydrating into the chat overlay when
    * Station can, falling through to `/activity` when it cannot (a deleted
-   * agent, a read-only attached transcript). Both branches are station#1297's
+   * agent, a read-only attached transcript). Both branches are archive#1297's
    * one rule, reused rather than re-decided here.
    */
   function open(session: OrchestrationSessionSummary) {

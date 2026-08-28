@@ -8,7 +8,7 @@
  * at the mercy of unrelated cross-chunk CSS load order). Co-located with the
  * component so its styling loads wherever `<AttentionCard>` is used, not
  * only when the Notifications page's own lazy-loaded chunk has been visited
- * (station#1170: SessionsView renders this without a NotificationsPage
+ * (archive#1170: SessionsView renders this without a NotificationsPage
  * visit first).
  */
 .attention-item {
@@ -65,7 +65,7 @@
 }
 
 /*
- * station#3203 — LENGTH POLICY for a failure reason on the card. Same policy
+ * archive#3203 — LENGTH POLICY for a failure reason on the card. Same policy
  * as the tray row (`.notification-history__detail--cause`), one line looser
  * because this card is the full-page inbox rather than a popover row: the
  * projection bounds the reason to 400 characters, this clamps the rendering,
@@ -85,7 +85,7 @@
 }
 
 /*
- * station#3203: which session failed (engine · agent), one step quieter than
+ * archive#3203: which session failed (engine · agent), one step quieter than
  * the cause above it so the cause stays the line you read first.
  */
 .attention-item__identity {

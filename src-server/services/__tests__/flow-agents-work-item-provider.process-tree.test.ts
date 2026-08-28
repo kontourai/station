@@ -1,5 +1,5 @@
 /**
- * Real-runner process-tree kill test (#583 review finding, HIGH): the
+ * Real-runner process-tree kill test (archive#583 review finding, HIGH): the
  * default CLI runner must terminate the WHOLE process tree on timeout, not
  * just the immediate Node wrapper — `pull-work-provider` synchronously
  * spawns `gh`, and killing only the wrapper would orphan it, holding the

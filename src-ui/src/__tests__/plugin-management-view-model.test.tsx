@@ -34,10 +34,10 @@ const mocks = vi.hoisted(() => ({
   reloadPlugins: vi.fn(),
   revokePermission: vi.fn(async () => ({ granted: [] })),
   requestConsent: vi.fn(),
-  // Review H1: `data: plugins = []` alone makes a failed `usePluginsQuery`
-  // read indistinguishable from a host with no plugins installed, so
-  // `PluginManagementView` claimed "No plugins installed yet" over a read
-  // that never answered.
+ // `data: plugins = []` alone makes a failed `usePluginsQuery`
+// read indistinguishable from a host with no plugins installed, so
+// `PluginManagementView` claimed "No plugins installed yet" over a read
+// that never answered.
   pluginsError: undefined as unknown,
   refetchPlugins: vi.fn(),
   previewOnSuccess: null as ((data: unknown) => void) | null,
@@ -106,7 +106,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useReloadPluginsMutation: () => ({
     mutateAsync: mocks.reloadPlugins,
   }),
-  // station#3815: withdrawing a permission.
+// archive#3815: withdrawing a permission.
   useRevokePluginPermissionMutation: () => ({
     mutateAsync: mocks.revokePermission,
   }),
@@ -161,12 +161,12 @@ describe('usePluginManagementViewModel', () => {
     );
   });
 
-  /**
-   * station#4288. Everything below drives the real sequence: preview, then
-   * decide, then — only then — install. The preview payload is what the
-   * server now returns; the decision is assembled from it, never invented by
-   * the client.
-   */
+/**
+* archive#4288. Everything below drives the real sequence: preview, then
+* decide, then — only then — install. The preview payload is what the
+* server now returns; the decision is assembled from it, never invented by
+* the client.
+*/
   const PREVIEW = {
     valid: true,
     manifest: {
@@ -201,11 +201,11 @@ describe('usePluginManagementViewModel', () => {
     });
   }
 
-  /**
-   * ACCEPTANCE 1 and 2 at the client. Declining does not reach the server at
-   * all — there is no install request to leave anything behind, which is what
-   * "a declined install leaves nothing" means from here.
-   */
+/**
+* ACCEPTANCE 1 and 2 at the client. Declining does not reach the server at
+* all — there is no install request to leave anything behind, which is what
+* "a declined install leaves nothing" means from here.
+*/
   test('asks before installing, and a decline never sends an install request', async () => {
     mocks.requestInstallConsent.mockResolvedValue(false);
     const { result } = renderHook(() => usePluginManagementViewModel());
@@ -246,8 +246,8 @@ describe('usePluginManagementViewModel', () => {
         dependencies: ['shared-lib'],
       },
     });
-    // The order matters more than the payload: the prompt resolved before the
-    // mutation was dispatched, which is the whole defect this closes.
+// The order matters more than the payload: the prompt resolved before the
+// mutation was dispatched, which is the whole defect this closes.
     expect(
       mocks.requestInstallConsent.mock.invocationCallOrder[0],
     ).toBeLessThan(mocks.installMutate.mock.invocationCallOrder[0]);
@@ -294,12 +294,12 @@ describe('usePluginManagementViewModel', () => {
     });
   });
 
-  /**
-   * What survives after the install: the trusted tier. A same-origin click
-   * cannot authorize it, so the server leaves it pending and the existing
-   * host-approval path runs against the installed tree. Declining THAT leaves
-   * an installed plugin, and the message says exactly that.
-   */
+/**
+* What survives after the install: the trusted tier. A same-origin click
+* cannot authorize it, so the server leaves it pending and the existing
+* host-approval path runs against the installed tree. Declining THAT leaves
+* an installed plugin, and the message says exactly that.
+*/
   test('still routes trusted permissions to host approval after the install', async () => {
     mocks.requestInstallConsent.mockResolvedValue(true);
     mocks.requestConsent.mockResolvedValue(false);

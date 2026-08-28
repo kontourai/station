@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { FilesystemSkillRegistryProvider } from '../filesystem-skill-registry.js';
 
 /**
- * #896 wave 2 (docs/design/connections-onboarding.md §1.1's named gap):
+ * archive#896 wave 2 (docs/design/connections-onboarding.md §1.1's named gap):
  * `defaultSkillRoots()` also lists the Station-owned app-home profile
  * skills dirs — additive, read-only listing sources, absent profiles are a
  * silent no-op via the existing `existsSync` guard.

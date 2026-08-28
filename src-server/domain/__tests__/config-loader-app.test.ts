@@ -598,7 +598,7 @@ describe('config-loader-app', () => {
     expect('region' in persisted).toBe(false);
   });
 
-  // Merge resolution, station#1194 × slice 1: `builtinAgentEngineConnectionId`
+  // Merge resolution, archive#1194 × slice 1: `builtinAgentEngineConnectionId`
   // declares null as a STORED value (absent = re-derived each boot, null =
   // sticky explicit Station). The registry's `nullable` flag routes it around
   // the null-as-clear semantics — deleting it here would silently turn a

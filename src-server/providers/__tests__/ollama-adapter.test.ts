@@ -77,7 +77,7 @@ describe('OllamaAdapter', () => {
     ).toBe('unknown');
   });
 
-  // station#1430 review, H-2: `resolveModelId` (startSession, and the
+  // archive#1430 review, H-2: `resolveModelId` (startSession, and the
   // model-switch path on send) only ever reads `match.id` from the catalog
   // — it must not pay for, or be stalled by, the `/api/show` capability
   // enrichment `OllamaLLMProvider.listModelCatalog` does for the inventory
@@ -309,7 +309,7 @@ describe('OllamaAdapter', () => {
     ).toHaveLength(1);
   });
 
-  // station#3442 review finding, re-verified against this tree: the
+  // archive#3442 review finding, re-verified against this tree: the
   // `sendTurn` catch handler's `if (controller.signal.aborted)` arm (the
   // one that would publish `turn.completed`/`finishReason:'cancelled'`)
   // had zero coverage. Tracing it further: `interruptTurn`/`stopSession`
@@ -326,7 +326,7 @@ describe('OllamaAdapter', () => {
   // `finishReason:'cancelled'` sub-arm is unreachable via any public API on
   // this adapter, not merely untested — reported separately as an
   // out-of-scope finding. What IS reachable, and what actually matters for
-  // the "mirror image of #3442" regression risk (a user Stop wrongly
+  // the "mirror image of archive#3442" regression risk (a user Stop wrongly
   // recording the session `failed`), is the adapter's real observable
   // contract: interrupting a turn publishes exactly one terminal-shaped
   // event (`turn.aborted`) and NEVER a `runtime.error`. That is what this
@@ -380,7 +380,7 @@ describe('OllamaAdapter', () => {
     ]);
   });
 
-  // station#3466 site pin: `stopSession` (`.abort()` then `activeTurns.
+  // archive#3466 site pin: `stopSession` (`.abort()` then `activeTurns.
   // delete`) mutates `activeTurns` synchronously, in the same tick as the
   // abort that races this stream's rejection. stopSession publishes no
   // per-turn event at all, so the discriminating count here is ZERO -- any
@@ -487,7 +487,7 @@ describe('OllamaAdapter', () => {
             event.method === 'turn.aborted' && event.turnId === turnIds[0],
         ),
     ).toEqual([expect.objectContaining({ reason: 'superseded' })]);
-    // station#3466 site pin: `sendTurn`'s supersede branch aborts the first
+    // archive#3466 site pin: `sendTurn`'s supersede branch aborts the first
     // turn's controller and THEN, still synchronously (no await between),
     // overwrites `activeTurns` with the second turn -- the abort listener
     // above races that overwrite as tightly as this mock can arrange. If a
@@ -521,7 +521,7 @@ describe('OllamaAdapter', () => {
     expect((await adapter.listSessions())[0]?.status).toBe('ready');
   });
 
-  // #796: a per-turn model override changes what actually runs, but only
+  // archive#796: a per-turn model override changes what actually runs, but only
   // `session.configured` carries a model into the read model and the
   // persisted session row — without republishing it the stored model
   // silently disagrees with what ran once the session is rehydrated.
@@ -792,7 +792,7 @@ describe('station#1182: runtime-reported model', () => {
     expect(completed.metadata).toBeUndefined();
   });
 
-  // station#3442: a genuine stream failure (not a user cancellation) must
+  // archive#3442: a genuine stream failure (not a user cancellation) must
   // publish `runtime.error`, the one canonical event the session-lifecycle
   // projector folds to 'failed' — a `turn.completed` here (this branch's
   // prior, unconditional behavior) is indistinguishable from an ordinary
@@ -850,13 +850,13 @@ describe('station#1182: runtime-reported model', () => {
   });
 });
 
-// station#3596, folded into station#3586's own change on review (HIGH-1):
+// archive#3596, folded into archive#3586's own change on review (HIGH-1):
 // the "a genuine stream failure publishes runtime.error" test above (inside
-// `describe('station#1182: runtime-reported model')`, where this test used
-// to live too — station#3587 review NIT-B moved it out, since it has nothing
+// `describe('archive#1182: runtime-reported model')`, where this test used
+// to live too — archive#3587 review NIT-B moved it out, since it has nothing
 // to do with reported-model metadata) throws a JS exception from the mock
 // generator — the long-standing failure shape. This proves the DISTINCT,
-// newly-reachable shape station#3586 introduces: `AiSdkLLMProvider.
+// newly-reachable shape archive#3586 introduces: `AiSdkLLMProvider.
 // createStream` now translates a mid-stream (or request-time) ai-sdk
 // failure into a YIELDED `{ type: 'error' }` CHUNK rather than a thrown
 // exception — see `ai-sdk-llm-provider.ts`'s docblock. Before this test
@@ -923,9 +923,9 @@ describe('station#3596 (folded into station#3586): OllamaAdapter surfaces a yiel
   });
 });
 
-// station#3588: `AiSdkLLMProvider.createStream` (which `OllamaLLMProvider`
+// archive#3588: `AiSdkLLMProvider.createStream` (which `OllamaLLMProvider`
 // inherits unmodified) has propagated a real `finishReason` on its finish
-// chunk since station#3545, but `OllamaAdapter.sendTurn`'s loop never read
+// chunk since archive#3545, but `OllamaAdapter.sendTurn`'s loop never read
 // `chunk.finishReason` at all — only `chunk.reportedModel`. `publishCompletion`
 // defaulted `options.finishReason ?? 'stop'` with no caller ever supplying
 // one, so a generation truncated at the token ceiling still published
@@ -1037,7 +1037,7 @@ describe('station#3588: Ollama finishReason propagation', () => {
     expect(completed.finishReason).toBe('stop');
   });
 
-  // station#3587 review MEDIUM-2: `normalizeOllamaFinishReason`'s whole
+  // archive#3587 review MEDIUM-2: `normalizeOllamaFinishReason`'s whole
   // purpose is narrowing an unrecognized string to `undefined` rather than
   // guessing a vocabulary member — nothing exercised its `default` arm.
   // Reachable in production: `LLMStreamChunk.finishReason` is a bare
@@ -1049,7 +1049,7 @@ describe('station#3588: Ollama finishReason propagation', () => {
   // `finishReason` union — e.g. `'content-filter'` reaching
   // `runtime-auth-health-monitor.ts` and throwing
   // `RuntimeAuthHealthEventDiagnostic` on every such turn, the exact
-  // malformed-diagnostic harm station#3587 exists to stop causing for
+  // malformed-diagnostic harm archive#3587 exists to stop causing for
   // WELL-FORMED input.
   test('a finish chunk with an unrecognized finishReason string publishes "stop", not the unrecognized value', async () => {
     const llm = {

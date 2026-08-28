@@ -1,4 +1,4 @@
-/* station#3027: the active project filter, shown only while one is set. */
+/* archive#3027: the active project filter, shown only while one is set. */
 .sessions-project-filter {
   display: flex;
   align-items: center;
@@ -165,7 +165,7 @@
 
 /*
  * The delegation card moved out of the list intro into the pinned footer
- * (station#3027). `.split-pane__add` supplies the footer padding, so the card
+ * (archive#3027). `.split-pane__add` supplies the footer padding, so the card
  * drops its own outer margin there rather than double-padding it.
  */
 .split-pane__add > .sessions-coordinator {
@@ -301,7 +301,7 @@
   min-height: 44px;
 }
 
-/* station#3305: a flex column with one dedicated scroll region
+/* archive#3305: a flex column with one dedicated scroll region
    (`__scroll`) between the pinned header and the pinned request/compose
    controls. The previous fixed grid template
    (`auto auto auto minmax(0, 1fr) auto auto auto`) assigned the flexible
@@ -371,7 +371,7 @@
   overflow-wrap: anywhere;
 }
 
-/* Review MEDIUM (station#1170): measured 56.45 x 19.08 CSS px at 390px
+/* (archive#1170): measured 56.45 x 19.08 CSS px at 390px
    width — well under the WCAG 2.5.8 AA 24x24 minimum, and this PR's own
    AttentionCard.css already establishes 44px as the convention for every
    action button (`.attention-item__action`). `min-height` plus centering
@@ -403,7 +403,7 @@
   font-size: 0.8rem;
 }
 
-/* station#3213: `.sessions-detail__failure` moved to the shared
+/* archive#3213: `.sessions-detail__failure` moved to the shared
    `SessionFailureAlert.css` when the chat dock became a second consumer of
    this exact banner. Both surfaces render that component now. */
 
@@ -412,7 +412,7 @@
   gap: 0.25rem;
 }
 
-/* Review MEDIUM (station#1170): qualified by the `.sessions-detail__meta`
+/* (archive#1170): qualified by the `.sessions-detail__meta`
    ancestor so this beats `.sessions-detail__meta span`'s own `border`
    shorthand on specificity (two classes vs. one class + one element)
    instead of needing `!important` — a bare `.sessions-detail__status`
@@ -456,7 +456,7 @@
 
 .sessions-detail__attention {
   display: grid;
-  /* Review MEDIUM (station#1170): a lifecycle item and one or more
+ /* (archive#1170): a lifecycle item and one or more
      Flow-gate items can legitimately coexist for one session, so this can
      render more than one AttentionCard. */
   gap: 0.65rem;
@@ -491,14 +491,14 @@
   gap: 0.5rem;
   margin: 0;
   min-width: 0;
-  /*
-   * Size each card to its own content. Grid items stretch to the row's
-   * height by default, so a short row (`Project` / `dev`) inherited the
-   * height of whatever else shared it — or of the grid's own stretched
-   * track — and rendered as a ~190px box holding one word. Rows here are
-   * deliberately uneven: a `Linked Flow` or `Project workflows` entry
-   * carries a hint paragraph while `Model` carries a single token.
-   */
+/*
+* Size each card to its own content. Grid items stretch to the row's
+* height by default, so a short row (`Project` / `dev`) inherited the
+* height of whatever else shared it — or of the grid's own stretched
+* track — and rendered as a ~190px box holding one word. Rows here are
+* deliberately uneven: a `Linked Flow` or `Project workflows` entry
+* carries a hint paragraph while `Model` carries a single token.
+*/
   align-items: start;
 }
 
@@ -601,7 +601,7 @@
   overflow-wrap: anywhere;
 }
 
-/* station#1781: the observation that disabled this card's Approve/Deny.
+/* archive#1781: the observation that disabled this card's Approve/Deny.
    Full-width so it is not squeezed between the copy and the buttons. */
 .sessions-detail__request-note {
   flex-basis: 100%;
@@ -878,7 +878,7 @@
     font-size: 0.68rem;
   }
 
-  /* Review HIGH (station#1170), restructured for station#3305: with the
+ /* (archive#1170), restructured for archive#3305: with the
      keyboard open, everything between the pinned header and the pinned
      request/compose controls lives in the `__scroll` region, so a long
      attention item (AttentionCard's own answer form is the ONLY way to
@@ -894,7 +894,7 @@
     gap: 0.5rem;
   }
 
-  /* Review HIGH (station#1170 fix round): hiding the WHOLE header used to
+/* (archive#1170): hiding the WHOLE header used to
      remove this page's only answers to "what am I looking at" (the
      title/prompt) and "what state is it in" (the status badge) at exactly
      the viewport where the owner is most likely to be looking — an
@@ -919,7 +919,7 @@
     margin-top: 0;
   }
 
-  /* The note is pinned chrome beside the composer (outside the scroll
+/* The note is pinned chrome beside the composer (outside the scroll
      region), so hiding it genuinely buys keyboard-open space. The context
      grid stays visible: it is a non-shrinking child of `__scroll` (see the
      `flex-shrink: 0` rule there — without it the grid would compress to

@@ -66,9 +66,9 @@ export interface RuntimeInitializationContext {
     loadACPConfig: () => Promise<unknown>;
     getProjectHomeDir: () => string;
     loadIntegration: (id: string) => Promise<ToolDef>;
-    /** #895 wave A: resolve an on-disk agent's spec for session-agent capability resolution. */
+    /** archive#895 wave A: resolve an on-disk agent's spec for session-agent capability resolution. */
     loadAgent: (slug: string) => Promise<AgentSpec>;
-    /** station#3063: boot-time built-in integration materialization. */
+    /** archive#3063: boot-time built-in integration materialization. */
     saveIntegration: (id: string, def: ToolDef) => Promise<void>;
     hasIntegration: (id: string) => Promise<boolean>;
     /** Agent-record enumeration for boot-time engine adoption. */
@@ -81,7 +81,7 @@ export interface RuntimeInitializationContext {
   voiceService: VoiceSessionService;
   acpBridge: ACPManager;
   /**
-   * station#1194 (epic #1191, slice B): resolves the built-in default
+   * archive#1194 (epic archive#1191, slice B): resolves the built-in default
    * agent's engine binding from the LIVE ready-connections list — optional,
    * Undefined means Station's own engine.
    */
@@ -92,7 +92,7 @@ export interface RuntimeInitializationContext {
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
-  /** station#3245: lifetime analytics' read of the orchestration substrate. */
+  /** archive#3245: lifetime analytics' read of the orchestration substrate. */
   orchestrationUsageRef?: OrchestrationUsageRef;
   monitoringEmitter?: MonitoringEmitter;
   activeAgents: Map<string, Agent>;
@@ -104,7 +104,7 @@ export interface RuntimeInitializationContext {
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: RuntimeIntegrationMetadata;
   toolNameMapping: ToolNameMapping;
-  /** station#1834: hook-construction inputs for the default agent's tool gate. */
+  /** archive#1834: hook-construction inputs for the default agent's tool gate. */
   agentFixedTokens?: Map<
     string,
     { systemPromptTokens: number; mcpServerTokens: number }

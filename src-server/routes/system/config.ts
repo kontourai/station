@@ -74,7 +74,7 @@ function projectPublicAppConfig(config: Record<string, any>) {
 /**
  * Every `contribution` key that would silently do nothing, as one sentence the
  * operator can act on — or `undefined` when every key is usable
- * (station#1503 review, M6/L7).
+ * (archive#1503 review, M6/L7).
  *
  * Two classes, and they are different mistakes with different repairs:
  *
@@ -143,11 +143,11 @@ export function createConfigRoutes(
   // Runtime-derived origin of the dedicated MCP-UI frame server, if running.
   // Injected into GET /app only (never persisted via the update schema).
   getMcpUiFrameOrigin?: () => string | undefined,
-  // station#980: runtime-derived (STATION_FEATURES=managed-chat-orchestration,
+  // archive#980: runtime-derived (STATION_FEATURES=managed-chat-orchestration,
   // never persisted) — same injected-into-GET-/app-only, never-in-the-update-
   // schema pattern as `getMcpUiFrameOrigin` above.
   getManagedChatOrchestrationEnabled?: () => boolean,
-  // station#1194 (epic #1191, slice B): re-applies the built-in default
+  // archive#1194 (epic archive#1191, slice B): re-applies the built-in default
   // agent's engine binding via the existing bootstrap function whenever an
   // update touches `builtinAgentEngineConnectionId` — Voice is deliberately
   // NOT rebound (it is speech-to-speech, not a chat engine; see
@@ -305,7 +305,7 @@ export function createConfigRoutes(
         );
       }
 
-      // station#1398 §5.4 — the beneficiary may not flip the switch.
+      // archive#1398 §5.4 — the beneficiary may not flip the switch.
       //
       // §5.4's disposition (contribution stays at `orchestration:operate`)
       // rests on one thing being true: a credential that can enable
@@ -338,7 +338,7 @@ export function createConfigRoutes(
         c as unknown as PairingScopeContextStore,
       );
       //
-      // station#1500 slice 2.5 extends the SAME guard to the scoped
+      // archive#1500 extends the SAME guard to the scoped
       // `contribution` map, before any consumer of it exists. That map's
       // `inference` axis names model connections exactly as `fleetContribution`
       // does, so a peer holding `inference:invoke` could otherwise name a
@@ -361,7 +361,7 @@ export function createConfigRoutes(
           {
             success: false,
             // The fleet sentence is BYTE-UNCHANGED: it is what a paired peer
-            // reads today, and station#1500 is not entitled to reword an
+            // reads today, and archive#1500 is not entitled to reword an
             // existing refusal on its way past. The scoped map gets its own.
             error: writesFleetContribution
               ? 'A credential that can invoke fleet inference cannot also turn fleet contribution on or change which connections are contributed. Enabling it is the operator’s decision, made from this Station or with a credential that does not hold inference:invoke.'
@@ -371,7 +371,7 @@ export function createConfigRoutes(
         );
       }
 
-      // station#1503 review, M6 + L7 — the scope-key refusals are made HERE,
+      // archive#1503 review, M6 + L7 — the scope-key refusals are made HERE,
       // where the operator finds out.
       //
       // `resolveScopedContribution` already refuses a `contribution["fleet"]`
@@ -442,7 +442,7 @@ export function createConfigRoutes(
       // presence check made every settings save rebind the built-in agents
       // and serialize behind the previous save's rebind (observed live as a
       // hung second PUT in tests/settings.spec.ts 'save persists changes').
-      // The onboarding picker (#1194) sends a delta with a genuinely new
+      // The onboarding picker (archive#1194) sends a delta with a genuinely new
       // value, so change-gating preserves its contract exactly.
       const priorConfig = await configLoader.loadAppConfig();
       const priorBuiltinEngineConnectionId =
@@ -458,7 +458,7 @@ export function createConfigRoutes(
       const updated = mutation.value;
       const publicUpdated = projectPublicAppConfig(updated);
       logger.info('App config updated', { config: publicUpdated });
-      // station#1194: this key is the onboarding engine picker's own
+      // archive#1194: this key is the onboarding engine picker's own
       // mutation surface — rebind immediately rather than waiting for some
       // other, unrelated reload to pick it up. Any error here fails the
       // request rather than silently returning success while the built-ins
@@ -472,7 +472,7 @@ export function createConfigRoutes(
       }
       eventBus?.emit(SERVER_EVENTS.SYSTEM_STATUS_CHANGED, { source: 'config' });
       if (rebindsBuiltinEngine) {
-        // station#1194 review round 2 (HIGH): without this, the browser's
+        // archive#1194 review round 2 (HIGH): without this, the browser's
         // cached agent list (engine chip, routing) stays stale until some
         // unrelated refetch — the rebind looked inert on first use.
         // `CONFIG_CHANGED` is the one existing client event that already

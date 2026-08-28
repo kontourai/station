@@ -11,12 +11,12 @@ import { STATION_SERVER_EXTERNALS } from '../../../../scripts/lib/server-build-c
 import { spawnStoreIntegrityProbe } from '../store-integrity-verification.js';
 
 /**
- * station#3218's central claim, measured rather than asserted in prose: the
+ * archive#3218's central claim, measured rather than asserted in prose: the
  * runtime's event loop keeps running while the store is verified.
  *
  * It is an A/B, because an absolute millisecond bound would only relocate the
  * cliff to a contention level nobody measured (`vitest-resource-manifest.mjs`,
- * station#1804). The control arm runs the SAME check in-process, so both arms
+ * archive#1804). The control arm runs the SAME check in-process, so both arms
  * absorb the same host conditions and the bound the child arm is held to is
  * derived from what this run observed the synchronous version cost.
  *

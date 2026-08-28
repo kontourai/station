@@ -37,22 +37,22 @@ import { handleTokenUsageUpdatedEvent } from './usageHandlers';
 export function handleOrchestrationEvent(
   apiBase: string,
   event: OrchestrationEvent,
-  /**
-   * station#1410: the turn provenance envelope the server attached beside a
-   * `turn.completed` frame, exactly as it arrived. Deliberately `unknown` —
-   * only the card narrows it, so an envelope from another Station version
-   * degrades honestly instead of being partly believed here.
-   */
+/**
+* archive#1410: the turn provenance envelope the server attached beside a
+* `turn.completed` frame, exactly as it arrived. Deliberately `unknown` —
+* only the card narrows it, so an envelope from another Station version
+* degrades honestly instead of being partly believed here.
+*/
   provenance?: unknown,
 ) {
-  // station#1301 slice 1: ingest BEFORE the `if (!chat) return` guard below —
-  // a delegate session's events arrive on the delegate's own threadId, which
-  // is never opened as a chat, so the guard would otherwise drop every event
-  // the background-tasks registry needs from it (the plan's "precise missing
-  // projection", #1301 §1.3). `ingest` is a cheap method-switch that exits
-  // immediately for the high-frequency content.*-delta cases and returns the
-  // identical state reference (no store notify) for every other no-op, so
-  // this costs nothing for chats that never touch background tasks.
+// archive#1301: ingest BEFORE the `if (!chat) return` guard below —
+// a delegate session's events arrive on the delegate's own threadId, which
+// is never opened as a chat, so the guard would otherwise drop every event
+// the background-tasks registry needs from it (the plan's "precise missing
+ // projection", archive#1301 §1.3). `ingest` is a cheap method-switch that exits
+// immediately for the high-frequency content.*-delta cases and returns the
+// identical state reference (no store notify) for every other no-op, so
+// this costs nothing for chats that never touch background tasks.
   backgroundTasksStore.ingest(event);
 
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
@@ -101,21 +101,21 @@ export function handleOrchestrationEvent(
       return;
     case 'runtime.error':
       handleRuntimeErrorEvent(event);
-      // station#3451 finding 7: a message queued while the turn that failed
-      // was running had no trigger to ever send — this listener was only
-      // wired to `turn.completed`, so B sat in the queue forever once A
-      // failed instead of completing. `turn.aborted` (an explicit user Stop)
-      // is deliberately NOT given the same treatment here: auto-firing a
-      // queued follow-up immediately after the user asked the turn to STOP
-      // is a UX call this fix does not make unilaterally — disclosed as a
-      // separate, undecided gap.
-      //
-      // station#3451 finding H1 (moved to packages/contracts in fix round
-      // D5 — this is the LITERAL same function every server-side consumer
-      // uses, not a mirrored copy): a codex deferred-retriable runtime.error
-      // may resolve this turn without a new `turn.started`, so draining now
-      // would fire a queued message while the "failed" turn is actually
-      // still silently retrying.
+// archive#3451: a message queued while the turn that failed
+// was running had no trigger to ever send — this listener was only
+// wired to `turn.completed`, so B sat in the queue forever once A
+// failed instead of completing. `turn.aborted` (an explicit user Stop)
+// is deliberately NOT given the same treatment here: auto-firing a
+// queued follow-up immediately after the user asked the turn to STOP
+// is a UX call this fix does not make unilaterally — disclosed as a
+// separate, undecided gap.
+//
+// archive#3451 (moved to packages/contracts in 
+// this is the LITERAL same function every server-side consumer
+// uses, not a mirrored copy): a codex deferred-retriable runtime.error
+// may resolve this turn without a new `turn.started`, so draining now
+// would fire a queued message while the "failed" turn is actually
+// still silently retrying.
       if (!isDeferredRetriableTurnError(event)) {
         drainQueuedMessageOnTurnCompleted(
           apiBase,

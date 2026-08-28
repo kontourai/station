@@ -6,7 +6,7 @@ import { describe, expect, test } from 'vitest';
  * What this proves, exactly: the two shell files contain none of the three
  * literal markup forms below. That is the shape both retired surfaces took —
  * chrome markup written inline in the shell — so it catches the regression
- * that actually happened (station#2214).
+ * that actually happened (archive#2214).
  *
  * What it does NOT prove: that every future chrome notice uses `bannerStore`.
  * A new component file rendering `<aside role="alert">`, or `role={'alert'}`

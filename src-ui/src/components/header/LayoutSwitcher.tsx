@@ -17,15 +17,15 @@ interface LayoutSummary {
 }
 
 /** Header dropdown for switching layouts within the current project — makes
- *  layout navigation first-class instead of hiding it behind a sidebar chevron. */
+*  layout navigation first-class instead of hiding it behind a sidebar chevron. */
 export function LayoutSwitcher({
   projectSlug,
   layoutSlug,
 }: LayoutSwitcherProps) {
   const { setLayout } = useNavigation();
-  // Review H1: `= []` on its own makes a failed read indistinguishable from a
-  // project with no layouts, so the menu asserted "No layouts" over a read
-  // that never answered.
+ // `= []` on its own makes a failed read indistinguishable from a
+// project with no layouts, so the menu asserted "No layouts" over a read
+// that never answered.
   const {
     data: layouts = [],
     error: layoutsError,

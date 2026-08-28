@@ -3,7 +3,7 @@ import { useToast } from '../contexts/ToastContext';
 import { copyToClipboard } from '../lib/clipboard';
 
 /**
- * The toast half of station#3341's copy affordance, shared by the two surfaces
+ * The toast half of archive#3341's copy affordance, shared by the two surfaces
  * that report a copy through a toast rather than an inline label (the chat
  * transcript's per-message copy and Monitoring's tool-result copy). Both wrote
  * "Copied to clipboard" unconditionally; a single hook keeps the success and

@@ -5,7 +5,7 @@ import {
 } from '../describeReadFailure';
 
 /**
- * One derivation for one fact: review H1 found the same "error drawn as
+ * One derivation for one fact: review found the same "error drawn as
  * empty" defect in three unrelated views, so the sentence a failed read is
  * allowed to show lives here rather than being retyped per view.
  */

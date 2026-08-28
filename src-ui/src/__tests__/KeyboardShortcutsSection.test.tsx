@@ -33,10 +33,10 @@ function renderEditor() {
 describe('KeyboardShortcutsSection', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    // station#settings-revamp slice 3 (#1359 convergence): the
-    // envelope-backed device-settings store is a module singleton whose
-    // in-memory snapshot doesn't automatically resync from a test's own
-    // `localStorage.clear()` — see `reloadFromStorage`'s doc comment.
+ // archive#settings-revamp (archive#1359 convergence): the
+// envelope-backed device-settings store is a module singleton whose
+// in-memory snapshot doesn't automatically resync from a test's own
+// `localStorage.clear` — see `reloadFromStorage`'s doc comment.
     deviceSettingsStore.reloadFromStorage();
     alphaHandler.mockReset();
     closeHandler.mockReset();
@@ -69,10 +69,10 @@ describe('KeyboardShortcutsSection', () => {
     });
     expect(dialog.textContent).toContain('Close workspace');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    // Cancelling records nothing (station#settings-revamp slice 3 #1359
-    // convergence: shortcut overrides now live in the registry-driven
-    // envelope's `shortcutOverrides` entry, not the retired
-    // `station.device-settings` root).
+ // Cancelling records nothing (archive#settings-revamp archive#1359
+// convergence: shortcut overrides now live in the registry-driven
+// envelope's `shortcutOverrides` entry, not the retired
+// `station.device-settings` root).
     expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({});
 
     fireEvent.click(alpha);

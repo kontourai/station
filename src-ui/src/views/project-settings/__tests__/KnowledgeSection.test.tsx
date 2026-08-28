@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-// #242 Knowledge port — asserts the one remaining bespoke
+// archive#242 Knowledge port — asserts the one remaining bespoke
 // `knowledge-section__empty` paragraph ("No working directory configured.")
 // now renders through the canonical `Empty` primitive. The sibling
 // `KnowledgeStoreSubsection` (K5) already composed `Empty`/`ErrorState`/
@@ -55,8 +55,8 @@ const passthroughGuard = (callback: () => void) => callback();
 
 /**
  * `ProjectSettingsView.tsx`'s real shape: `useUnsavedGuard(isDirty)`'s
- * `guard` passed straight into `KnowledgeSection` — station#settings-revamp
- * slice 5 review finding HIGH 1.
+ * `guard` passed straight into `KnowledgeSection` — archive#settings-revamp
+ * 1.
  */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
@@ -89,7 +89,7 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
     ).toBeTruthy();
   });
 
-  // station#settings-revamp slice 5 review finding HIGH 1.
+ // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the cross-links', () => {
     it('"Open Settings → My knowledge store" navigates with the section param when the page is not dirty', () => {
       navigateMock.mockClear();

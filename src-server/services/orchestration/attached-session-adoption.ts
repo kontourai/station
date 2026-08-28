@@ -27,7 +27,7 @@ import type {
 import { resolveAttachedProjectRoot } from './attached-session-follow-service.js';
 import type { EventStore } from './event-store.js';
 
-// Attached-session adoption (epic #4024 slice 3, #4143): the C14 cluster
+// Attached-session adoption (epic archive#4024, archive#4143): the C14 cluster
 // from the seam map — 25 of its 27 methods, its reservation/intent state,
 // and the module-global live-owner registry move here. Two members stay on
 // the service by design (extraction plan §7/§8, Option A):
@@ -489,7 +489,7 @@ export class AttachedSessionAdoption {
       source.cwd!,
       this.deps.listProjects?.() ?? [],
     );
-    // station#1462: adoption binds a session to one project, so an ambiguous
+    // archive#1462: adoption binds a session to one project, so an ambiguous
     // workspace refuses by name instead of adopting into an arbitrary winner.
     if (attribution.state === 'ambiguous') {
       throw new Error(
@@ -583,7 +583,7 @@ export class AttachedSessionAdoption {
       sourceSessionId: context.sourceSessionId,
       sourceKind: context.sourceKind,
       cwd: project.cwd,
-      // station#1165: these are server-owned facts. The public adoption
+      // archive#1165: these are server-owned facts. The public adoption
       // command has no metadata channel, so neither the plan nor identity
       // can be forged by an adopting client.
       metadata: {

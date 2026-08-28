@@ -226,7 +226,7 @@ describe('ProjectManifestStore — the sidecar record (D1: no second copy)', () 
     expect(manifest?.integrations).toEqual([]);
   });
 
-  // ── station#1503 slice 5 ────────────────────────────────────────────────
+  // ── archive#1503 ────────────────────────────────────────────────
 
   test('a namespace anchored to a NAMED repo composes as §3.2’s repo root', async () => {
     // Before this slice EVERY namespace composed as `station-managed`
@@ -687,7 +687,7 @@ describe('ProjectManifestStore — backfill is an exclusive create (D2)', () => 
 });
 
 // ---------------------------------------------------------------------------
-// station#1499 slice 2 — UNREADABLE vs UNSELECTABLE on the read path (D7).
+// archive#1499 — UNREADABLE vs UNSELECTABLE on the read path (D7).
 //
 // `composeManifest` runs slice 1's validator on every read, and slice 1
 // enforces §3.5's primary cardinality there. A manifest with two primaries is

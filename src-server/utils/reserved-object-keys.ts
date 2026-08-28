@@ -4,7 +4,7 @@
  *
  * This is decision 5 of `services/plugins/grants-file-store.ts`, lifted out of
  * that file so the two stores keyed by plugin identity derive the policy from
- * one place instead of two (station#4307). The grants store remains the
+ * one place instead of two (archive#4307). The grants store remains the
  * reference implementation and its docblock carries the full rationale; this
  * module is only the shared vocabulary and the two helpers it needs.
  *
@@ -68,7 +68,7 @@ function emptyLike(source: JsonContainer): JsonContainer {
  * `JSON.parse` creates a literal `"__proto__"` member as an OWN data property
  * rather than invoking the setter, so a store round-trips byte-for-byte.
  *
- * ITERATIVE, deliberately (station#4307 review). The recursive form consumed
+ * ITERATIVE, deliberately (archive#4307 review). The recursive form consumed
  * one call frame per level and died with a `RangeError` at ~3.5k, but the
  * producer and the consumer on either side of it both survive far deeper:
  * `JSON.parse` is iterative in V8 (~200k levels) and `JSON.stringify` reaches

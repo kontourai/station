@@ -10,7 +10,7 @@ import {
 import { buildOrchestrationItems } from '../views/home/home-view-model';
 
 /**
- * station#3227 A2/A3/A4 + C1-C5.
+* archive#3227 A2/A3/A4 +.
  *
  * `sessionDisplay.ts` owns three derivations — the name a session is listed
  * under, the project it is attributed to, and the engine that ran it — and
@@ -48,7 +48,7 @@ function homeRow(s: OrchestrationSessionSummary) {
 }
 
 /**
- * The #3139 shape, exactly: an attached external session the server never
+ * The archive#3139 shape, exactly: an attached external session the server never
  * titled, whose thread id is a content-derived digest. `humanizeId` is a
  * NO-OP on it — it strips a leading `task[:-]?` and swaps `[-_]` for spaces,
  * and this string has none of those — which is what made the raw digest
@@ -71,10 +71,10 @@ describe('A2/C1-C3: one session, one name', () => {
     const canonical = sessionTitle(ATTACHED_UNTITLED);
     expect(canonical).toBe('Claude Code session');
 
-    // Home built `${agentLabel} task` here -> "Claude Code task".
+// Home built `${agentLabel} task` here -> "Claude Code task".
     expect(homeRow(ATTACHED_UNTITLED).title).toBe(canonical);
-    // The detail header returned `humanizeId(threadId) || threadId` -> the
-    // raw digest. This is the assertion #3139 never got.
+// The detail header returned `humanizeId(threadId) || threadId` -> the
+ // raw digest. This is the assertion archive#3139 never got.
     expect(mutableSessionTitle(ATTACHED_UNTITLED, [])).toBe(canonical);
   });
 
@@ -82,9 +82,9 @@ describe('A2/C1-C3: one session, one name', () => {
     const canonical = sessionTitle(DELEGATED_WITH_TASK_ID);
     expect(canonical).toBe('Worker task · delegated review');
 
-    // Home stripped the prefix with a different regex and Title-Cased the
-    // remainder -> "Delegated Review", a string that looks like a
-    // human-written title but is a machine id.
+// Home stripped the prefix with a different regex and Title-Cased the
+// remainder -> "Delegated Review", a string that looks like a
+// human-written title but is a machine id.
     expect(homeRow(DELEGATED_WITH_TASK_ID).title).toBe(canonical);
     expect(mutableSessionTitle(DELEGATED_WITH_TASK_ID, [])).toBe(canonical);
   });
@@ -96,14 +96,14 @@ describe('A2/C1-C3: one session, one name', () => {
     });
     expect(sessionTitle(titled)).toBe('Ship the Home history fix');
     expect(homeRow(titled).title).toBe('Ship the Home history fix');
-    // The detail header never read `displayTitle` at all, which is precisely
-    // how a NAMED row opened onto a header showing a raw thread id.
+// The detail header never read `displayTitle` at all, which is precisely
+// how a NAMED row opened onto a header showing a raw thread id.
     expect(mutableSessionTitle(titled, [])).toBe('Ship the Home history fix');
   });
 
   test('the live feed’s own first prompt still outranks the summary in the detail header', () => {
-    // The one deliberate divergence, and it is a strict refinement: the
-    // header has the event stream, which no helper over a summary can see.
+// The one deliberate divergence, and it is a strict refinement: the
+// header has the event stream, which no helper over a summary can see.
     const events = [
       { method: 'turn.started', prompt: '  Fix the flaky lane  ' },
     ] as unknown as OrchestrationEvent[];
@@ -166,7 +166,7 @@ describe('A2: no naming path can return a raw thread id', () => {
         expect(rendered).not.toBe(subject.threadId);
         expect(rendered.trim()).not.toBe('');
       }
-      // And they are not merely all non-raw — they are the SAME string.
+// And they are not merely all non-raw — they are the SAME string.
       expect(new Set(names).size).toBe(1);
     });
   }
@@ -178,8 +178,8 @@ describe('A3: Home attributes a project the way the contract requires', () => {
       controlMode: 'read-only-attached',
       projectAttribution: { state: 'ambiguous', candidates: ['alpha', 'beta'] },
     });
-    // `packages/contracts/src/orchestration.ts` forbids exactly the string
-    // Home used to render here: "no project" when the truth is "too many".
+// `packages/contracts/src/orchestration.ts` forbids exactly the string
+// Home used to render here: "no project" when the truth is "too many".
     expect(homeRow(ambiguous).projectLabel).toBe('ambiguous (alpha, beta)');
     expect(homeRow(ambiguous).projectLabel).toBe(
       sessionProjectLabel(ambiguous),
@@ -201,12 +201,12 @@ describe('A3: Home attributes a project the way the contract requires', () => {
   });
 
   test('a cross-machine slug join keeps its caveat on a Home row', () => {
-    // NOTE the shape: the server sets a session's top-level `projectSlug`
-    // FROM `delegation.projectSlug` when there is one, so both are present.
-    // Home read only the top-level one, so it showed the slug but SILENTLY
-    // DROPPED the caveat — the row asserted a verified binding that this
-    // Station cannot prove, while the sessions list one click away said the
-    // name match was unverified.
+// NOTE the shape: the server sets a session's top-level `projectSlug`
+// FROM `delegation.projectSlug` when there is one, so both are present.
+// Home read only the top-level one, so it showed the slug but SILENTLY
+// DROPPED the caveat — the row asserted a verified binding that this
+// Station cannot prove, while the sessions list one click away said the
+// name match was unverified.
     const delegated = session({
       projectSlug: 'station',
       delegation: {
@@ -233,7 +233,7 @@ describe('A3: Home attributes a project the way the contract requires', () => {
 });
 
 /**
- * station#3227 A3 + the `activity-bars.tsx` / `PulseHomeVariant.tsx` grouping
+ * archive#3227 A3 + the `activity-bars.tsx` / `PulseHomeVariant.tsx` grouping
  * key. This is the part of the change that is NOT display-only, so it is
  * pinned as behaviour rather than as copy.
  *
@@ -301,21 +301,21 @@ describe('A3: Home’s project grouping keys off what is proven', () => {
 });
 
 describe('A4/C5: one provider table', () => {
-  /**
-   * The four the audit named plus the two that already agreed (so the
-   * agreement is pinned rather than assumed) and one this build has no name
-   * for. `agentLabel` is the field Home reached the private table through:
-   * it falls back to the provider only when no agent name and no assigned
-   * slug resolve — i.e. exactly the attached/external population.
-   */
+/**
+* The four the audit named plus the two that already agreed (so the
+* agreement is pinned rather than assumed) and one this build has no name
+* for. `agentLabel` is the field Home reached the private table through:
+* it falls back to the provider only when no agent name and no assigned
+* slug resolve — i.e. exactly the attached/external population.
+*/
   const cases: Array<[string, string]> = [
     ['claude', 'Claude Code'],
     ['codex', 'Codex'],
     ['acp', 'Custom engine'],
-    // The four that disagreed. `bedrock`/`ollama`/`station-agent` are all
-    // Station's OWN engine — Bedrock and Ollama are Model connections it
-    // executes through — so Home naming them after the connection put the
-    // word "Bedrock" beside a Station engine icon.
+// The four that disagreed. `bedrock`/`ollama`/`station-agent` are all
+// Station's OWN engine — Bedrock and Ollama are Model connections it
+// executes through — so Home naming them after the connection put the
+// word "Bedrock" beside a Station engine icon.
     ['muse', 'Muse Code'],
     ['station-agent', 'Station'],
     ['bedrock', 'Station'],
@@ -327,18 +327,18 @@ describe('A4/C5: one provider table', () => {
       const subject = session({ provider });
       expect(engineLabelForProvider(provider)).toBe(expected);
       expect(homeRow(subject).agentLabel).toBe(expected);
-      // A4 compounds A2: the title's engine fallback reads the same table.
+// A4 compounds A2: the title's engine fallback reads the same table.
       expect(homeRow(subject).title).toBe(`${expected} session`);
     });
   }
 
   test('an id this build has no name for shows the id, not an invented name', () => {
-    // NOT in the audit, and the worst of the set: the private table
-    // Title-Cased any unrecognised provider into a plausible-looking product
-    // name ("unknown-plugin" -> "Unknown Plugin") for an adapter that may not
-    // be called that at all. `engineLabelForProvider` returns null precisely
-    // so callers fall back to the identifier they actually observed, which is
-    // what `sessionIconAgent` already did beside this very row.
+// NOT in the audit, and the worst of the set: the private table
+// Title-Cased any unrecognised provider into a plausible-looking product
+// name ("unknown-plugin" -> "Unknown Plugin") for an adapter that may not
+// be called that at all. `engineLabelForProvider` returns null precisely
+// so callers fall back to the identifier they actually observed, which is
+// what `sessionIconAgent` already did beside this very row.
     expect(engineLabelForProvider('unknown-plugin')).toBeNull();
     expect(homeRow(session({ provider: 'unknown-plugin' })).agentLabel).toBe(
       'unknown-plugin',

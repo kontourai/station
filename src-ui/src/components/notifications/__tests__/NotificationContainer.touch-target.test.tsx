@@ -1,37 +1,37 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3513. Same gap `BannerHost.touch-target.test.tsx` (station#3453)
+ * archive#3513. Same gap `BannerHost.touch-target.test.tsx` (archive#3453)
  * closed, found again in this component: `index.css`'s global mobile
  * touch-target net is a DESCENDANT selector
- * (`:is([class*="__actions"], [class*="__footer"], [class*="__toolbar"], ...)
- * > :is(button, a, .button, [role="button"])`), so it only reaches a control
+* (`:is([class*="__actions"], [class*="__footer"], [class*="__toolbar"],...)
+* > :is(button, a,.button, [role="button"])`), so it only reaches a control
  * that is a CHILD of one of those named wrappers. Three controls in this
  * component sit outside its reach:
  *
  * - `.notification-container__dismiss-all` (`NotificationContainer.tsx`) is a
- *   direct child of `.notification-container`, not of any `__actions`/
- *   `__footer`/`__toolbar` wrapper — its own declared `min-height: 36px`
- *   (`NotificationContainer.css`) is the only thing sizing it, at every
- *   viewport, with no mobile override anywhere in the file.
+*   direct child of `.notification-container`, not of any `__actions`/
+*   `__footer`/`__toolbar` wrapper — its own declared `min-height: 36px`
+*   (`NotificationContainer.css`) is the only thing sizing it, at every
+*   viewport, with no mobile override anywhere in the file.
  * - `.toast-card__dismiss` sits inside `.toast-card__header`, not
- *   `.toast-card__actions` — the net cannot reach it either. It has its own
- *   44px override, but it used to live at `@media (max-width: 640px)`, a
- *   *different* breakpoint from the shell's `@media (max-width: 768px)`, so a
- *   viewport between 641px and 768px (and 915x412, the exact landscape-phone
- *   geometry station#3453 measured) got the un-overridden 32x32 declaration.
- * - `.toast-card__link` (fix round finding) sits inside
- *   `.toast-card__conversation`, not `.toast-card__actions`, so the net
- *   cannot reach it either — and it had no override anywhere at all, at any
- *   viewport, the same as `.notification-container__dismiss-all`. It renders
- *   whenever a notification carries `conversationTitle` + `onNavigate`,
- *   which `toolActivityNotifications.ts` sets on essentially every
- *   tool-activity toast and `ToastContext.tsx` sets unconditionally
- *   (`conversationTitle` defaults to `'Conversation'`) for approvals — not a
- *   rare shape. An earlier version of this file's fixture set neither field,
- *   so this control never appeared in the enumerated audit below at all:
- *   the check's own docblock claimed "every interactive control" while
- *   deriving that claim from the fixture, not the component.
+*   `.toast-card__actions` — the net cannot reach it either. It has its own
+*   44px override, but it used to live at `@media (max-width: 640px)`, a
+*   *different* breakpoint from the shell's `@media (max-width: 768px)`, so a
+*   viewport between 641px and 768px (and 915x412, the exact landscape-phone
+*   geometry archive#3453 measured) got the un-overridden 32x32 declaration.
+* - `.toast-card__link` ( finding) sits inside
+*   `.toast-card__conversation`, not `.toast-card__actions`, so the net
+*   cannot reach it either — and it had no override anywhere at all, at any
+*   viewport, the same as `.notification-container__dismiss-all`. It renders
+*   whenever a notification carries `conversationTitle` + `onNavigate`,
+*   which `toolActivityNotifications.ts` sets on essentially every
+*   tool-activity toast and `ToastContext.tsx` sets unconditionally
+*   (`conversationTitle` defaults to `'Conversation'`) for approvals — not a
+*   rare shape. An earlier version of this file's fixture set neither field,
+*   so this control never appeared in the enumerated audit below at all:
+*   the check's own docblock claimed "every interactive control" while
+*   deriving that claim from the fixture, not the component.
  *
  * Same check shape as `BannerHost.touch-target.test.tsx`: render the REAL
  * `NotificationContainer` (via `@testing-library/react`, jsdom) with a
@@ -46,7 +46,7 @@
  * The approval queue is deliberately NOT in this fixture, for two different
  * reasons that do not both apply to both of its parts:
  * `.notification-approval-queue__trigger` renders whenever
- * `approvals.length > 0` — nothing gates it closed — but station#3513 is
+ * `approvals.length > 0` — nothing gates it closed — but archive#3513 is
  * scoped to the transient-toast controls named above, and the trigger
  * already clears the floor (measured independently at 180.08x44 — NOT
  * verified by this file, since it never renders here). Its PANEL's controls
@@ -170,7 +170,7 @@ function renderFixtureMarkup(): string {
  * (the same attribute a coarse-pointer tap on the collapsed stack sets,
  * `NotificationContainer.tsx`'s `expandStackOnCoarseTap`) matches the state
  * the cards are actually interactive in, so their measured size is the real
- * touch target rather than an artifact of the collapsed peek's `scale()`.
+* touch target rather than an artifact of the collapsed peek's `scale`.
  */
 function expandToastStack(markup: string): string {
   return markup.replace(
@@ -195,28 +195,28 @@ function buildFixtureHtml(): string {
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 /**
- * station#4177 INTERIM quarantine — WSL2 fleet-runner host class ONLY. With
- * #4170's provisioning live, this file's real-Chromium assertions executed on
+ * archive#4177 INTERIM quarantine — WSL2 fleet-runner host class ONLY. With
+ * archive#4170's provisioning live, this file's real-Chromium assertions executed on
  * the runner's Chromium for the first time ever and failed there while green
  * on macOS Chromium — the same never-green-baseline shape as the
  * verification-coordinator family (WSL2 Chromium rendering metrics; evidence
- * on station#4177). On a WSL host the real-Chromium cases skip and the
- * sentinel below names the skip with the #4177 reason; the missing-Chromium
+ * on archive#4177). On a WSL host the real-Chromium cases skip and the
+ * sentinel below names the skip with the archive#4177 reason; the missing-Chromium
  * fail-loud sentinel keeps its behavior on ALL hosts. The open fix is WSL
  * compatibility, not this skip.
  */
 const wslQuarantinedHost = isWslHost();
 
 /**
- * Three viewports, each proving a different half of station#3513:
+ * Three viewports, each proving a different half of archive#3513:
  * - 390x844: an ordinary portrait phone, well under every breakpoint in play
- *   — `.notification-container__dismiss-all` has no breakpoint that helps it
- *   at all, so this alone is enough to catch that defect.
+* `.notification-container__dismiss-all` has no breakpoint that helps it
+*   at all, so this alone is enough to catch that defect.
  * - 700x900 coarse: inside the 641-768px gap between the shell's 768px net
- *   and `.toast-card__dismiss`'s old 640px override — the case that made the
- *   two controls different defects, not the same one.
- * - 915x412 coarse: the exact landscape-phone geometry station#3453 measured
- *   for the same class of defect.
+*   and `.toast-card__dismiss`'s old 640px override — the case that made the
+*   two controls different defects, not the same one.
+ * - 915x412 coarse: the exact landscape-phone geometry archive#3453 measured
+*   for the same class of defect.
  */
 const VIEWPORTS = [
   { width: 390, height: 844 },
@@ -238,12 +238,12 @@ describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
     });
 
     for (const viewport of VIEWPORTS) {
-      // Named for what this fixture renders, not for the component: the
-      // approval-queue trigger is a control NotificationContainer renders and
-      // this file never measures (see the docblock). Claiming "every control"
-      // in the name is the same defect one layer up from the one this file
-      // exists to catch — a control outside the fixture's reach reads as
-      // covered because the enumeration derives from the fixture.
+// Named for what this fixture renders, not for the component: the
+// approval-queue trigger is a control NotificationContainer renders and
+// this file never measures (see the docblock). Claiming "every control"
+// in the name is the same defect one layer up from the one this file
+// exists to catch — a control outside the fixture's reach reads as
+// covered because the enumeration derives from the fixture.
       test(`every interactive control this fixture renders clears the touch-target floor at ${viewport.width}x${viewport.height} coarse`, async () => {
         const page = await browser.newPage({
           viewport,
@@ -262,16 +262,16 @@ describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
               (await controls.nth(i).getAttribute('class')) ?? '',
             );
           }
-          // Exact, ORDERED membership — see BannerHost.touch-target.test.tsx
-          // for why a bare count cannot substitute for this, and why it
-          // matters even more here: this exact list is what caught
-          // `.toast-card__link` being silently absent from every prior
-          // version of this fixture. DOM order here is fixed by
-          // NotificationContainer.tsx's render: dismiss-all first, then the
-          // toast stack front-to-back; within one card, `.toast-card__link`
-          // (inside the header's content div, when conversationTitle +
-          // onNavigate are set) before that card's own dismiss button,
-          // before its (optional) action row.
+// Exact, ORDERED membership — see BannerHost.touch-target.test.tsx
+// for why a bare count cannot substitute for this, and why it
+// matters even more here: this exact list is what caught
+// `.toast-card__link` being silently absent from every prior
+// version of this fixture. DOM order here is fixed by
+// NotificationContainer.tsx's render: dismiss-all first, then the
+// toast stack front-to-back; within one card, `.toast-card__link`
+// (inside the header's content div, when conversationTitle +
+// onNavigate are set) before that card's own dismiss button,
+// before its (optional) action row.
           expect(
             classNames,
             `expected exactly these controls under .notification-container, ` +

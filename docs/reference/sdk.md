@@ -213,7 +213,7 @@ const visibleModels =
 
 #### `useContributedModelManifestQuery(): FleetContributionManifest`
 
-Reads `GET /api/connections/model-inventory`, which since station#1398 slice 2 returns the **contributed-subset manifest** (`station.fleet-contribution/v1`) behind the `inference:invoke` pairing scope — not the full `station.model-inventory/v2` launchable inventory it used to return. Renamed from `useLaunchableModelInventoryQuery` deliberately: a silent re-type under the old name would have compiled everywhere while meaning something else. The non-React `fetchContributedModelManifest()` export returns the same body. A client paired with a `read-only`, `standard`, or `delegation` preset now receives 403; re-pair with the `inference` preset. Connection save, delete, health-test, and smoke mutations invalidate the query automatically.
+Reads `GET /api/connections/model-inventory`, which since archive#1398 slice 2 returns the **contributed-subset manifest** (`station.fleet-contribution/v1`) behind the `inference:invoke` pairing scope — not the full `station.model-inventory/v2` launchable inventory it used to return. Renamed from `useLaunchableModelInventoryQuery` deliberately: a silent re-type under the old name would have compiled everywhere while meaning something else. The non-React `fetchContributedModelManifest()` export returns the same body. A client paired with a `read-only`, `standard`, or `delegation` preset now receives 403; re-pair with the `inference` preset. Connection save, delete, health-test, and smoke mutations invalidate the query automatically.
 
 #### `useAgentConnectionQuery(id: EngineConnectionId): AgentConnectionView | null`
 
@@ -391,7 +391,7 @@ catalogue could not be read, so `capabilities` is unknown rather than empty.
 
 Available for any consumer that decides whether a model supports something —
 the list-only hook below cannot express "not queryable". Nothing reads it yet:
-#3344's `useModelImageSupport` answers the per-model question from the list
+archive#3344's `useModelImageSupport` answers the per-model question from the list
 view, where an unmatched row is already `'unknown'`. This hook is what a
 consumer needs to tell an EMPTY catalogue (no AWS credentials, nothing knowable
 about any model) from a complete one that genuinely lists no match.
@@ -534,7 +534,7 @@ catalogue could not be read, so `capabilities` is unknown rather than empty.
 
 Available for any consumer that decides whether a model supports something —
 the list-only hook below cannot express "not queryable". Nothing reads it yet:
-#3344's `useModelImageSupport` answers the per-model question from the list
+archive#3344's `useModelImageSupport` answers the per-model question from the list
 view, where an unmatched row is already `'unknown'`. This hook is what a
 consumer needs to tell an EMPTY catalogue (no AWS credentials, nothing knowable
 about any model) from a complete one that genuinely lists no match.
@@ -775,7 +775,7 @@ Fetches provider override state for a plugin. Disabled when `pluginName` is unde
 
 Installs a plugin from a source URL. Invalidates plugins, layouts, and agents caches on success.
 
-`consent` is required (station#4288). It is the operator's decision, taken from
+`consent` is required (archive#4288). It is the operator's decision, taken from
 the preview they read: the permission set the preview derived, the digest of
 the bytes it staged, and the dependency ids it resolved. The server re-derives
 all three from its own staged copy and refuses — before writing anything — when

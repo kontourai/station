@@ -97,10 +97,10 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     window.history.replaceState({}, '', '/connections/providers');
   });
 
-  // station#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
-  // `loading` prop but the query's `error` was never passed through, so a
-  // settled read failure rendered the same "no model connections" empty
-  // state as a host with none configured.
+// archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
+// `loading` prop but the query's `error` was never passed through, so a
+// settled read failure rendered the same "no model connections" empty
+// state as a host with none configured.
   test('renders the providers list error state with retry when the model-connections query fails', () => {
     modelConnections = [];
     modelConnectionsError = new Error('model connections unavailable');
@@ -123,26 +123,26 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(button.disabled).toBe(false);
   });
 
-  // station#4463 slice 2 fix round (H2a, then M2/M3 delta review round 3):
-  // four states through the real view, each with exactly ONE empty message
-  // — the detail panel's own "nothing to select" label used to restate
-  // whichever fact the list pane had already stated (genuinely-empty OR
-  // filtered-to-nothing), and a typed query over an already-empty
-  // collection used to misattribute the emptiness to the search.
+// archive#4463 (then /):
+// four states through the real view, each with exactly ONE empty message
+// the detail panel's own "nothing to select" label used to restate
+// whichever fact the list pane had already stated (genuinely-empty OR
+// filtered-to-nothing), and a typed query over an already-empty
+// collection used to misattribute the emptiness to the search.
   describe('exactly one empty message per state (H2a, M2, M3)', () => {
     test('genuinely empty: the list states the fact, the detail panel does not restate it', () => {
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
-      // The list pane's own listEmptyTitle (H2a) is the ONE place this is
-      // said — the detail panel's compact Empty is suppressed entirely
-      // (M2: llmEmbeddingProviders.length === 0).
+ // The list pane's own listEmptyTitle is the ONE place this is
+// said — the detail panel's compact Empty is suppressed entirely
+ // (: llmEmbeddingProviders.length === 0).
       expect(screen.getAllByText('No model connections yet')).toHaveLength(1);
       expect(
         screen.queryByText('Add a model connection to power chats and agents.'),
       ).toBeNull();
       expect(screen.queryByText('Select a model connection')).toBeNull();
-      // The quickstart/detected-actions panel and the (always-useful)
-      // provider stack overview still stand alone.
+// The quickstart/detected-actions panel and the (always-useful)
+// provider stack overview still stand alone.
       expect(
         screen.getByRole('button', { name: /Add detected Ollama/ }),
       ).toBeTruthy();
@@ -175,12 +175,12 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
           'Nothing in model connections matches “zzz-does-not-match”',
         ),
       ).toBeTruthy();
-      // M2: a connection exists but is filtered off the list, so the detail
-      // panel's "Select a model connection" is ALSO suppressed now — it
-      // would otherwise be a second message on top of FilteredEmpty.
+ // a connection exists but is filtered off the list, so the detail
+// panel's "Select a model connection" is ALSO suppressed now — it
+// would otherwise be a second message on top of FilteredEmpty.
       expect(screen.queryByText('Select a model connection')).toBeNull();
-      // The (always-useful, unfiltered) provider stack overview still
-      // shows the real connection regardless of the list's search.
+// The (always-useful, unfiltered) provider stack overview still
+// shows the real connection regardless of the list's search.
       expect(
         screen.getByRole('button', { name: /Bedrock · Prod/ }),
       ).toBeTruthy();
@@ -206,9 +206,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       expect(screen.getAllByText('Select a model connection')).toHaveLength(1);
     });
 
-    // M3: modelConnections is EMPTY (nothing exists regardless of the
-    // query), so a typed query must not make this read as "your search
-    // matched nothing" — collectionEmpty routes it to the plain empty state.
+ // modelConnections is EMPTY (nothing exists regardless of the
+// query), so a typed query must not make this read as "your search
+// matched nothing" — collectionEmpty routes it to the plain empty state.
     test('empty collection + a typed query: the plain empty state, never "Nothing matches"', () => {
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
@@ -276,10 +276,10 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     );
     fireEvent.click(screen.getByRole('button', { name: 'Hide Claude Sonnet' }));
 
-    // station#settings-revamp slice 3 (#1359 convergence): model-picker
-    // preferences now live in the registry-driven envelope's
-    // `modelPickerPreferences` entry, not the retired
-    // `station.device-settings` root.
+ // archive#settings-revamp (archive#1359 convergence): model-picker
+// preferences now live in the registry-driven envelope's
+// `modelPickerPreferences` entry, not the retired
+// `station.device-settings` root.
     const saved = deviceSettingsStore.get('modelPickerPreferences');
     expect(saved.favorites).toContain('bedrock-prod\u001fsonnet');
     expect(saved.hidden).toContain('bedrock-prod\u001fsonnet');
@@ -289,9 +289,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     ]);
   });
 
-  // 6-OPS-27 — the list rail carried no readiness at all (a green dot meaning
-  // `enabled`) while the hub card for the same connection asserted "Ready".
-  // One resolver feeds both, so they cannot disagree about one connection.
+// 6- — the list rail carried no readiness at all (a green dot meaning
+// `enabled`) while the hub card for the same connection asserted "Ready".
+// One resolver feeds both, so they cannot disagree about one connection.
   test('the provider list carries the same readiness the hub card does', () => {
     modelConnections = [
       {
@@ -320,9 +320,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(screen.getByText(/Saved — not verified · LLM/)).toBeTruthy();
   });
 
-  // RT-17 — agent delete has always opened a confirm modal; provider delete
-  // was a single click that removed the connection and its saved API key from
-  // disk with no confirmation of any kind.
+// agent delete has always opened a confirm modal; provider delete
+// was a single click that removed the connection and its saved API key from
+// disk with no confirmation of any kind.
   test('provider delete confirms before removing the connection', () => {
     modelConnections = [
       {
@@ -366,12 +366,12 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(deleteMutate).toHaveBeenCalledWith('anthropic-1');
   });
 
-  // The draft stays on `new` until it is created. It used to navigate to the
-  // not-yet-created id the moment a type was picked, which reads fine here —
-  // this suite re-renders the SAME component instance — but the app shell
-  // remounts a route subtree when the route's identity changes, and the id is
-  // part of that identity. In the product that navigation threw the draft
-  // away and left a blank pane with no Create button.
+// The draft stays on `new` until it is created. It used to navigate to the
+// not-yet-created id the moment a type was picked, which reads fine here —
+// this suite re-renders the SAME component instance — but the app shell
+// remounts a route subtree when the route's identity changes, and the id is
+// part of that identity. In the product that navigation threw the draft
+// away and left a blank pane with no Create button.
   test('continues the deep-linked new selection into a resumable setup draft', async () => {
     render(
       <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,
@@ -392,9 +392,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       'open',
       true,
     );
-    // The route may move to `new` (a stable identity for a draft) but never
-    // to a generated id the server has never heard of — that navigation is
-    // what destroyed the draft.
+// The route may move to `new` (a stable identity for a draft) but never
+// to a generated id the server has never heard of — that navigation is
+// what destroyed the draft.
     for (const call of onNavigate.mock.calls) {
       expect(call[0]).toEqual({ type: 'connections-provider-edit', id: 'new' });
     }
@@ -507,9 +507,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     fireEvent.click(
       screen.getByRole('button', { name: /Add detected Ollama/ }),
     );
-    // Quick setup composes the draft and moves the route to `new`, which the
-    // app shell does for real; mirror it here, then read the id from what the
-    // create posts (the draft's id never appears in a navigation).
+// Quick setup composes the draft and moves the route to `new`, which the
+// app shell does for real; mirror it here, then read the id from what the
+// create posts (the draft's id never appears in a navigation).
     view.rerender(
       <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,
     );
@@ -574,9 +574,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     );
   });
 
-  // LOW-1 / TESTS(d) (review fix round): saving a Bedrock connection must
-  // persist only the fields the selected authMode uses — a stale apiKey
-  // left over from a prior mode switch must never reach the saved config.
+// / TESTS(d) : saving a Bedrock connection must
+// persist only the fields the selected authMode uses — a stale apiKey
+// left over from a prior mode switch must never reach the saved config.
   test('saving a profile-mode Bedrock connection omits the unused apiKey field entirely', () => {
     const selectedId = 'bedrock-conn';
     modelConnections = [
@@ -618,9 +618,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(savedArgs.connection.config).not.toHaveProperty('apiKey');
   });
 
-  // HIGH-2 (review fix round): Save must be disabled — not merely
-  // stripped-on-save — while a profile/api-key mode's required field is
-  // still empty.
+// Save must be disabled — not merely
+// stripped-on-save — while a profile/api-key mode's required field is
+// still empty.
   test('disables Save for a profile-mode Bedrock connection with no profile chosen yet', () => {
     const selectedId = 'bedrock-conn-incomplete';
     modelConnections = [
@@ -699,7 +699,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
   const onNavigate = vi.fn();
   const PROVIDER_ID = 'ollama-existing';
 
-  // What the server currently has: no default model chosen yet.
+// What the server currently has: no default model chosen yet.
   const storedConnection = () => ({
     id: PROVIDER_ID,
     kind: 'model',
@@ -733,10 +733,10 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
       target: { value: 'qwen3:30b' },
     });
 
-    // Test Connection triggers a provider refetch; a background refetch shortly
-    // after page load does the same. Either way fresh server data arrives as a
-    // new array identity while the field is dirty — and the server copy still
-    // has no defaultModel, because the user has not saved yet.
+// Test Connection triggers a provider refetch; a background refetch shortly
+// after page load does the same. Either way fresh server data arrives as a
+// new array identity while the field is dirty — and the server copy still
+// has no defaultModel, because the user has not saved yet.
     modelConnections = [storedConnection()];
     view.rerender(
       <ProviderSettingsView
@@ -772,8 +772,8 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
       target: { value: 'qwen3:30b' },
     });
 
-    // Only the model was edited. A refetch carrying a rename made elsewhere
-    // must land — merging, not freezing the form, is the point.
+// Only the model was edited. A refetch carrying a rename made elsewhere
+// must land — merging, not freezing the form, is the point.
     modelConnections = [{ ...storedConnection(), name: 'Renamed elsewhere' }];
     view.rerender(
       <ProviderSettingsView
@@ -782,7 +782,7 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
       />,
     );
 
-    // The Name label carries no htmlFor, so match the input by its value.
+// The Name label carries no htmlFor, so match the input by its value.
     expect(screen.getByDisplayValue('Renamed elsewhere')).toBeTruthy();
     expect(
       (screen.getByLabelText('Default model') as HTMLInputElement).value,
@@ -790,10 +790,10 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
   });
 
   test("an edit made while a save is in flight survives that save's own refetch", () => {
-    // handleSave snapshots the payload, so anything typed during the round trip
-    // was never sent. Clearing the whole dirty set on success would let the
-    // save's own invalidation revert it — the same silent drop this file fixes,
-    // narrowed to the round-trip window.
+// handleSave snapshots the payload, so anything typed during the round trip
+// was never sent. Clearing the whole dirty set on success would let the
+// save's own invalidation revert it — the same silent drop this file fixes,
+// narrowed to the round-trip window.
     const view = render(
       <ProviderSettingsView
         selectedProviderId={PROVIDER_ID}
@@ -806,12 +806,12 @@ describe('ProviderSettingsView — server refetch must not clobber edits (#794)'
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    // Still typing while the request is out.
+// Still typing while the request is out.
     fireEvent.change(screen.getByLabelText('Default model'), {
       target: { value: 'llama3.2' },
     });
 
-    // The save resolves with only what was submitted, then its refetch lands.
+// The save resolves with only what was submitted, then its refetch lands.
     act(() => {
       saveMutationOptions.onSuccess?.({ id: PROVIDER_ID }, undefined);
     });

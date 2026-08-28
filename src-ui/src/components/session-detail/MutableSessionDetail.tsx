@@ -39,8 +39,8 @@ export type SessionEvidenceReveal = {
 /**
  * The mutable (station-owned, still-live-or-terminal) session detail page.
  * State/query/mutation wiring lives in `useMutableSessionDetailState`
- * (station#1204 AC1); this component owns only the render tree, composed
- * from the header/errors/attention/diagnostics sections (AC2) plus the
+ * (archive#1204); this component owns only the render tree, composed
+ * from the header/errors/attention/diagnostics sections plus the
  * task-context, live-request, and compose blocks that don't warrant their
  * own file yet.
  */
@@ -101,25 +101,25 @@ export function MutableSessionDetail({
 
   const threadId = session.threadId;
 
-  // The evidence region: the context list below holds the receipts-backed
-  // "Last user action" row (plus linked flow/builder runs), and the
-  // diagnostics log sits directly under it in the same scroll region — so
-  // scrolling the list's start into view presents both.
+// The evidence region: the context list below holds the receipts-backed
+// "Last user action" row (plus linked flow/builder runs), and the
+// diagnostics log sits directly under it in the same scroll region — so
+// scrolling the list's start into view presents both.
   const evidenceRegionRef = useRef<HTMLDListElement | null>(null);
   const revealedEvidenceTokenRef = useRef<number | null>(null);
   useEffect(() => {
     if (!evidenceReveal || evidenceReveal.threadId !== threadId) return;
     if (revealedEvidenceTokenRef.current === evidenceReveal.token) return;
-    // Consume the token BEFORE acting: an intent whose target is absent is a
-    // completed no-op, never a scroll deferred to some surprising later
-    // render.
+// Consume the token BEFORE acting: an intent whose target is absent is a
+// completed no-op, never a scroll deferred to some surprising later
+// render.
     revealedEvidenceTokenRef.current = evidenceReveal.token;
     const region = evidenceRegionRef.current;
     if (!region) return;
-    // Same shape as `revealHomeRegion` (views/home/home-reveal.ts): a plain
-    // positioned scroll — jsdom implements none of it, hence the guard —
-    // then focus, so a keyboard or screen-reader user lands IN the region
-    // rather than having it painted behind a still-parked focus ring.
+// Same shape as `revealHomeRegion` (views/home/home-reveal.ts): a plain
+// positioned scroll — jsdom implements none of it, hence the guard —
+// then focus, so a keyboard or screen-reader user lands IN the region
+// rather than having it painted behind a still-parked focus ring.
     if (typeof region.scrollIntoView === 'function') {
       region.scrollIntoView({ block: 'start' });
     }
@@ -159,7 +159,7 @@ export function MutableSessionDetail({
         onCopySessionId={copySessionId}
       />
 
-      {/* station#3305: one scroll region for everything between the pinned
+{/* archive#3305: one scroll region for everything between the pinned
           header and the pinned request/compose controls. The previous fixed
           grid template assigned one flexible row by position, so any other
           section that grew (error stacks, multiple attention cards, the
@@ -212,7 +212,7 @@ export function MutableSessionDetail({
               </dd>
             </div>
           )}
-          {/* station#189 S4. Its own row, always — never merged into "Linked
+{/* archive#189. Its own row, always — never merged into "Linked
             Flow" above and never suppressed by it. They are two different
             runs with independent lifecycles, and a session routinely has one
             and not the other; one combined figure is how a permanently
@@ -239,7 +239,7 @@ export function MutableSessionDetail({
                     {sidecarWriteProvenance(builderRun.sidecarUpdatedAt)}
                   </p>
                 ) : (
-                  /* Only for a sidecar that was actually READ. A binding whose
+/* Only for a sidecar that was actually READ. A binding whose
                    sidecar could not be opened is a broken binding, not a run
                    that has yet to publish, and saying otherwise would assert
                    a currency nobody has — directly above the true reason. */
@@ -281,7 +281,7 @@ export function MutableSessionDetail({
         />
       </div>
 
-      {/* Review MEDIUM (station#1170): guarded on !isStopped like Stop task
+ {/* (archive#1170): guarded on !isStopped like Stop task
           and the live indicator above — a session that crashes mid-request
           must not leave Approve/Decline clickable against a dead session.
           Stopped (`completed`/`failed`/`canceled`), not terminal
@@ -303,7 +303,7 @@ export function MutableSessionDetail({
             </span>
             <strong>{pendingRequest.title}</strong>
           </div>
-          {/* station#1781 AC4: the card RENDERS for an unanswerable session —
+{/* archive#1781: the card RENDERS for an unanswerable session —
               deleting it would be the silent filtering ADR 0012 forbids, and
               the request really is still open. What it must not do is offer
               Approve/Deny that dispatch into nothing, so the buttons are
@@ -375,7 +375,7 @@ export function MutableSessionDetail({
               {isDelegated ? 'Continue' : 'Send'}
             </Button>
           </div>
-          {/* Honest limit: there is no mid-turn steering server-side
+{/* Honest limit: there is no mid-turn steering server-side
               (SDK-blocked); input lands as the next turn once the current
               one settles. */}
           <p className="sessions-detail__note">

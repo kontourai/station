@@ -3,12 +3,12 @@
  */
 
 /**
- * station#1312 review (should-fix #2): `conversationsStore.fetchMessages`
+ * archive#1312 (should-fix #2): `conversationsStore.fetchMessages`
  * swallows its own errors and leaves `messages` as `[]` — before this fix,
  * `useOpenConversation` awaited it unconditionally and always "succeeded,"
  * so an orchestration row whose agent exists but whose conversation fetch
  * 404s/errors rehydrated into a live, permanently EMPTY chat tab with no
- * visible error. That is a regression against the pre-station#1297
+ * visible error. That is a regression against the pre-archive#1297
  * always-navigate-to-/activity fallback for that population. These tests
  * pin the fix: a failed fetch tears the just-created tab back down
  * (`removeChat`) and resolves `null` so `useChatDockActions`' `openConversation`
@@ -54,7 +54,7 @@ import {
   useOpenConversation,
 } from '../hooks/useActiveChatSessionLifecycle';
 
-// station#1311 review: `useOpenConversation` now also calls `useQueryClient()`
+// archive#1311: `useOpenConversation` now also calls `useQueryClient`
 // (to resolve a reopened conversation's real `updatedAt` — see
 // `resolveConversationUpdatedAt`), so every `renderHook` needs a
 // `QueryClientProvider` in its tree; an empty, otherwise-unused client is
@@ -107,14 +107,14 @@ describe('useOpenConversation fetch-failure handling', () => {
     );
 
     expect(sessionId).toBeNull();
-    // The tab was created (initChat) before the fetch resolved...
+// The tab was created (initChat) before the fetch resolved...
     expect(mocks.initChat).toHaveBeenCalledTimes(1);
     expect(mocks.initChat).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ title: 'New chat' }),
     );
     const createdSessionId = mocks.initChat.mock.calls[0][0];
-    // ...and then torn back down — no orphan tab left in the store.
+//.and then torn back down — no orphan tab left in the store.
     expect(mocks.removeChat).toHaveBeenCalledWith(createdSessionId);
     expect(mocks.updateChat).not.toHaveBeenCalled();
   });

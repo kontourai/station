@@ -29,7 +29,7 @@ export function ProjectSidebarNav({
   const activeSurface = APP_SURFACE_REGISTRY.getSurfaceForView(
     resolveViewFromPath(activePath ?? window.location.pathname),
   );
-  // station#3313: pass the live flags through — calling getSidebar() with no
+  // archive#3313: pass the live flags through — calling getSidebar with no
   // flags meant a previewFlag-gated surface could never appear here, even
   // after its preview (or the developer-tools setting) was enabled.
   const sidebarSurfaces = APP_SURFACE_REGISTRY.getSidebar(
@@ -37,7 +37,7 @@ export function ProjectSidebarNav({
   );
   const pendingSurfaceId = usePendingRouteSurfaceId();
 
-  // SHELL-15: `Customize` and `System` used to be mutually exclusive
+  // `Customize` and `System` used to be mutually exclusive
   // accordions whose open state was DERIVED FROM THE ROUTE — exactly one
   // could be open, and on Home neither was, so every one of the nine
   // management destinations cost two clicks from Home and every cross-group
@@ -59,7 +59,7 @@ export function ProjectSidebarNav({
   const renderRow = (surface: SurfaceDefinition) => {
     const label = surface.label();
     const isActive = activeSurface?.id === surface.id;
-    // SHELL-05: the route chunk takes ~1.4 s to arrive on a cold surface, and
+    // the route chunk takes ~1.4 s to arrive on a cold surface, and
     // the row the user clicked said nothing for all of it. `pendingSurfaceId`
     // is the suspended route outlet itself, not a timer started at click, and
     // it is resolved through the same `getSurfaceForView` that decides which
@@ -80,7 +80,7 @@ export function ProjectSidebarNav({
         }}
         title={collapsed ? label : undefined}
         aria-label={label}
-        // station#2652: a stable anchor per management group so the
+        // archive#2652: a stable anchor per management group so the
         // first-run tour can point at a real nav affordance. Derived
         // from the registry's semantic owner, so a group added or
         // renamed later carries its anchor without a parallel list.

@@ -27,17 +27,17 @@ import { selectClientWorkspacePaneRenderer } from './workspacePaneRendererSelect
 type CatalogAvailabilityEntry = {
   descriptorId: WorkspacePaneDescriptor['id'];
   instanceId?: WorkspacePaneInstance['instanceId'];
-  /** Server-owned, bounded availability facts; the host adds its renderer fact. */
+/** Server-owned, bounded availability facts; the host adds its renderer fact. */
   input?: WorkspacePaneAvailabilityInput;
   availability: PaneAvailability;
 };
 
 type WorkspacePaneCatalogSnapshot = {
-  /** Canonical Project identity issued by the catalog route. */
+/** Canonical Project identity issued by the catalog route. */
   projectId: string;
   descriptors: readonly WorkspacePaneDescriptor[];
   instances: readonly WorkspacePaneInstance[];
-  /** Optional only while an older server/SDK pair is in flight. */
+/** Optional only while an older server/SDK pair is in flight. */
   availability?: readonly CatalogAvailabilityEntry[];
 };
 
@@ -49,14 +49,14 @@ export type ClientWorkspacePaneRendererPresence =
 export interface ResolvedWorkspacePaneCatalogEntry
   extends WorkspacePaneAvailabilityCatalogEntry {
   descriptor: WorkspacePaneDescriptor;
-  /** Absent for a known descriptor which has not yet been placed. */
+/** Absent for a known descriptor which has not yet been placed. */
   instance?: WorkspacePaneInstance;
-  /**
-   * Client-side component registration, deliberately separate from the
-   * resolver result. Presence here never proves the renderer executed.
-   */
+/**
+* Client-side component registration, deliberately separate from the
+* resolver result. Presence here never proves the renderer executed.
+*/
   clientRendererPresence: ClientWorkspacePaneRendererPresence;
-  /** Exact declared renderer selected from host facts; absent when none qualify. */
+/** Exact declared renderer selected from host facts; absent when none qualify. */
   selectedRenderer?: Extract<
     ReturnType<typeof selectClientWorkspacePaneRenderer>,
     { state: 'selected' }
@@ -64,10 +64,10 @@ export interface ResolvedWorkspacePaneCatalogEntry
 }
 
 export interface ResolvedWorkspacePaneCatalog {
-  /** Absent only while an older server has not issued a canonical identity. */
+/** Absent only while an older server has not issued a canonical identity. */
   projectId?: string;
   entries: readonly ResolvedWorkspacePaneCatalogEntry[];
-  /** A display fact for responsive presentation, never a capability verdict. */
+/** A display fact for responsive presentation, never a capability verdict. */
   platform: Pick<PlatformProfile, 'target' | 'isMobile' | 'isDesktop'>;
   rendererGate: 'remote-isolation' | null;
 }
@@ -180,11 +180,11 @@ export function resolveWorkspacePaneCatalogPresentation(
       descriptor,
       ...(instance ? { instance } : {}),
       availability,
-      // Remote isolation can only explain a renderer absence when this
-      // descriptor is POSITIVELY plugin-hosted. "Not in the builtin registry"
-      // is not that claim — mcp-tool-ui and standard-data renderers are also
-      // absent from it, and enabling extensions repairs none of them (sol
-      // delta review of #2640).
+// Remote isolation can only explain a renderer absence when this
+// descriptor is POSITIVELY plugin-hosted. "Not in the builtin registry"
+// is not that claim — mcp-tool-ui and standard-data renderers are also
+// absent from it, and enabling extensions repairs none of them (sol
+ // of archive#2640).
       ...(rendererGate && descriptor.renderer.kind === 'plugin-component'
         ? { rendererGate }
         : {}),
@@ -219,17 +219,17 @@ export function useResolvedWorkspacePaneCatalog(projectSlug: string) {
   });
   const profile = usePlatformProfile();
   const config = useConfig();
-  // The registry is populated asynchronously after the pane catalog may have
-  // resolved. Its settled load status is the notification boundary that makes
-  // newly registered (including isolated remote) layouts selectable.
+// The registry is populated asynchronously after the pane catalog may have
+// resolved. Its settled load status is the notification boundary that makes
+// newly registered (including isolated remote) layouts selectable.
   const pluginRegistryLoadStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
   );
   const facts = useWorkspacePaneAvailabilityFacts();
   const catalog = useMemo(() => {
-    // Read the snapshot in the calculation as well as subscribing above:
-    // its identity is the registry-change invalidation for this projection.
+// Read the snapshot in the calculation as well as subscribing above:
+// its identity is the registry-change invalidation for this projection.
     void pluginRegistryLoadStatus;
     return resolveWorkspacePaneCatalogPresentation(
       query.data as WorkspacePaneCatalogSnapshot | undefined,

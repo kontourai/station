@@ -611,7 +611,7 @@
 .agent-inline-editor__body {
   flex: 1;
   overflow-y: auto;
-  /* The shared contract, not a page-local guess: `DetailHeader.css` owns the
+/* The shared contract, not a page-local guess: `DetailHeader.css` owns the
      dock clearance AND its own sticky action bar's height (station#3738). */
   padding-bottom: var(--detail-body-bottom-clearance);
 }
@@ -1739,7 +1739,7 @@
   margin: 0.15rem 0;
 }
 
-/* Station#975 (unification slice 5) §5: authored content an engine can't
+/* archive#975 (unification) §5: authored content an engine can't
    deliver — persistent, surface-scoped, read-only, never silently hidden
    or silently dropped. */
 .agent-editor__capability-banner {
@@ -1905,7 +1905,7 @@
     margin: -15px;
   }
 
-  /* station#3783: `.editor-btn`/`--small` take their 44px floor from the
+/* archive#3783: `.editor-btn`/`--small` take their 44px floor from the
      primitive (`components/editor-controls.css`), which the app shell loads —
      these route-local copies were why Home had no floor at all. */
   .agent-editor__section-toggle {
@@ -1935,7 +1935,7 @@
     flex: 1 1 auto;
   }
 
-  /* station#3783: the `.editor-btn` family's floor moved to the primitive;
+/* archive#3783: the `.editor-btn` family's floor moved to the primitive;
      only the roomier mobile padding is a page-layout concern. */
   .editor-btn {
     padding: 10px 16px;
@@ -1953,13 +1953,13 @@
     min-height: 120px;
   }
 
-  /*
-   * Mobile. These rules used to live in `agent-editor/agent-editor-mobile.css`,
-   * scoped to `.agent-inline-editor` — a page-local media query over classes
-   * this stylesheet owns, which is exactly the fork the DRY rule forbids. They
-   * are declared here, beside the desktop rules for the same classes, and
-   * therefore apply to every editor that uses them rather than one page.
-   */
+/*
+* Mobile. These rules used to live in `agent-editor/agent-editor-mobile.css`,
+* scoped to `.agent-inline-editor` — a page-local media query over classes
+* this stylesheet owns, which is exactly the fork the DRY rule forbids. They
+* are declared here, beside the desktop rules for the same classes, and
+* therefore apply to every editor that uses them rather than one page.
+*/
 
   .editor-field {
     min-width: 0;
@@ -2015,14 +2015,14 @@
     grid-template-columns: 1fr;
   }
 
-  /*
-   * Inline repair and section actions are the ONE action their state offers
-   * (DESIGN.md §2/§3.2); at 17-23px tall they were the smallest targets on
-   * the editor. Measured at 390x844.
-   */
+/*
+* Inline repair and section actions are the ONE action their state offers
+ * (DESIGN.md §2/§3.2); at 17-23px tall they were the smallest targets on
+* the editor. Measured at 390x844.
+*/
   .agent-editor__capability-banner-action,
   .editor__tools-link,
-  /* §7: the readiness row's ONE action is a real touch target. Declared in
+ /* §7: the readiness row's ONE action is a real touch target. Declared in
      this stylesheet's existing mobile block rather than in the component's
      own file, so the lane adds no new page-local at-rule. */
   .agent-readiness__action {
@@ -2084,7 +2084,7 @@
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md, 8px);
   cursor: pointer;
-  /* §7: the whole card is the tap target, not the 13px radio inside it. */
+ /* §7: the whole card is the tap target, not the 13px radio inside it. */
   min-height: 44px;
 }
 
@@ -2156,7 +2156,7 @@
   flex: 0 0 auto;
 }
 
-/* station#4521 item 3: the "Agent actions" (Duplicate/Delete) popover used
+/* archive#4521: the "Agent actions" (Duplicate/Delete) popover used
    `ResponsiveDialogSurface` with no overlay/panel classes, so it inherited
    neither the composer's anchored-popover geometry nor `Dialog`'s centered
    one — `.responsive-surface-overlay` alone (index.css) sets no `position`

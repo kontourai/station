@@ -1,5 +1,5 @@
 /**
- * Plugin content integrity (station#3677, review HIGH 1).
+ * Plugin content integrity (archive#3677, review HIGH 1).
  *
  * Two primitives every authority-bearing consumer of plugin content shares:
  *
@@ -92,7 +92,7 @@ export function computePluginContentDigest(
  *
  * `verbatimSymlinks` defaults to FALSE, which means `cpSync` RESOLVES a
  * relative symlink and writes an absolute target into the copy. That is fatal
- * here in two ways (station#4288, review MEDIUM 2):
+ * here in two ways (archive#4288, review MEDIUM 2):
  *
  * 1. {@link computePluginContentDigest} hashes `readlinkSync` output
  *    verbatim, so a backup → restore round trip of a tree containing any
@@ -115,7 +115,7 @@ export const PLUGIN_TREE_COPY = {
 
 /**
  * Memoized {@link computePluginContentDigest}, keyed by the resolved plugin
- * directory (station#4288).
+ * directory (archive#4288).
  *
  * Why a memo exists at all: binding grants to content means the *enforcement*
  * predicates read a digest, and those run per request on the plugin server
@@ -235,7 +235,7 @@ const contentLocks = new Map<string, PluginContentLockState>();
  *   edge for the life of the process and refusing innocent callers forever.
  *
  * Copying gives sibling isolation and a stable membership snapshot; the token
- * gives liveness. Neither alone is sufficient (station#4288, delta reviews).
+ * gives liveness. Neither alone is sufficient (archive#4288, delta reviews).
  */
 const heldLockKeys = new AsyncLocalStorage<ReadonlyMap<string, symbol>>();
 
@@ -245,7 +245,7 @@ const heldLockKeys = new AsyncLocalStorage<ReadonlyMap<string, symbol>>();
  * and its grant, and only a lock's single holder can add one, so an edge
  * `h → k` is unambiguous.
  *
- * Why it exists (station#4288, delta review MEDIUM 3): `buildDependencyIfNeeded`
+ * Why it exists (archive#4288, delta review MEDIUM 3): `buildDependencyIfNeeded`
  * takes a dependency's lock from INSIDE the installing plugin's lock, so one
  * context can hold two keys. Two concurrent installs of mutually dependent
  * plugins (P depends on Q, Q depends on P) then take them in opposite orders
@@ -309,7 +309,7 @@ export class PluginContentLockCycleError extends Error {
  * `AggregateError`. An `instanceof` at the route therefore sees a plain
  * `Error` and answers 500 with the sentence embedded, which is how a typed
  * error with a `cycle` field ends up being something no handler can act on
- * (station#4309 follow-up). One walker, so every route that can observe the
+ * (archive#4309 follow-up). One walker, so every route that can observe the
  * refusal classifies it the same way.
  */
 export function findPluginContentLockCycleError(
@@ -320,7 +320,7 @@ export function findPluginContentLockCycleError(
   // Breadth-first, and `shift` rather than `pop`, so the nearest wrapper wins.
   // An `AggregateError` from a failed install whose ROLLBACK also failed holds
   // both failures; a stack would search the rollback's chain first and answer
-  // for whichever one happened to be pushed last (station#4309 follow-up
+  // for whichever one happened to be pushed last (archive#4309 follow-up
   // review, LOW). Which one is found decides the status code a request gets,
   // so the order is chosen rather than incidental.
   while (pending.length > 0) {
@@ -346,7 +346,7 @@ export function findPluginContentLockCycleError(
  * "Nothing was changed", which nothing computes and which is false whenever
  * the refusal lands partway through a dependency list: the dependencies
  * installed ahead of it were installed and then rolled back, which is changed
- * and reverted, not unchanged (station#4309 follow-up review, HIGH 1).
+ * and reverted, not unchanged (archive#4309 follow-up review, HIGH 1).
  */
 export function pluginContentLockCycleMessage(
   error: PluginContentLockCycleError,
@@ -354,7 +354,7 @@ export function pluginContentLockCycleMessage(
   const names = error.plugins;
   // Two plugins wait on "the other"; three or more each wait on "another" —
   // rendering a three-name list beside "the other" names a pair that is not
-  // there (station#4309 follow-up review, LOW).
+  // there (archive#4309 follow-up review, LOW).
   const list =
     names.length <= 1
       ? (names[0] ?? 'this plugin')

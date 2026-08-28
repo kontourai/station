@@ -84,7 +84,7 @@ afterEach(() => {
 // Import AFTER setting up window so isSupported is computed correctly
 async function getProvider() {
   // Force re-import to get a clean singleton per test.
-  // With vitest we use vi.resetModules() + dynamic import.
+  // With vitest we use vi.resetModules + dynamic import.
   vi.resetModules();
   const mod = await import('../providers/voice/WebSpeechSTTProvider');
   return mod.webSpeechSTTProvider;

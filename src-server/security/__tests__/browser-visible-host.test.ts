@@ -13,7 +13,7 @@ import {
 } from '../runtime-request-security.js';
 
 /**
- * station#3752. Station's UI proxy rewrites `Host` to the upstream address,
+ * archive#3752. Station's UI proxy rewrites `Host` to the upstream address,
  * so a URL minted for the BROWSER from the request's own `Host` names
  * `127.0.0.1` while the browser is on `localhost`. Cookies are scoped by
  * HOST, so the consent transaction cookie was never sent and the review page
@@ -159,7 +159,7 @@ describe('browserVisibleHost (station#3752)', () => {
 });
 
 /**
- * station#3876. `browserVisibleHost` falls back to the request's own `Host`
+ * archive#3876. `browserVisibleHost` falls back to the request's own `Host`
  * because it is minting a URL either way. A caller asking "did the browser
  * address THIS MACHINE?" cannot take that fallback: behind the proxy the
  * request's own `Host` is the address the PROXY dialled, so the fallback

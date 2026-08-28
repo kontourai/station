@@ -1,7 +1,7 @@
 /**
  * Immutable revision/evidence receipts share the orchestration SQLite file.
  * This is intentionally a narrow receipt ledger, not a generic document or
- * evidence table: #2891 remains the only canonical semantic validator.
+ * evidence table: archive#2891 remains the only canonical semantic validator.
  */
 export const REVISION_EVIDENCE_RECEIPTS_MIGRATION = `
 CREATE TABLE IF NOT EXISTS revision_evidence_receipts (

@@ -131,7 +131,7 @@ const ACP_TOOL_SERVER_SKIP_REASON_MAP: Record<
   'requires-env-secrets': 'secret-boundary-env',
   'unsupported-transport': 'unsupported-transport',
   'binary-not-found': 'binary-not-found',
-  // station#1684: the ACP-only third state. NOT 'engine-unsupported' — that
+  // archive#1684: the ACP-only third state. NOT 'engine-unsupported' — that
   // one says the engine CLASS has no channel for this capability, which is
   // false here: the class has a reviewed mechanism, and this one connection's
   // live handshake is what withheld it.
@@ -151,7 +151,7 @@ function toCapabilityUndelivered(
 }
 
 /**
- * #895 wave B: an ACP session's resume cursor — the ACP-native session id
+ * archive#895 wave B: an ACP session's resume cursor — the ACP-native session id
  * plus the Station connection id that owns it (mirrors codex's
  * `isResumeCursor` cursor-typing style). The connectionId lets recovery
  * re-resolve the connection when `startSession` input carries no
@@ -164,7 +164,7 @@ export interface AcpResumeCursor {
   acpSessionId: string;
   connectionId: string;
   /**
-   * Round-2 review fix (#895 wave B): a short sha256 fingerprint of the
+   * Round-2 review fix (archive#895 wave B): a short sha256 fingerprint of the
    * connection's execution identity at the moment this cursor was captured
    * (see `acpExecutionIdentity`/`acpConnectionFingerprint`). Why this is
    * load-bearing: `routes/connections/acp.ts`'s `PUT /connections/:id`
@@ -195,7 +195,7 @@ export function isAcpResumeCursor(value: unknown): value is AcpResumeCursor {
 }
 
 /**
- * Round-2 review fix (#895 wave B): the exact execution identity a
+ * Round-2 review fix (archive#895 wave B): the exact execution identity a
  * connection is spawned with — `command`/`args` from the connection config,
  * plus `effectiveCwd`, the SAME resolved value `startReservedSession` spawns
  * `ACPProcess` with (session cwd, connection cwd, or the managed session
@@ -262,7 +262,7 @@ export interface AcpAdapterOptions {
    * §5).
    *
    * Consulted for connections with a non-empty `provideToolServers`, AND —
-   * as of station#1547 AC5 — exactly once per session for
+   * as of archive#1547 AC5 — exactly once per session for
    * `station-docs`, whatever the connection opted into. The
    * off-by-default passthrough case therefore no longer means "never
    * called": Station grants the credential-free docs server on its own
@@ -270,7 +270,7 @@ export interface AcpAdapterOptions {
    * that id is a supported outcome and simply means no documentation is
    * delivered.
    *
-   * station#1684 CORRECTS what this comment used to assert — that an ACP
+   * archive#1684 CORRECTS what this comment used to assert — that an ACP
    * engine "can never carry `station-control`". It can, when the connected
    * CLI advertises `mcpCapabilities.http` at `initialize`; see
    * `mintStationControlMcpAuth` below. The docs grant is unaffected and
@@ -282,7 +282,7 @@ export interface AcpAdapterOptions {
    */
   resolveToolServer?: (id: string) => Promise<ToolDef | null>;
   /**
-   * station#1684 (the ACP analog of codex-adapter.ts's option of the same
+   * archive#1684 (the ACP analog of codex-adapter.ts's option of the same
    * name): mint a per-session, station-control-scoped bearer token on the
    * 12-hour bounded default TTL (`DEFAULT_TTL_MS`, revoked eagerly on stop
    * and on a failed start) and return it together with the BARE
@@ -420,7 +420,7 @@ export interface AcpSessionRecord {
   /**
    * Extension notifications bound to `acp.turn-error-cause` (an exact,
    * evidenced tuple — see `src-shared/extension-notification-bindings.ts`)
-   * received during the current turn window (station#4084) — see
+   * received during the current turn window (archive#4084) — see
    * `AcpMapperState.turnErrorNotifications` in acp-adapter-events.ts (this
    * field's type; the mapper appends to it via `ctx.state`, structurally the
    * same object as this record). Reset to an empty array at the start of
@@ -431,7 +431,7 @@ export interface AcpSessionRecord {
   turnErrorNotifications?: AcpExtensionErrorNotification[];
   /**
    * TurnIds cancelled by `interruptTurn` whose `prompt()` has not yet
-   * settled (station#4084 review fix round F2) — LEAK-CLEANUP mechanics
+   * settled (archive#4084 review fix round F2) — LEAK-CLEANUP mechanics
    * only; see `turnErrorNotificationsSuppressed` below for where the actual
    * suppression decision now lives (review fix round M1) and
    * `AcpMapperState.quarantinedTurnIds` in acp-adapter-events.ts for the
@@ -441,7 +441,7 @@ export interface AcpSessionRecord {
   quarantinedTurnIds?: Set<string>;
   /**
    * Whether the CURRENT turn's entire error-cause retention window is
-   * suppressed (station#4084 review fix round M1) — see
+   * suppressed (archive#4084 review fix round M1) — see
    * `AcpMapperState.turnErrorNotificationsSuppressed` in
    * acp-adapter-events.ts for the full rationale (this field's type;
    * structurally the same object as this record). Snapshotted once, at
@@ -462,7 +462,7 @@ export interface AcpSessionRecord {
  * own capability literal, which had silently dropped `image-input` — so the
  * composer, which gives a connection's declared capabilities precedence,
  * refused every image on an engine whose adapter builds real image
- * `ContentBlock`s and whose server-side gate accepts them (station#3344).
+ * `ContentBlock`s and whose server-side gate accepts them (archive#3344).
  * One array, both readers.
  */
 export const ACP_ADAPTER_CAPABILITIES = [
@@ -476,7 +476,7 @@ export const ACP_ADAPTER_CAPABILITIES = [
 ] as const;
 
 /**
- * station#4075 stage 2 map correction (verified, not a gap): this adapter's
+ * archive#4075 stage 2 map correction (verified, not a gap): this adapter's
  * three `...input.metadata` spreads (`startSession`'s `recoveryStart` above,
  * the `session.started` publish, and `session.configured`'s publish) all
  * forward `input.metadata` — the `ProviderSessionStartInput.metadata` object
@@ -582,7 +582,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
     options?: { credentialRecoveryAttempted?: boolean; generation?: number },
   ): Promise<ProviderSession> {
-    // Review fix (#895 wave B, round-3 MED): fail-closed on a MALFORMED
+    // Review fix (archive#895 wave B, round-3 MED): fail-closed on a MALFORMED
     // resume cursor. A present-but-invalid-shape resumeCursor (e.g. a
     // caller-crafted `{}` through the authenticated orchestration API, or a
     // corrupted persisted record) must never silently fall through to the
@@ -601,7 +601,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
     }
 
-    // #895 wave B: fall back to the resume cursor's connectionId when
+    // archive#895 wave B: fall back to the resume cursor's connectionId when
     // startSession input carries no metadata.connectionId — the recovery
     // path (orchestration-session-state.ts) may not have persisted metadata
     // for older sessions, but the resumeCursor is always persisted.
@@ -621,13 +621,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
     }
 
-    // #1011: the SESSION's cwd wins over the connection's configured
+    // archive#1011: the SESSION's cwd wins over the connection's configured
     // default. `config.cwd` is a fallback for a connection used without a
     // workspace; taking it first meant a chat bound to a project launched the
     // CLI in the connection's directory instead — the same class of silent
     // wrong-directory bug the orchestration layer resolves for every engine.
     //
-    // #1403: the LAST resort is a private Station-managed workspace, never
+    // archive#1403: the LAST resort is a private Station-managed workspace, never
     // HOME or process.cwd(). Workspace-indexing ACP CLIs recursively scan
     // their launch directory, so HOME traversed protected macOS roots and
     // triggered recurring TCC prompts. Resolution stays here because only
@@ -649,9 +649,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     //
     // Expansion only. An existence check was tried and backed out here: a
     // directory that does not exist yet is not obviously an error, and silently
-    // relocating to $HOME is the same class of lie #1087 removed.
+    // relocating to $HOME is the same class of lie archive#1087 removed.
     //
-    // station#1089: the crash that paragraph deferred ("tracked separately") had
+    // archive#1089: the crash that paragraph deferred ("tracked separately") had
     // no issue behind it and is now closed at the right layer — `ACPProcess`
     // listens for the child's `'error'` event, so a working directory that does
     // not exist fails THIS session with `Cannot start '<command>': its working
@@ -679,7 +679,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         this.options.managedWorkspaceHomeDir,
       ));
 
-    // #1023: the orchestration resolver records every other engine's
+    // archive#1023: the orchestration resolver records every other engine's
     // session-cwd outcome but can only report `acp_connection_default` for
     // this one, because the connection-level fallback lives here. Record the
     // outcome the resolver could not see, on the same instrument, so the ACP
@@ -701,7 +701,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           : 'acp_without_connection_directory',
     });
 
-    // Review fix (#895 wave B, MED): resume-time identity binding — all
+    // Review fix (archive#895 wave B, MED): resume-time identity binding — all
     // three checks are resume-only (a fresh session/new never carries a
     // resumeCursor) and run BEFORE any process is spawned, so a stale,
     // mismatched, or identity-less resume never pays the cost of starting a
@@ -831,7 +831,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         metadata: { ...input.metadata, cwd, connectionId: config.id },
       });
 
-      // #895 wave A: an authored input.agent.toolServers (including an
+      // archive#895 wave A: an authored input.agent.toolServers (including an
       // authored empty array) wins over the connection's provideToolServers
       // — see ResolvedAgentDefinition's doc comment (authored-field-wins).
       const agentToolServers = input.agent?.toolServers;
@@ -842,7 +842,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           ? agentToolServers.map((server) => server.id)
           : config.provideToolServers;
 
-      // station#1684 — THE LIVE GATE for the built-in station-control server.
+      // archive#1684 — THE LIVE GATE for the built-in station-control server.
       //
       // The `acp` matrix cell names a delivery mechanism whose
       // `basis` is `'runtime_observation'`: it declares that a reviewed,
@@ -949,7 +949,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             ...resolved.skipped.map(toCapabilityUndelivered),
           );
         }
-        // station#1684 (review fix): the mint keyed on the id
+        // archive#1684 (review fix): the mint keyed on the id
         // `'station-control'`; delivery keyed on `isBuiltinStationControl`.
         // When those disagree a credential exists that nothing will ever
         // present, and the receipts above describe a DIFFERENT fact — an
@@ -1012,10 +1012,10 @@ export class AcpAdapter implements ProviderAdapterShape {
           reason: entry.reason,
         });
       }
-      // station#1547 AC5 — the runtime docs grant.
+      // archive#1547 AC5 — the runtime docs grant.
       //
       // Its original premise was "an ACP engine can never receive
-      // `station-control`". station#1684 narrowed that premise but did not
+      // `station-control`". archive#1684 narrowed that premise but did not
       // remove it: an ACP engine receives station-control only when its
       // connected CLI advertises `mcpCapabilities.http` at `initialize`, so
       // the population this grant was written for — a command-backed CLI
@@ -1123,7 +1123,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         });
       }
 
-      // station#1182: the ACP agent's own reported model, when its `newSession`
+      // archive#1182: the ACP agent's own reported model, when its `newSession`
       // response includes a `model`-category config option — see
       // `extractReportedModelFromConfigOptions`'s docblock. `loadSession`
       // (the resume branch below) returns nothing, so a resumed session
@@ -1133,7 +1133,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         | ReturnType<typeof modelSelectionReceipt>
         | undefined;
 
-      // #895 wave B: resume via session/load when the caller supplied a
+      // archive#895 wave B: resume via session/load when the caller supplied a
       // resume cursor, else start a fresh session/new — both branches
       // deliver the SAME resolved passthroughMcpServers (LoadSessionRequest
       // requires `mcpServers`, so tool servers ARE deliverable on resume;
@@ -1299,7 +1299,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       const cancelled = error instanceof AcpSessionStartCancelledError;
       session.status = 'error';
       session.updatedAt = new Date().toISOString();
-      // station#1684: the session never started — a station-control MCP token
+      // archive#1684: the session never started — a station-control MCP token
       // minted above would otherwise linger unused until its TTL expires.
       // Best-effort and id-tolerant (revokeStationControlMcpToken ignores an
       // unknown id), so a session that never minted one is a no-op.
@@ -1354,12 +1354,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.activeTurnId = turnId;
     record.session.status = 'running';
     record.session.updatedAt = new Date().toISOString();
-    // station#4084: start this turn's error-notification window clean —
+    // archive#4084: start this turn's error-notification window clean —
     // discards anything retained from a prior turn (already consumed or
     // discarded when that turn settled below) rather than letting a stale
     // notification enrich an unrelated later failure.
     record.turnErrorNotifications = [];
-    // station#4084 review fix round M1: snapshot suppression ONCE, here, at
+    // archive#4084 review fix round M1: snapshot suppression ONCE, here, at
     // turn start — if any interrupted-but-unsettled prompt exists for this
     // session right now, THIS turn's retention window is suppressed for its
     // entire duration, immune to quarantinedTurnIds later losing that entry
@@ -1397,7 +1397,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.process
       .prompt(content)
       .then((response) => {
-        // station#4084 review fix round F2: unquarantine unconditionally —
+        // archive#4084 review fix round F2: unquarantine unconditionally —
         // this specific prompt() has now settled, regardless of whether it
         // still owns the active turn (an interrupted turn's own settlement
         // lands here too, since interruptTurn does not replace this
@@ -1407,7 +1407,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (!this.ownsActiveTurn(input.threadId, record, turnId)) return;
         // Turn succeeded: any notification retained during this window
         // turned out not to matter. Clear it rather than let it leak into a
-        // future failure it did not co-occur with (station#4084).
+        // future failure it did not co-occur with (archive#4084).
         record.turnErrorNotifications = undefined;
         this.publish({
           eventId: crypto.randomUUID(),
@@ -1423,13 +1423,13 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.activeTurnId = undefined;
       })
       .catch((error) => {
-        // station#4084 review fix round F2: see the `.then` branch above —
+        // archive#4084 review fix round F2: see the `.then` branch above —
         // must run before the ownsActiveTurn early return.
         record.quarantinedTurnIds?.delete(turnId);
         if (!this.ownsActiveTurn(input.threadId, record, turnId)) return;
         const baseMessage =
           error instanceof Error ? error.message : String(error);
-        // station#4084: a bare JSON-RPC error (e.g. -32603 "Internal error")
+        // archive#4084: a bare JSON-RPC error (e.g. -32603 "Internal error")
         // carries no actionable detail, but the engine may have already
         // sent a separate, evidenced extension notification earlier in this
         // same turn window (live evidence: kiro-cli's
@@ -1472,7 +1472,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       return { outcome: 'target-mismatch', activeTurnId } as const;
     }
     const targetTurnId = turnId ?? activeTurnId;
-    // station#4084 review fix round F2: quarantine BEFORE awaiting cancel()
+    // archive#4084 review fix round F2: quarantine BEFORE awaiting cancel()
     // — a notification tied to this cancelled operation can arrive at any
     // point from here until its `prompt()` promise actually settles
     // (sendTurn's `.then`/`.catch`, which is what clears this entry). Set

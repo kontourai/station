@@ -1,5 +1,5 @@
 /**
- * station#4463 slice 5 (Button): the audit found the five primary
+ * archive#4463 (Button): the audit found the five primary
  * page-header actions using three label grammars and two sizes — "New
  * agent", "+ Install Plugin", "+ Add Job", "+ New Skill", "Add model
  * connection". The fix collapsed them onto one rule: "Verb noun", first
@@ -62,11 +62,11 @@ function extractScheduleAddLabel(file: string): string {
     '<PageFrameActions>',
     '</PageFrameActions>',
   );
-  // The JSX tag's closing `>` must be matched precisely: a naive `[\s\S]*?>`
-  // stops at the FIRST `>` in the block, which is the one inside
-  // `onClick={() => setShowAddForm(true)}` — an arrow function, not the tag
-  // close. Requiring the `>` to sit alone on its own (whitespace-only) line,
-  // as this file's formatting always renders it, disambiguates the two.
+// The JSX tag's closing `>` must be matched precisely: a naive `[\s\S]*?>`
+// stops at the FIRST `>` in the block, which is the one inside
+// `onClick={ => setShowAddForm(true)}` — an arrow function, not the tag
+// close. Requiring the `>` to sit alone on its own (whitespace-only) line,
+// as this file's formatting always renders it, disambiguates the two.
   const match = actionsBlock.match(
     /<Button\b[\s\S]*?\n\s*variant="primary"[\s\S]*?\n\s*>\s*\n\s*([^<{\n]+?)\s*\n\s*<\/Button>/,
   );

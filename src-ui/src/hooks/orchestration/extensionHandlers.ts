@@ -94,7 +94,7 @@ function handleClaudeNotification(
     // Skip the store update entirely when the incoming hint is unchanged
     // (same kind + formatted detail) — otherwise every raw token delta
     // replaces the activityHint reference, forcing useDerivedSessions'
-    // per-session cache (station#726) to rebuild this session's derived
+    // per-session cache (archive#726) to rebuild this session's derived
     // identity on essentially every SDK reasoning tick.
     if (!activityHintsEqual(current, hint)) {
       activeChatsStore.updateChat(event.threadId, { activityHint: hint });

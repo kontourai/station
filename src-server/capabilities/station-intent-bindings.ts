@@ -1,6 +1,6 @@
 /**
- * Station's host-side `HostIntentBinding[]` (roadmap #585, part of epic
- * #580, S5) — the missing middle step between "a Console board/task view
+ * Station's host-side `HostIntentBinding[]` (roadmap archive#585, part of epic
+ * archive#580, S5) — the missing middle step between "a Console board/task view
  * emitted an intent" and "a Station server-side action ran." Every
  * `execute` below is the REAL Station handler
  * (`TaskGraphService`/`OrchestrationService` methods) — this module never

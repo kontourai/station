@@ -13,7 +13,7 @@ import { BoardWorkspacePane } from './board/BoardWorkspacePane';
 /**
  * The `project-session-board` route (and the `session-board` layout
  * adapter's body): the standalone placement of the Board Workspace Pane
- * (epic station#4142 M4a, following M2/M3's route-as-placement shape for
+ * (archive#4142, following / route-as-placement shape for
  * `/` and `/activity`).
  *
  * A route is a placement, not an identity (`docs/design/pane-or-shell.md`):
@@ -51,19 +51,19 @@ export function ConsoleBoardView({ projectSlug }: { projectSlug: string }) {
   );
   if (!project || !instance) {
     if (isLoading) {
-      // The same pending shell the Board itself renders while its queries
-      // are in flight, so resolving the Project first costs no new state.
+// The same pending shell the Board itself renders while its queries
+// are in flight, so resolving the Project first costs no new state.
       return (
         <div className="page-layout console-board-view">
           <Skeleton />
         </div>
       );
     }
-    // station#771 fix round (review HIGH): an errored projects read with no
-    // cached data used to fall straight through to "This host has no
-    // Project with that slug." — a fabricated negative fact indistinguishable
-    // from a genuine bad slug. Cached data from a prior successful load still
-    // resolves `project` normally above and never reaches this branch.
+// archive#771: an errored projects read with no
+// cached data used to fall straight through to "This host has no
+// Project with that slug." — a fabricated negative fact indistinguishable
+// from a genuine bad slug. Cached data from a prior successful load still
+// resolves `project` normally above and never reaches this branch.
     if (isError && projects.length === 0) {
       return (
         <ErrorState
@@ -96,8 +96,8 @@ export function ConsoleBoardView({ projectSlug }: { projectSlug: string }) {
     selection.candidate.source === 'primary' &&
     selection.candidate.renderer.kind === 'builtin-component';
   if (!builtinSelected) {
-    // No fallback when selection refuses, deliberately (Home's stance):
-    // rendering the surface anyway would make the selection decorative.
+// No fallback when selection refuses, deliberately (Home's stance):
+// rendering the surface anyway would make the selection decorative.
     return (
       <ErrorState
         title="The Board is unavailable"

@@ -563,7 +563,7 @@ test.describe('Built-in runtime chat workflows', () => {
     page,
   }) => {
     /*
-     * station#3782/#3765: a runtime chat is DURABLE. Its first successful turn
+     * archive#3782/#3765: a runtime chat is DURABLE. Its first successful turn
      * promotes it to a conversation (`useActiveChatSessionMessaging`'s success
      * path assigns the receipt's `conversationId`), `serializeActiveChats`
      * persists exactly the chats that reached that point, and the dock stamps
@@ -824,7 +824,7 @@ test.describe('Built-in runtime chat workflows', () => {
       },
     });
 
-    // station#2652 redesign: the settled activity renders inline as a quiet
+    // archive#2652 redesign: the settled activity renders inline as a quiet
     // verb-first row — no "Show N work activities" gate. Expanding the row
     // preserves the exact tool name in the detail meta...
     const activityRow = page.getByRole('button', { name: 'Used list files' });

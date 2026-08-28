@@ -143,7 +143,7 @@ const CAPABILITY_IDS: NativeCapabilityId[] = [
   'share-intake',
 ];
 // `native-consent-broker` is deliberately NOT required: a UI served by a
-// newer Station must still verify an older shell's report (station#3677).
+// newer Station must still verify an older shell's report (archive#3677).
 const REQUIRED_CAPABILITY_IDS: NativeCapabilityId[] = [
   'capability-report',
   'desktop-tray',
@@ -359,8 +359,8 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
         mobileDefaultEndpoint = endpoint.origin;
       }
     } catch {
-      // Invalid optional bootstrap metadata is ignored fail-closed. The rest
-      // of the capability report remains useful and the pairing UI remains.
+// Invalid optional bootstrap metadata is ignored fail-closed. The rest
+// of the capability report remains useful and the pairing UI remains.
     }
   }
   return {
@@ -371,9 +371,9 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
         ? (candidate.channel as NativeCapabilityReport['channel'])
         : undefined,
     capabilities,
-    // Older hosts omit this. Only a literal `true` marks a dev build, so an
-    // absent or malformed value reads as release rather than tinting a real
-    // install. Dropping it here silently disabled the dev tint entirely.
+// Older hosts omit this. Only a literal `true` marks a dev build, so an
+// absent or malformed value reads as release rather than tinting a real
+// install. Dropping it here silently disabled the dev tint entirely.
     devBuild: candidate.devBuild === true,
     ...(mobileDefaultEndpoint ? { mobileDefaultEndpoint } : {}),
   };
@@ -481,7 +481,7 @@ function parseBundledServerStatus(value: unknown): BundledServerStatus | null {
     lastExitCode: candidate.lastExitCode as number | null,
     nextRetryInMs: candidate.nextRetryInMs as number | null,
     logPath: candidate.logPath as string | null,
-    // Older hosts omit these; normalize so consumers see one stable shape.
+// Older hosts omit these; normalize so consumers see one stable shape.
     errorLogPath: (candidate.errorLogPath ?? null) as string | null,
     desktopLogPath: (candidate.desktopLogPath ?? null) as string | null,
     ownership: candidate.ownership as BundledServerOwnership,
@@ -628,9 +628,9 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
           return;
         }
         unlisten = registeredUnlisten;
-        // Register the active listener first so a link cannot fall between
-        // launch discovery and subscription. If launch discovery then fails,
-        // the shared rejection path below tears this successful listener down.
+// Register the active listener first so a link cannot fall between
+// launch discovery and subscription. If launch discovery then fails,
+// the shared rejection path below tears this successful listener down.
         return this.deepLinkBridge.getCurrent().then(emit);
       })
       .catch((error) => {
@@ -951,20 +951,20 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
       };
     }
     try {
-      // Official Tauri mobile plugin (same class as notification). Kept inside
-      // the platform adapter so feature code never imports Tauri directly.
-      //
-      // `ImpactFeedbackStyle`/`NotificationFeedbackType` used to be runtime
-      // enum objects (`ImpactFeedbackStyle.Light`); the plugin now generates
-      // them as plain string-literal TYPES only (`dist-js/bindings.d.ts`:
-      // `export type ImpactFeedbackStyle = 'light' | 'medium' | ...`), with
-      // no matching runtime export in `dist-js/index.js` at all — so the old
-      // `.Light`/`.Medium`/`.Success`/`.Error` member access threw at
-      // runtime (caught by the try/catch below, silently returning a
-      // `status: 'error'` result; haptics have been silently broken since
-      // this plugin version). Station's own `HapticFeedbackKind` already
-      // uses the same lowercase strings, so the fix is to pass them
-      // directly — same style/type mapping as before, now actually callable.
+// Official Tauri mobile plugin (same class as notification). Kept inside
+// the platform adapter so feature code never imports Tauri directly.
+//
+// `ImpactFeedbackStyle`/`NotificationFeedbackType` used to be runtime
+// enum objects (`ImpactFeedbackStyle.Light`); the plugin now generates
+// them as plain string-literal TYPES only (`dist-js/bindings.d.ts`:
+// `export type ImpactFeedbackStyle = 'light' | 'medium' |...`), with
+// no matching runtime export in `dist-js/index.js` at all — so the old
+// `.Light`/`.Medium`/`.Success`/`.Error` member access threw at
+// runtime (caught by the try/catch below, silently returning a
+// `status: 'error'` result; haptics have been silently broken since
+// this plugin version). Station's own `HapticFeedbackKind` already
+// uses the same lowercase strings, so the fix is to pass them
+// directly — same style/type mapping as before, now actually callable.
       const { impactFeedback, notificationFeedback, selectionFeedback } =
         await import('@tauri-apps/plugin-haptics');
       switch (kind) {

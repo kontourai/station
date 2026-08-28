@@ -107,7 +107,7 @@ describe('AttentionCard — approval kind', () => {
     renderCard(baseApproval());
 
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
-    // Title/body/actions still render normally.
+// Title/body/actions still render normally.
     expect(screen.getByText('Approval needed')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
   });
@@ -128,8 +128,8 @@ describe('AttentionCard — dismiss affordance', () => {
   });
 
   test('a live approval with no resolvable session (the ACP tool-approval shape) still gets the quiet dismiss guard', () => {
-    // ACP tool approvals never resolve an openHref but are genuinely
-    // pending — live actions alone must trigger the guard (#750 review).
+// ACP tool approvals never resolve an openHref but are genuinely
+ // pending — live actions alone must trigger the guard (archive#750).
     renderCard(baseApproval());
 
     const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
@@ -151,18 +151,18 @@ describe('AttentionCard — dismiss affordance', () => {
     expect(dismissButton.className).toContain('attention-item__action--ghost');
   });
 
-  // station#1548: the kind that exists because #1296's test comment claimed
-  // this surfacing already existed and nothing implemented it.
+ // archive#1548: the kind that exists because archive#1296's test comment claimed
+// this surfacing already existed and nothing implemented it.
   test('a failed session renders its own kind label, its cause, and one way in', () => {
     const { container } = renderCard(
       baseFailure({ body: 'Engine exited with code 1' }),
     );
 
-    // station#3203: the eyebrow names the KIND and the title names the
-    // SESSION. They used to be the same three words, which is what made the
-    // reported tray unreadable. Assert each slot rather than a bare text
-    // match, so a regression that drops one — or that collapses them back
-    // into one string — is visible.
+// archive#3203: the eyebrow names the KIND and the title names the
+// SESSION. They used to be the same three words, which is what made the
+// reported tray unreadable. Assert each slot rather than a bare text
+// match, so a regression that drops one — or that collapses them back
+// into one string — is visible.
     expect(container.querySelector('.attention-item__type')?.textContent).toBe(
       'Session failed',
     );
@@ -174,22 +174,22 @@ describe('AttentionCard — dismiss affordance', () => {
     expect(link.getAttribute('href')).toBe('/activity?session=thread-boom');
   });
 
-  // station#1914: a failed session's failure is not an approval to decide,
-  // but it IS derived-and-unclearable — so it gets its own Dismiss, which
-  // acknowledges rather than approves/denies anything.
+// archive#1914: a failed session's failure is not an approval to decide,
+// but it IS derived-and-unclearable — so it gets its own Dismiss, which
+// acknowledges rather than approves/denies anything.
   test("a failed session's Dismiss acknowledges the item by id, not a notification", () => {
     renderCard(baseFailure());
 
     const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
     dismissButton.click();
     expect(acknowledge).toHaveBeenCalledWith('session-failed:thread-boom');
-    // The OTHER dismiss path (notification delete) must not fire for this kind.
+// The OTHER dismiss path (notification delete) must not fire for this kind.
     expect(dismiss).not.toHaveBeenCalled();
   });
 });
 
 /*
- * station#3203. The owner's tray showed three rows reading "Session failed"
+ * archive#3203. The owner's tray showed three rows reading "Session failed"
  * in every slot, with no cause and nothing naming which session each was.
  */
 describe('AttentionCard — a failed session says what happened (#3203)', () => {
@@ -205,8 +205,8 @@ describe('AttentionCard — a failed session says what happened (#3203)', () => 
     expect(screen.getByTestId('attention-cause').textContent).toBe(
       'ECONNREFUSED api.example.com:443',
     );
-    // The raw provider id is labelled HERE, through the same table every
-    // other engine chip uses — the projection deliberately ships the id.
+// The raw provider id is labelled HERE, through the same table every
+// other engine chip uses — the projection deliberately ships the id.
     expect(screen.getByTestId('attention-identity').textContent).toBe(
       'Claude Code · reviewer',
     );
@@ -227,8 +227,8 @@ describe('AttentionCard — a failed session says what happened (#3203)', () => 
   });
 
   test('an unrecorded cause says so rather than rendering nothing', () => {
-    // The reported symptom was a row that told the owner nothing. Silence
-    // here is indistinguishable from "the surface forgot to show it".
+// The reported symptom was a row that told the owner nothing. Silence
+// here is indistinguishable from "the surface forgot to show it".
     renderCard(baseFailure());
 
     expect(screen.getByTestId('attention-cause').textContent).toBe(
@@ -267,7 +267,7 @@ describe('AttentionCard — a failed session says what happened (#3203)', () => 
 });
 
 /*
- * station#3203 defect 2: "clicking on a notification that needs attention
+ * archive#3203 defect 2: "clicking on a notification that needs attention
  * should probably make the notification number decrement as seen". Dismiss
  * already acknowledged; Open did not, and that asymmetry was the bug.
  */
@@ -278,8 +278,8 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     screen.getByRole('link', { name: 'Open session' }).click();
 
     expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
-    // The navigation is deferred until the ack resolves — otherwise the
-    // destination's own `/api/attention` read races the write it depends on.
+// The navigation is deferred until the ack resolves — otherwise the
+// destination's own `/api/attention` read races the write it depends on.
     expect(navigate).not.toHaveBeenCalled();
     await vi.waitFor(() =>
       expect(navigate).toHaveBeenCalledWith('/activity?session=thread-boom'),
@@ -298,9 +298,9 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
   });
 
   test('an approval row still opens with the plain anchor and acknowledges nothing', () => {
-    // Only `session-failed` is acknowledgeable; the projection ignores an ack
-    // recorded against any other kind, so recording one here would be a write
-    // that changes nothing while claiming the row was seen.
+// Only `session-failed` is acknowledgeable; the projection ignores an ack
+// recorded against any other kind, so recording one here would be a write
+// that changes nothing while claiming the row was seen.
     renderCard(baseApproval({ openHref: '/projects/demo?chat=thread-1' }));
 
     screen.getByRole('link', { name: 'Open session' }).click();

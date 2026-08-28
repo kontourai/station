@@ -12,7 +12,7 @@ import {
 
 /**
  * What a reader can OBSERVE about the registry, and therefore what has to
- * publish (sol review, LOW). The first signature sorted registration order away
+* publish. The first signature sorted registration order away
  * and omitted handlers, so two registrations under one id with identical
  * metadata and different handlers replaced the entry in silence — an open
  * command palette kept the retired action while the keyboard dispatched the
@@ -79,8 +79,8 @@ describe('keyboard shortcut registry identity', () => {
     expect(observed.map((s) => s.id)).toEqual(['app.thing']);
     const afterFirst = readerRenders;
 
-    // Same id, same metadata, DIFFERENT handler. Nothing a reader renders has
-    // changed — but what it would invoke has.
+// Same id, same metadata, DIFFERENT handler. Nothing a reader renders has
+// changed — but what it would invoke has.
     act(() => {
       register(chord('app.thing', second));
     });
@@ -98,12 +98,12 @@ describe('keyboard shortcut registry identity', () => {
       register(chord('app.first', vi.fn()));
       register(chord('app.second', vi.fn()));
     });
-    // Equal-priority dispatch resolves by this order, so a reader has to see it.
+// Equal-priority dispatch resolves by this order, so a reader has to see it.
     expect(observed.map((s) => s.id)).toEqual(['app.first', 'app.second']);
 
-    // Re-registering an id in place does not reshuffle precedence — `Map.set`
-    // keeps an existing key's position — but it is still a change, because the
-    // handler behind that id may not be the same one.
+// Re-registering an id in place does not reshuffle precedence — `Map.set`
+// keeps an existing key's position — but it is still a change, because the
+// handler behind that id may not be the same one.
     const beforeReplace = readerRenders;
     act(() => {
       register(chord('app.first', vi.fn()));
@@ -126,16 +126,16 @@ describe('keyboard shortcut registry identity', () => {
       disposeFirst();
       register(chord('app.first', vi.fn()));
     });
-    // Which of two equal-priority shortcuts fires just changed, and the reader
-    // is holding the new order.
-    //
-    // Honest limit: this case does NOT discriminate order-in-the-signature.
-    // The unregister publishes on its own (the set shrank), so a reader is
-    // notified even by a signature that sorts order away — verified against
-    // that negative control. Order is in the signature because it is part of
-    // what a reader observes, not because this test would catch its removal;
-    // the tests above are what catch a signature that omits an entry's
-    // registration token.
+// Which of two equal-priority shortcuts fires just changed, and the reader
+// is holding the new order.
+//
+// Honest limit: this case does NOT discriminate order-in-the-signature.
+// The unregister publishes on its own (the set shrank), so a reader is
+// notified even by a signature that sorts order away — verified against
+// that negative control. Order is in the signature because it is part of
+// what a reader observes, not because this test would catch its removal;
+// the tests above are what catch a signature that omits an entry's
+// registration token.
     expect(observed.map((s) => s.id)).toEqual(['app.second', 'app.first']);
     expect(readerRenders).toBeGreaterThan(beforeReorder);
   });

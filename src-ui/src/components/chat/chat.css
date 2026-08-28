@@ -58,7 +58,7 @@
 }
 
 /*
- * station#3766: ONE owner for this cluster's flex behaviour.
+ * archive#3766: ONE owner for this cluster's flex behaviour.
  *
  * `index.css`'s mobile block declared `flex-shrink: 0` here at the same
  * specificity as the `flex-shrink: 1; overflow: hidden` that used to live on
@@ -108,7 +108,7 @@
 }
 
 .app-toolbar__overflow-menu {
-  /* Fixed, not absolute: this renders in a portal on document.body, so it is
+/* Fixed, not absolute: this renders in a portal on document.body, so it is
      anchored to the toolbar's occupied height rather than to a parent. */
   position: fixed;
   top: calc(
@@ -117,7 +117,7 @@
   );
   right: 8px;
   margin-top: 6px;
-  /* Above the fixed mobile coding tabs and a maximized chat dock: the toolbar
+/* Above the fixed mobile coding tabs and a maximized chat dock: the toolbar
      creates no stacking context, so this menu drops straight into the band
      those occupy and would otherwise be painted underneath them.
 
@@ -230,7 +230,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  /* Danger as a solid fill under white text is --error-fill's job, not
+/* Danger as a solid fill under white text is --error-fill's job, not
      --status-error's: --status-error aliases the FOREGROUND token, and white
      on dark's #ff6b6b measures 2.78:1 (station#1125's exact defect, reached
      via the alias rather than via --error-text, which is why the #1125 sweep
@@ -251,7 +251,7 @@
   font-weight: 500;
 }
 
-/* station#3311: the connection surface is self-describing — the state is
+/* archive#3311: the connection surface is self-describing — the state is
    visible text beside the dot, with the identity after it.
    station#4474: `connStateLabel` (HeaderActions.tsx) is one of five strings
    of different lengths ("Connected", "Reconnecting", "Can't connect",
@@ -480,7 +480,7 @@
   min-width: 0;
   width: 100%;
   margin-bottom: 16px;
-  /* GPU-composited entry: transform + opacity only. */
+/* GPU-composited entry: transform + opacity only. */
   animation: message-slide-in var(--motion-slow) var(--ease-standard);
   will-change: transform, opacity;
 }
@@ -745,7 +745,7 @@
   margin: 0 0 8px;
 }
 
-/* #3310: in-flight and failed-generation states — the only un-summarized
+/* archive#3310: in-flight and failed-generation states — the only un-summarized
    states that still earn transcript space (the idle entry point moved to the
    chat-settings menu). */
 .session-summary__generating {
@@ -767,7 +767,7 @@
   opacity: 0.6;
 }
 
-/* ── Envelope-sourced model claims (station#1434) ──
+/* ── Envelope-sourced model claims (archive#1434) ──
    Replaces the bare badge above on a row whose turn provenance envelope is
    readable. Each claim carries its own label, because the envelope models
    "what Station requested" and "what the engine reported" as separate
@@ -801,7 +801,7 @@
   opacity: 0.75;
 }
 
-/* ── MessageAttribution (station#1424) ──
+/* ── MessageAttribution (archive#1424) ──
    Additive identity strip: agent identity text + engine/owner/permission-
    posture chips. Sits above the model badge, inside the existing bubble —
    the row shape stays identical, this only adds a quiet identity line. No
@@ -863,7 +863,7 @@
   color: var(--text-primary);
 }
 
-/* station#3344: attached files, shown in the composer rather than only behind
+/* archive#3344: attached files, shown in the composer rather than only behind
    the paperclip popover, so a pasted screenshot is visibly attached. The row
    scrolls instead of wrapping — wrapping grows the composer upward and pushes
    Send off a phone screen. */
@@ -914,7 +914,7 @@
   white-space: nowrap;
 }
 
-/* station#3375: the chip says the bytes changed. It is a label, not a control
+/* archive#3375: the chip says the bytes changed. It is a label, not a control
    — nothing here is clickable, so it carries no target-size obligation. */
 .composer-attachments__resized {
   flex: 0 0 auto;
@@ -963,7 +963,7 @@
   border: 0;
   border-radius: 0.25rem;
   background: transparent;
-  /* --accent-primary, not a --accent no theme root defines: the unresolvable
+/* --accent-primary, not a --accent no theme root defines: the unresolvable
      name rendered as inherited text color, so the stage button was not
      accent-colored in either palette (station#3050 class). */
   color: var(--accent-primary);
@@ -987,7 +987,7 @@
   white-space: nowrap;
 }
 
-/* station#3344 (review MEDIUM-4): on a touch device this control has to meet
+/* archive#3344: on a touch device this control has to meet
    the same 44px floor its composer siblings do (WCAG 2.5.5) — a 20px target
    between a thumbnail and the next chip is a mis-tap waiting to happen. The
    button grows; the glyph does not. */
@@ -1037,7 +1037,7 @@
 
 .chat-input__send-btn--active {
   background: var(--color-primary);
-  /* --color-primary IS --accent-primary, so a literal white foreground was a
+/* --color-primary IS --accent-primary, so a literal white foreground was a
      contrast claim about whatever accent happens to be set: 1.62:1 against the
      shipped dark-theme brand (#5ce0c6) and as low as 1.92:1 against a custom
      accent. --text-on-accent is derived from the same color the fill uses, so
@@ -1055,7 +1055,7 @@
   background: var(--bg-tertiary);
   color: var(--text-muted);
   cursor: not-allowed;
-  /* Was 0.25 — at that opacity the disabled Send read as a rendering artifact
+/* Was 0.25 — at that opacity the disabled Send read as a rendering artifact
      rather than a control that is waiting for input. */
   opacity: 0.5;
 }
@@ -1072,7 +1072,7 @@
   fill: currentColor;
 }
 
-/* --error-primary was never defined (station#1168), so this hover fill has
+/* --error-primary was never defined (archive#1168), so this hover fill has
    always resolved to `transparent` while the glyph still went white — in the
    light theme that painted a white Stop icon onto a white composer, i.e. the
    control for interrupting a running turn disappeared under the cursor.
@@ -1160,7 +1160,7 @@
 }
 
 .chat-input__model-source {
-  /* --font-sans, not the --font-family this read until station#1254. There is
+/* --font-sans, not the --font-family this read until archive#1254. There is
      no --font-family token; tokens.css declares --font-sans and --font-mono.
      The declaration was dropped and the label inherited body copy — which is
      --font-sans, so this is the one conversion in that sweep that changes no
@@ -1178,7 +1178,7 @@
   padding: 0 var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  /* --bg-tertiary, not --bg-secondary: the latter is byte-identical to the
+/* --bg-tertiary, not --bg-secondary: the latter is byte-identical to the
      chat-dock background in both themes (#111824 dark / #ffffff light), so
      Reset rendered as bare text between two filled pills — the exact defect
      this change exists to fix, left in one of the three controls. */
@@ -1218,7 +1218,7 @@
   background: color-mix(in srgb, var(--accent-yellow) 20%, transparent);
 }
 
-/* #1010 item 1 — the meta row's pills are scoped under `.chat-input__meta`
+/* archive#1010 — the meta row's pills are scoped under `.chat-input__meta`
    (0,2,0) on purpose. `.chat-input button` (index.css, 0,1,1) sets
    `padding: 0` and `background: transparent`, which beat these single-class
    component rules and silently stripped BOTH off every chip that is a
@@ -1232,7 +1232,7 @@
    two properties that make a pill a pill. */
 .chat-input__meta .chat-input__approval-chip {
   flex: 0 0 auto;
-  /* 24, not 32: this row is a status readout above the composer, and at a
+/* 24, not 32: this row is a status readout above the composer, and at a
      10px label 32px was mostly empty box (#1010 item 1). The mobile block
      below restores the 44px touch floor where a finger has to hit it. */
   min-height: 24px;
@@ -1276,7 +1276,7 @@
 }
 
 .chat-input__meta .chat-input__approval-chip--default {
-  /* --text-secondary, not --text-muted: at 10px this is normal text and needs
+/* --text-secondary, not --text-muted: at 10px this is normal text and needs
      4.5:1; --text-muted measured 3.95:1 over --accent-subtle. */
   color: var(--text-secondary);
   background: var(--accent-subtle);
@@ -1292,13 +1292,13 @@
   background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
 }
 
-/* Inert, and it has to LOOK inert (#1010 item 3). No fill and a dashed
+/* Inert, and it has to LOOK inert (archive#1010). No fill and a dashed
    outline read as "not a button" in both skins, `--text-disabled` matches the
    disabled treatment used elsewhere, and `cursor: default` removes the last
    cue that suggested a click would do something. Distinct from --pending,
    which is dashed but yellow, filled and italic. */
 .chat-input__meta .chat-input__approval-chip--readonly {
-  /* --text-tertiary, not --text-disabled: this renders `role="note"`, which is
+/* --text-tertiary, not --text-disabled: this renders `role="note"`, which is
      content, so the "inactive controls are WCAG-exempt" rationale attached to
      --text-disabled does not transfer. It measured 3.97:1 in dark. */
   color: var(--text-tertiary);
@@ -1340,7 +1340,7 @@
 .composer-popover-overlay--start {
   justify-content: flex-start;
 }
-/* The shell owns the panel surface, not each individual popover (#992).
+/* The shell owns the panel surface, not each individual popover (archive#992).
    Every panel that opted in by hand got one; the two that never did shipped
    fully transparent — `.composer-mode-sheet` (#999) and, until this change,
    `.chat-dock__mobile-overflow-panel`, whose menu items floated over the page
@@ -1348,7 +1348,7 @@
    popover inherits, so the failure mode is a redundant surface, not an
    invisible one. */
 .composer-popover-panel {
-  /* Shared with the anchored clamp bounds below so the two can't drift
+/* Shared with the anchored clamp bounds below so the two can't drift
      independently of the panel's actual width. */
   --composer-popover-width: 380px;
   width: min(var(--composer-popover-width), calc(100vw - 24px));
@@ -1380,7 +1380,7 @@
 .composer-actions-menu__panel {
   width: min(320px, calc(100vw - 24px));
 }
-/* Desktop: an anchored popover, not a sheet (#999). The overlay stays
+/* Desktop: an anchored popover, not a sheet (archive#999). The overlay stays
    fixed-inset for stacking escape and click-away, but carries no scrim; the
    panel positions itself against the trigger geometry the surface exposes via
    `data-anchored` + `--responsive-anchor-*`. These popovers always open
@@ -1388,7 +1388,7 @@
 .composer-popover-overlay[data-anchored] .composer-popover-panel {
   position: fixed;
   bottom: calc(100dvh - var(--responsive-anchor-top, 100dvh) + 8px);
-  /* Floored: a trigger within 24px of the viewport top would otherwise
+/* Floored: a trigger within 24px of the viewport top would otherwise
      compute a negative (clamped-to-zero, invisible) panel height. */
   max-height: max(120px, calc(var(--responsive-anchor-top, 100dvh) - 24px));
   overflow-y: auto;
@@ -1412,7 +1412,7 @@
   .session-model-picker {
   max-height: max(120px, calc(var(--responsive-anchor-top, 100dvh) - 24px));
 }
-/* Mobile: the #972 bottom sheet — full-viewport scrim, edge-docked panel.
+/* Mobile: the archive#972 bottom sheet — full-viewport scrim, edge-docked panel.
    Scoped here so desktop never inherits it (#999). */
 /* Composer grouped secondary-actions "+" menu: Delegate / Commands / Files /
    Task-context collapse into this one affordance next to attach + mic. */
@@ -1487,7 +1487,7 @@
   }
 }
 
-/* The MCP-UI block's three borders read --border-subtle until station#1254.
+/* The MCP-UI block's three borders read --border-subtle until archive#1254.
    No such token exists — the ramp is --border-primary (the subtle line) and
    --border-secondary (the strong one) — so the card had no outline, its table
    rows had no rules between them, and its form inputs had no edge. */
@@ -1677,7 +1677,7 @@
 }
 
 /* ── Mobile responsive ── */
-/* Recovery affordance on a failed-turn system marker (#797). */
+/* Recovery affordance on a failed-turn system marker (archive#797). */
 .system-event__action {
   margin-top: 6px;
   padding: 4px 10px;
@@ -1695,7 +1695,7 @@
   border-color: var(--accent-primary);
 }
 
-/* One quiet meta row under a settled answer (station#2652 redesign): the
+/* One quiet meta row under a settled answer (archive#2652 redesign): the
    provenance disclosure leads and the share control sits beside it, both
    text-weight and muted — the answer above stays the loudest thing in the
    reading column. */
@@ -1750,7 +1750,7 @@
   .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
     display: flex;
   }
-  /* Touch targets: shared toolbar controls must clear 44x44px on mobile. */
+/* Touch targets: shared toolbar controls must clear 44x44px on mobile. */
   .app-toolbar__icon-btn {
     min-width: 44px;
     min-height: 44px;
@@ -1759,7 +1759,7 @@
   .app-toolbar__conn-note {
     display: none;
   }
-  /* station#3311: the toolbar chip stays compact on mobile — dot only while
+/* archive#3311: the toolbar chip stays compact on mobile — dot only while
      healthy; the state text appears exactly when it carries news
      (reconnecting / disconnected / credential required). `idle` stays
      dot-only too, and that is not a guess about the health status: the chip
@@ -1772,7 +1772,7 @@
   .app-toolbar__conn--idle .app-toolbar__conn-state {
     display: none;
   }
-  /* The state text that DOES survive here sits in a `flex-shrink: 0` cluster
+/* The state text that DOES survive here sits in a `flex-shrink: 0` cluster
      beside three 44px controls, so its width is the one thing here that can
      grow the cluster. Bounded, like the identity beside it. Measured, not
      assumed: station#4512 review (L3) re-checked this against the reserved
@@ -1799,7 +1799,7 @@
   .composer-popover-panel,
   .composer-popover-overlay[data-anchored] .composer-popover-panel {
     width: 100%;
-    /* The surface drops the anchor when the mobile query matches, but that
+/* The surface drops the anchor when the mobile query matches, but that
        happens in a matchMedia callback one paint later than the browser's own
        style recalc — the [data-anchored] variant here makes sheet geometry
        win during that crossing paint too, by specificity instead of timing. */
@@ -1855,9 +1855,9 @@
     min-height: 44px;
   }
 
-  /* ── Dock chrome: simplify + un-nest for touch ── */
+/* ── Dock chrome: simplify + un-nest for touch ── */
 
-  /* Keyboard-shortcut hints are meaningless on touch and crowd the chrome.
+/* Keyboard-shortcut hints are meaningless on touch and crowd the chrome.
      Drop every subtitle/shortcut glyph throughout the dock so the header and
      tab-action buttons collapse to a single, legible line. */
   .chat-dock__title .chat-dock__subtitle,
@@ -1866,7 +1866,7 @@
     display: none;
   }
 
-  /* Header: tighten padding, keep title from overflowing 390px, and give the
+/* Header: tighten padding, keep title from overflowing 390px, and give the
      interactive controls real 44x44 tap targets. */
   .chat-dock__header {
     padding: var(--space-2) var(--space-3);
@@ -1919,7 +1919,7 @@
     box-shadow: var(--shadow-lg);
   }
   .mobile-task-switcher__header {
-    /* The panel is the scroll container; keep the dismiss affordance pinned
+/* The panel is the scroll container; keep the dismiss affordance pinned
        while the list scrolls (#1051). */
     position: sticky;
     top: 0;
@@ -1951,7 +1951,7 @@
     gap: var(--space-1);
     padding: var(--space-2);
   }
-  /* Composer two-row stack: at phone width the desktop layout (textarea +
+/* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the
      model/approval/context chips off the right edge of the viewport.
      Instead: row 1 is the full-width textarea; row 2 is a horizontal strip
@@ -1991,13 +1991,13 @@
     flex: 0 0 auto;
     min-width: 0;
   }
-  /* These carry the `.chat-input__meta` scope so they still WIN against the
+/* These carry the `.chat-input__meta` scope so they still WIN against the
      desktop pill rules above, which had to be raised to (0,2,0) to escape
      `.chat-input button`'s clobber. Dropping the scope here would silently
      hand the 44px touch floor back to a 24px desktop value on a phone. */
   .chat-input__meta .chat-input__model-btn {
     flex: 1 1 0;
-    /* 44px for the same reason as the approval chip below: this scoped rule
+/* 44px for the same reason as the approval chip below: this scoped rule
        (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
        `min-width: 0` silently removes it. Not reachable today — the button
        bottoms out at 120px in every measured state — but with a third chip in
@@ -2033,7 +2033,7 @@
     white-space: nowrap;
   }
   .chat-input__meta .chat-input__approval-chip {
-    /* 44px, not 0. The old `min-width: 0` was harmless only because the long
+/* 44px, not 0. The old `min-width: 0` was harmless only because the long
        label made the chip 152px wide anyway; with the short label it measures
        40px, and this scoped rule now outranks the `.chat-input button` touch
        floor that used to guarantee the width. Both dimensions are pinned here

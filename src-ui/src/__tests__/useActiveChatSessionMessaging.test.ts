@@ -62,15 +62,15 @@ const cooperativeStop = {
 const interruptOrchestrationTurnMock = vi
   .fn()
   .mockResolvedValue(cooperativeStop);
-// station#1146: stable across renders so a test can assert WHICH query keys
-// were invalidated. A fresh `vi.fn()` per `useInvalidateQuery()` call records
+// archive#1146: stable across renders so a test can assert WHICH query keys
+// were invalidated. A fresh `vi.fn` per `useInvalidateQuery` call records
 // nothing an assertion can reach.
 const invalidateMock = vi.fn();
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
 // failed" (the request provably never left this browser) or the honest
 // indeterminate state, and a stub would let the hook pass while wired to
-// nothing (UX audit T1).
+// nothing.
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@kontourai/station-sdk')>();
@@ -183,8 +183,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       provider: 'claude',
       model: 'gpt-5.6-codex',
       providerOptions: { reasoningEffort: 'high' },
-      // A reconnect can update these reported fields before the user sends.
-      // The picker-owned request must still win at the send seam.
+// A reconnect can update these reported fields before the user sends.
+// The picker-owned request must still win at the send seam.
       requestedModel: 'gpt-5.6-codex-requested',
       requestedProviderOptions: { reasoningEffort: 'low' },
     });
@@ -298,18 +298,18 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(assignConversationIdMock).toHaveBeenCalledWith(sessionId, 'conv-2');
     expect(onActiveSessionChange).toHaveBeenCalledWith(sessionId);
-    // The request acknowledgement does not pretend the streamed turn is done;
-    // turn.completed on the global orchestration SSE moves this to idle.
+// The request acknowledgement does not pretend the streamed turn is done;
+// turn.completed on the global orchestration SSE moves this to idle.
     expect(activeChatsStore.getSnapshot()[sessionId].status).toBe('sending');
   });
 
-  /**
-   * station#3782: a runtime chat is durable from its first successful turn —
-   * that promotion IS what survives the reload, because `serializeActiveChats`
-   * persists a chat only once it has a conversation identity. Asserting the
-   * `assignConversationId` call alone would not notice the chat still being
-   * dropped from the persisted set, so this asserts the persisted set itself.
-   */
+/**
+* archive#3782: a runtime chat is durable from its first successful turn —
+* that promotion IS what survives the reload, because `serializeActiveChats`
+* persists a chat only once it has a conversation identity. Asserting the
+* `assignConversationId` call alone would not notice the chat still being
+* dropped from the persisted set, so this asserts the persisted set itself.
+*/
   it('promotes the chat to a durable, persistable conversation on its first successful turn', async () => {
     expect(
       serializeActiveChats(activeChatsStore.getSnapshot()),
@@ -338,9 +338,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   it('keeps a globally-created conversation global through completion, persistence, project navigation, and a follow-up', async () => {
-    // station#3147: the first turn ran in Station's global cwd. On the next
-    // render a Project coding panel used to write its own projectSlug into
-    // this durable chat, so the follow-up claimed a different workspace.
+// archive#3147: the first turn ran in Station's global cwd. On the next
+// render a Project coding panel used to write its own projectSlug into
+// this durable chat, so the follow-up claimed a different workspace.
     activeChatsStore.updateChat(sessionId, {
       projectSlug: undefined,
       projectName: undefined,
@@ -356,8 +356,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       await result.current(sessionId, 'codex', undefined, 'first global turn');
     });
 
-    // `turn.completed` settles UI state; the durable payload is what a
-    // reload reads before the user navigates to a Project coding panel.
+// `turn.completed` settles UI state; the durable payload is what a
+// reload reads before the user navigates to a Project coding panel.
     activeChatsStore.updateChat(sessionId, { status: 'idle' });
     const persisted = serializeActiveChats(activeChatsStore.getSnapshot());
     const rehydrated = hydrateActiveChats(persisted)[sessionId];
@@ -433,12 +433,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBeUndefined();
   });
 
-  // station#3690 review (BLOCKING): the queue path stopped attributing a
-  // Station-side refusal to the agent, but the direct composer path still
-  // wrote `status: 'error'` — which `chatLifecycleLabel` turns into "Failed"
-  // in the inbox, outranking the server's truthful "Completed". The agent
-  // never ran. Covering the store state here, and the label it derives in
-  // `home-view-model.test.ts`, spans the whole misattribution.
+// archive#3690: the queue path stopped attributing a
+// Station-side refusal to the agent, but the direct composer path still
+// wrote `status: 'error'` — which `chatLifecycleLabel` turns into "Failed"
+// in the inbox, outranking the server's truthful "Completed". The agent
+// never ran. Covering the store state here, and the label it derives in
+// `home-view-model.test.ts`, spans the whole misattribution.
   it('does not mark the chat failed when Station refuses a send into an ended session', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(400, 'This chat has ended.', 'session_ended'),
@@ -451,16 +451,16 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     const chat = activeChatsStore.getSnapshot()[sessionId];
     expect(chat?.status).not.toBe('error');
-    // The refusal is still surfaced — as a notice about the SESSION, with no
-    // Retry, because it is permanent for this conversation.
+// The refusal is still surfaced — as a notice about the SESSION, with no
+// Retry, because it is permanent for this conversation.
     const notice = chat?.ephemeralMessages?.at(-1);
     expect(notice?.content).toContain('This chat has ended');
     expect(notice?.action).toBeUndefined();
   });
 
-  // The discriminating counter-case: an ordinary send failure is NOT a
-  // Station-side refusal and must still read as an error, or the fix above
-  // would have silently swallowed real failures.
+// The discriminating counter-case: an ordinary send failure is NOT a
+// Station-side refusal and must still read as an error, or the fix above
+// would have silently swallowed real failures.
   it('still marks the chat failed for a non-terminal send failure', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(500, 'Provider exploded.', 'provider_error'),
@@ -676,8 +676,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(notice?.content).toContain('observed-session');
     expect(notice?.content).toContain('not sent again');
     expect(notice?.action).toBeUndefined();
-    // Live foreground execution never enters the offline queue; this outcome
-    // keeps session evidence in the chat instead of attempting storage.
+// Live foreground execution never enters the offline queue; this outcome
+// keeps session evidence in the chat instead of attempting storage.
   });
 
   it('does not offer Retry for a detail-less remote indeterminate foreground result', async () => {
@@ -799,8 +799,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       },
       updateItem: async (_key, updater) => {
         updates += 1;
-        // enqueue, foreign-claim recovery, and dispatch claim succeed. The
-        // post-provider indeterminate transition is the first unavailable IO.
+// enqueue, foreign-claim recovery, and dispatch claim succeed. The
+// post-provider indeterminate transition is the first unavailable IO.
         if (updates === 4) throw new Error('IndexedDB unavailable');
         entries = updater(entries);
       },
@@ -938,12 +938,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
   });
 
-  // station#3686. Two things are asserted together on purpose: the COPY
-  // differs by cause, and everything else — the durable enqueue, its
-  // arguments, the resulting status — is identical. The fix claims queueing
-  // behaviour is untouched and only the claim to the user changed; a test that
-  // checked copy alone would let a cause-specific enqueue regression through
-  // (review finding), which would lose the message on reload.
+// archive#3686. Two things are asserted together on purpose: the COPY
+// differs by cause, and everything else — the durable enqueue, its
+// arguments, the resulting status — is identical. The fix claims queueing
+// behaviour is untouched and only the claim to the user changed; a test that
+// checked copy alone would let a cause-specific enqueue regression through
+ //which would lose the message on reload.
   const undeliverableCases = [
     {
       name: 'a send that threw while the browser reports a network',
@@ -962,9 +962,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
   for (const testCase of undeliverableCases) {
     it(`queues ${testCase.name} identically, and says only what it observed`, async () => {
-      // jsdom inherits `onLine` from Navigator.prototype, so cleanup must
-      // DELETE the injected own property; a restore-if-present cleanup never
-      // runs and leaks the value into later tests.
+// jsdom inherits `onLine` from Navigator.prototype, so cleanup must
+// DELETE the injected own property; a restore-if-present cleanup never
+// runs and leaks the value into later tests.
       Object.defineProperty(window.navigator, 'onLine', {
         configurable: true,
         get: () => testCase.onLine,
@@ -979,8 +979,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           await result.current(sessionId, 'codex', undefined, 'send later');
         });
 
-        // Identical for both causes: the message reaches the durable queue
-        // with the same intent.
+// Identical for both causes: the message reaches the durable queue
+// with the same intent.
         expect(enqueueOutboundTurnMock).toHaveBeenCalledWith(
           expect.objectContaining({
             sessionId,
@@ -996,7 +996,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           expect.objectContaining({ content: 'send later' }),
         ]);
 
-        // Only this differs.
+// Only this differs.
         const notice = chat?.ephemeralMessages?.at(-1);
         expect(notice?.content).toBe(testCase.expected);
         expect(notice?.content).not.toMatch(testCase.forbidden);
@@ -1007,9 +1007,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
   }
 
-  // A response is proof the address answered, so the send is not undeliverable
-  // and must NOT be queued for a retry that cannot help — even while the
-  // browser claims to be offline. The draft returns to the composer instead.
+// A response is proof the address answered, so the send is not undeliverable
+// and must NOT be queued for a retry that cannot help — even while the
+// browser claims to be offline. The draft returns to the composer instead.
   it('does not queue a response-bearing failure, even when the browser claims offline', async () => {
     Object.defineProperty(window.navigator, 'onLine', {
       configurable: true,
@@ -1029,7 +1029,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       expect(activeChatsStore.getSnapshot()[sessionId]?.status).not.toBe(
         'queued',
       );
-      // The user's text is not lost — it goes back to the composer.
+// The user's text is not lost — it goes back to the composer.
       expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe(
         'send later',
       );
@@ -1106,13 +1106,13 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ]);
   });
 
-  /**
-   * station#1146: nothing else invalidates `['orchestration-sessions']` on
-   * this path, and `staleTime` alone never triggers a refetch — measured
-   * live, a dock whose session list was fetched before the session existed
-   * stayed on its stale value for 120s of polling. Without this the chat
-   * dock's directory label only becomes true on the next full page load.
-   */
+/**
+* archive#1146: nothing else invalidates `['orchestration-sessions']` on
+* this path, and `staleTime` alone never triggers a refetch — measured
+* live, a dock whose session list was fetched before the session existed
+* stayed on its stale value for 120s of polling. Without this the chat
+* dock's directory label only becomes true on the next full page load.
+*/
   it('invalidates session and conversation inventories once a session has been started', async () => {
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
@@ -1204,10 +1204,10 @@ describe('useCancelMessage', () => {
     });
   });
 
-  // UX audit T1 review finding: the interrupt used to be awaited with no
-  // try/finally, so any rejection — a refused connection, a 500, a forced
-  // teardown that threw — left the browser stream un-aborted and the composer
-  // pinned at `sending` forever, with no failure surfaced at all.
+ // the interrupt used to be awaited with no
+// try/finally, so any rejection — a refused connection, a 500, a forced
+// teardown that threw — left the browser stream un-aborted and the composer
+// pinned at `sending` forever, with no failure surfaced at all.
   it('releases the local stream and reports a failure when the interrupt provably never left the browser', async () => {
     interruptOrchestrationTurnMock.mockRejectedValueOnce(
       new Error('connect ECONNREFUSED 127.0.0.1:3141'),
@@ -1236,8 +1236,8 @@ describe('useCancelMessage', () => {
     });
   });
 
-  // A POST that timed out may already have interrupted the turn. Reporting it
-  // as a failure would be a claim about the engine this client cannot make.
+// A POST that timed out may already have interrupted the turn. Reporting it
+// as a failure would be a claim about the engine this client cannot make.
   it('reports an unanswered interrupt as indeterminate, not failed', async () => {
     interruptOrchestrationTurnMock.mockRejectedValueOnce(
       Object.assign(new Error('The request timed out.'), {
@@ -1261,8 +1261,8 @@ describe('useCancelMessage', () => {
     expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
   });
 
-  // The hang: while the request is outstanding the composer must show a
-  // pending state and refuse a second press, then release when it settles.
+// The hang: while the request is outstanding the composer must show a
+// pending state and refuse a second press, then release when it settles.
   it('marks the stop pending while the request is outstanding and refuses a second press', async () => {
     let settle: (value: unknown) => void = () => {};
     interruptOrchestrationTurnMock.mockImplementationOnce(
@@ -1281,7 +1281,7 @@ describe('useCancelMessage', () => {
     expect(activeChatsStore.getSnapshot()[sessionId]?.stopPending).toBe(true);
     expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('sending');
 
-    // The double click.
+// The double click.
     let second: StopTurnOutcome | undefined;
     await act(async () => {
       second = await result.current(sessionId);
@@ -1299,10 +1299,10 @@ describe('useCancelMessage', () => {
     });
   });
 
-  // UX audit T1 (live verification): the send path clears `abortController`
-  // the moment the orchestration POST returns its receipt — seconds into a
-  // turn that then streams for minutes. Stop must still work for the whole of
-  // that turn; before this fix it silently did nothing.
+ // (live verification): the send path clears `abortController`
+// the moment the orchestration POST returns its receipt — seconds into a
+// turn that then streams for minutes. Stop must still work for the whole of
+// that turn; before this fix it silently did nothing.
   it('still interrupts the turn after the send path has released the browser stream', async () => {
     activeChatsStore.updateChat(sessionId, {
       abortController: undefined,
@@ -1324,8 +1324,8 @@ describe('useCancelMessage', () => {
     expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
   });
 
-  // The engine session may not exist yet when Stop is pressed; the server
-  // records the cancel and applies it to the turn that starts.
+// The engine session may not exist yet when Stop is pressed; the server
+// records the cancel and applies it to the turn that starts.
   it('renders the deferred stop the server recorded before the turn existed', async () => {
     interruptOrchestrationTurnMock.mockResolvedValueOnce({
       outcome: 'pending-turn-start',
@@ -1343,8 +1343,8 @@ describe('useCancelMessage', () => {
     );
   });
 
-  // The label must describe what the SERVER derived. A cooperative stop keeps
-  // the engine warm; only the forced path ends the process.
+// The label must describe what the SERVER derived. A cooperative stop keeps
+// the engine warm; only the forced path ends the process.
   it.each([
     [
       'cooperative',

@@ -8,7 +8,7 @@ import {
 
 // The genuine built-in station-control server as it appears in a resolved
 // agent's toolServers (command 'node' + the exact built-in server path that
-// `isBuiltinStationControl` pins on — the same identity #1157 uses to gate the
+// `isBuiltinStationControl` pins on — the same identity archive#1157 uses to gate the
 // internal token).
 const GENUINE_STATION_CONTROL = {
   id: 'station-control',
@@ -93,7 +93,7 @@ describe('tool-approval', () => {
       ).toBe(false);
     });
 
-    // Reserved-built-in-name IDENTITY guard (security review, #1049 Q1 HIGH):
+    // Reserved-built-in-name IDENTITY guard (security review, archive#1049 Q1 HIGH):
     // a `station-control_*` pattern must NOT silently auto-approve a same-id
     // impostor server, and must fail closed when the delivered identity is
     // unknown — even with an authentic name.
@@ -138,7 +138,7 @@ describe('tool-approval', () => {
       ).toBe(false);
     });
 
-    // Reserved-built-in-name PROVENANCE guard (security review, #1049 Q1 round-2
+    // Reserved-built-in-name PROVENANCE guard (security review, archive#1049 Q1 round-2
     // Probe A): even the GENUINE built-in legitimately in the session must NOT
     // auto-approve when the tool name is self-reported (ACP) — the name is
     // chosen by the less-trusted external agent and can't be trusted for a

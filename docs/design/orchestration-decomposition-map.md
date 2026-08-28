@@ -1,11 +1,11 @@
 # The Seam Map — `OrchestrationService`
 
-**Status:** accepted direction — the working document for epic #4024; slices
+**Status:** accepted direction — the working document for epic archive#4024; slices
 cite and update this map instead of re-deriving it.
 **Subject:** `src-server/services/orchestration/orchestration-service.ts`
-**Mapped at:** `9ac5185b0` (origin/main, 2026-08-24), for slice 1 (#4116).
+**Mapped at:** `9ac5185b0` (origin/main, 2026-08-24), for slice 1 (archive#4116).
 **Core re-derivation:** Part II below was derived fresh at `71699b7c1`
-(2026-08-25, after slices 1–8, #4186) and SUPERSEDES this Part's §1, §3,
+(2026-08-25, after slices 1–8, archive#4186) and SUPERSEDES this Part's §1, §3,
 §5–§8 and the eight remaining core cluster sections. Part I's RESOLVED
 notes remain the authoritative record of what each slice did; its stale
 core data is kept as the historical derivation. Read Part II first when
@@ -39,7 +39,7 @@ public members are dead outside the file and its tests:
 ---
 
 ## 1. Field inventory
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 
 29 collections + 5 mutable scalars, in declaration order. "Owner" = the
@@ -120,7 +120,7 @@ is effectively the file's largest dependency.
 this cluster. "Shares" = fields it touches that another cluster also touches.
 
 ### C1 — Adapter lifecycle, retirement, provider inventory
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** `consumedAdapterEventStreams`, `activeEventAdapters`, `adapterEventControllers`, `adapterRetirements`, `adapterRetirementByAdapter`, `retiredSessionsByAdapter`, `adapterRegistryUnsubscribe`
 **Shares:** `sessionAdapters`, `sessionReadModel`, `threadProviders`, `tenantContexts`, `sessionConnectionIds`, `policyThreads`, `flowBoundThreads` (all via `finalizeStoppedAdapterSessions:6608`), `turnStallWatchdog`+`deltaCoalescer`+`recoveryCoordinator`+`adoptionOwnerId` (via `shutdown:2281`) *(slice 3: `adoptionOwnerId` is now `AttachedSessionAdoption.ownerId`; shutdown reaches it via `unregisterOwner()`)*
@@ -128,7 +128,7 @@ this cluster. "Shares" = fields it touches that another cluster also touches.
 `listProviders:2356`, `getProviderCommands:2383`, `supportsReadOnlyReview:2401`, `getProviderModels:2408`, `consumeCurrentAdapterEvents:2189`, `retireAdapter:2218`, `settleProviderAdapterRetirements:2260`, `shutdown:2281`, `isAdapterCurrent:6565`, `assertAdapterCurrent:6569`, `assertAdapterCurrentAfterCommand:6577`, `captureAdapterSessions:6587`, `stopAndFinalizeRetiredAdapter:6599`, `finalizeStoppedAdapterSessions:6608`, `stopAdapterEventConsumer:6639`, `cleanupObsoleteStartedSession:6646`, `runCleanupWithinDeadline:6670`, `runOperationWithinDeadline:6682`, `adapterStopTimeoutMs:6710`, `readPrerequisites:7143`, `assertAdapterReady:7159`, `requireAdapter:7188`, `getProviderAdapter:7197`
 
 ### C2 — Event ingest & canonical publish spine (the hub)
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** nothing.
 **Shares:** `quarantinedThreads`, `sessionAdapters`, `adapterEventControllers`, `consumedAdapterEventStreams`, `clientOriginTurns`, `deltaCoalescer`, `sessionExecutionCoordinator`, `threadProviders`, `sessionReadModel`, `cooperativeStops`, `sessionOwnerCache`, `recoveryCoordinator`, `monitoringBridge`, `usageTelemetry` — **14 fields, more than any other cluster.**
@@ -150,7 +150,7 @@ window; `8368`/`8385`/`8395` progress; `2294`/`7096`/`8325` watchdog). Full
 external touch list is in §7.
 
 ### C4 — Cooperative stop & deferred interrupt
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** `cooperativeStops:1136`, `pendingTurnInterrupts:1147`
 **Shares:** `sessionAdapters` (r, 6841), `sessionReadModel` (rw, 7045/7071/7089), `threadProviders`+`sessionConnectionIds`+`tenantContexts`+`policyThreads`+`turnStallWatchdog`+`turnStallWindowByThread` (all deleted by `forgetLiveUserSession:7089`)
@@ -172,12 +172,12 @@ Four methods, ~50 lines of code under ~90 lines of docblock. Callers: C6
 (`turn-completion-notifications.ts:413`). The smallest self-contained unit in
 the file, but too small to be a "slice".
 
-**RESOLVED by slice 4 (#4144):** extracted to `InternalStopSuppression`
+**RESOLVED by slice 4 (archive#4144):** extracted to `InternalStopSuppression`
 (`internal-stop-suppression.ts`) together with C10, deps
 `{listActiveTurnFoldEventPayloads, emitRedispatchFailed}`. The service keeps
 the public `consumeInternalStopSuppression` forwarder (the one external
 consumer's entry point) and routes its internal call sites through
-`this.internalStops.*`; the Set and its full station#3525/#3559 rationale
+`this.internalStops.*`; the Set and its full archive#3525/#3559 rationale
 live on the class.
 
 ### C6 — Credential-profile recovery
@@ -190,7 +190,7 @@ live on the class.
 divergent copies** of the "forget a thread" fan-out (see Traps T2).
 Extracting C6 requires that fan-out to become a single seam first.
 
-**RESOLVED by slice 7 (#4174) — PARTIAL, boundary defended:** four methods
+**RESOLVED by slice 7 (archive#4174) — PARTIAL, boundary defended:** four methods
 move to `CredentialProfileRecovery` (`credential-profile-recovery.ts`) as
 `createDispatchAdapter`/`restartRecoverySession`/`restoreSession`/
 `quarantineSession`, plus one-way ownership of the restart loop-guard set
@@ -211,7 +211,7 @@ the shared-dispatch-adapter identity (stateless today), and
 `threadProviders.set` in the retained C6e.
 
 ### C7 — Session read model / inventory / tracking
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** `sessionReadModel:1170`, `threadProviders:1168`, `ephemeralSessionThreads:1176`; co-owns `sessionAdapters:1134`
 **Shares:** `turnProgressByThread` (r), `tenantContexts` (rw via `trackSession:8139`), `quarantinedThreads` (r), `sessionAttachmentSettled` (r)
@@ -232,7 +232,7 @@ across C7, C9, C10, C11, C12) — it is a *predicate dependency* of almost
 every read cluster, which is why C8 cannot go first despite owning tidy
 fields.
 
-**RESOLVED by slice 6 (#4166):** extracted to `SessionAuthorization`
+**RESOLVED by slice 6 (archive#4166):** extracted to `SessionAuthorization`
 (`session-authorization.ts`) as the epic's first genuinely ONE-WAY seam —
 the cluster calls no service method at all, so both indexes MOVED with it
 and no code outside the module can now write either map
@@ -259,7 +259,7 @@ the standing disclosed T9 gap.
 
 `readRequestOutcome:3110`, `readSessionEventPage:3136`, `readSessionEventWindow:3186`, `readConversationEventWindow:3254`, `readEventStreamHead:3348`, `readEventGlobalSequence:3359`, `readEventStreamReplay:3376`, `readEventStreamReplayPlan:3392`
 
-**RESOLVED by slice 5 (#4155):** extracted to `SessionEventReads`
+**RESOLVED by slice 5 (archive#4155):** extracted to `SessionEventReads`
 (`session-event-reads.ts`) with `eventWindowSessionSummary`. The named trap
 held: `readSessionEventPage`'s discarded-looking `await listSessions(...)`
 is preserved as a dep closure over the real service method, and is now
@@ -284,7 +284,7 @@ transitive through `canReadSession`, `isEphemeralSession`,
 
 `readSessionMessages:3419`, `searchSessionMessages:3439`, `readSessionUsage:3489`, `listSessionUsage:3516`
 
-**RESOLVED by slice 4 (#4144):** extracted to `SessionTranscriptReads`
+**RESOLVED by slice 4 (archive#4144):** extracted to `SessionTranscriptReads`
 (`session-transcript-reads.ts`) — zero owned fields confirmed; all four
 service methods are now flat same-named forwarders that keep `initialize()`
 (T9) and their exact arities (the test Proxy injects read authority by
@@ -296,7 +296,7 @@ method name and position — T3). `messageSearchExcerpt` moved with
 
 `resolveConversationContinuation:2741`, `currentConversationSessionId:2819`, `readCurrentConversationSession:2830`, `reservedConversationHandoff:2840`, `prepareConversationHandoff:2851`, `readConversationHandoffStatus:2950`, `readConversationTranscriptMessages:3032`, `readSessionConversation:3913`, `appendConversationFork:3964`, `readConversationForkProvenance:3969`, `listSessionConversations:3980`, `listAllSessionConversations:4022`, `listConversationHistoryPage:4087`
 
-**RESOLVED by slice 5 (#4155):** extracted to `ConversationLineage`
+**RESOLVED by slice 5 (archive#4155):** extracted to `ConversationLineage`
 (`conversation-lineage.ts`) with its module helpers
 (`continuationLaunchContext`, `continuationTranscriptSeed`,
 `observeConversationContinuation`) and both constants. Own-nothing claim
@@ -311,7 +311,7 @@ forwarder. Follow-up on the epic: moving the `ConversationHistoryReadService`
 construction into the collaborator was deliberately deferred.
 
 ### C12 — Command dispatch spine
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** `startingSessionThreads:1280` (claim/release closures at 4147–4151)
 **Shares:** `sessionCommands`, `sessionCommandImplementation`, `sessionExecutionCoordinator`, `clientOriginTurns`, `monitoringBridge`, `turnDeduplicator`, `quarantinedThreads`, `sessionReadModel`, `tenantContexts`, `threadProviders`, `ephemeralSessionThreads`, `sessionConnectionIds`, `sessionAdapters`
@@ -323,7 +323,7 @@ construction into the collaborator was deliberately deferred.
 
 `validateConnectedCliModelSelector:7221`, `validateConnectedCliTurnModelSelector:7268`, `withAcceptedModelLaunchPlan:7310`, `assertAcceptedModelLaunchPlan:7354`, `recordAcceptedModelLaunchPlan:7382`, `modelLaunchPlanFromInput:7415`, `modelLaunchRequestedOverrideFromInput:7425`
 
-**RESOLVED by slice 8 (#4179):** extracted to `ModelLaunchPlanning`
+**RESOLVED by slice 8 (archive#4179):** extracted to `ModelLaunchPlanning`
 (`model-launch-planning.ts`) — the epic's strictest one-way seam: the
 cluster calls NO service method and reads exactly one read-model cell
 through its single dep (`loadedSessionModel`, now guard-pinned). Six
@@ -347,7 +347,7 @@ module. C12's inline sendTurn metadata stamp deliberately NOT unified
 27 methods, ~700 lines, 5 owned fields — the **largest coherent island** in
 the file and the obvious slice 2 or 3, but not slice 1 (see §7).
 
-**RESOLVED by slice 3 (#4143):** extracted to `AttachedSessionAdoption`
+**RESOLVED by slice 3 (archive#4143):** extracted to `AttachedSessionAdoption`
 (`attached-session-adoption.ts`) — 25 of the 27 methods, `AdoptionContext`,
 and the module-global `liveAdoptionOwners` registry (T7) move; the class
 owns `ownerId`, `adoptingSourceThreads`, `adoptionIntents`, and
@@ -365,7 +365,7 @@ injection ran green (no runtime probe can distinguish the wirings).
 service for its three external importers.
 
 ### C15 — Flow run / policy hooks / workflow sidecar
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** `policyThreads:1313`, `pendingPolicyWrites:1315`, `pendingCommandSpools:1321`, `flowBoundThreads:1326`, `readinessBridge:1300`, `commandEvidenceBridge:1301`, `commandEvidenceRoutingPolicy:1303`
 **Shares:** `policyThreads`/`flowBoundThreads` deleted by C1 (`6634`), C4 (`7095`), C6 (`1908`), C16 (`8647`)
@@ -373,7 +373,7 @@ service for its three external importers.
 `readSessionFlowRun:5675`, `readSessionBuilderRun:5707`, `attachSessionEvidence:5761`, `bindExplicitFlowRunToSession:5820`, `enforceFlowCompletionGate:5884`, `bindWorkflowSidecarToSession:5942`, `applyWorkflowSidecarTransition:5982`, `readSessionWorkflowState:6041`, `bindPolicyHooksToSession:6070`, `enforcePolicyStopGate:6109`, `applyPostHocToolPolicies:6160`, `spoolCommandEvidence:6244`, `isFlowBoundThread:6293`, `resolvePolicyCwd:6307`
 
 ### C16 — Boot, recovery, materialization
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** `started:1358`, `sessionAttachmentSettled:1376`, `materializingSessions:1290`, `recoveryCoordinator:1305`
 **Shares:** every per-thread map, via `recoverSessions:8641–8648` and `evictCollidingAttachedAliases:8847–8852`
@@ -381,7 +381,7 @@ service for its three external importers.
 `initialize:1625`, `resolveSessionAgentForStart:2075`, `applyAgentCredentialProfileRef:2128`, `recoverSessions:8629`, `recoveredSessionStartOptions:8676`, `materializeRecoveredSession:8740`, `materializeRecoveredSessionOnce:8754`, `evictCollidingAttachedAliases:8819`
 
 ### C17 — Connection smoke
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 **Owns:** nothing. **Shares:** `threadProviders` (r, 5529), `sessionOwnerCache` (w-delete, 5598), plus C5 and C12.
 `runConnectionSmoke:5317` — one 284-line public method.
@@ -390,7 +390,7 @@ service for its three external importers.
 **Owns:** `monitoringUnconfiguredThreads:1357`, `monitoringBridge:1340`, `usageTelemetry:1111`
 `setUsageTelemetry:1621`, `monitoringContextFor:6329`
 
-**RESOLVED by inspection (slice 8, #4179) — NO EXTRACTION.** C18's
+**RESOLVED by inspection (slice 8, archive#4179) — NO EXTRACTION.** C18's
 behavior was already extracted before the epic began:
 `OrchestrationMonitoringBridge` (`orchestration-monitoring-bridge.ts`, own
 test file, own `turns` map) IS the cluster, and it is already a shared dep
@@ -415,7 +415,7 @@ slice 8 adds a fixture pinning log-once + the re-arm delete.
 ---
 
 ## 3. Shared-field matrix (the danger surface)
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 
 Fields touched by ≥2 clusters, ordered by blast radius. This table is the
@@ -480,7 +480,7 @@ should follow it rather than inventing a different injection style.
 ---
 
 ## 5. External call surface
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 
 ### 5a. By caller file (non-test), grouped per cluster
@@ -533,7 +533,7 @@ bootstrap reaches C1/C7/C10/C16/C17/C18; tools reach C1/C7/C9/C11/C12.
 ---
 
 ## 6. Test topology
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 
 ### 6a. `__tests__/orchestration-service.test.ts` — 17,219 lines, 317 static `test(`/`it(` call sites (vitest reports 349 cases — `test.each` expands), 16 describe blocks
@@ -542,13 +542,13 @@ bootstrap reaches C1/C7/C10/C16/C17/C18; tools reach C1/C7/C9/C11/C12.
 | describe | Range | Cluster(s) | Self-contained? |
 |---|---|---|---|
 | `'OrchestrationService'` | 701–16925 | **everything** — 210 bare top-level `test()` calls | no |
-| `'content delta coalescing at the publish seam (station#3350)'` | 2886–3231 | C2 (+2 C3 crossovers at 2967, 3145) | mostly |
-| **`'turn-stall detection (station#2959)'`** | **3233–3702** | **C3** | **yes — 6 tests, no other cluster's asserts** |
-| `'station#1885 — station-agent image attachments'` | 7293–7429 | C12 | yes |
-| `'sendTurn client-turn idempotency (station#1224 offline slice 2)'` | 7431–7957 | C12 + `turnDeduplicator` | yes |
-| `'resolveStartSessionCwd migration shadow (station#1501 slice 3a)'` | 8281–8651 | C12 start path (free function) | yes |
+| `'content delta coalescing at the publish seam (archive#3350)'` | 2886–3231 | C2 (+2 C3 crossovers at 2967, 3145) | mostly |
+| **`'turn-stall detection (archive#2959)'`** | **3233–3702** | **C3** | **yes — 6 tests, no other cluster's asserts** |
+| `'archive#1885 — station-agent image attachments'` | 7293–7429 | C12 | yes |
+| `'sendTurn client-turn idempotency (archive#1224 offline slice 2)'` | 7431–7957 | C12 + `turnDeduplicator` | yes |
+| `'resolveStartSessionCwd migration shadow (archive#1501 slice 3a)'` | 8281–8651 | C12 start path (free function) | yes |
 | `'a restored session with no engine still answers the engine-free commands'` | 12510–12688 | C16 + C4 | yes |
-| **`'session-owner cache (station#1120)'`** | **14310–14583** | **C8** | **yes — 5 tests** |
+| **`'session-owner cache (archive#1120)'`** | **14310–14583** | **C8** | **yes — 5 tests** |
 | `'Flow-gated sessions'` | 14827–15768 | C15 | yes |
 | `'Flow Agents policy enforcement (S3)'` | 15770–16052 | C15 | yes |
 | `'Durable workflow sidecars (S3 item 2)'` | 16054–16924 | C15 | yes |
@@ -606,7 +606,7 @@ external caller to re-point) > C8 owner cache > C10 > C15.
 ---
 
 ## 7. First-extraction recommendation
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 
 ### ★ Recommended: **C3 — turn progress & turn-stall observation** → `TurnProgressTracker`
@@ -718,7 +718,7 @@ vs. zero.
 ---
 
 ## 8. Traps — what would make a mechanical extraction lie
-> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
+> **SUPERSEDED for the core arc** — re-derived at `71699b7c1` in Part II below (archive#4186). The RESOLVED notes in this Part remain authoritative; the owns/shares/method data here is anchored at `9ac5185b0` and is historical.
 
 
 **T1 — `deltaCoalescer`'s field initializer captures `this` before `options`
@@ -756,7 +756,7 @@ the time slice 2 landed, and row 3's "watchdog, progress, window" became one
 `turnProgress.forgetThread` call when C3 was extracted. Kept as the
 historical record of the divergence; the live truth is the seam docblock.)
 
-**RESOLVED by slice 2 (#4131):** all six sites now route through one
+**RESOLVED by slice 2 (archive#4131):** all six sites now route through one
 `forgetThreadState(threadId, divergent)` seam — the five universal maps
 clear unconditionally, the divergent aspects (`policyThreads`,
 `flowBoundThreads`, `ownerCache`, `turnProgress`) are named flags each site
@@ -814,7 +814,7 @@ documented in-source):
 - 8536–8545: `sessionOwnerCache` invalidation precedes `eventBus.emit` 8546 so
   the SSE subscriber never sees a stale owner.
 - 6420–6446: `turnIdentityAnchorForEvents`, **not** `activeTurnIdForEvents`
-  (station#3581) — two similar folds, one historically wrong.
+  (archive#3581) — two similar folds, one historically wrong.
 - `InternalStopSuppression.arm` (slice 4 moved it out of the service; the
   narrowed read is now the `listActiveTurnFoldEventPayloads` dep closure)
   uses `listEventsByMethods` — not `listEvents` (perf), not
@@ -859,7 +859,7 @@ first.
 
 ---
 
-# Part II — Core re-derivation at `71699b7c1` (#4186)
+# Part II — Core re-derivation at `71699b7c1` (archive#4186)
 
 Derived fresh over the post-slice-8 file, by grep against that checkout —
 nothing below is carried from Part I. Conventions: method spans quoted as
@@ -889,7 +889,7 @@ visibly `consumeInterruptedTurnBoundaries:6752–6897` and the
 | 1030 | `cooperativeStops` | Map | one user-stop protocol per thread | C4 | 5 | — |
 | 1041 | `pendingTurnInterrupts` | Map | Stop pressed before the turn existed | C4 | 7 | — |
 | 1066 | `threadProviders` | Map | thread → provider kind | C7/C2 | 15 | teardown via `forgetThreadState:6087`; read by `CredentialProfileRecovery` (`providerForThread`, 1597) |
-| 1092 | `inFlightSteers` | Set | NEW since the derivation (station#4075 F2): is a steer command in flight for this thread at all | C12 | 3 | — |
+| 1092 | `inFlightSteers` | Set | NEW since the derivation (archive#4075 F2): is a steer command in flight for this thread at all | C12 | 3 | — |
 | 1093 | `sessionReadModel` | Map | in-memory live session inventory | C7 | 32 | teardown via `forgetThreadState:6088`; read through SIX ctor dep closures (1224, 1264, 1325, 1429, 1536, 1596) |
 | 1099 | `ephemeralSessionThreads` | Set | webhook threads excluded from inventories | C7 | 4 | — |
 | 1105 | `sessionConnectionIds` | Map | thread → quota-routing connection identity | C12/C16 | 5 | teardown via `forgetThreadState:6089` |
@@ -977,7 +977,7 @@ from Part I's matrix entirely.
 ## II.3 Core cluster sections (fresh)
 
 ### C1 — Adapter lifecycle, retirement, provider inventory
-**PARTIAL-DONE — slice 12 (#4024) extracted the RETIREMENT half into
+**PARTIAL-DONE — slice 12 (archive#4024) extracted the RETIREMENT half into
 `AdapterRetirement` (`adapter-retirement.ts`): `retire`,
 `settleRetirements`, the shutdown drain, `cleanupObsoleteStartedSession`
 and the two bounded-await helpers, plus `adapterRetirementByAdapter` and
@@ -1060,7 +1060,7 @@ at 5509–5515), not with the per-thread maps.
 
 ### C2 — Event ingest & canonical publish spine (the hub)
 
-**RESOLVED by inspection (slice 14, #4024) — NO EXTRACTION of the spine.
+**RESOLVED by inspection (slice 14, archive#4024) — NO EXTRACTION of the spine.
 ONE sub-cut is recorded as a RECOMMENDED slice, not a deferred option: the
 turn-provenance sidecar (117 lines, 2 deps, zero raw fields, zero
 invariants). Everything else in C2 stays, and this section is the only place
@@ -1073,8 +1073,8 @@ none".** Between `71699b7c1` and `210b56a0c` the file went 7,148 → 5,786
 lines (−19.1%) while C2 went 549 → 612 doc-inclusive lines (+11.5%; bodies
 480 → 542). C2's share of the file rose 7.7% → 10.6%. Two of its ten members
 are NEW since the last anchor and neither came from this epic:
-`captureUsagePricingSnapshot` (`6905e5fd1`, #4223 usage rollup) and
-`hasActiveTurn` (`f37bdbb6a`, #4269 conversation intent summaries). **C2 is a
+`captureUsagePricingSnapshot` (`6905e5fd1`, archive#4223 usage rollup) and
+`hasActiveTurn` (`f37bdbb6a`, archive#4269 conversation intent summaries). **C2 is a
 live accretion site**: product work lands in the ingest loop because that is
 where every canonical event is. Extracting it would not stop that; it would
 relocate it, and the next reader of the module would find the same growth
@@ -1098,7 +1098,7 @@ callback (field initializer 953–963, T1).
 **Adjacency, not membership:** `hasActiveTurn:5231` is a three-line forwarder
 to `sessionExecutionCoordinator.hasActiveTurn` and belongs to C3/the
 coordinator, not to the publish spine; it sits inside C2's block only by
-where #4269 dropped it. It is recorded here because it is otherwise
+where archive#4269 dropped it. It is recorded here because it is otherwise
 invisible: its ONE production caller reaches it through an anonymous
 structural cast — `conversations.ts:1850–1858` casts `sessionMessageReader`
 (bound to `context.orchestrationService` at `runtime-routes.ts:3060`) to
@@ -1468,7 +1468,7 @@ It is also a real encapsulation gain rather than a relocation.
 `assembleTurnProvenanceFor` performs a durable WRITE
 (`eventStore.upsertTurnProvenance`, 5174) from inside a method named for
 assembly — the "read-side feature that writes" shape. A module makes that
-write its own, and gives the live/replay pair (station#1410's two halves,
+write its own, and gives the live/replay pair (archive#1410's two halves,
 today separated by 20 lines of unrelated members) one home with its
 deliberate asymmetry — the replay path does NOT record the metric, because a
 replay is a redelivery of a turn already counted — stated once instead of
@@ -1509,7 +1509,7 @@ class member, and could become a module-level function today — 16 lines, no
 seam, no dep, no module. Not a slice; just don't let anyone plan one for it.
 
 ### C4 — Cooperative stop & deferred interrupt
-**DONE — extracted by slice 10 (#4204) → `CooperativeStop`
+**DONE — extracted by slice 10 (archive#4204) → `CooperativeStop`
 (`cooperative-stop.ts`); the data below is the pre-extraction derivation.
 The C2 settle-read became `settleCompletedTurn`, called at the same
 pre-quarantine-gate position and pinned by a NEW source invariant plus a
@@ -1597,7 +1597,7 @@ into two mini-slices (steer serialization; receipt ledger); the switch is
 not a slice.
 
 ### C15 — Flow run / policy hooks / workflow sidecar
-**DONE — extracted by slice 11 (#4218) → `FlowPolicySidecar`
+**DONE — extracted by slice 11 (archive#4218) → `FlowPolicySidecar`
 (`flow-policy-sidecar.ts`); the data below is the pre-extraction
 derivation. Ten deps: four lazy service arrows, C2's publish as void,
 the T9-latched service `readSession` forwarder, C7's `runtimeKindFor` +
@@ -1643,7 +1643,7 @@ closest thing the remaining core has to an island.
 `materializingSessions:1124`, `recoveryCoordinator:1133`.
 Methods (9 — one NEW): `initialize:1666–1769`,
 `resolveSessionAgentForStart:1997`, `applyAgentCredentialProfileRef:2047`,
-**PARTIAL-DONE — slice 13 (#4024) extracted the interrupted-turn unit into
+**PARTIAL-DONE — slice 13 (archive#4024) extracted the interrupted-turn unit into
 `InterruptedTurnRecovery` (`interrupted-turn-recovery.ts`): the FileMemory
 seam interface, `INTERRUPTED_TURN_MEMORY_SCAN_LIMIT`,
 `resolveFileMemoryOccupancy` and the whole boot consumer (~293 lines out).
@@ -1672,7 +1672,7 @@ cut (~16 deps, an unavoidable event-store handle across the seam, and a
 way §II.3 C1 records the stream-consumption half, not as a verdict.**
 
 Pre-extraction derivation follows.
-**`consumeInterruptedTurnBoundaries:6752–6897` (NEW, station#4080 slice 1,
+**`consumeInterruptedTurnBoundaries:6752–6897` (NEW, archive#4080 slice 1,
 fired fire-and-forget from `initialize:1744`)**, `recoverSessions:6898`,
 `recoveredSessionStartOptions:6942–7005`, `materializeRecoveredSession:7006`,
 `materializeRecoveredSessionOnce:7020`, `evictCollidingAttachedAliases:7086`.
@@ -1684,7 +1684,7 @@ quarantine closure is three named steps + one flagged seam call (6909–6914);
 is four named steps with a third un-awaited tail (T9).
 
 ### C17 — Connection smoke
-**DONE — extracted by slice 9 (#4195) → `ConnectionSmoke`
+**DONE — extracted by slice 9 (archive#4195) → `ConnectionSmoke`
 (`connection-smoke.ts`); the data below is the pre-extraction derivation.**
 **Owns nothing.** One method: `runConnectionSmoke:4268–4551` (284 lines).
 Raw-field surface is now **one read** — `threadProviders.has` at 4480; the
@@ -1814,7 +1814,7 @@ seam invariant nor a grep will notice.
 
 ## II.5 Core sequencing — the recommendation
 
-**★ DONE — slice 9 (#4195) extracted C17 → `ConnectionSmoke`
+**★ DONE — slice 9 (archive#4195) extracted C17 → `ConnectionSmoke`
 (`connection-smoke.ts`): eleven lazy-arrow deps, zero owned state, the
 `initialize()` latch on the service forwarder, both never-rescinded arm
 sites now guard-pinned (the second had no observer until this slice), and
@@ -1838,7 +1838,7 @@ over the SERVICE forwarder to keep the T9 latch; (4) the one map read —
 (`hasThreadProvider` or similar), never a Map handle, so C7's terminal
 rename inherits no new raw reader.
 
-**★ DONE — slice 10 (#4204); see §II.3 C4. Original argument kept for the record: C4 → `CooperativeStop`.** Unblocked today; owns two maps with all
+**★ DONE — slice 10 (archive#4204); see §II.3 C4. Original argument kept for the record: C4 → `CooperativeStop`.** Unblocked today; owns two maps with all
 writes internal; zero external callers; proves a live-mutable-state cluster
 can move. Hardest couplings: (1) C2's settle-read at 6466 becomes a module
 method called at exactly that position, above the quarantine gate — warrant
@@ -1847,7 +1847,7 @@ a source invariant on the relative order; (2) the `sessionReadModel.set` at
 move to the ctor seam, slice-7 style, keeping the six-site/one-file pin and
 updating the T10(3) label in the same diff.
 
-**★ DONE — slice 11 (#4218); see §II.3 C15. Original argument kept for the record: C15 → `FlowPolicySidecar`** (after C4 — both churn the seam's ctor
+**★ DONE — slice 11 (archive#4218); see §II.3 C15. Original argument kept for the record: C15 → `FlowPolicySidecar`** (after C4 — both churn the seam's ctor
 flags). Seven owned fields, zero foreign raw writes, the biggest island.
 Hardest couplings: (1) `sessionLifecycles.prepareCompletion` (1376–1387) —
 the module owns the whole closure body, not three deps; (2) the ingest-loop
@@ -1855,7 +1855,7 @@ call positions at 5408/5409 gated on the T5 boolean; (3) the two flagged
 seam branches route through the module (slice-6 shape) and the
 `SeamInternals` fixture re-points.
 
-**★ PARTIAL-DONE — slice 12 (#4024) as `AdapterRetirement`; see §II.3 C1 for the three-way split (retirement moved, inventory closed by inspection, streams recorded as a deferred option). Original argument kept for the record: C1 → `AdapterLifecycle` (expect PARTIAL; gate: C17 first** — C17 is
+**★ PARTIAL-DONE — slice 12 (archive#4024) as `AdapterRetirement`; see §II.3 C1 for the three-way split (retirement moved, inventory closed by inspection, streams recorded as a deferred option). Original argument kept for the record: C1 → `AdapterLifecycle` (expect PARTIAL; gate: C17 first** — C17 is
 one of exactly two non-C1 consumers of the deadline helpers, and the one
 about to leave; the other is C12's `dispatchWithReceipt`, whose single
 `runCleanupWithinDeadline` call at 3827 stays and becomes a dep or a
@@ -1874,7 +1874,7 @@ slices churn the ctor flag declarations**).**
 `evictCollidingAttachedAliases` move; **`initialize:1666` stays** — it is
 the T9 latch, pinned by T10(2) against its literal declaration string.
 
-**★ DONE — C2 closed by inspection (slice 14, #4024); see §II.3 C2 for the evidence, the twelve load-bearing orderings it now carries, and the ONE recommended sub-cut (turn-provenance, 117 lines / 2 deps, shipped with that closure). Original argument kept for the record: C2: close by inspection — on ITS OWN criteria, which differ from C18's.**
+**★ DONE — C2 closed by inspection (slice 14, archive#4024); see §II.3 C2 for the evidence, the twelve load-bearing orderings it now carries, and the ONE recommended sub-cut (turn-provenance, 117 lines / 2 deps, shipped with that closure). Original argument kept for the record: C2: close by inspection — on ITS OWN criteria, which differ from C18's.**
 C18 was closed because nothing was left (the behavior had already been
 extracted; ~30 lines of glue remained). C2 is the opposite shape: ~600
 lines remain and shrank not at all — the closure ground is that the
@@ -1905,7 +1905,7 @@ same slice, or the seam is a fiction.
 
 ## II.6 Corrections to Part I (wrong in kind at `71699b7c1`)
 
-See the derivation record on #4186 for the full 25-row table. The rows that
+See the derivation record on archive#4186 for the full 25-row table. The rows that
 change decisions: Part I's §1 lists eight fields that no longer exist on the
 class; `inFlightSteers:1092` and `consumeInterruptedTurnBoundaries:6752` are
 NEW and absent from Part I; C17's `sessionOwnerCache` write and C15's four

@@ -46,12 +46,12 @@ import {
 } from './session-lifecycle-service.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
-/** station#1462: bounds the candidate list replayed out of event metadata. */
+/** archive#1462: bounds the candidate list replayed out of event metadata. */
 const ATTACHED_SESSION_PROJECT_CANDIDATES_MAX = 16;
 const DISPLAY_TITLE_MAX_LENGTH = 120;
 
 /**
- * A turn is in-flight (roadmap #761) exactly when the most recent of
+ * A turn is in-flight (roadmap archive#761) exactly when the most recent of
  * {turn.started, turn.completed, turn.aborted, runtime.error, session.exited}
  * in the thread's event log is a `turn.started` — i.e. a turn.started with no
  * matching completion yet. Deliberately NOT derived from `lifecycleState`:
@@ -63,7 +63,7 @@ const DISPLAY_TITLE_MAX_LENGTH = 120;
  * open across an in-turn approval, which is exactly the case a deploy must
  * not restart through.
  *
- * `runtime.error` closes the turn (#761 review finding): none of the four
+ * `runtime.error` closes the turn (archive#761 review finding): none of the four
  * adapters that can fail a turn (claude-adapter's `consumeMessages` catch,
  * codex-adapter-notifications' `'error'` notification case, acp-adapter's
  * `prompt().catch()`, station-agent-adapter's stream-`failed` and
@@ -117,7 +117,7 @@ export async function resolveOrchestrationAdapterForThread(options: {
   requireAdapter: (provider: ProviderKind) => ProviderAdapterShape;
   adapters: ProviderAdapterShape[];
   /**
-   * station#3476: the lazy-materialisation escape hatch, invoked ONLY when no
+   * archive#3476: the lazy-materialisation escape hatch, invoked ONLY when no
    * registered adapter holds a live engine for this thread.
    *
    * Boot recovery no longer starts an engine per persisted session (see
@@ -189,7 +189,7 @@ export function projectOrchestrationEventToReadModel(options: {
       nextSession = {
         ...baseSession,
         // A session already marked terminal keeps that status: 'closed' is
-        // preserved today, and a `dead` binding (station#1827) must not be
+        // preserved today, and a `dead` binding (archive#1827) must not be
         // resurrected to 'ready' by a stray/late configured event either —
         // in practice recovery never restarts a dead session (it's skipped
         // in `recoverOrchestrationSessions`, same as closed), so this is a
@@ -217,15 +217,15 @@ export function projectOrchestrationEventToReadModel(options: {
       };
       break;
     case 'runtime.error':
-      // station#1827: a `runtime.error` carrying this code is a provider
+      // archive#1827: a `runtime.error` carrying this code is a provider
       // adapter's STRUCTURED report that the underlying engine binding this
       // session holds can never resume — not a generic/possibly-transient
       // failure. Marking the session `dead` (never `closed`) is the whole
       // fix: `closed` would run `markSessionClosed` below, which NULLs
-      // `resumeCursor` — the exact station#1090 data loss this must not
+      // `resumeCursor` — the exact archive#1090 data loss this must not
       // repeat — and every OTHER `runtime.error` (no code, or a different
       // code, e.g. `SESSION_RECOVERY_FAILED_CODE`) intentionally changes
-      // nothing here, preserving station#1090's contract byte-for-byte: a
+      // nothing here, preserving archive#1090's contract byte-for-byte: a
       // recoverable failure keeps its `status` untouched by this event and
       // stays in the recovery set.
       nextSession =
@@ -260,7 +260,7 @@ export function buildOrchestrationSessionSummary(options: {
   loaded?: ProviderSession;
   events?: CanonicalRuntimeEvent[];
   /**
-   * Overrides `events.length` for the summary's `eventCount` (station#1867).
+   * Overrides `events.length` for the summary's `eventCount` (archive#1867).
    * Callers that read only a bounded recent tail of events still report the
    * thread's true total via a separate `COUNT(*)`; without this override the
    * count would reflect only the tail size and silently underreport activity
@@ -268,7 +268,7 @@ export function buildOrchestrationSessionSummary(options: {
    */
   eventCount?: number;
   /**
-   * REQUIRED (station#1778 / ADR 0012). The wire type's `answerability`
+   * REQUIRED (archive#1778 / ADR 0012). The wire type's `answerability`
    * member is required, and this builder is the only thing that can populate
    * it — but it cannot compute the process-local half, so the caller must
    * hand it over. That is the enforcement: a new emission path cannot reach
@@ -311,7 +311,7 @@ export function buildOrchestrationSessionSummary(options: {
         ? attachedAttribution.slug
         : undefined
       : lifecycleProjectSlug);
-  // station#1462: only meaningful when nothing attributed the session. Note
+  // archive#1462: only meaningful when nothing attributed the session. Note
   // this is now decided by ONE scan (see `extractAttachedSessionAttribution`)
   // — an older slug no longer outranks a newer ambiguity marker, which is
   // what let a corrected attribution be written and then ignored.
@@ -568,7 +568,7 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
 }
 
 /**
- * station#1182: the latest independently-reported model identity, scanned
+ * archive#1182: the latest independently-reported model identity, scanned
  * across every event method an adapter might carry `metadata.reportedModel`
  * on — `session.configured` (Codex's thread/start response, an ACP agent's
  * `model`-category config option), `turn.started` (unused today, reserved
@@ -578,9 +578,9 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * `effectiveModel` — an absent result here means "this engine did not
  * report," not "assume the requested value."
  *
- * station#1182 fix round (review-found HIGH): a plain reverse scan can walk
+ * archive#1182 fix round (review-found HIGH): a plain reverse scan can walk
  * straight past a model switch and surface a `reportedModel` that belongs to
- * a superseded model generation — e.g. Codex's #903 restatement republishes
+ * a superseded model generation — e.g. Codex's archive#903 restatement republishes
  * `session.configured` with the new `model` but no `metadata` at all, and
  * Claude's `sendTurn` moves `record.session.model` with no republish, so the
  * new model only shows up via the next `turn.started`'s `effectiveModel`.
@@ -622,7 +622,7 @@ type AttachedSessionAttribution =
   | { state: 'ambiguous'; candidates: string[]; omittedCandidates?: number };
 
 /**
- * station#1462: the attached-session envelope's attribution, as of the LATEST
+ * archive#1462: the attached-session envelope's attribution, as of the LATEST
  * `session.configured` that expresses one.
  *
  * The two states are read by ONE backwards scan on purpose. Reading them
@@ -662,7 +662,7 @@ function extractAttachedSessionAttribution(
     );
     const candidates = named.slice(0, ATTACHED_SESSION_PROJECT_CANDIDATES_MAX);
     if (candidates.length === 0) continue;
-    // station#1462 fix round: rendering 16 of 20 names as if that were the
+    // archive#1462 fix round: rendering 16 of 20 names as if that were the
     // whole list is an honesty gap inside the honesty feature. Carry the
     // count that did not fit so the surface can say so.
     const omitted = named.length - candidates.length;
@@ -762,7 +762,7 @@ export function projectionFactKeysForEvent(
 }
 
 /**
- * station#3408: `'agent'` is the ONLY value either launch writer puts in the
+ * archive#3408: `'agent'` is the ONLY value either launch writer puts in the
  * binding event — `station-control-delegation.ts`'s delegated-task start and
  * `execution-target-execution.ts`'s foreground dispatch both write it. This
  * allowlist accepted only `'station-agent'|'agent-app'`, so the projected
@@ -781,7 +781,7 @@ function delegationTargetKind(
 }
 
 /**
- * station#1463: an unrecognised value is dropped rather than passed through —
+ * archive#1463: an unrecognised value is dropped rather than passed through —
  * a durable record written by a newer Station must not surface a join state
  * this Station cannot describe, and absence already has a defined meaning
  * ("recorded before this field existed").
@@ -819,13 +819,13 @@ export function buildAgentRunSummary(options: {
   loaded?: ProviderSession;
   events?: CanonicalRuntimeEvent[];
   /**
-   * Overrides `events.length` for the run's `eventCount` (station#1867) —
+   * Overrides `events.length` for the run's `eventCount` (archive#1867) —
    * see {@link buildOrchestrationSessionSummary} for the rationale.
    */
   eventCount?: number;
   engineExecution?: AgentRunSummary['engineExecution'];
   /**
-   * REQUIRED, for the same reason the summary builder's is (station#1778):
+   * REQUIRED, for the same reason the summary builder's is (archive#1778):
    * `AgentRunSummary` re-declares a decision folded from the same raw
    * events, so leaving it undecorated leaves one of the three sibling shapes
    * ADR 0012 names outside the enforcement the required member exists to
@@ -947,7 +947,7 @@ export function isAgentRunRetryEligible(kind: AgentRunFailureKind): boolean {
 }
 
 /**
- * station#1090: the `code` carried by the `runtime.error` a failed recovery
+ * archive#1090: the `code` carried by the `runtime.error` a failed recovery
  * now leaves on the thread. Contains "recover" on purpose —
  * `classifyAgentRunFailure` reads that substring and classifies the run as
  * `runtime_recovery`, which `isAgentRunRetryEligible` treats as retryable.
@@ -980,7 +980,7 @@ function recoveryFailureEventId(threadId: string, message: string): string {
 }
 
 /**
- * station#3476: everything the engine-start half of session recovery needs.
+ * archive#3476: everything the engine-start half of session recovery needs.
  *
  * Extracted verbatim from the old body of {@link recoverOrchestrationSessions}
  * — this is the same pipeline that used to run once per persisted session at
@@ -1003,7 +1003,7 @@ export interface RecoveredSessionStartOptions {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
   /**
-   * #895 wave B: re-resolve a recovered session's `ResolvedAgentDefinition`
+   * archive#895 wave B: re-resolve a recovered session's `ResolvedAgentDefinition`
    * (agent-authored tool servers/skills/prompt) before dispatch — the same
    * resolver `OrchestrationService.startSession` runs on a live start.
    * Optional — omitted in installations/tests that don't wire it, in which
@@ -1013,7 +1013,7 @@ export interface RecoveredSessionStartOptions {
     input: ProviderSessionStartInput,
   ) => Promise<ProviderSessionStartInput>;
   /**
-   * station#3549 review round 4 (independent, Codex), HIGH: recovery applied
+   * archive#3549 review round 4 (independent, Codex), HIGH: recovery applied
    * `resolveSessionAgent` but NOT the agent's credential-profile pin, and
    * called `adapter.startSession` directly — so a pinned agent whose session
    * was recovered after a restart ran on the CONNECTION's account. The
@@ -1030,19 +1030,19 @@ export interface RecoveredSessionStartOptions {
     input: ProviderSessionStartInput,
   ) => Promise<ProviderSessionStartInput>;
   /**
-   * #895 wave B: replay the latest persisted `session.started` metadata for
+   * archive#895 wave B: replay the latest persisted `session.started` metadata for
    * a thread (reserved capability-delivery key already stripped by the
    * caller) so recovery input carries the same `metadata.agentSlug` /
    * `metadata.connectionId` a live start would have. `undefined` when no
    * metadata survives — recovery still proceeds (ACP falls back to the
-   * resume cursor's connectionId; see acp-adapter.ts's #895 wave B doc
+   * resume cursor's connectionId; see acp-adapter.ts's archive#895 wave B doc
    * comment).
    */
   readSessionStartMetadata?: (
     threadId: string,
   ) => Record<string, unknown> | undefined;
   /**
-   * #1011: re-settle the recovered session's working directory the same way a
+   * archive#1011: re-settle the recovered session's working directory the same way a
    * live start does (project binding → `cwd`). Recovery otherwise replays
    * only the `cwd` persisted at start, so a session created before that
    * resolution existed keeps recovering with none — and the engine keeps
@@ -1075,13 +1075,13 @@ export interface RecoveredSessionStartOptions {
 }
 
 /**
- * station#3476: start the engine for ONE already-restored session, using the
+ * archive#3476: start the engine for ONE already-restored session, using the
  * exact input a boot recovery pass used to build.
  *
  * Throws on every failure rather than swallowing it, because the caller is a
  * user-initiated turn: a session that silently never starts is worse than the
  * leak this change removes. Before rethrowing it leaves the same durable
- * evidence boot recovery left (station#1090) — a `runtime.error` naming the
+ * evidence boot recovery left (archive#1090) — a `runtime.error` naming the
  * reason and `status: 'error'`, which keeps the row in the recovery set and
  * out of `closed`, so `resumeCursor` survives and the next attempt can work
  * once the user fixes the cause. A `CriticalResourcePostureError` is exempt:
@@ -1180,13 +1180,13 @@ export async function startRecoveredOrchestrationSession(options: {
       threadId: session.threadId,
       error: message,
     });
-    // station#1090's contract, preserved byte-for-byte now that the failure
+    // archive#1090's contract, preserved byte-for-byte now that the failure
     // happens at first use instead of at boot: a `runtime.error` on the
     // thread so the transcript says why, and `status: 'error'` (never
     // `closed`, which NULLs `resume_cursor`) so the conversation stays
     // reopenable once the user undoes whatever broke it.
     const failedAt = new Date().toISOString();
-    // station#1399 fix round 2, B3: this literal always constructs
+    // archive#1399 fix round 2, B3: this literal always constructs
     // `method: 'runtime.error'`, never `tool.completed` — routed through
     // the safe sanitizer anyway (a true no-op here) so the writer-inventory
     // ratchet needs no per-call-site exemption reasoning.
@@ -1218,7 +1218,7 @@ export async function startRecoveredOrchestrationSession(options: {
 /**
  * Restore every persisted session's STATE at boot — and start no engines.
  *
- * station#3476: this used to `await adapter.startSession(...)` for every row
+ * archive#3476: this used to `await adapter.startSession(...)` for every row
  * the skips below did not exclude, serially. On a real installation that meant
  * one engine subprocess per conversation ever created, because nothing ever
  * closes an idle session: 18 engines in a 51-second burst 36 seconds after
@@ -1257,7 +1257,7 @@ export async function recoverOrchestrationSessions(options: {
   quarantineSession?: (session: ProviderSession) => void;
 }): Promise<void> {
   const persistedSessions = options.eventStore?.readSessions() ?? [];
-  // station#1101: threadIds this pass restored — quarantined,
+  // archive#1101: threadIds this pass restored — quarantined,
   // read-only-attached, already-closed/dead, and no-adapter sessions are
   // skipped and never appear in the 'session.recovery.completed' milestone
   // this function publishes once the whole pass finishes.
@@ -1289,11 +1289,11 @@ export async function recoverOrchestrationSessions(options: {
       });
       continue;
     }
-    // station#1827: `dead` (an engine's own structured terminal answer for
+    // archive#1827: `dead` (an engine's own structured terminal answer for
     // this SPECIFIC binding, e.g. Claude's "No conversation found with
     // session ID: ...") is skipped exactly like `closed` — recovery must
     // stop replaying it. `error` is deliberately NOT skipped here: that is
-    // station#1090's contract for a possibly user-recoverable failure (a
+    // archive#1090's contract for a possibly user-recoverable failure (a
     // config problem the SAME resumeCursor may work again once fixed), and
     // it must keep being retried on every boot exactly as it does today.
     if (session.status === 'closed' || session.status === 'dead') continue;
@@ -1304,7 +1304,7 @@ export async function recoverOrchestrationSessions(options: {
     const adapter = options.adapterRegistry.get(session.provider);
     if (!adapter) continue;
     restoredThreadIds.push(session.threadId);
-    // station#3476: THIS is the whole recovery pass now. The session's state
+    // archive#3476: THIS is the whole recovery pass now. The session's state
     // is restored — it is listed, addressable, and resumable — and no engine
     // is started.
     //
@@ -1343,10 +1343,10 @@ export async function recoverOrchestrationSessions(options: {
       attachedAdapter,
     );
   }
-  // station#1101: fires once per recoverOrchestrationSessions() call,
+  // archive#1101: fires once per recoverOrchestrationSessions() call,
   // regardless of the fate of individual sessions in this pass — tests await
   // this instead of a fixed setTimeout() tick after service.initialize() to
-  // know the recovery pass has settled. station#3476 changed what it counts
+  // know the recovery pass has settled. archive#3476 changed what it counts
   // from "attempted to start" to "restored", because there is no longer any
   // start to attempt here; the set of threadIds is the same one the old pass
   // would have entered its try/catch with.
@@ -1372,13 +1372,13 @@ function deriveAgentRunStatus(options: {
   hasOpenRequest: boolean;
 }): AgentRunStatus {
   let status: AgentRunStatus | null = null;
-  // station#3558: tracked in lockstep with `deriveLifecycleTransition`'s own
+  // archive#3558: tracked in lockstep with `deriveLifecycleTransition`'s own
   // identity fold (`session-lifecycle-service.ts`'s `projectSessionLifecycle`)
   // so `turn.completed`/`turn.aborted` below can apply the SAME identity
   // guard that fold already applies — the two functions read the identical
   // events and must not answer a stale/orphaned terminal event differently.
   //
-  // station#3581 (FIXED): this used to guard only a stale terminal that
+  // archive#3581 (FIXED): this used to guard only a stale terminal that
   // arrived while `activeTurnId` was still the PRECEDING turn's id.
   // `nextActiveTurnId` resolves `runtime.error`/`session.exited` to
   // `activeTurnId = undefined` (no `preserveDeferredRetry` here), and
@@ -1393,8 +1393,8 @@ function deriveAgentRunStatus(options: {
   // still accepted (the discriminator is TURN IDENTITY, not the provenance
   // of `undefined` — see `nextTurnIdentityAnchor`'s doc and the
   // `orchestration-session-state.test.ts` test formerly named
-  // "the turn-identity guard does not protect ..." (station#3581), now
-  // rewritten to assert the correct `failed` outcome). station#3557's
+  // "the turn-identity guard does not protect ..." (archive#3581), now
+  // rewritten to assert the correct `failed` outcome). archive#3557's
   // turn-scoped `latestTerminalEventForTurn` (event-store.ts) already
   // prevents a stale-turn terminal from reaching either fold through the
   // BOUNDED projection most callers use; `readSession`'s full-log path was
@@ -1404,7 +1404,7 @@ function deriveAgentRunStatus(options: {
   // is now closed at the source rather than merely belt-and-braces over a
   // defense that already covered it.
   //
-  // station#3581 review round 2: this fold (no stamp early-return of its
+  // archive#3581 review round 2: this fold (no stamp early-return of its
   // own) was never the bypassable half — `deriveLifecycleTransition`'s
   // stamp early-return was (see that function's `isStaleTurnTerminal`,
   // BLOCK 1), which is why the two folds could disagree on a STAMPED,
@@ -1420,7 +1420,7 @@ function deriveAgentRunStatus(options: {
         // Attach fact, not progress: adapters publish this on every
         // startSession including reattach/recovery, so it may only
         // initialize a run's status, never reset an established one
-        // (#1073 — the lifecycle fold's reattach fix, applied to the runs
+        // (archive#1073 — the lifecycle fold's reattach fix, applied to the runs
         // fold the same way).
         status ??= 'starting';
         break;
@@ -1435,7 +1435,7 @@ function deriveAgentRunStatus(options: {
         status = 'waiting_for_approval';
         break;
       case 'request.resolved':
-        // station#1284 (HIGH 1): honor the resting state the PRODUCER
+        // archive#1284 (HIGH 1): honor the resting state the PRODUCER
         // stamps, when it stamps one. `request.resolved` folding to
         // `running` unconditionally is right for the ordinary case — a real
         // user answering a real approval does resume the work — and wrong
@@ -1443,7 +1443,7 @@ function deriveAgentRunStatus(options: {
         // which put dead threads on `listAgentRuns` as `running` with no
         // `completedAt`, i.e. sorted as the freshest active work.
         //
-        // The synthetic resolution that motivated this is GONE (station#1745
+        // The synthetic resolution that motivated this is GONE (archive#1745
         // projects the orphan cancellation at read time and writes nothing),
         // so the only producers left are real adapters. The arm stays, and
         // is not dead: `sessionState` is a general field on the event and an
@@ -1472,7 +1472,7 @@ function deriveAgentRunStatus(options: {
         // The discriminator is TURN ATTRIBUTION, not merely lateness — see
         // `isUnattributedRuntimeError`'s doc for the two neighbouring cases
         // that must still fail the session (a turn's own late failure, and a
-        // ghost turn's). station#3473's synthesized orphan failure carries the
+        // ghost turn's). archive#3473's synthesized orphan failure carries the
         // turn id it closes, so it is unaffected either way.
         if (
           !isUnattributedRuntimeError(event) ||
@@ -1485,7 +1485,7 @@ function deriveAgentRunStatus(options: {
         status = 'running';
         break;
       case 'turn.aborted':
-        // station#3558: an orphaned terminal for a turn the session has
+        // archive#3558: an orphaned terminal for a turn the session has
         // moved past (codex's own protocol timing — a late `turn/completed`
         // for turn-1 arriving after turn-2 is already current) must not
         // report `cancelled` for a session that is genuinely still running
@@ -1494,7 +1494,7 @@ function deriveAgentRunStatus(options: {
           status = 'cancelled';
         break;
       case 'turn.completed':
-        // station#3557/#3558 fix-round review BLOCK 3: a user Stop leaves
+        // archive#3557/#3558 fix-round review BLOCK 3: a user Stop leaves
         // BOTH a `turn.aborted` (published synchronously by
         // `interruptTurn`) and a later `turn.completed` (codex's own async
         // confirmation, `finishReason: 'cancelled'` via
@@ -1509,7 +1509,7 @@ function deriveAgentRunStatus(options: {
         }
         break;
       case 'session.exited': {
-        // station#3451 finding 1: a defined `exitCode` is the SAME
+        // archive#3451 finding 1: a defined `exitCode` is the SAME
         // observation `deriveLifecycleTransition` (session-lifecycle-service.ts)
         // already folds to 'failed'/'completed' — it is a real, later fact
         // about the process substrate (only `finalizeUnexpectedExit` ever
@@ -1522,9 +1522,9 @@ function deriveAgentRunStatus(options: {
         // publishes `session.exited` with no exitCode — so it keeps `??=`
         // and never overrides a status a real terminal event already
         // recorded.
-        // station#3451 finding M1: exitCode 0 FILLS rather than overrides —
+        // archive#3451 finding M1: exitCode 0 FILLS rather than overrides —
         // mirrors the identical fix in `deriveLifecycleTransition`
-        // (session-lifecycle-service.ts). station#3473's synthesized
+        // (session-lifecycle-service.ts). archive#3473's synthesized
         // runtime.error (which sets `status = 'failed'` in the case above)
         // can be followed by a `session.exited{exitCode:0}` for the SAME
         // crash (a graceful-shutdown handler, a kill racing a clean-exit
@@ -1532,7 +1532,7 @@ function deriveAgentRunStatus(options: {
         // the turn succeeded, and must not clobber an already-recorded
         // failure back to 'completed'.
         //
-        // station#3451 fix round D6: exact parity with the lifecycle fold
+        // archive#3451 fix round D6: exact parity with the lifecycle fold
         // requires ALSO treating `options.sessionStatus === 'error' | 'dead'`
         // as an already-failed state, not just an in-loop `status ===
         // 'failed'`. `deriveLifecycleTransition`'s `from` is seeded from
@@ -1558,12 +1558,12 @@ function deriveAgentRunStatus(options: {
         // turn that was still IN PROGRESS has no recorded outcome — `status`
         // is `running`/`starting`/`waiting_for_approval`, not terminal — so
         // the arms below still fold that crash to `failed`, which is the
-        // case station#3451 finding 1 added them for.
+        // case archive#3451 finding 1 added them for.
         //
         // `isTerminalAgentRunStatus` is the SAME predicate
         // `deriveLifecycleTransition` expresses as
         // `isSessionLifecycleStateStopped(from)`; the two folds must answer
-        // this event identically or they diverge exactly as #3451/#3581
+        // this event identically or they diverge exactly as archive#3451/#3581
         // catalogue.
         if (status && isTerminalAgentRunStatus(status)) break;
         const impliedFailed =
@@ -1589,7 +1589,7 @@ function deriveAgentRunStatus(options: {
 
   if (options.sessionStatus === 'closed') return 'cancelled';
   if (options.sessionStatus === 'error') return 'failed';
-  // station#1827: a `dead` engine binding is a failure, same as `error` —
+  // archive#1827: a `dead` engine binding is a failure, same as `error` —
   // the distinction between the two only matters to recovery/replay.
   if (options.sessionStatus === 'dead') return 'failed';
   if (options.sessionStatus === 'running') return 'running';
@@ -1633,10 +1633,10 @@ function extractRuntimeThreadId(resumeCursor: unknown): string | undefined {
   return undefined;
 }
 
-// station#3581 (FIXED): this used to walk BACKWARD and return `undefined` as
+// archive#3581 (FIXED): this used to walk BACKWARD and return `undefined` as
 // soon as it hit ANY `turn.completed`/`turn.aborted`, treating the first one
 // found from the end as proof there is nothing left to report a failure
-// for. That is exactly the class of bug #3581 covers: a stale terminal for
+// for. That is exactly the class of bug archive#3581 covers: a stale terminal for
 // an EARLIER, already-superseded turn (arriving after that turn's own
 // `runtime.error`, while a LATER turn is what's actually running/failed)
 // sits at the end of the array and used to make this function discard the
@@ -1650,7 +1650,7 @@ function extractRuntimeThreadId(resumeCursor: unknown): string | undefined {
 // last-recorded failure in place, exactly mirroring what the status fold
 // above already decides for the SAME event.
 //
-// Behavior change worth naming (station#3581 review LOW 2): a
+// Behavior change worth naming (archive#3581 review LOW 2): a
 // `turn.completed`/`turn.aborted` with NO `turnId` at all — malformed, or a
 // legacy row from before turn ids were universal — used to unconditionally
 // clear the failure (the old backward walk stopped at ANY terminal,

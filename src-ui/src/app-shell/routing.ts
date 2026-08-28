@@ -39,11 +39,11 @@ export function getLegacyPathRedirect(path: string): string | null {
     return preserveSearch(canonicalConnection);
   }
 
-  // Connections are path-addressed (`/connections/engines`), but the Agent
-  // editor previously linked to the older query spelling. Keep that link
-  // routable while canonicalizing it before the root Connections resolver can
-  // choose a different section. This also preserves any shell-scoped query
-  // state the caller supplied alongside the legacy section selector.
+// Connections are path-addressed (`/connections/engines`), but the Agent
+// editor previously linked to the older query spelling. Keep that link
+// routable while canonicalizing it before the root Connections resolver can
+// choose a different section. This also preserves any shell-scoped query
+// state the caller supplied alongside the legacy section selector.
   if (pathname === '/connections') {
     const params = new URLSearchParams(search);
     const section = CONNECTION_SECTIONS.find(
@@ -80,9 +80,9 @@ export function getLegacyPathRedirect(path: string): string | null {
     for (const [key, value] of params) canonicalParams.append(key, value);
     return `/settings?${canonicalParams.toString()}`;
   }
-  // station#3313 (Settings IA, option A): Feature Previews is a Settings
-  // section now; the standalone route redirects into it, same pattern as
-  // /developer/config above.
+// archive#3313 (Settings IA, option A): Feature Previews is a Settings
+// section now; the standalone route redirects into it, same pattern as
+// /developer/config above.
   if (pathname === '/feature-previews') {
     const params = new URLSearchParams(search);
     params.delete('view');
@@ -109,8 +109,8 @@ export function getLegacyPathRedirect(path: string): string | null {
   }
 
   const prefixRedirects = [
-    // Playbooks are Skills. The retired paths land on the surface that
-    // absorbed them rather than on a tab that no longer exists.
+// Playbooks are Skills. The retired paths land on the surface that
+// absorbed them rather than on a tab that no longer exists.
     ['/prompts', '/guidance', 'tab=skills'],
     ['/playbooks', '/guidance', 'tab=skills'],
     ['/skills', '/guidance', 'tab=skills'],
@@ -135,10 +135,10 @@ export function getLegacyPathRedirect(path: string): string | null {
   }
 
   const exactRedirects: Readonly<Record<string, string>> = {
-    // station#3280: Activity is canonical before v1. Existing notification
-    // and Discord deep links remain valid through this permanent redirect.
-    // Both spellings: hand-typed and copy-mangled links commonly carry a
-    // trailing slash, and an exact-lookup table would 404 it (review F3).
+// archive#3280: Activity is canonical before v1. Existing notification
+// and Discord deep links remain valid through this permanent redirect.
+// Both spellings: hand-typed and copy-mangled links commonly carry a
+ // trailing slash, and an exact-lookup table would 404 it 
     '/sessions': '/activity',
     '/sessions/': '/activity',
     '/monitoring': '/developer/telemetry',
@@ -208,8 +208,8 @@ export function resolveViewFromPath(
   if (exactSurface) return exactSurface;
 
   if (path.startsWith('/agents/')) {
-    // Preserve the historically accepted trailing-slash spelling while the
-    // registry owns the canonical exact route.
+// Preserve the historically accepted trailing-slash spelling while the
+// registry owns the canonical exact route.
     if (path === '/agents/') return { type: 'agents' };
     if (path === '/agents/new') {
       return { type: 'agent-new' };
@@ -252,8 +252,8 @@ export function resolveViewFromPath(
     const params = new URLSearchParams(search);
     const sessionId = params.get('session')?.trim();
     if (!sessionId) return { type: 'activity' };
-    // `focus=evidence` is a one-shot intent that only means anything when it
-    // names a session; any other value is ignored rather than carried.
+// `focus=evidence` is a one-shot intent that only means anything when it
+// names a session; any other value is ignored rather than carried.
     return params.get('focus') === 'evidence'
       ? { type: 'activity', sessionId, focus: 'evidence' }
       : { type: 'activity', sessionId };
@@ -270,11 +270,11 @@ export function resolveViewFromPath(
       return { type: 'connections-provider-edit', id };
     }
   }
-  // `new/<providerId>` is the command-backed provider setup, not an engine
-  // id: it must be matched before the generic `/connections/engines/:id`
-  // rule below, which would otherwise read the literal `new` as the id and
-  // drop the provider. Legacy `/connections/acp/new/<id>` canonicalises here
-  // (CONNECTION_SECTIONS drives that redirect), so this is where it lands.
+// `new/<providerId>` is the command-backed provider setup, not an engine
+// id: it must be matched before the generic `/connections/engines/:id`
+// rule below, which would otherwise read the literal `new` as the id and
+// drop the provider. Legacy `/connections/acp/new/<id>` canonicalises here
+// (CONNECTION_SECTIONS drives that redirect), so this is where it lands.
   if (path.startsWith('/connections/engines/new/')) {
     const providerId = decodeURIComponent(
       path.slice('/connections/engines/new/'.length),
@@ -324,8 +324,8 @@ export function resolveViewFromPath(
   if (path === '/projects/new') {
     return { type: 'project-new' };
   }
-  // station#4079 slice 1: /board/session/:id and /board/task/:projectId/:id
-  // — URL-reachable, no sidebar item this slice (page-frame-registry.ts).
+// archive#4079: /board/session/:id and /board/task/:projectId/:id
+// URL-reachable, no sidebar item this slice (page-frame-registry.ts).
   if (path.startsWith('/board/session/')) {
     const encodedId = path.slice('/board/session/'.length);
     if (!encodedId || encodedId.includes('/')) {
@@ -364,8 +364,8 @@ export function resolveViewFromPath(
       const taskId = decodeURIComponent(encodedTaskId).trim();
       return taskId ? { type: 'task', taskId } : { type: 'not-found', path };
     } catch {
-      // A malformed percent escape is not a Task id. Keep the raw path so the
-      // normal not-found surface can explain the failed deep link.
+// A malformed percent escape is not a Task id. Keep the raw path so the
+// normal not-found surface can explain the failed deep link.
       return { type: 'not-found', path };
     }
   }
@@ -423,19 +423,19 @@ export function resolveViewFromPath(
       return { type: 'not-found', path };
     }
   }
-  // A layout TAB is a path segment: `NavigationStore.setLayoutTab` navigates to
-  // `/projects/<p>/layouts/<l>/<tabId>`, and the store's own pathname parse
-  // reads that third segment back as `activeTab`. 4-HOME-012's rule is that
-  // nothing may be silently DISCARDED — not that a third segment cannot exist —
-  // so the tab is NAMED on the view here rather than dropped. Matching it
-  // exactly (no fourth segment) keeps a genuinely malformed deep link a 404;
-  // `panes` is matched above this point and never reaches here. A tab id this
-  // layout no longer declares stays visible in the URL and `LayoutView` falls
-  // back to the layout's first tab, which is the behaviour it already has for a
-  // remembered-but-deleted tab.
-  //
-  // Without this, every tab in every layout — including every plugin-provided
-  // one — navigated to "Page not found".
+// A layout TAB is a path segment: `NavigationStore.setLayoutTab` navigates to
+// `/projects/<p>/layouts/<l>/<tabId>`, and the store's own pathname parse
+// reads that third segment back as `activeTab`. 4-HOME-012's rule is that
+// nothing may be silently DISCARDED — not that a third segment cannot exist —
+// so the tab is NAMED on the view here rather than dropped. Matching it
+// exactly (no fourth segment) keeps a genuinely malformed deep link a 404;
+// `panes` is matched above this point and never reaches here. A tab id this
+// layout no longer declares stays visible in the URL and `LayoutView` falls
+// back to the layout's first tab, which is the behaviour it already has for a
+// remembered-but-deleted tab.
+//
+// Without this, every tab in every layout — including every plugin-provided
+// one — navigated to "Page not found".
   const layoutRoute = path.match(
     /^\/projects\/([^/]+)\/layouts\/([^/]+)(?:\/([^/]+))?\/?$/,
   );
@@ -448,24 +448,24 @@ export function resolveViewFromPath(
       ...(tab ? { tab } : {}),
     };
   }
-  // 4-HOME-012: EXACT, so `/projects/<slug>/<anything-else>` falls through to
-  // the not-found below instead of silently rendering the project dashboard.
-  // The old `startsWith('/projects/')` catch-all took the second segment and
-  // discarded the rest, which directly contradicted the comment three lines
-  // down — a stale or mistyped deep link looked like a working one. Every
-  // real `/projects/...` route (new, edit, session-board, flow-console,
-  // panes, layouts) is matched above this point; a trailing slash stays the
-  // same route.
+// 4-HOME-012: EXACT, so `/projects/<slug>/<anything-else>` falls through to
+// the not-found below instead of silently rendering the project dashboard.
+// The old `startsWith('/projects/')` catch-all took the second segment and
+// discarded the rest, which directly contradicted the comment three lines
+// down — a stale or mistyped deep link looked like a working one. Every
+// real `/projects/...` route (new, edit, session-board, flow-console,
+// panes, layouts) is matched above this point; a trailing slash stays the
+// same route.
   const projectRoute = path.match(/^\/projects\/([^/]+)\/?$/);
   if (projectRoute?.[1]) {
     return { type: 'project', slug: projectRoute[1] };
   }
 
-  // Empty path is the one root spelling outside the registry's canonical '/'.
+// Empty path is the one root spelling outside the registry's canonical '/'.
   if (path === '') return { type: 'home' };
 
-  // A non-root path that matched no route is a genuine 404. Previously these
-  // silently redirected to the last project, hiding broken/stale deep links.
+// A non-root path that matched no route is a genuine 404. Previously these
+// silently redirected to the last project, hiding broken/stale deep links.
   return { type: 'not-found', path };
 }
 
@@ -497,9 +497,9 @@ export function getPathForView(view: NavigationView): string | null {
       return '/connections/engines';
     case 'connections-runtime-edit':
       return `/connections/engines/${view.id}`;
-    // Serializes to its own path (the legacy-redirect table canonicalises it
-    // to /connections/engines at navigation time), so view↔path stays a
-    // round trip: two views may not share one path.
+// Serializes to its own path (the legacy-redirect table canonicalises it
+// to /connections/engines at navigation time), so view↔path stays a
+// round trip: two views may not share one path.
     case 'connections-acp':
       return '/connections/acp';
     case 'connections-acp-new':

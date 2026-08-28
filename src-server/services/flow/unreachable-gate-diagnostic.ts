@@ -1,5 +1,5 @@
 /**
- * Unreachable-gate diagnostic (station#189 S2).
+ * Unreachable-gate diagnostic (archive#189 S2).
  *
  * A Flow definition declares the claim types its gates expect; the
  * command-evidence routing policy declares the claim types it can produce from

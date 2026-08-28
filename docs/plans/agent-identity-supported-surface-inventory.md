@@ -1,6 +1,6 @@
 # Agent identity supported-surface inventory
 
-This is the executable removal record for Station #1417. Station now uses one
+This is the executable removal record for Station archive#1417. Station now uses one
 clean, persisted Agent identity surface. The pre-release schema gate rejects an
 incompatible home before application data is read or changed; no migration or
 compatibility path exists.

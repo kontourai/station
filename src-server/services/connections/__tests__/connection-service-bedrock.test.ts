@@ -1,5 +1,5 @@
 /**
- * #3654 — a Bedrock connection records check receipts like every other model
+ * archive#3654 — a Bedrock connection records check receipts like every other model
  * provider.
  *
  * It recorded none: the catalogue catch discarded the AWS error, so no
@@ -202,7 +202,7 @@ describe('Bedrock check receipts', () => {
 });
 
 /**
- * #3654 review round 2 — the standing receipt for ONE connection, read rather
+ * archive#3654 review round 2 — the standing receipt for ONE connection, read rather
  * than probed.
  *
  * `GET /api/providers/:id/health` used to reach this through the whole model

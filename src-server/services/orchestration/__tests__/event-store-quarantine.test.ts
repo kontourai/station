@@ -33,12 +33,12 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 /**
- * station#3217, end to end and with no stubs in the corruption path: a real
+ * archive#3217, end to end and with no stubs in the corruption path: a real
  * store, real damaged bytes, the real boot that fails on them, the real marker
  * that failure leaves behind, and the real quarantine that acts on it.
  *
  * The claim being proved is the whole loop, because each half already looked
- * fine on its own: station#3215 shipped a marker with no consumer, and a
+ * fine on its own: archive#3215 shipped a marker with no consumer, and a
  * quarantine tested against a hand-written marker proves only that it can read
  * its own JSON.
  */

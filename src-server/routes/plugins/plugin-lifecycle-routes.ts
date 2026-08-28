@@ -404,7 +404,7 @@ export function registerPluginLifecycleRoutes(
 
     let backupRoot: string | null = null;
     try {
-      // station#3677 review HIGH 1: the whole tree mutation holds the
+      // archive#3677 review HIGH 1: the whole tree mutation holds the
       // per-plugin content lock the consent decision's revalidate → commit
       // span also takes, so an update can never interleave between a
       // consent fingerprint revalidation and its grant commit.
@@ -427,7 +427,7 @@ export function registerPluginLifecycleRoutes(
                 originalIdentity,
                 originalManifest,
               );
-              // station#4288: the update is about to withdraw consent that
+              // archive#4288: the update is about to withdraw consent that
               // belonged to the OLD bytes. If any later step fails and the
               // tree is rolled back, the grants have to come back with it —
               // otherwise a failed update silently strips a plugin of
@@ -501,7 +501,7 @@ export function registerPluginLifecycleRoutes(
                     pluginDir,
                     join(projectHomeDir, 'integrations'),
                   );
-                  // station#4288 — the fix. Consent was given to the bytes
+                  // archive#4288 — the fix. Consent was given to the bytes
                   // this update just replaced, so it is re-bound HERE: after
                   // the build and the integration copy (the tree is final,
                   // so the digest describes what will actually execute) and
@@ -566,7 +566,7 @@ export function registerPluginLifecycleRoutes(
                   try {
                     rmSync(pluginDir, { recursive: true, force: true });
                     cpSync(backupDir, pluginDir, PLUGIN_TREE_COPY);
-                    // station#4288, delta review MEDIUM 1 (same defect the
+                    // archive#4288, delta review MEDIUM 1 (same defect the
                     // install rollback carries). `rebindGrantsAfterContentChange`
                     // above refreshed the memo to the UPDATED tree's digest;
                     // this rollback has just restored the old tree and
@@ -586,7 +586,7 @@ export function registerPluginLifecycleRoutes(
                     // The tree is back to the reviewed bytes, so the consent
                     // recorded against them comes back with it — digest
                     // included, so the restored entry is `bound` again and
-                    // not merely `unverified` (station#4288).
+                    // not merely `unverified` (archive#4288).
                     await restorePluginGrantEntry(
                       projectHomeDir,
                       originalIdentity,
@@ -689,7 +689,7 @@ export function registerPluginLifecycleRoutes(
     }
 
     try {
-      // station#3677 review HIGH 1: removal also mutates the consent
+      // archive#3677 review HIGH 1: removal also mutates the consent
       // fingerprint's subject tree — hold the same per-plugin content lock
       // the consent decision's revalidate → commit span takes, so a grant
       // cannot commit for a plugin being removed underneath it.

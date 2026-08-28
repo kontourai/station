@@ -37,21 +37,21 @@ function MonitoringView() {
     readError,
     retryRead,
   } = useMonitoring();
-  // audit 6-OPS-26: Monitoring's two summary numbers now come from the SAME
-  // orchestration session projection the chat dock and Developer -> Archive
-  // read, rather than from the monitoring event store's own agent fold — that
-  // fold reported `Active: 0 / Running: 0` while a real Claude Code turn was
-  // visibly running in the dock. The event stream below is unchanged.
+ // Monitoring's two summary numbers now come from the SAME
+// orchestration session projection the chat dock and Developer -> Archive
+// read, rather than from the monitoring event store's own agent fold — that
+// fold reported `Active: 0 / Running: 0` while a real Claude Code turn was
+// visibly running in the dock. The event stream below is unchanged.
   const {
     data: orchestrationSessions,
     status: orchestrationSessionsStatus,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
-  // audit 6-OPS-26 review (MEDIUM): `data` is `undefined` while the read is
-  // pending and while it has failed, and defaulting that to `[]` reported an
-  // authoritative `0 / 0` — a transient (and, on a failed read, permanent)
-  // false zero, which is the same discrepancy in a new costume. Counts are
-  // rendered only from a read that SUCCEEDED.
+  // `data` is `undefined` while the read is
+// pending and while it has failed, and defaulting that to `[]` reported an
+// authoritative `0 / 0` — a transient (and, on a failed read, permanent)
+// false zero, which is the same discrepancy in a new costume. Counts are
+// rendered only from a read that SUCCEEDED.
   const sessionCounts = useMemo(
     () =>
       orchestrationSessionsStatus === 'success'
@@ -145,7 +145,7 @@ function MonitoringView() {
     setAbsoluteEndToNow,
   } = useMonitoringTimeRange(clearEvents, setTimeRange);
   const [newEventIds, setNewEventIds] = useState<Set<string>>(new Set());
-  /** Identities already on screen; `null` until the first list arrives. */
+/** Identities already on screen; `null` until the first list arrives. */
   const seenEventIdsRef = useRef<Set<string> | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -163,7 +163,7 @@ function MonitoringView() {
         setSelectedConversation(filters.conversation[0] ?? null);
       if (filters.tool) setSelectedToolCallId(filters.tool[0] ?? null);
     } catch {
-      /* ignore malformed params */
+/* ignore malformed params */
     }
   }, [
     setSelectedAgents,
@@ -172,25 +172,25 @@ function MonitoringView() {
     setSelectedTraceId,
   ]);
 
-  /*
-   * Delta2 review MEDIUM-3: this highlighted indices from the previous length
-   * to the new one, which only identifies arrivals if events are appended and
-   * the list never drops any. Neither holds since events are placed by
-   * timestamp and capped: a late 10:02 inserted before an existing 10:03
-   * highlighted the last row instead of the one that arrived, and once the
-   * retention cap is reached every arrival replaces a row without changing
-   * `length`, so nothing was highlighted at all.
-   *
-   * What arrived is a set difference on identity, not a count. The previous
-   * set is bounded by the retention cap, and each identity is canonicalized
-   * once per event object (see `monitoringEventIdentity`), so the diff costs
-   * a lookup per row rather than a re-walk of every payload.
-   */
+/*
+ * this highlighted indices from the previous length
+* to the new one, which only identifies arrivals if events are appended and
+* the list never drops any. Neither holds since events are placed by
+* timestamp and capped: a late 10:02 inserted before an existing 10:03
+* highlighted the last row instead of the one that arrived, and once the
+* retention cap is reached every arrival replaces a row without changing
+* `length`, so nothing was highlighted at all.
+*
+* What arrived is a set difference on identity, not a count. The previous
+* set is bounded by the retention cap, and each identity is canonicalized
+* once per event object (see `monitoringEventIdentity`), so the diff costs
+* a lookup per row rather than a re-walk of every payload.
+*/
   useEffect(() => {
     const currentIds = new Set(events.map(monitoringEventIdentity));
     const previousIds = seenEventIdsRef.current;
     seenEventIdsRef.current = currentIds;
-    // The first list this view ever sees is history, not arrivals.
+// The first list this view ever sees is history, not arrivals.
     if (previousIds === null) return;
     const arrived = [...currentIds].filter((id) => !previousIds.has(id));
     if (arrived.length === 0) return;
@@ -255,16 +255,16 @@ function MonitoringView() {
     ],
   );
 
-  /*
-   * Delta2 review MEDIUM-2: this depended on `autoFollow` alone, so it fired
-   * when the toggle changed and never again. That was survivable while
-   * arrivals were PREPENDED (they landed in view at the top); now that events
-   * are placed chronologically and the newest sits at the bottom, an arrival
-   * appears below the viewport and Auto Follow has to actually follow it —
-   * while the scroll button stays suppressed precisely because Auto Follow is
-   * on. Depends on the RENDERED list, so a filtered-out arrival does not
-   * scroll the view.
-   */
+/*
+ * this depended on `autoFollow` alone, so it fired
+* when the toggle changed and never again. That was survivable while
+* arrivals were PREPENDED (they landed in view at the top); now that events
+* are placed chronologically and the newest sits at the bottom, an arrival
+* appears below the viewport and Auto Follow has to actually follow it —
+* while the scroll button stays suppressed precisely because Auto Follow is
+* on. Depends on the RENDERED list, so a filtered-out arrival does not
+* scroll the view.
+*/
   useEffect(() => {
     if (!autoFollow || filteredEvents.length === 0) return;
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -382,7 +382,7 @@ function MonitoringView() {
             onScrollToBottom={scrollToBottom}
           />
           <MetricsPanel />
-          {/* station#1398 slice 4: the routing receipt is the differentiator,
+{/* archive#1398: the routing receipt is the differentiator,
               so it lives on the surface an operator already opens to ask
               what this Station has been doing. */}
           <FleetReceipts />

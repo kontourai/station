@@ -18,11 +18,11 @@ import { orchestrationStoreCorruptionObserved } from '../../telemetry/metrics.js
 /**
  * Verify the store on a schedule, in a child process.
  *
- * The reactive watch (station#3215) notices corruption a query TOUCHES. Damage
+ * The reactive watch (archive#3215) notices corruption a query TOUCHES. Damage
  * to a page nothing reads can sit undetected indefinitely, and that is the
  * coverage the per-boot `PRAGMA quick_check` was actually buying — so it has
  * to be bought somewhere else before the boot check can be removed
- * (station#3219).
+ * (archive#3219).
  *
  * It cannot be bought on this thread. `node:sqlite`'s `DatabaseSync` is
  * synchronous, so the check would stall the event loop for its whole duration
@@ -41,7 +41,7 @@ import { orchestrationStoreCorruptionObserved } from '../../telemetry/metrics.js
  * reparented to init, unbounded, still reading the store — and that window is
  * exactly the one where the probe is slowest (a stalled volume). Hence the
  * returned disposer: it aborts the child too, and the runtime calls it before
- * it tears anything else down (station#3218 adversarial review).
+ * it tears anything else down (archive#3218 adversarial review).
  */
 
 /**

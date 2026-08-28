@@ -1,5 +1,5 @@
 /**
- * App-home profiles (#896, `docs/design/agent-engine-unification.md` §6.1's
+ * App-home profiles (archive#896, `docs/design/agent-engine-unification.md` §6.1's
  * overlay model, channel 2): a Station-owned, per-engine config home
  * (`~/.station/app-homes/<engineId>/`) a session can be pointed at instead
  * of the user's real global engine config (`~/.claude`, `~/.codex`, …), via
@@ -56,7 +56,7 @@ const PROFILE_MARKER_VERSION = 1 as const;
 export const APP_HOME_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 /**
- * #896 wave 2: per-engine import allowlist (docs/design/
+ * archive#896 wave 2: per-engine import allowlist (docs/design/
  * connections-onboarding.md §1.1) — parameterizes `importGlobalSnapshot`'s
  * shared containment/symlink-refusal/size-cap/transactional-commit
  * machinery (unchanged by this refactor) over which top-level entries of
@@ -353,7 +353,7 @@ export function claudeAppHomeEnv(dir: string): Record<string, string> {
 }
 
 /**
- * The Codex counterpart of `claudeAppHomeEnv` (#896 wave 2: wired into
+ * The Codex counterpart of `claudeAppHomeEnv` (archive#896 wave 2: wired into
  * `codex-adapter.ts`'s spawn seam via `station-runtime.ts`'s
  * `codexAdapter.getAppHomeEnv` closure).
  */
@@ -1139,7 +1139,7 @@ export async function importClaudeGlobalSnapshot(
 }
 
 /**
- * #896 wave 2: the Codex counterpart of `importClaudeGlobalSnapshot` — same
+ * archive#896 wave 2: the Codex counterpart of `importClaudeGlobalSnapshot` — same
  * shared `importGlobalSnapshot` machinery, parameterized over
  * `CODEX_APP_HOME_IMPORT_PROFILE`'s allowlist instead.
  */
@@ -1153,7 +1153,7 @@ export async function importCodexGlobalSnapshot(
 }
 
 /**
- * #896 wave 2: bounded profile GC (docs/design/connections-onboarding.md
+ * archive#896 wave 2: bounded profile GC (docs/design/connections-onboarding.md
  * §1.1) — a usage report + an explicit clear action, deliberately NO
  * background job/watcher/timer (over-engineering guardrails). A hard cap on
  * entries visited keeps a pathologically large or deeply-nested profile

@@ -28,7 +28,7 @@
 
 .shortcut-editor__list {
   display: grid;
-  /* --border-subtle until station#1254 (re-seeded here by station#1359) — a
+  /* --border-subtle until archive#1254 (re-seeded here by archive#1359) — a
      token that does not exist, so the list had no top rule and its rows had no
      separators. --border-primary is the subtle line. */
   border-top: 1px solid var(--border-primary);

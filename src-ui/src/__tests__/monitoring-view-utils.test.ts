@@ -168,7 +168,7 @@ describe('slug-less events stay reachable (station#3086)', () => {
   });
 });
 
-// audit 6-OPS-26: the derivation behind Monitoring's two summary numbers.
+// audit 6-: the derivation behind Monitoring's two summary numbers.
 describe('monitoringSessionCounts', () => {
   test('counts unstopped sessions as active and open turns as running', () => {
     expect(
@@ -187,7 +187,7 @@ describe('monitoringSessionCounts', () => {
       activeSessions: 0,
       runningTurns: 0,
     });
-    // ...but an open turn is a fact the server did report.
+    //...but an open turn is a fact the server did report.
     expect(monitoringSessionCounts([{ hasActiveTurn: true }])).toEqual({
       activeSessions: 0,
       runningTurns: 1,

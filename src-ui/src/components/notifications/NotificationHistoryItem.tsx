@@ -13,7 +13,7 @@ import {
 /**
  * One row of "Recent activity".
  *
- * station#1780: this list renders `notifications minus attention-projected`,
+ * archive#1780: this list renders `notifications minus attention-projected`,
  * so a stranded approval that the attention projection correctly dropped
  * surfaces HERE — and it used to arrive with live Allow/Deny buttons that
  * dispatch into a guaranteed server rejection. The fix is annotation, not a
@@ -38,18 +38,18 @@ export function NotificationHistoryItem({
   onDismiss: (notificationId: string) => void;
 }) {
   const detail = notificationDetail(notification);
-  // Only an OBSERVED negative disables anything. `unknown` renders its gap
-  // and leaves the buttons alone: a surface that could not look has no
-  // standing to gate an action, and enforcement is server-side regardless.
+// Only an OBSERVED negative disables anything. `unknown` renders its gap
+// and leaves the buttons alone: a surface that could not look has no
+// standing to gate an action, and enforcement is server-side regardless.
   const unanswerable = answerability.status === 'unanswerable';
   const notice =
     answerability.status === 'unanswerable' ||
     answerability.status === 'unknown'
       ? answerability.notice
       : null;
-  // station#1780 L3: a disabled button announces only "dimmed" to a screen
-  // reader. The reason is on screen for a sighted reader and was inaudible to
-  // everyone else — the same "renders the basis" contract, one modality over.
+// archive#1780: a disabled button announces only "dimmed" to a screen
+// reader. The reason is on screen for a sighted reader and was inaudible to
+// everyone else — the same "renders the basis" contract, one modality over.
   const noticeId = notice
     ? `notification-answerability-${notification.id}`
     : undefined;

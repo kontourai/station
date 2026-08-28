@@ -171,7 +171,7 @@ async function sanitizePublicConversationUpdate(
     delete sanitized.metadata;
   }
 
-  // station#1566: a user-initiated rename always stamps `titleSource:
+  // archive#1566: a user-initiated rename always stamps `titleSource:
   // 'user'` into metadata, even when the PATCH body carries no `metadata`
   // field of its own — this is the durable signal
   // `generateAndPersistAutoTitle` (chat-lifecycle.ts) checks before ever
@@ -225,7 +225,7 @@ interface SessionMessageReader {
   ): ConversationMessage[];
   /**
    * Fold a native-SDK session's persisted events into engine-agnostic usage
-   * totals (station#1299 slice 1) — the stats-route counterpart to
+   * totals (archive#1299) — the stats-route counterpart to
    * `readSessionMessages`'s messages-route compatibility path. Optional so a reader
    * that predates this method (e.g. an older test double) still type-checks;
    * the stats route treats its absence the same as an empty session.
@@ -536,7 +536,7 @@ export function createConversationRoutes(
   createMemoryAdapter?: (slug: string) => FileMemoryAdapter,
   sessionMessageReader?: SessionMessageReader,
   getUserId: () => string = () => getCachedUser().alias,
-  /** See `calculateContextWindowPercentage` (station#1299 item 3a). */
+  /** See `calculateContextWindowPercentage` (archive#1299 item 3a). */
   resolveContextWindowTokens?: (
     modelId: string,
   ) => number | undefined | Promise<number | undefined>,
@@ -1373,7 +1373,7 @@ export function createConversationRoutes(
         if (!firstUserText && !assistantText) {
           // A real conversation with no usable text has nothing to title.
           // Sending empty strings to the model either mints a generic title
-          // from nothing or fails opaquely — both dishonest (station#2569
+          // from nothing or fails opaquely — both dishonest (archive#2569
           // review finding).
           chatTitleRegenerated.add(1, { outcome: 'empty' });
           return c.json(
@@ -1391,7 +1391,7 @@ export function createConversationRoutes(
         // is generating, and an unconditional write here would overwrite the
         // newer human title AND falsify its provenance to 'generated'. The
         // first-turn generator re-reads for exactly this reason; a
-        // regeneration is not exempt (station#2569 review finding — the
+        // regeneration is not exempt (archive#2569 review finding — the
         // CAS-less read-modify-write class).
         const current = await adapter.getConversation(conversationId);
         const snapshotTitle =
@@ -1504,7 +1504,7 @@ export function createConversationRoutes(
 
   // Get messages for a conversation
   /**
-   * station#1399 fix round 2, B2 (independent review) — the SERVE-boundary
+   * archive#1399 fix round 2, B2 (independent review) — the SERVE-boundary
    * sanitizer wrapper. `readConversationMessages` below is the one unified
    * read seam, so this is the one place that guarantees every caller (the
    * `/messages` route, `/export`, fork, summary) sees provenance the SERVER
@@ -1543,7 +1543,7 @@ export function createConversationRoutes(
      * Left unset when we did not determine it — either because the read
      * succeeded, or because nothing here looked (see the hosted branch
      * below). A caller must not read absent as "we asked and it does not
-     * exist" (station#3158).
+     * exist" (archive#3158).
      */
     absence?: 'not-found' | 'no-messages';
   }> => {
@@ -1559,7 +1559,7 @@ export function createConversationRoutes(
     let messages: ConversationMessage[] = [];
     let absence: 'not-found' | 'no-messages' | undefined;
     if (adapter && !hosted) {
-      // station#4080 slice 1 follow-up: the conventional-userId-then-
+      // archive#4080 follow-up: the conventional-userId-then-
       // conversation-lookup fallback is the ONE shared definition of "which
       // store serves this conversation" — see
       // `conversation-transcript-source.ts`'s own doc.
@@ -1611,7 +1611,7 @@ export function createConversationRoutes(
       // "the authority denied it", with no existence channel — so once it
       // has run and found nothing, which absence occurred is genuinely
       // undetermined. Say that rather than claim the stronger one
-      // (station#3158 review).
+      // (archive#3158 review).
       if (absence === 'not-found') absence = undefined;
     }
     return { messages: [], source: 'empty', absence };
@@ -1901,7 +1901,7 @@ export function createConversationRoutes(
           );
           generationToken = null;
         }
-        // #3026 named the reason; #3148 made the generator COMPUTE it. It
+        // archive#3026 named the reason; archive#3148 made the generator COMPUTE it. It
         // used to return a bare null from four distinct situations, and this
         // rendered all four as "no structure model is configured or the
         // transcript was empty" — two causes, neither computed, one of them
@@ -2052,7 +2052,7 @@ export function createConversationRoutes(
   });
 
   /**
-   * station#1999 S2: export a conversation as a portable @kontourai/thread
+   * archive#1999 S2: export a conversation as a portable @kontourai/thread
    * (or any ferry output format). Reads through the SAME unified path as
    * /messages, so every engine family — Station engine (VoltAgent/Strands),
    * Claude Code, Codex, ACP-connected apps — exports identically.
@@ -2526,7 +2526,7 @@ export function createGlobalConversationRoutes(
 
       // Fall back to scanning memory adapters.
       //
-      // #801: the map key names the adapter that answered, not the agent that
+      // archive#801: the map key names the adapter that answered, not the agent that
       // owns the conversation — an adapter resolves conversations stored under
       // any agent, so with more than one agent registered this reported
       // whichever adapter happened to be iterated first. The dock reopens a

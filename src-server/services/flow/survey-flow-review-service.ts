@@ -179,8 +179,8 @@ export interface SurveyFlowReviewUnavailableProject {
 }
 
 /**
- * Cross-project aggregate, total over the inventory (#3322, mirroring the
- * #3303 review-evidence shape): a project Station cannot read contributes
+ * Cross-project aggregate, total over the inventory (archive#3322, mirroring the
+ * archive#3303 review-evidence shape): a project Station cannot read contributes
  * zero items plus an `unavailableProjects` entry carrying the reason it
  * failed, instead of failing the whole flow-reviews source.
  */

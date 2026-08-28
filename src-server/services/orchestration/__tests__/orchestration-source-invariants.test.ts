@@ -1,6 +1,6 @@
 /**
- * Invariants that only a source scan can hold — station#1779 AC4, and the
- * single-fold claim station#1778 makes about `foldedSessionLifecycleState`.
+ * Invariants that only a source scan can hold — archive#1779 AC4, and the
+ * single-fold claim archive#1778 makes about `foldedSessionLifecycleState`.
  *
  * Both are absence claims about code that does not exist yet, so no runtime
  * test can reach them: nothing calls a deleted barrier, and a re-introduced
@@ -99,7 +99,7 @@ const RETIRED = [
   // Its completion receipt.
   ['session.orphan-reconciliation', '.completed'],
   // Its metric, and the rename that would have replaced it with a second
-  // instrument nothing on a real Station can read (station#1686's class).
+  // instrument nothing on a real Station can read (archive#1686's class).
   ['orphanRequests', 'Reconciled'],
   ['orphan_requests', '_reconciled'],
   ['orphanRequests', 'Projected'],
@@ -109,7 +109,7 @@ const RETIRED = [
 /**
  * The `?? 'running'` resolution, assembled for the same reason.
  *
- * station#1778 claims there is ONE such decision in the codebase, named and
+ * archive#1778 claims there is ONE such decision in the codebase, named and
  * documented in `session-lifecycle.ts`, so that changing which direction an
  * unknown lifecycle state folds toward is one edit rather than a sweep. The
  * delta review found the claim FALSE — two independent copies survived, one
@@ -146,7 +146,7 @@ const FOLD_OWNER_BODY = ['state ?? ', "'running'"].join('');
  */
 const DECORATED_SHAPES = [
   ['Orchestration', 'SessionSummary'],
-  // station#3269: Summary was covered and Detail was not, while a fixture
+  // archive#3269: Summary was covered and Detail was not, while a fixture
   // cast to Detail sat one directory away. The shapes travel together — a
   // Detail carries a Summary — so covering one and not the other only means
   // the next invalid fixture picks the other door.
@@ -230,7 +230,7 @@ describe('station#1779 AC4 — retired orphan-reconciliation machinery', () => {
  * `foldedSessionLifecycleState`: six `?? ''`-style resolutions that DECIDE
  * survive in `src-ui` (`sessionDisplay.ts`, `home-view-model.ts`,
  * `useMutableSessionDetailState.ts`, `DelegatedTaskCoordinator.tsx`), and they
- * are slice station#1781's surface, recorded in the PR's divergence table
+ * are slice archive#1781's surface, recorded in the PR's divergence table
  * rather than silently absorbed here.
  *
  * Three further spellings are invisible to a literal scan and are disclosed

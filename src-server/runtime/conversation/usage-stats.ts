@@ -103,7 +103,7 @@ export function getMessageTextContent(message: unknown): string {
 }
 
 /**
- * station#1299 (item 3): callers resolve the model's actual context-window
+ * archive#1299 (item 3): callers resolve the model's actual context-window
  * size from the launchable-model inventory before reaching this calculation.
  * A missing or invalid value is explicitly unknown, never a guessed 200k
  * window: a percentage participates in a user-facing capacity decision, so a
@@ -112,7 +112,7 @@ export function getMessageTextContent(message: unknown): string {
 export function calculateContextWindowPercentage(
   /**
    * `undefined` when nothing measured context occupancy for this session
-   * (station#3201) — there is then no percentage to report, exactly as
+   * (archive#3201) — there is then no percentage to report, exactly as
    * there is none when the window size is unresolved.
    */
   totalTokens: number | undefined,
@@ -137,7 +137,7 @@ export async function calculateUsageCost(
   modelCatalog: BedrockModelCatalog | undefined,
   appConfig: AppConfig,
   logger: { warn: (message: string, meta?: unknown) => void },
-  // station#1557 review round 2 (M6). This defaulted to `appConfig.region`
+  // archive#1557 review round 2 (M6). This defaulted to `appConfig.region`
   // while its callers' own enrichment lookups had been routed through the
   // resolver, so with `AWS_REGION=eu-west-1` and nothing stored, one lookup
   // priced a turn from eu-west-1 and the conversation cost stat for the SAME

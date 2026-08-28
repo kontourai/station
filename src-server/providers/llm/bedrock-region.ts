@@ -1,6 +1,6 @@
 /**
  * The one place Station decides which AWS region a Bedrock call uses
- * (station#1557).
+ * (archive#1557).
  *
  * Before this module the readers disagreed, and there were more of
  * them than any one reading found — the count in this sentence was wrong
@@ -20,7 +20,7 @@
  * value as a "doomed edit" because `AWS_REGION` was set, when the stored
  * value was in fact the one that applied.
  *
- * The first fix for station#1557 unified two of those readers and left the
+ * The first fix for archive#1557 unified two of those readers and left the
  * execution path alone, which relocated the disagreement instead of closing
  * it — and made it worse, because the new badge asserted a region the chat
  * turn would not use. Review caught it. Every site that DECIDES a region now
@@ -111,7 +111,7 @@ function trimmed(value: string | null | undefined): string | undefined {
 
 /**
  * A malformed `AWS_REGION` is not a decision — it is discarded, exactly as a
- * whitespace-only one is (station#1557 review round 2, HIGH).
+ * whitespace-only one is (archive#1557 review round 2, HIGH).
  *
  * This matters because of what routing the environment into the resolver
  * exposed: `BedrockModelCatalog`'s constructor calls `normalizeBedrockRegion`,

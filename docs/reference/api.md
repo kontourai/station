@@ -536,7 +536,7 @@ Returns tools available to a specific agent with full schemas.
 ```
 
 **Errors** — the two reasons an agent has no tool list are separated
-(station#3158): `404` `Agent '<slug>' not found` when neither the persisted
+(archive#3158): `404` `Agent '<slug>' not found` when neither the persisted
 catalog nor the registry's default agents knows the slug, and `409`
 `Agent '<slug>' exists but is not active` when it does and its runtime is not
 up.
@@ -1142,9 +1142,9 @@ Bedrock launch selectors are evidence-backed through one shared resolver used by
 }
 ```
 
-**Consumers**: the Station SDK exports `fetchLaunchableModelInventory()` and `useLaunchableModelInventoryQuery()`. Datum-backed Auto routing is planned in `#423`. Its upstream contract must preserve Station's unknown execution dimensions rather than coercing them into a complete Bearing profile; that prerequisite is tracked in `kontourai/datum#21`. Existing manual model selection does not use or change this endpoint.
+**Consumers**: the Station SDK exports `fetchLaunchableModelInventory()` and `useLaunchableModelInventoryQuery()`. Datum-backed Auto routing is planned in `archive#423`. Its upstream contract must preserve Station's unknown execution dimensions rather than coercing them into a complete Bearing profile; that prerequisite is tracked in `kontourai/datum#21`. Existing manual model selection does not use or change this endpoint.
 
-> ## ⚠️ Superseded by station#1398 slice 2 — read this before the section above
+> ## ⚠️ Superseded by archive#1398 slice 2 — read this before the section above
 >
 > **This endpoint no longer returns `station.model-inventory/v2`.** Both halves of §5.3's recorded decision shipped together:
 >
@@ -1225,7 +1225,7 @@ Runs a lightweight health check for the selected connection.
 
 ## Fleet Inference
 
-Station's serving side of the inference fleet (station#1398, `docs/design/inference-fleet.md`). A peer holding a credential for this Station can read which local models it contributes and ask for a completion on one of them. **This is not `delegate_task`**: a delegated task runs here, with this machine's agents, tools, credentials, and workspace, and persists in this machine's event store. Fleet inference keeps the agent loop, the tools, the files, and the event record on the *consumer* — only token generation happens here. There is no `tools` field, no session, no filesystem access, and no agent slug anywhere in this family.
+Station's serving side of the inference fleet (archive#1398, `docs/design/inference-fleet.md`). A peer holding a credential for this Station can read which local models it contributes and ask for a completion on one of them. **This is not `delegate_task`**: a delegated task runs here, with this machine's agents, tools, credentials, and workspace, and persists in this machine's event store. Fleet inference keeps the agent loop, the tools, the files, and the event record on the *consumer* — only token generation happens here. There is no `tools` field, no session, no filesystem access, and no agent slug anywhere in this family.
 
 **Authorization.** The whole `/api/inference/**` family requires the **`inference:invoke`** pairing scope and nothing else. Only the `inference` pairing preset grants it. It is deliberately absent from the default grant, so an unscoped offer, a credential migrated from a pre-scoping registry, and the Station operator bootstrap credential all lack it — including for local testing, where you must mint an `inference`-preset grant.
 
@@ -1260,7 +1260,7 @@ The deadline is what makes the concurrency cap a bound at all: without it, a pro
 GET /api/inference/manifest
 ```
 
-The `station.fleet-contribution/v1` projection (station#1398 slice 1) as it crosses the machine boundary. This is the **only** place participation is readable: the public handshake advertises the static `fleetInference` protocol-support flag and never whether this Station is currently contributing anything, so an unauthenticated LAN or tailnet scanner cannot enumerate which of the owner's machines have GPUs.
+The `station.fleet-contribution/v1` projection (archive#1398 slice 1) as it crosses the machine boundary. This is the **only** place participation is readable: the public handshake advertises the static `fleetInference` protocol-support flag and never whether this Station is currently contributing anything, so an unauthenticated LAN or tailnet scanner cannot enumerate which of the owner's machines have GPUs.
 
 `GET /api/connections/model-inventory` serves this same body, for the same scope — that leaf is the compatibility-path spelling of this route, not a wider one.
 
@@ -1813,7 +1813,7 @@ GET /api/attachments/:ref
 
 The bytes behind an attachment a transcript is showing, where `:ref` is the
 `sha256-<64 hex>` content reference persisted on the turn's `attachments`
-(station#3374/#3385). Authenticated at the `orchestration:read` pairing tier.
+(archive#3374/#3385). Authenticated at the `orchestration:read` pairing tier.
 
 The response deliberately **does not name the image's type**: the store is
 addressed by bytes alone and holds no MIME type, and two attachments with
@@ -1844,8 +1844,8 @@ This is a **Bedrock-only** projection of `ListFoundationModels`: it is empty
 without AWS credentials and carries no row for a Claude Code, Codex, ACP, or
 Ollama model. A missing row means the catalog has nothing to say about that
 model, never that the model rejects images — `useModelImageSupport` keeps that
-distinction as a three-state answer (station#3344), and the response envelope
-carries the provenance it needs to (station#3373).
+distinction as a three-state answer (archive#3344), and the response envelope
+carries the provenance it needs to (archive#3373).
 
 Full description, including `source` and `complete`:
 [Standalone Model Capability Routes](#standalone-model-capability-routes) below.
@@ -2100,7 +2100,7 @@ Lists directories (not files) at the given path. Used by the UI directory picker
 
 Entries are sorted: non-dotfiles first, then dotfiles, each group alphabetically.
 
-**Errors** — one status and message per cause (station#3158); the response never
+**Errors** — one status and message per cause (archive#3158); the response never
 echoes the requested path:
 
 | Status | `error` | Cause |
@@ -2125,8 +2125,8 @@ Aggregates monitoring event logs to produce tool usage, hourly activity, agent u
 
 **Query Parameters**:
 - `days`: Number of days to look back (default: `14`)
-- `agent`, `tool`, `engine`: exact-match filters (station#3075). `engine` reads
-  `gen_ai.provider.name`, added in station#3074 — events written before it
+- `agent`, `tool`, `engine`: exact-match filters (archive#3075). `engine` reads
+  `gen_ai.provider.name`, added in archive#3074 — events written before it
   carry no engine and are excluded by that filter rather than guessed at.
 - `limit`: keep the top N buckets by rank, server-side (cap 500)
 
@@ -2195,7 +2195,7 @@ A `start` or `end` that does not parse is a `400`, not a wider window. Epoch
 milliseconds and ISO 8601 are both accepted; epoch *seconds* parse as a 1970
 timestamp, which is why an unparseable bound must not silently fall back.
 
-Deliberately NOT a second endpoint under `/api/insights` (station#3076): that
+Deliberately NOT a second endpoint under `/api/insights` (archive#3076): that
 handler already applies the two authorization layers these rows require — the
 per-user filter inside `queryEventsFromDisk` and the tenant predicate in
 `filterMonitoringEvents` — and an export that re-derives an authorization
@@ -2206,7 +2206,7 @@ Also reachable as the `read_monitoring_events` MCP tool, which reads a
 different store from `read_logs`.
 
 The `(unnamed)` bucket counts tool calls whose producer reported no name
-(station#3073). It is deliberately distinct from a tool literally named
+(archive#3073). It is deliberately distinct from a tool literally named
 `unknown`, which older events — written when the name was substituted at
 write time — still carry as their own bucket.
 
@@ -2226,7 +2226,7 @@ GET /api/models/capabilities
 
 Lists all ACTIVE and LEGACY **Bedrock** foundation models with capability flags. Results are cached for 1 hour, keyed by the region in effect.
 
-Scope, stated on the response rather than left to the path (station#3373):
+Scope, stated on the response rather than left to the path (archive#3373):
 
 - `source: 'bedrock'` — the one catalogue projected here. There is no row for a
   Claude Code, Codex, ACP, or Ollama model, so a model absent from `data` is not

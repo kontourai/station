@@ -11,7 +11,7 @@ import { appHomeProfileDir } from '../app-home/app-home-profiles.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
 
 /**
- * #896 wave 2 (docs/design/connections-onboarding.md §1.1's named gap):
+ * archive#896 wave 2 (docs/design/connections-onboarding.md §1.1's named gap):
  * also lists the Station-owned app-home profile skills dirs — read-only
  * listing sources, still additive/browse-only. The existing `existsSync`
  * guard in `listAvailable`/`install`/`getContent` already makes an absent

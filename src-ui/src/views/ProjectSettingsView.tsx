@@ -58,10 +58,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // `SectionNav` forwards this ref to its own `<nav>` element (station#4463
-  // slice 2 review LOW — no wrapper `<div>` needed, so this flex child's
-  // `flex-shrink: 0` (`.project-settings__section-nav` in the CSS) lands on
-  // the real scrolling strip, not an inert wrapper one level out).
+// `SectionNav` forwards this ref to its own `<nav>` element (archive#4463
+ // review — no wrapper `<div>` needed, so this flex child's
+// `flex-shrink: 0` (`.project-settings__section-nav` in the CSS) lands on
+// the real scrolling strip, not an inert wrapper one level out).
   const sectionNavRef = useRef<HTMLElement | null>(null);
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
@@ -173,7 +173,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
   return (
     <div className="page page--full">
-      {/* Header */}
+{/* Header */}
       <DetailHeader
         title={`${form.icon || project?.icon || ''} ${form.name}`.trim()}
         badge={
@@ -217,7 +217,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         onNavigate={navigateToSection}
       />
 
-      {/* Body */}
+{/* Body */}
       <div className="project-settings__body">
         {error && (
           <ErrorState
@@ -332,7 +332,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           </div>
         </PageSection>
 
-        {/* Default AI Model */}
+{/* Default AI Model */}
         <PageSection
           id="section-model"
           className="project-settings__section"
@@ -389,23 +389,23 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           />
         </PageSection>
 
-        {/* Layouts — list + save as template */}
+{/* Layouts — list + save as template */}
         <AgentsSection form={form} setForm={setForm} />
 
         <LayoutsSection slug={slug} />
 
-        {/*
+{/*
           station#1502 slice 4 — §3.6's resolution states and their repair
           actions. Mounted HERE and nowhere else: `ProjectPage.tsx` stays
           byte-unchanged so the first-run journey `tests/first-run-live.spec.ts`
           pins is provably untouched without an e2e run this slice cannot make.
-        */}
+*/}
         <ResourcesSection slug={slug} />
 
-        {/* Knowledge */}
+{/* Knowledge */}
         <KnowledgeSection slug={slug} guard={guard} />
 
-        {/* Danger Zone */}
+{/* Danger Zone */}
         <PageSection
           id="section-danger"
           className="project-settings__section"

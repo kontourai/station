@@ -17,7 +17,7 @@ import { routeTransitionStore } from './route-transition-store';
 
 /**
  * What actually failed, derived from the thrown error rather than assumed
- * (SHELL-06). Every route failure used to render "Reload Station to retry the
+ *. Every route failure used to render "Reload Station to retry the
  * route download" — a sentence that is only true for the first case, and that
  * discards all UI state for the other two.
  */
@@ -79,7 +79,7 @@ class RouteErrorBoundary extends Component<
    * sidebar, every other open surface and the whole client cache survive.
    *
    * It is deliberately NOT offered for a rejected chunk import: React caches
-   * a `lazy()` rejection for the life of the module, so mounting the same
+   * a `lazy` rejection for the life of the module, so mounting the same
    * lazy component replays the same rejected promise (the reason
    * `LazyBoundary` has to construct a fresh one). Offering "Try again" there
    * would be a button that cannot work.

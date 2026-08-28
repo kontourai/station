@@ -817,12 +817,12 @@ export interface PersistedRuntimeEvent {
   method: string;
   payload: CanonicalRuntimeEvent;
   createdAt: string;
-  /** Station ingestion time; absent on rows written before #4135. */
+  /** Station ingestion time; absent on rows written before archive#4135. */
   observedAt?: string;
   /** Monotonic within `threadId` only — see {@link PersistedRuntimeEvent.globalSequence}. */
   sequence: number;
   /**
-   * Monotonic across every thread (station#1092). The resume cursor for the
+   * Monotonic across every thread (archive#1092). The resume cursor for the
    * `/api/orchestration/events` SSE stream: it is what the route sets as the
    * frame's `id:` and what a reconnecting client sends back as
    * `Last-Event-ID`, so ordering must hold across sessions, not just within
@@ -831,7 +831,7 @@ export interface PersistedRuntimeEvent {
   globalSequence: number;
   /**
    * Set only by a BOUNDED read whose budget withheld part of the stored
-   * payload (station#3386) — never persisted, and never set by a full read.
+   * payload (archive#3386) — never persisted, and never set by a full read.
    * Its absence is therefore a fact about this read, not a default.
    */
   elided?: RuntimeEventElisionReason;
@@ -887,7 +887,7 @@ const LIFECYCLE_METHODS = [
   'turn.started',
 ] as const;
 
-// station#4466 review remediation: the exact set of methods
+// archive#4466 review remediation: the exact set of methods
 // `listSessionProjectionEventsForThreads` ranks — every method any slot in
 // `listSessionProjectionEvents`'s fold looks up by name (`LIFECYCLE_METHODS`
 // plus `flow.run-attached`/`policy.hooks-attached`/`session.started`/
@@ -910,11 +910,11 @@ const PROJECTION_FOLD_METHODS = [
   'turn.completed',
 ] as const;
 
-// station#4466: SQLite's bound-parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER,
+// archive#4466: SQLite's bound-parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER,
 // commonly 32766) bounds how many `?` placeholders one statement can hold.
 // Chunking every `thread_id IN (...)` batch at this size keeps the ceiling
 // structurally unreachable regardless of how many threads a caller requests
-// — tested directly (station#4466 review remediation) rather than trusted.
+// — tested directly (archive#4466 review remediation) rather than trusted.
 const EVENT_STORE_BATCH_CHUNK_SIZE = 500;
 
 /** The latest and/or first row for one `(threadId, method)` pair. */
@@ -1108,11 +1108,11 @@ function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
 }
 
 /**
- * Bounds one event for a window read, and — station#3386 — SAYS SO when it
+ * Bounds one event for a window read, and — archive#3386 — SAYS SO when it
  * bounded it. Both budgets here used to be silent: a `tool.completed` came
  * back cut to 84 characters with no mark, and any payload over the 4 KB
  * ceiling came back as identity fields alone, which is how a pasted image
- * over ~3 KB lost both its prompt and its chip on restore (station#3374).
+ * over ~3 KB lost both its prompt and its chip on restore (archive#3374).
  * From the client, a stripped payload and a payload that never had those
  * fields are the same bytes.
  */
@@ -1121,7 +1121,7 @@ function snapshotEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
   let outputCut = false;
   let snapshotPayload = payload;
   if (event.method === 'tool.completed') {
-    // station#3427: an empty-string error is a tool that failed with no
+    // archive#3427: an empty-string error is a tool that failed with no
     // message — a fact about the run, not the absence of one — so it is
     // preserved the same way an empty-string output already was; a
     // truthiness guard on `error` alone used to drop it from the snapshot.
@@ -1145,7 +1145,7 @@ function snapshotEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
     // `output` is contract-typed `unknown`, and real producers legitimately
     // emit structured values (e.g. `claude-transcript-session-source.ts`'s
     // `output: raw.content`), so a non-null, non-string `output` is
-    // JSON-serialised rather than left alone — station#3462 — preserving a
+    // JSON-serialised rather than left alone — archive#3462 — preserving a
     // structured tool result instead of reading it back as the fixed string
     // `"[object Object]"`. A string `output` passes through without
     // JSON-quoting it (no double-encoding: a string result must not come
@@ -1217,8 +1217,8 @@ function snapshotEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
 }
 
 /**
- * station#3433 round 2: moving the persist instruments outside the savepoint
- * try (station#3386's shape) stopped a throwing instrument from masking a
+ * archive#3433 round 2: moving the persist instruments outside the savepoint
+ * try (archive#3386's shape) stopped a throwing instrument from masking a
  * committed insert as a rollback — but a throwing instrument here still
  * propagated out of `appendEvent`/`appendEventIfAbsent` themselves, to
  * callers that do not catch (`runtime-initialize.ts`,
@@ -1354,7 +1354,7 @@ export class VoiceTurnStartupUnavailableError extends Error {
 }
 
 /**
- * The reactive path's typed corruption failure (station#3219). There is no
+ * The reactive path's typed corruption failure (archive#3219). There is no
  * per-boot `PRAGMA quick_check` any more — that check cost O(database size)
  * on every start and could not see damage arriving after boot. Corruption is
  * now classified where SQLite itself raises it (`explicitCorruption`), and a
@@ -1374,7 +1374,7 @@ export class EventStoreIntegrityError extends Error {
 }
 
 /**
- * station#4075 stage 2: thrown by {@link EventStore.appendEvent} /
+ * archive#4075 stage 2: thrown by {@link EventStore.appendEvent} /
  * {@link EventStore.appendEventIfAbsent} when an ownership-shaped event
  * (`session.started`/`session.configured`) carrying a `metadata.userId`
  * disagrees with the thread's already-established owner
@@ -1402,7 +1402,7 @@ export class EventStore {
   private readonly declaredOutputCursorKey: Buffer;
   private readonly sessionInventoryCursorKey: Buffer;
   /**
-   * Attachment bytes live beside the database, not inside it (station#3374).
+   * Attachment bytes live beside the database, not inside it (archive#3374).
    * Derived from `dbPath` rather than injected: the blobs are as much this
    * store's own state as its SQLite file is, and a dependency a caller can
    * forget to pass is one that silently reverts to writing megabytes of base64
@@ -1421,7 +1421,7 @@ export class EventStore {
   private readonly voiceTurnRuns: VoiceTurnRuns;
   private readonly sessionTurnBoundaries: SessionTurnBoundaryAuthority;
   /**
-   * station#4080 slice 1: the dead-owner `accepted`/`indeterminate` findings
+   * archive#4080: the dead-owner `accepted`/`indeterminate` findings
    * from this process's OWN boot-time `initializeSessionTurnBoundaries()`
    * reconcile pass — each one "a turn was in flight when its owning process
    * died". Drained exactly once by `takeInterruptedTurnBoundaries()`; a
@@ -1481,12 +1481,12 @@ export class EventStore {
     // somebody forgets to make at the next site; the connection is the single
     // place every one of them passes through. The watch observes and rethrows,
     // so no query's behaviour changes — only what Station knows afterwards
-    // (station#3215).
+    // (archive#3215).
     this.db = watchForSqliteCorruption(
       new DatabaseSync(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS }),
       {
         onCorruptionObserved: (error) => {
-          // The shared mapping (#3220's extraction — two copies of it are two
+          // The shared mapping (archive#3220's extraction — two copies of it are two
           // chances to record different truths about one error) with main's
           // MARKER-FIRST ordering: the watch swallows observer failures
           // whole, so anything thrown before the marker write kills the
@@ -1495,12 +1495,12 @@ export class EventStore {
           // instrument did precisely this, silently). The durable evidence
           // outranks the telemetry about it.
           //
-          // station#3433 class sweep: this callback is NOT structurally
+          // archive#3433 class sweep: this callback is NOT structurally
           // outside a rollback-catch — `wrapStatement` (sqlite-corruption-
           // watch.ts) fires it from inside the catch of whatever statement
           // failed, which is dynamically inside this constructor's own
           // SAVEPOINT tries elsewhere in the file whenever that statement is
-          // transactional. It is exempt from the #3433 fix for a different,
+          // transactional. It is exempt from the archive#3433 fix for a different,
           // already-independent reason: `watchForSqliteCorruption`'s own
           // `report()` wraps `onCorruptionObserved(error)` in try/catch and
           // unconditionally rethrows the ORIGINAL `error` afterward — so a
@@ -1513,7 +1513,7 @@ export class EventStore {
             errcode: marker.errcode ?? 'unknown',
             // Both detection paths carry `source` so the counter can answer
             // which one found it. A dimension only one site sets is one the
-            // other silently aggregates into "unset" (station#3218).
+            // other silently aggregates into "unset" (archive#3218).
             source: 'query',
           });
         },
@@ -1527,10 +1527,10 @@ export class EventStore {
     // This seam relied on the option alone, which is how a peer's write lock
     // could return SQLITE_BUSY here with no wait at all.
     //
-    // Distinct from SQLITE_SCHEMA contention (#3200) — that one was never
+    // Distinct from SQLITE_SCHEMA contention (archive#3200) — that one was never
     // BUSY, and its known trigger, the per-boot quick_check, was itself
-    // removed by station#3219 — but the same shape of gap, with one seam
-    // already knowing what the other did not (station#3188 review).
+    // removed by archive#3219 — but the same shape of gap, with one seam
+    // already knowing what the other did not (archive#3188 review).
     try {
       this.db.exec(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
     } catch {
@@ -1538,7 +1538,7 @@ export class EventStore {
       // truthful, corruption-classified verdict, which is the actionable
       // failure.
     }
-    // WAL before the first write (#2895). A STATION_HOME can legitimately be
+    // WAL before the first write (archive#2895). A STATION_HOME can legitimately be
     // open by more than one runtime — a desktop bundle and a managed service
     // share one home — and in the default `delete` journal mode a writer takes
     // an exclusive lock that blocks every other connection. Worse, when a
@@ -1560,7 +1560,7 @@ export class EventStore {
     // The mode is persistent in the database header, so the first uncontended
     // open converts the file for good and every later open is a no-op that
     // succeeds even under contention.
-    // station#3661: retried, because the CONVERSION on a never-WAL file is
+    // archive#3661: retried, because the CONVERSION on a never-WAL file is
     // refused instantly rather than waiting out `busy_timeout` — a bare
     // swallow left a brand-new home in rollback-journal mode for the whole
     // boot that raced. Still advisory: the migration below has its own
@@ -1586,7 +1586,7 @@ export class EventStore {
         encoded_bytes INTEGER NOT NULL CHECK (encoded_bytes >= 0)
       )
     `);
-      // Which threads reference which blob (station#3385 review).
+      // Which threads reference which blob (archive#3385 review).
       //
       // The blob store is content-addressed and deduped across every thread
       // and every user, so a reference on its own authorizes nobody: a digest
@@ -1685,24 +1685,24 @@ export class EventStore {
       // is only what the observer cannot do: preserve the hot WAL through
       // the close, and surface the typed error the boot path acts on.
       const corrupt = explicitCorruption(error);
-      // DISCLOSED LIMIT of the preservation below (station#3219 review): the
+      // DISCLOSED LIMIT of the preservation below (archive#3219 review): the
       // reactive ordering commits migration frames BEFORE a read can find
       // damage (~7 frames measured), and on a hot WAL already near SQLite's
       // auto-checkpoint threshold (~1000 pages) those commits can complete a
       // checkpoint that folds the pre-existing frames into the DAMAGED main
       // file and restarts the WAL — something the deleted check-before-write
       // ordering made impossible. Not data loss (a checkpoint only resets
-      // after frames are durable in main), but salvage (#3251) then receives
+      // after frames are durable in main), but salvage (archive#3251) then receives
       // frames interleaved into a damaged tree rather than a clean WAL. The
       // holder below protects the frames from the CLOSE; nothing here
       // protects them from the boot's own writes.
       //
       // Closing a read-write connection to a corrupt WAL-mode store deletes
-      // the hot WAL outright — measured (station#3217 review): wal 206032 ->
+      // the hot WAL outright — measured (archive#3217 review): wal 206032 ->
       // GONE, main byte-identical, because the close takes an exclusive lock
       // and unlinks the WAL after its checkpoint fails on the damage. Those
       // frames are the user's last committed events, they exist in no other
-      // file, and the quarantine/salvage path (#3217/#3251) is about to try
+      // file, and the quarantine/salvage path (archive#3217/#3251) is about to try
       // to preserve them.
       //
       // The guard is a read-only holder that has PERFORMED A READ. A
@@ -2181,7 +2181,7 @@ export class EventStore {
 
   /**
    * Compose immutable revision/evidence receipts over this exact EventStore.
-   * The returned #2891 Module and its scope-bound reader never expose SQLite,
+   * The returned archive#2891 Module and its scope-bound reader never expose SQLite,
    * storage paths, rows, or a generic CRUD surface.
    */
   createRevisionEvidenceModule(input: {
@@ -2287,7 +2287,7 @@ export class EventStore {
   /**
    * The persisted form of an event: identical, except that a `turn.started`'s
    * attachment bytes are replaced by a content-addressed reference
-   * (station#3374).
+   * (archive#3374).
    *
    * This projection is also used for the live event bus. A blob write failure
    * therefore rejects the turn event before it can persist or reach SSE; raw
@@ -2428,7 +2428,7 @@ export class EventStore {
    * read; a false positive cannot grant one.
    *
    * It exists because "check every bound thread" leaked through the clock
-   * (station#3385 review). An unbound digest cost zero predicate calls while a
+   * (archive#3385 review). An unbound digest cost zero predicate calls while a
    * digest bound to N unreadable threads cost N — and the owner fold behind
    * that predicate deliberately never caches a negative, at ~4.4ms of
    * synchronous work each. Response time therefore answered the exact question
@@ -2658,7 +2658,7 @@ export class EventStore {
       );
       throw error;
     }
-    // station#3433: deliberately OUTSIDE the transaction's error boundary
+    // archive#3433: deliberately OUTSIDE the transaction's error boundary
     // (a throwing instrument here must not be caught as a store failure and
     // answered with a ROLLBACK against a transaction that has already
     // committed), and guarded so it cannot fail THIS call either — see
@@ -2738,7 +2738,7 @@ export class EventStore {
 
   /**
    * The bytes behind a persisted attachment reference, or `undefined` when
-   * they are no longer stored (station#3385).
+   * they are no longer stored (archive#3385).
    *
    * Exposed as a read rather than as the blob store itself: the caller is an
    * HTTP route, and what it needs is one attachment's bytes, not the authority
@@ -2953,7 +2953,7 @@ export class EventStore {
       throw error;
     }
     if (absent) return undefined;
-    // station#3433: deliberately OUTSIDE the transaction's error boundary
+    // archive#3433: deliberately OUTSIDE the transaction's error boundary
     // (a throwing instrument here must not be caught as a store failure and
     // answered with a ROLLBACK against a transaction that has already
     // committed), and guarded so it cannot fail THIS call either — see
@@ -3080,7 +3080,7 @@ export class EventStore {
    * functionally correct but needlessly enters a write savepoint and computes
    * thread/global sequence values before `INSERT OR IGNORE` discovers the
    * duplicate. On a dogfood store with 23k attached events that cold replay
-   * saturated the main thread with synchronous SQLite for minutes (#1997).
+   * saturated the main thread with synchronous SQLite for minutes (archive#1997).
    *
    * Query in conservative chunks rather than depending on a host SQLite's
    * parameter ceiling. The insert remains the final idempotence boundary for
@@ -3881,7 +3881,7 @@ export class EventStore {
    * read.
    */
   listSessionProjectionEvents(threadId: string): PersistedRuntimeEvent[] {
-    // station#3557/#3558 fix-round review BLOCK 1: computed once and shared
+    // archive#3557/#3558 fix-round review BLOCK 1: computed once and shared
     // between the `turn.started` slot below and the turn-scoped terminal
     // slot it anchors — see `latestTerminalEventForTurn`'s docblock for why
     // the terminal slot must be scoped to THIS turn's id, not the thread's
@@ -3900,7 +3900,7 @@ export class EventStore {
       this.firstEventByMethod(threadId, 'session.configured'),
       this.latestEventByMethod(threadId, 'session.configured'),
       this.firstTurnStartedWithPrompt(threadId),
-      // station#3524: the CURRENT turn's own announcement. Neither existing
+      // archive#3524: the CURRENT turn's own announcement. Neither existing
       // slot guarantees this fact stays visible — `firstTurnStartedWithPrompt`
       // is pinned to the session's first turn WITH A NON-EMPTY PROMPT
       // (`ORDER BY sequence ASC` filtered on `$.prompt`; a promptless turn 1
@@ -3928,7 +3928,7 @@ export class EventStore {
       // see the "orphan terminal" test below for one such change, pinned
       // rather than left implicit.
       latestTurnStarted,
-      // station#3557: the counterweight the block above already forecasts.
+      // archive#3557: the counterweight the block above already forecasts.
       // `firstTurnStartedWithPrompt`/`latestEventByMethod('turn.started')`
       // now guarantee the CURRENT turn's start survives, but its COMPLETION
       // has no dedicated slot — bedrock and ollama publish
@@ -3946,7 +3946,7 @@ export class EventStore {
       // terminal for turn-N reads `hasActiveTurn: true` for a session with
       // nothing running.
       //
-      // station#3557/#3558 fix-round review BLOCK 1: scoped to the turn
+      // archive#3557/#3558 fix-round review BLOCK 1: scoped to the turn
       // `latestTurnStarted` names, not the thread's latest terminal — see
       // {@link EventStore.latestTerminalEventForTurn}'s docblock for why.
       latestTurnStarted?.turnId
@@ -3965,7 +3965,7 @@ export class EventStore {
   /**
    * The latest `runtime.error` that still describes the session NOW.
    *
-   * station#3442: this fact set retains exactly ONE lifecycle event (the
+   * archive#3442: this fact set retains exactly ONE lifecycle event (the
    * highest-sequence row across {@link LIFECYCLE_METHODS}), and every adapter
    * publishes `session.state-changed -> idle` immediately after
    * `turn.completed`, so a later successful `turn.completed` always loses that
@@ -3986,14 +3986,14 @@ export class EventStore {
    * transport may well still describe the session when the next turn is
    * merely announced. What DOES prove recovery is a strictly later PROVEN
    * `turn.completed` — an engine ran a whole turn end-to-end through the
-   * transport the error indicted (station#3485; feasible since station#3557
+   * transport the error indicted (archive#3485; feasible since archive#3557
    * made the completion fact durably observable). "Proven" is
    * {@link PROVIDER_PROVEN_FINISH_REASONS} — the same allowlist, and
    * deliberately the same single decision point, as auth-health clearing
-   * (station#3509 rejected the exclusion-list shape for this exact question
+   * (archive#3509 rejected the exclusion-list shape for this exact question
    * as fail-open). So `'cancelled'` (a Stop confirmation — codex publishes
    * one via `mapTurnFinishReason('interrupted')`), `'other'` ("we do not
-   * know", per station#3545), and an ABSENT `finishReason` all fail closed:
+   * know", per archive#3545), and an ABSENT `finishReason` all fail closed:
    * the error stays until a completion positively proves the session works.
    * `turn.aborted` likewise proves only that a stop was processed. The
    * accepted cost of failing closed: a session whose only post-error
@@ -4025,7 +4025,7 @@ export class EventStore {
    * failed: `blockedReason` disappears, `findTerminalFailureEvent` finds
    * nothing, `failureKind` is undefined, and the fold reports
    * `retryEligible: false` — a session marked failed with no reason and no
-   * retry affordance, which is #3442's own complaint recreated.
+   * retry affordance, which is archive#3442's own complaint recreated.
    *
    * So: resolve the error's OWN turn first, and when it was never started,
    * fall back to the error's own position — retain it while no turn has been
@@ -4037,7 +4037,7 @@ export class EventStore {
    * account of the failure.
    *
    * The never-started branch must still ask whether the session moved on, or
-   * it recreates #3442 from the other side: nothing else can drop a ghost
+   * it recreates archive#3442 from the other side: nothing else can drop a ghost
    * error, so a fully successful retry (whose `turn.completed` never reaches
    * this fact set — the trailing idle takes the single lifecycle slot) would
    * leave it the last word forever, still driving `blockedReason`,
@@ -4053,7 +4053,7 @@ export class EventStore {
     const event = this.latestEventByMethod(threadId, 'runtime.error');
     if (!event) return undefined;
     if (!event.turnId) {
-      // Session-scoped (station#3485): retained until a strictly later
+      // Session-scoped (archive#3485): retained until a strictly later
       // PROVEN completion shows the session recovered — see the docblock
       // for the allowlist decision and what deliberately does not count.
       return this.hasProvenTurnCompletionAfter(threadId, event.sequence)
@@ -4106,7 +4106,7 @@ export class EventStore {
    * `runtime.error` supersession rule for BOTH folds:
    * {@link latestCurrentTurnRuntimeErrorEvent} and the batched mirror in
    * {@link listSessionProjectionEventsForThreads} — one implementation so
-   * the single-thread and batched projections cannot disagree (station#3485
+   * the single-thread and batched projections cannot disagree (archive#3485
    * review BLOCK 1: the first version fixed only the single-thread path,
    * and the Activity list kept reporting `failed` for a session the detail
    * view showed recovered).
@@ -4158,7 +4158,7 @@ export class EventStore {
 
   /**
    * The latest `turn.completed`/`turn.aborted` for ONE SPECIFIC turn —
-   * station#3557/#3558 fix-round review BLOCK 1. See the call site in
+   * archive#3557/#3558 fix-round review BLOCK 1. See the call site in
    * {@link listSessionProjectionEvents} for the full defect this replaced
    * (`latestEventByMethods(threadId, ['turn.completed', 'turn.aborted'])`,
    * unscoped to any turn) and why "cannot be the newest fact in the bounded
@@ -4179,7 +4179,7 @@ export class EventStore {
    * `latestEventByMethods(LIFECYCLE_METHODS)` slot, which is NOT turn-scoped
    * and will independently surface whichever of the two is the thread's
    * overall latest lifecycle-method row) happens to hand the fold — see
-   * station#3557/#3558 review BLOCK 3.
+   * archive#3557/#3558 review BLOCK 3.
    */
   private latestTerminalEventForTurn(
     threadId: string,
@@ -4216,14 +4216,14 @@ export class EventStore {
 
   /**
    * The batched counterpart of {@link listSessionProjectionEvents}
-   * (station#4466, review-remediated) — used ONLY by the list-many-sessions
+   * (archive#4466, review-remediated) — used ONLY by the list-many-sessions
    * read paths (`listSessionReadModel`, `listAgentRuns`). Every other,
    * single-thread caller (including `listSessionProjectionEvents` itself)
    * keeps the flat indexed per-thread reads above, UNCHANGED: an earlier
    * version of this method made `listSessionProjectionEvents` delegate here,
    * which put an unbounded per-batch read behind `consumeAdapterEvents`'s
-   * per-streamed-event hot path (independent review, station#4466 — the
-   * exact station#1867 wedge class) and every other single-thread caller.
+   * per-streamed-event hot path (independent review, archive#4466 — the
+   * exact archive#1867 wedge class) and every other single-thread caller.
    * That inversion is reverted; this method's blast radius is the two named
    * callers only.
    *
@@ -4340,9 +4340,9 @@ export class EventStore {
       const methodFacts = rankedMethodFacts.get(threadId);
       const latestTurnStarted = methodFacts?.get('turn.started')?.latest;
       const latestRuntimeError = methodFacts?.get('runtime.error')?.latest;
-      // Mirrors `latestCurrentTurnRuntimeErrorEvent` exactly (station#3442):
+      // Mirrors `latestCurrentTurnRuntimeErrorEvent` exactly (archive#3442):
       // see that method's docblock above for the full reasoning. The
-      // session-scoped branch (station#3485) calls the SAME
+      // session-scoped branch (archive#3485) calls the SAME
       // `hasProvenTurnCompletionAfter` helper the single-thread path uses —
       // one indexed probe, only for threads whose latest error is
       // session-scoped — because review BLOCK 1 on that change caught this
@@ -5229,7 +5229,7 @@ export class EventStore {
 
   /**
    * Accurate event count for a thread without materializing any row payload
-   * (station#1867). `COUNT(*)` over the `(thread_id, sequence)` index is a
+   * (archive#1867). `COUNT(*)` over the `(thread_id, sequence)` index is a
    * bounded index-only read; `listEvents(threadId).length` would materialize
    * and JSON.parse every payload synchronously on the event loop, which is the
    * `.all()` that wedged the server on a thread with tens of thousands of
@@ -5247,7 +5247,7 @@ export class EventStore {
   }
 
   /**
-   * Batched sibling of {@link countEventsByThread} (station#4466): a bounded
+   * Batched sibling of {@link countEventsByThread} (archive#4466): a bounded
    * `GROUP BY` query per {@link EVENT_STORE_BATCH_CHUNK_SIZE}-sized chunk of
    * requested thread ids, instead of one `COUNT(*)` round trip per thread. A
    * thread with zero events is absent from SQLite's `GROUP BY` result, so
@@ -5327,7 +5327,7 @@ export class EventStore {
 
   /**
    * The `limit` most recent events for a thread, in ascending sequence order
-   * (station#1867). Bounds the synchronous `.all()` so a thread with a very
+   * (archive#1867). Bounds the synchronous `.all()` so a thread with a very
    * large event log cannot hold the event loop — the unbounded
    * `listEvents(threadId)` over such a thread is what produced 341/2354 main-
    * thread samples inside `sqlite3_step` and stalled the whole server. Reads
@@ -5354,13 +5354,13 @@ export class EventStore {
 
   /**
    * The thread's owner, or `undefined` when no ownership-shaped event on it
-   * carries one (station#3495).
+   * carries one (archive#3495).
    *
    * `SessionAuthorization.sessionOwnerUserId()` is the `/events` SSE route's
    * per-event, per-connected-client authorization gate, and it deliberately
    * never caches a NEGATIVE result — so on a read-only-attached thread (which
    * never carries `metadata.userId`) every single event re-ran this read.
-   * station#1867 narrowed it from `listEvents(threadId)` to the
+   * archive#1867 narrowed it from `listEvents(threadId)` to the
    * ownership-shaped methods, but the read stayed UNBOUNDED and still
    * materialized every matching payload. Measured against the live 694 MB
    * store's hot thread: 517,718 rows in 2,146 ms (rss 45 MB -> 893 MB), then
@@ -5431,11 +5431,11 @@ export class EventStore {
    * authorization widening. The predicate is what bounds this, not the limit.
    */
   /**
-   * station#4075 stage 2: append-time ownership immutability guard, called
+   * archive#4075 stage 2: append-time ownership immutability guard, called
    * first thing from both {@link appendEvent} and {@link appendEventIfAbsent}
    * — before either method does ANY work (blob writes, savepoint,
    * projections). Before this guard, both were bare INSERTs with no
-   * ownership check at all (station#4075 stage-2 probe): the only thing
+   * ownership check at all (archive#4075 stage-2 probe): the only thing
    * preventing a rewritten owner was command-side gating
    * (`OrchestrationService.dispatchWithReceipt`'s
    * `canReadSessionForCommand`), which only ever protects the ordinary
@@ -5542,7 +5542,7 @@ export class EventStore {
 
   /**
    * The thread's newest `session.configured` events, newest-first, bounded
-   * (station#3495).
+   * (archive#3495).
    *
    * `AttachedSessionFollowService`'s cold path needs one fact from the log —
    * the attribution its newest `session.configured` expresses — and used to
@@ -5756,7 +5756,7 @@ export class EventStore {
         // `snapshotEvent`'s 4 KB ceiling — which strips the payload down to
         // its identity fields, taking the prompt and the attachment with it.
         // Handing on the reference is what lets the transcript keep rendering
-        // the chip (station#3374).
+        // the chip (archive#3374).
         .map((row) => snapshotEvent(mapPersistedEventRow(row)));
       const completed = new Set(
         raw
@@ -5850,7 +5850,7 @@ export class EventStore {
         watermark,
       };
     } catch (error) {
-      // station#3433 class sweep: `windowResult` assembly above — including
+      // archive#3433 class sweep: `windowResult` assembly above — including
       // its `encodeEventWindowCursor` calls — runs after `COMMIT`, still
       // inside this try. If any of it throws, there is no active
       // transaction left to roll back; matching the mitigation this file's
@@ -5865,7 +5865,7 @@ export class EventStore {
       }
       throw error;
     }
-    // station#3386. Deliberately OUTSIDE the transaction's error boundary: a
+    // archive#3386. Deliberately OUTSIDE the transaction's error boundary: a
     // counter that throws inside it would be caught as a store failure and
     // answered with a ROLLBACK against a transaction that has already
     // committed, which is a worse bug than a missing measurement.
@@ -6020,7 +6020,7 @@ export class EventStore {
 
   /**
    * Current global-sequence head across every thread — the value a fresh
-   * `orchestration:snapshot` frame advertises as its resume cursor (station#1092).
+   * `orchestration:snapshot` frame advertises as its resume cursor (archive#1092).
    */
   headGlobalSequence(): number {
     const row = this.db
@@ -6047,7 +6047,7 @@ export class EventStore {
 
   /**
    * Ordered replay of events after a global-sequence cursor, optionally
-   * scoped to one thread (station#1092 resume). Ordering is always by
+   * scoped to one thread (archive#1092 resume). Ordering is always by
    * `global_sequence`, even when `threadId` narrows the result set, so the
    * returned `id:` values stay comparable to what a reconnecting client
    * remembers regardless of which stream variant it is resuming.
@@ -8052,7 +8052,7 @@ export class EventStore {
   }
 
   /**
-   * station#4080 slice 1: drains (does not merely read) this process's
+   * archive#4080: drains (does not merely read) this process's
    * boot-time interrupted-turn findings. A single boot consumer calls this
    * once; draining is what makes a second, accidental in-process call a
    * no-op rather than a duplicate banner source — the DURABLE guard against
@@ -8093,7 +8093,7 @@ export class EventStore {
   }
 
   /**
-   * station#4080 slice 1 (review round 1, H1): existence check for
+   * archive#4080 (review round 1, H1): existence check for
    * `appendEvent`'s deterministic-id dedupe pattern. A caller that derives
    * an event's `eventId` from a stable upstream identity (here, a turn
    * boundary's `boundaryId`) can crash between writing that event and
@@ -9438,7 +9438,7 @@ export class EventStore {
         )
         .run(threadId);
       {
-        // station#1224 HIGH fix (independent review): an unescaped `LIKE`
+        // archive#1224 HIGH fix (independent review): an unescaped `LIKE`
         // prefix would let `%`/`_` inside threadId behave as SQL wildcards,
         // over-matching another thread's keys. `substr(...) = ?` is an exact
         // string comparison -- no wildcard semantics at all -- against the
@@ -9471,7 +9471,7 @@ export class EventStore {
   }
 
   /**
-   * station#1224 (offline slice 2): claims `clientTurnId` for `threadId` so
+   * archive#1224 (offline): claims `clientTurnId` for `threadId` so
    * the caller can safely call `adapter.sendTurn` — the crux of server-side
    * turn idempotency. Thin delegate onto the shared `TurnIdempotencyStore`
    * (`../turn-idempotency.ts`) — see that file for the full claim/resolve/
@@ -10284,7 +10284,7 @@ export class EventStore {
   }
 
   /**
-   * Next value for the cross-thread `global_sequence` cursor (station#1092).
+   * Next value for the cross-thread `global_sequence` cursor (archive#1092).
    * Computed the same way as {@link nextSequence} but without the thread
    * filter, so it stays monotonic across every session. Safe to call
    * speculatively from `appendEventIfAbsent` before knowing whether the
@@ -10582,12 +10582,12 @@ function mapCommandReceiptRow(
 }
 
 /**
- * station#1224 (offline slice 2): folds `(threadId, clientTurnId)` into the
+ * archive#1224 (offline): folds `(threadId, clientTurnId)` into the
  * flat key the shared `TurnIdempotencyStore` (`../turn-idempotency.ts`)
  * deals in, so the same `clientTurnId` reused on two different threads never
  * collides.
  *
- * station#1224 HIGH fix (independent review): a plain `${threadId}::${id}`
+ * archive#1224 HIGH fix (independent review): a plain `${threadId}::${id}`
  * join is NOT collision-free -- `orchestration.ts`'s schema allows any
  * string for `threadId`, so `threadId = 'thread::evil'` with
  * `clientTurnId = 'id'` and `threadId = 'thread'` with

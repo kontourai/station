@@ -55,7 +55,7 @@ and navigation. It verifies browser-frame containment and visible declaration
 mismatch handling. It is a browser test: it cannot observe an invocation from
 inside a real Tauri WebView, so it cannot prove native IPC denial. Do not
 remove the native consent override on this evidence; the missing in-shell
-harness is [#2495](https://github.com/kontourai/station/issues/2495).
+harness is [archive#2495](https://github.com/kontourai/station/issues/2495).
 
 The allocation checks availability before the CLI binds, so rerun the
 allocation if the targeted start reports that the block became contested. The
@@ -98,7 +98,7 @@ Interpret evidence narrowly:
 There is no current command that kills a Tauri renderer mid-session, no
 bounded native renderer-reload implementation, no EPIPE recovery test, and no
 packaged startup/retry/Exit harness. Do not invent a `tauri-driver` command or
-claim that the browser test exercises those features. Those gaps are [#2006](https://github.com/kontourai/station/issues/2006).
+claim that the browser test exercises those features. Those gaps are [archive#2006](https://github.com/kontourai/station/issues/2006).
 
 ## Logs and diagnosis boundary
 
@@ -140,7 +140,7 @@ user chose Retry/Exit, that a window drew, or that a macOS Apple Event callback
 did not panic before output flushed.
 
 For the macOS abort class, record separately whether launch used Finder/Dock
-or a direct executable: [#3496](https://github.com/kontourai/station/issues/3496)
+or a direct executable: [archive#3496](https://github.com/kontourai/station/issues/3496)
 reports the Apple Event path as the observed distinction. There is currently
 no persisted panic hook or reproducible trigger, so preserve the package,
 system crash report, timestamp, channel, and launch method rather than claiming
@@ -154,5 +154,5 @@ the normal shell log explains it.
 | Windows packaged startup, second launch, tray | Rust/static/UI checks | Installed package, actual shell/tray and service-backend record | **NOT_VERIFIED** |
 | Linux packaged startup and indicator behavior | Rust/static/UI checks | Installed package on a supported desktop shell, indicator result recorded | **NOT_VERIFIED** |
 | Android/iOS startup recovery | No equivalent desktop readiness harness | Real device and a defined mobile recovery contract | **NOT_VERIFIED** |
-| In-shell hostile plugin IPC denial | Browser Playwright only | Tauri-WebView harness observing hostile IPC denial | **NOT_VERIFIED** (#2495) |
-| Renderer death, boot-crash reload cap, EPIPE | No implementation-level proof | Native kill/boot-crash/closed-pipe evidence and bounded recovery assertions | **NOT_VERIFIED** (#2006) |
+| In-shell hostile plugin IPC denial | Browser Playwright only | Tauri-WebView harness observing hostile IPC denial | **NOT_VERIFIED** (archive#2495) |
+| Renderer death, boot-crash reload cap, EPIPE | No implementation-level proof | Native kill/boot-crash/closed-pipe evidence and bounded recovery assertions | **NOT_VERIFIED** (archive#2006) |

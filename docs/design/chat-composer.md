@@ -1,7 +1,7 @@
 # Design: Chat composer & the agent-navigability principle
 
 > Status: **composer hierarchy, the provider/model picker, prerequisite
-> guidance, shortcuts, and final Settings polish shipped through #1354.**
+> guidance, shortcuts, and final Settings polish shipped through archive#1354.**
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
@@ -59,7 +59,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 4. **Agent-type badges — superseded.** This item is superseded by
    `agent-engine-unification.md` §8.1: every resolved agent gets one **engine chip**
    naming its engine ("Station", "Claude Code", "OpenCode · GLM-4.7") instead of an
-   External/ACP badge pair; "External" and "ACP" never render. Shipped in #894. The
+   External/ACP badge pair; "External" and "ACP" never render. Shipped in archive#894. The
    navigability principle (§1) and the §4 API-parity table remain binding as written.
 5. **Context meter and session chrome** move to the session header/tab area, out of the
    input row.

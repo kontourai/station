@@ -43,14 +43,14 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
       orchestrationThreadId: 'thread-1',
       agentSlug: 'claude-code',
       projectSlug: 'station',
-      // station#3227 A3: this fixture read `projectLabel: 'Station'` — a
-      // capitalised display name distinct from the slug, which
-      // `buildSessionWorkItem` has never emitted for a session item (its
-      // label was `session.projectSlug` verbatim). The fixture-vs-reality gap
-      // is why it was the only thing holding `projectName` to the LABEL
-      // rather than to the slug. Now that the label is the canonical
-      // `sessionProjectLabel`, which can carry a caveat clause, the fixture
-      // says what the producer actually produces.
+// archive#3227 A3: this fixture read `projectLabel: 'Station'` — a
+// capitalised display name distinct from the slug, which
+// `buildSessionWorkItem` has never emitted for a session item (its
+// label was `session.projectSlug` verbatim). The fixture-vs-reality gap
+// is why it was the only thing holding `projectName` to the LABEL
+// rather than to the slug. Now that the label is the canonical
+// `sessionProjectLabel`, which can carry a caveat clause, the fixture
+// says what the producer actually produces.
       projectLabel: 'station',
       controlMode: 'station-owned',
       conversationUpdatedAt: '2020-06-15T12:00:00.000Z',
@@ -87,19 +87,19 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
     });
   });
 
-  /**
-   * station#3227 A3, the discriminating case — built through the real
-   * producer rather than a hand-written item, because the defect this guards
-   * is only reachable via what `buildSessionWorkItem` emits.
-   *
-   * The server sets a session's top-level `projectSlug` FROM
-   * `delegation.projectSlug` when there is one
-   * (`orchestration-session-state.ts`), so a delegated session carries both,
-   * and `sessionProjectLabel` qualifies the delegated one with its join
-   * caveat. That caveat is a sentence — right on a row pill, wrong inside a
-   * chat-dock tab badge, which is what `projectName` becomes. The tab badge
-   * must get the bare slug.
-   */
+/**
+* archive#3227 A3, the discriminating case — built through the real
+* producer rather than a hand-written item, because the defect this guards
+* is only reachable via what `buildSessionWorkItem` emits.
+*
+* The server sets a session's top-level `projectSlug` FROM
+* `delegation.projectSlug` when there is one
+* (`orchestration-session-state.ts`), so a delegated session carries both,
+* and `sessionProjectLabel` qualifies the delegated one with its join
+* caveat. That caveat is a sentence — right on a row pill, wrong inside a
+* chat-dock tab badge, which is what `projectName` becomes. The tab badge
+* must get the bare slug.
+*/
   it('never carries a project-join caveat into the rehydrated tab badge', () => {
     const [item] = buildOrchestrationItems(
       [
@@ -126,7 +126,7 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
       [],
     );
 
-    // The row itself still says the whole truth.
+// The row itself still says the whole truth.
     expect(item.projectLabel).toBe('station (unverified name match)');
 
     const action = resolveWorkItemOpenAction(item);
@@ -137,11 +137,11 @@ describe('resolveWorkItemOpenAction (station#1297)', () => {
     });
   });
 
-  // station#1312 review (cosmetic): `projectLabel` falls back to the
-  // literal string 'No project' for a project-less session
-  // (`buildSessionWorkItem`) — forwarding it unconditionally as
-  // `projectName` would render a bogus "No project" badge in
-  // `ChatDockTabBar`. Omit both when there's no real `projectSlug`.
+ // archive#1312 (cosmetic): `projectLabel` falls back to the
+// literal string 'No project' for a project-less session
+// (`buildSessionWorkItem`) — forwarding it unconditionally as
+// `projectName` would render a bogus "No project" badge in
+// `ChatDockTabBar`. Omit both when there's no real `projectSlug`.
   it('omits projectName/projectSlug when rehydrating a project-less session', () => {
     const item = baseItem({
       orchestrationThreadId: 'thread-1',
@@ -245,10 +245,10 @@ describe('openWorkItem', () => {
     expect(onOpenSession).toHaveBeenCalledWith('thread-1');
   });
 
-  // station#3687 seam 1: `false` from openConversation means "agent deleted"
-  // ONLY once the catalog has answered. While it is pending or failed, every
-  // rehydrate resolves false — and this used to bounce EVERY inbox click to
-  // /activity during a loading blip.
+// archive#3687 seam 1: `false` from openConversation means "agent deleted"
+// ONLY once the catalog has answered. While it is pending or failed, every
+// rehydrate resolves false — and this used to bounce EVERY inbox click to
+// /activity during a loading blip.
   it('reports catalog-pending instead of bouncing to /activity while agents have not loaded', async () => {
     const onFocusChat = vi.fn();
     const onOpenConversation = vi.fn().mockResolvedValue(false);
@@ -258,13 +258,13 @@ describe('openWorkItem', () => {
       { onFocusChat, onOpenConversation, onOpenSession, agentsLoaded: false },
     );
     expect(outcome).toBe('catalog-pending');
-    // The whole point: nothing navigated.
+// The whole point: nothing navigated.
     expect(onOpenSession).not.toHaveBeenCalled();
   });
 
-  // Absent means unknown, which keeps the #801 fallback for existing callers
-  // — a loading gate must be opted into with a real derivation, never
-  // defaulted on.
+ // Absent means unknown, which keeps the archive#801 fallback for existing callers
+// a loading gate must be opted into with a real derivation, never
+// defaulted on.
   it('keeps the #801 fallback when agentsLoaded is not supplied', async () => {
     const onOpenSession = vi.fn();
     const outcome = await openWorkItem(

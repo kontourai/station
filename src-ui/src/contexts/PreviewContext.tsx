@@ -54,7 +54,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
 
   const canPreview = (mediaType?: string) => mediaType?.startsWith('image/');
 
-  // station#3796: one memoised value per provider — a fresh object literal
+  // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
   const value = useMemo(

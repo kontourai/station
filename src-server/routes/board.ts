@@ -84,7 +84,7 @@ const sessionReferenceSchema = z
   .object({ kind: z.literal('session'), id: boundedTextSchema(4096) })
   .strict();
 // `boundedTextSchema` is a coarse pre-bound (length + no control chars); the
-// FULL `.`/`..`/path-separator denylist (station#4079 fix round, B1 layer
+// FULL `.`/`..`/path-separator denylist (archive#4079 fix round, B1 layer
 // (a)) is enforced explicitly by `validateReferenceShape` below, in EVERY
 // handler at the SAME point and with the SAME response shape — not via a
 // zod `.refine` here. `routes/spatial-board.ts`'s own
@@ -116,7 +116,7 @@ const formFieldSchema = z
 
 // `derivedFrom` is intentionally freeform here (any array of plain objects):
 // `acceptUIBlockProvenance` -> `parseUIBlockSourceRefs` is the single source
-// of truth for what counts as a valid source ref (station#1399's contract),
+// of truth for what counts as a valid source ref (archive#1399's contract),
 // same as `render_component`'s own MCP-tool-facing schema. Re-validating its
 // exact shape here would risk a second, divergent definition.
 const derivedFromSchema = z.array(z.record(z.string(), z.unknown())).optional();
@@ -331,7 +331,7 @@ export function createBoardRoutes(
    * a caller who cannot read a session must not learn whether it exists.
    *
    * Callers MUST run {@link validateReferenceShape} first — this function
-   * trusts `reference` is already shape-valid (station#4079 fix round,
+   * trusts `reference` is already shape-valid (archive#4079 fix round,
    * B1/B2 ordering: shape THEN authorization, everywhere).
    */
   function authorizeReference(

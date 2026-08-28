@@ -10,7 +10,7 @@ import { ruleBodiesFor } from './helpers/css-rules';
 /**
  * Shell chrome sits outside the flow of any view, so nothing else can correct
  * its geometry. On an edge-to-edge Android webview the banner slot's fixed
- * height clipped the tail of stacked notices (station#2213).
+ * height clipped the tail of stacked notices (archive#2213).
  *
  * These are CSS-shaped assertions for the same reason the toolbar's are: the
  * geometry is authored in stylesheets, and jsdom does not lay them out.
@@ -100,7 +100,7 @@ describe('the connection banner slot bounds without reserving', () => {
       expect(body).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/);
     }
     // The escalation must stay paired with a size cap, or "outranks the dock"
-    // becomes "owns the screen". station#3432: the bound lives on the inner
+    // becomes "owns the screen". archive#3432: the bound lives on the inner
     // `.banner-host__stack`, not on `.banner-host` itself — see the next test
     // for why. Precisely: this bounds `.banner-host__stack` (the scrollable
     // card list), not the host's own box — the host also carries the cap
@@ -126,7 +126,7 @@ describe('the connection banner slot bounds without reserving', () => {
     // jsdom performs no layout, so this can only confirm the CSS TEXT
     // declares a bound and `overflow-y: auto` — never that `scrollHeight`
     // actually exceeds `clientHeight` or that a wheel event moves
-    // `scrollTop`. station#3432 shipped with exactly this gap: `.banner-host`
+    // `scrollTop`. archive#3432 shipped with exactly this gap: `.banner-host`
     // is a flex column, so a bound declared on the ANCESTOR made flex
     // children shrink to fit it instead of overflowing, and this assertion
     // (then scoped to `.banner-host--expanded` itself) stayed green
@@ -166,11 +166,11 @@ describe('the connection banner slot bounds without reserving', () => {
 
     // And the host's OWN box must never take pointer events, in any mode —
     // matching `BannerHost.tsx`'s docblock ("the host stays pointer-events:
-    // none ... in every state"). A rule "targets the host's own box" when
-    // its rightmost simple selector (after any combinator — `> .banner-host`
-    // inside the dock `:has()` rules counts) is `.banner-host` or
+    // none... in every state"). A rule "targets the host's own box" when
+    // its rightmost simple selector (after any combinator — `>.banner-host`
+    // inside the dock `:has` rules counts) is `.banner-host` or
     // `.banner-host--<modifier>`; `.banner-host--connection-slot
-    // .banner-host__stack` does NOT (its rightmost selector is the inner
+    //.banner-host__stack` does NOT (its rightmost selector is the inner
     // `__stack`, a genuine descendant), so it is correctly excluded.
     const ruleBlockPattern = /([^{}]+)\{([^{}]*)\}/g;
     const hostOnlyPattern = /^\.banner-host(?:--[\w-]+)?$/;
@@ -205,7 +205,7 @@ describe('the connection banner slot bounds without reserving', () => {
 
   it('declares no height floor of any kind', () => {
     // A floor is indistinguishable from a blank rail when the store is empty,
-    // which pushed content down by 104px on mobile (station#2268). Both a
+    // which pushed content down by 104px on mobile (archive#2268). Both a
     // fixed `height` and a `min-height` reintroduce that.
     const bodies = ruleBodies(
       read(BANNER_CSS),
@@ -291,8 +291,8 @@ describe('overlapping chrome has an explicit interaction order', () => {
     // several rule blocks (base + placement/state modifiers), so a reader
     // that only checks the FIRST `.chat-dock {` block can miss a z-index
     // declared in a later one and report a missing layer on a dock that has
-    // one. (Before station#4460, a non-chat occupant's OWN `.dock-slot`
-    // element shared this placement through `:is(.chat-dock, .dock-slot)`;
+    // one. (Before archive#4460, a non-chat occupant's OWN `.dock-slot`
+    // element shared this placement through `:is(.chat-dock,.dock-slot)`;
     // every occupant now renders through the one shared `.chat-dock` root,
     // so that fork is gone — this scan still needs every block, not that one.)
     const dockBodies = ruleBodiesFor(index, '.chat-dock');
@@ -338,7 +338,7 @@ describe('the toolbar replacement carries the inset the toolbar owned', () => {
     // The toolbar is the only element that carries padding-top: var(--safe-top).
     // Hiding it without moving the inset to whatever replaces it puts the
     // eyebrow and title under the status bar on edge-to-edge Android
-    // (station#2287).
+    // (archive#2287).
     const [body] = ruleBodies(css, '.chat-dock__mobile-header');
     expect(body, '.chat-dock__mobile-header rule not found').toBeDefined();
     const padding = /(^|[;{\s])padding:\s*([^;]+);/.exec(body)?.[2];
@@ -396,7 +396,7 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
   }
 
   it('shows the state text on mobile only when it carries news', () => {
-    // station#3311's mobile contract is dot-only while healthy. Nothing else
+    // archive#3311's mobile contract is dot-only while healthy. Nothing else
     // asserts it: deleting these two selectors changes no rendered markup, so
     // every component test stays green while the chip regrows a permanent
     // "Connected" label in a cluster with no room for it.

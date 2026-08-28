@@ -22,7 +22,7 @@ function transcriptMessageText(message: ChatMessage): string {
 }
 
 /**
- * UX audit V3 review (HIGH): the live `[SYSTEM_EVENT] [CHAT_ERROR…]` marker
+* the live `[SYSTEM_EVENT] [CHAT_ERROR…]` marker
  * `handleRuntimeErrorEvent` appends is the dock's visible failure card, and it
  * used to be dropped here — it is an ordinary `role: 'user'` row with no
  * `clientId`, so the bounded projection kept neither it nor the streaming
@@ -86,8 +86,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const enabled = Boolean(session.orchestrationSessionStarted);
   const window = useSessionEventWindow(
     apiBase,
-    // The window is intentionally conversation-shaped: it aggregates lineage
-    // for reload while each event itself still carries its child session id.
+// The window is intentionally conversation-shaped: it aggregates lineage
+// for reload while each event itself still carries its child session id.
     enabled ? (session.conversationId ?? session.id) : null,
     session.orchestrationHistoryRevision,
     session.currentSessionId ?? session.id,
@@ -95,10 +95,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
   useEffect(() => {
-    // A restored conversation may have continued in another client. The
-    // conversation read is authoritative for which child session receives
-    // subsequent Stop/approval/live-event routing; no route-local workspace
-    // reconstruction is involved.
+// A restored conversation may have continued in another client. The
+// conversation read is authoritative for which child session receives
+// subsequent Stop/approval/live-event routing; no route-local workspace
+// reconstruction is involved.
     const currentSessionId = window.currentSessionId;
     if (currentSessionId && session.currentSessionId !== currentSessionId) {
       activeChatsStore.updateChat(session.id, { currentSessionId });
@@ -109,9 +109,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     key: string;
     byTurn: Map<string, NonNullable<ChatMessage['changedFiles']>>;
   }>(() => ({ key: checkpointKey, byTurn: EMPTY_CHANGED_FILES }));
-  // Key the data at read time. React effects run after render, so clearing in
-  // the effect alone lets one render of session B inherit session A's file
-  // claims. A mismatched key is synchronously empty.
+// Key the data at read time. React effects run after render, so clearing in
+// the effect alone lets one render of session B inherit session A's file
+// claims. A mismatched key is synchronously empty.
   const changedFilesByTurn =
     changedFilesState.key === checkpointKey
       ? changedFilesState.byTurn
@@ -173,18 +173,18 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ),
       { stableIds: true },
     )
-      // The open turn is rendered by exactly one of two things: the live
-      // streaming shell (`ChatMessageList`'s `StreamingMessage`) or this
-      // projection. Normally the shell owns it — it has every token from
-      // `turn.started` on, and admitting the projected copy alongside would
-      // render the turn twice.
-      //
-      // station#3352 reverses that after a reconnect the server could not
-      // replay: the shell then holds only what arrived before the drop, so
-      // the projection is the more complete copy and the shell is dropped
-      // (`applyOrchestrationSnapshot`) in favour of it. `turn.started` clears
-      // the flag, so a turn the shell owns from its first token suppresses
-      // this copy exactly as before.
+// The open turn is rendered by exactly one of two things: the live
+// streaming shell (`ChatMessageList`'s `StreamingMessage`) or this
+// projection. Normally the shell owns it — it has every token from
+// `turn.started` on, and admitting the projected copy alongside would
+// render the turn twice.
+//
+// archive#3352 reverses that after a reconnect the server could not
+// replay: the shell then holds only what arrived before the drop, so
+// the projection is the more complete copy and the shell is dropped
+// (`applyOrchestrationSnapshot`) in favour of it. `turn.started` clears
+// the flag, so a turn the shell owns from its first token suppresses
+// this copy exactly as before.
       .filter(
         (message) =>
           !(
@@ -271,9 +271,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       );
       if (match < 0) return true;
       claimedProjectedUsers.add(match);
-      // The local row owns the prompt's stable identity until the turn has
-      // settled. If the bounded newest page already contains turn.started,
-      // suppress that one canonical duplicate during the live interval.
+// The local row owns the prompt's stable identity until the turn has
+// settled. If the bounded newest page already contains turn.started,
+// suppress that one canonical duplicate during the live interval.
       if (active && message.clientId === currentPendingClientId) {
         hiddenProjectedUsers.add(match);
         return true;
@@ -283,20 +283,20 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const visibleProjected = projected.filter(
       (_message, index) => !hiddenProjectedUsers.has(index),
     );
-    // Flow events and provider notices are appended by the single app-wide
-    // orchestration stream. They are not turn rows, so the bounded turn
-    // projector does not recreate them. Keep those explicit live supplements
-    // alongside the REST projection without admitting ordinary full-history
-    // rows from the active-chat store.
-    // A failure the server projection ALREADY renders for THAT SAME TURN must
-    // not be doubled by the local marker: one failure, one visible element.
-    //
-    // UX audit V3 review round 3 (MEDIUM): matched on turn identity, not on
-    // text. Global text matching suppressed a marker merely because some
-    // projected row anywhere in the window happened to contain the same
-    // sentence — two turns can fail the same way, and the second one's card
-    // would vanish. A marker with no turn identity has nothing to match on and
-    // falls back to the text comparison it had before.
+// Flow events and provider notices are appended by the single app-wide
+// orchestration stream. They are not turn rows, so the bounded turn
+// projector does not recreate them. Keep those explicit live supplements
+// alongside the REST projection without admitting ordinary full-history
+// rows from the active-chat store.
+// A failure the server projection ALREADY renders for THAT SAME TURN must
+// not be doubled by the local marker: one failure, one visible element.
+//
+// matched on turn identity, not on
+// text. Global text matching suppressed a marker merely because some
+// projected row anywhere in the window happened to contain the same
+// sentence — two turns can fail the same way, and the second one's card
+// would vanish. A marker with no turn identity has nothing to match on and
+// falls back to the text comparison it had before.
     const projectedFailureTurnIds = new Set(
       visibleProjected
         .filter((message) =>
@@ -342,8 +342,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ],
       }),
     );
-    // While the first bounded page is in flight, retain only local ephemeral
-    // notices; persisted transcript rows never cause a full conversation read.
+// While the first bounded page is in flight, retain only local ephemeral
+// notices; persisted transcript rows never cause a full conversation read.
     return mergeTranscriptMessages(
       visibleProjected,
       handoffBoundaries,

@@ -1,6 +1,6 @@
 # Knowledge foundation — K2..K5 interface contract
 
-Design contract for the Knowledge foundation program (milestone #4, issues #200–#203), implementing
+Design contract for the Knowledge foundation program (milestone #4, issues archive#200–archive#203), implementing
 [ADR-0009](../adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md): Kit-format,
 adapter-backed stores are canonical; the retrieval index is derived and rebuildable. The successor
 index is **sqlite-vec** (runner-up: real LanceDB as an optional adapter) — the evidence matrix,
@@ -28,7 +28,7 @@ Kit's published `KnowledgeStoreAdapter` contract (`kits/knowledge/docs/store-con
 `supersede` from Addendum A.6 and `retire` from Addendum B.5) — Station never parses or writes the
 Kit's on-disk format itself and never imports Kit internals (ADR-0001; enforced by a zero-tolerance
 grep gate, `scripts/knowledge-kit-import-gate.mjs`, wired into `verify:static` as of K2 Wave 3 —
-issue #200's `k2-no-kit-internal-imports` AC).
+issue archive#200's `k2-no-kit-internal-imports` AC).
 
 > **Contract version (coordinator decision, 2026-07-05).** K2's adapters are written against
 > `store-contract.md` **as of `@kontourai/flow-agents` 3.3.0** (the sibling `../flow-agents` dev-tree
@@ -44,10 +44,10 @@ issue #200's `k2-no-kit-internal-imports` AC).
 > records K2 writes with `aliases`/`status`/those ops' mutation-log shapes — Kit-CLI interop claims in
 > this document and the K2 deliverable are scoped to `3.x` tooling, not to whatever `^2.2.0` resolves
 > to today. Bumping the sidecar dependency to `^3.x` (re-verifying AC1/AC5 against the newly-pinned
-> version's actual `store-contract.md`) is tracked as a fast-follow: **#218**. This note does not
+> version's actual `store-contract.md`) is tracked as a fast-follow: **archive#218**. This note does not
 > change any dependency in `package.json` — it documents an existing, already-shipped gap.
 
-> **Update (2026-07-07, #218 landed):** Station's sidecar pin is now exact `"@kontourai/flow-agents": "3.3.0"` (no caret) — the gap this note tracked is resolved; the installed package's `store-contract.md` now matches the version K2's adapters were written against. See `.kontourai/flow-agents/s218-flow-agents-3x/cli-audit-2.2.0-to-3.3.0.md` for the full sidecar-CLI behavior audit (a separate, unrelated concern from this store-contract note, since K2 imports nothing from the package).
+> **Update (2026-07-07, archive#218 landed):** Station's sidecar pin is now exact `"@kontourai/flow-agents": "3.3.0"` (no caret) — the gap this note tracked is resolved; the installed package's `store-contract.md` now matches the version K2's adapters were written against. See `.kontourai/flow-agents/s218-flow-agents-3x/cli-audit-2.2.0-to-3.3.0.md` for the full sidecar-CLI behavior audit (a separate, unrelated concern from this store-contract note, since K2 imports nothing from the package).
 
 ```ts
 /** Scope tier of a store root. Org tier is deferred (ADR-0009) — not in the union on purpose. */
@@ -139,7 +139,7 @@ Notes for K2's planner:
   program's risk notes.
 - OTel: `station.knowledge.root.*` and `station.knowledge.record.*` counters per CLAUDE.md.
 
-### Transactional file publication (#2253)
+### Transactional file publication (archive#2253)
 
 The default and Obsidian adapters preserve the public `KnowledgeStoreAdapter` contract and Kit-compatible file layouts, but they no longer perform independent raw whole-file mutations. The older project-document service uses the same boundary for `files/` content and `metadata.json`. All three caller families compose the private `KnowledgeFileTransactions` Module, so one process-identity lock in Station's `STATION_HOME` coordination directory and one root-local rollback journal cover every authoritative file mutation.
 
@@ -154,7 +154,7 @@ Layer 2 of ADR-0009. Shaped like today's `IVectorDbProvider` + `IEmbeddingProvid
 from the K2 stores, and no read path may treat an index hit as the record (always re-resolve via
 `adapterFor(rootId).get(recordId)`).
 
-> **K3 landed (`s201-knowledge-retrieval`, issue #201, 2026-07-06).** Contract:
+> **K3 landed (`s201-knowledge-retrieval`, issue archive#201, 2026-07-06).** Contract:
 > `packages/contracts/src/knowledge-index.ts` (transcribed verbatim from the block below). Built-in
 > provider: `src-server/knowledge-index/sqlite-vec-index-provider.ts` (`SqliteVecIndexProvider`,
 > `id: 'sqlite-vec'`), registered through `src-server/knowledge-index/index-adapter-registry.ts`
@@ -196,7 +196,7 @@ from the K2 stores, and no read path may treat an index hit as the record (alway
 >   time) rather than silently rejecting or corrupting inserts, per the plan's Stop-short risk.
 >   `search` similarly throws (rather than returning wrong-shaped results) when a query vector's
 >   dimension doesn't match the configured one, naming the required fix (`rebuildRoot`) in the error.
->   User-facing consequence (code-review MED-4): this makes an embedding-connection change an
+>   User-facing consequence: this makes an embedding-connection change an
 >   all-roots event, not a single-root one — every already-indexed root other than the one that
 >   happens to trigger the drop/recreate goes searchably empty until it's rebuilt too; recovery is
 >   `./station knowledge reindex` with no `--root` (see `docs/guides/knowledge.md`'s
@@ -211,12 +211,12 @@ from the K2 stores, and no read path may treat an index hit as the record (alway
 >   user-configured provider *connections* (API keys, endpoints), not an in-process index
 >   implementation lookup, so a parallel, purpose-built registry was the closer fit.
 
-> **Derived read-only roots (`s1879-conversation-knowledge-root`, station#1879, landed).** A
+> **Derived read-only roots (`s1879-conversation-knowledge-root`, archive#1879, landed).** A
 > `KnowledgeAdapterDescriptor` need not read/write a Kit-format file tree at all: `conversation-store`
 > (`src-server/knowledge-store/adapters/conversation-store.ts`) projects Station's own conversation
 > history — the orchestration session read-model union the per-agent file memory store — into the
 > `root:conversations` root (`CONVERSATION_ROOT_ID`), so the K3 index and the `station knowledge
-> search`/`search_knowledge` surfaces (`s1886-knowledge-search`, issue #1886) cover past conversations
+> search`/`search_knowledge` surfaces (`s1886-knowledge-search`, issue archive#1886) cover past conversations
 > exactly like any other root. Two disclosed deviations from the sketch above:
 > - **Non-Kit-file canonical source.** Every other adapter's canonical source is a Kit-format file
 >   tree at `storeRoot`. This adapter's canonical source is `<STATION_HOME>/data/orchestration.sqlite`
@@ -343,7 +343,7 @@ Migration path (K3, one-time, **explicit command — never automatic on startup*
    index are additive.
 
 This satisfies the program risk note ("K3 migration is the data-risk center: never destructive")
-and issue #201's AC ("migration verified on a copy of a real home").
+and issue archive#201's AC ("migration verified on a copy of a real home").
 
 Migration observations are non-authoritative: telemetry and logging failures cannot interrupt
 record creation or derived indexing. A retry skips an existing record but still idempotently
@@ -371,10 +371,10 @@ Settings owns the optional "knowledge setup" flow. It follows the glossary's nou
    linked).
 
 Decision points K4's planner owns: copy for the cutover confirmation; whether first-run blocks on
-knowledge setup or defers to a rescue banner (coordinate with #191); where "knowledge store"
+knowledge setup or defers to a rescue banner (coordinate with archive#191); where "knowledge store"
 management lives in Settings vs the Connections page.
 
-> **K4 landed (`s202-knowledge-onboarding`, issue #202, 2026-07-07).** Additive contract method:
+> **K4 landed (`s202-knowledge-onboarding`, issue archive#202, 2026-07-07).** Additive contract method:
 > `KnowledgeStoreProvider.validateRootForAdapter(adapterId, storeRoot)`
 > (`packages/contracts/src/knowledge-store.ts`), implemented in
 > `src-server/knowledge-store/knowledge-store-provider.ts` (delegates to the target adapter's own
@@ -428,7 +428,7 @@ management lives in Settings vs the Connections page.
 > intended, or decide separately whether the flag should become load-bearing (a larger, distinct
 > change this plan does not make).
 
-## K5 — Meeting notes app (issue #203)
+## K5 — Meeting notes app (issue archive#203)
 
 K5 consumes only the seams above: capture writes `raw` → `compiled` records through
 `KnowledgeStoreProvider` (right-root choice is manual UI in K5; K6 automates later — parked), and
@@ -436,7 +436,7 @@ recall reads `KnowledgeIndexProvider.search` across `rootIds: [personal, project
 view for the wikilink pane. Dual-adapter dogfood (Obsidian AND Neo4j personal roots) is K5's
 explicit validation AC.
 
-> **K5 landed (`s203-knowledge-meeting-notes`, issue #203, 2026-07-07).** The meeting-notes app:
+> **K5 landed (`s203-knowledge-meeting-notes`, issue archive#203, 2026-07-07).** The meeting-notes app:
 > `examples/meeting-notes/` (`plugin.json`, `layout.json`, `src/index.tsx`) — three tabs, **Capture**
 > (`src/CaptureModal.tsx` + `src/compile.ts`, a plugin-contributed `compile` agent at
 > `agents/compile/agent.json`), **Library** (`src/GraphPane.tsx`, the wikilink graph pane), **Ask**

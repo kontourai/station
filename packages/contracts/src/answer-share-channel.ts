@@ -26,7 +26,7 @@ import { canonicalizeForDigest } from './fleet-routing-receipt.js';
  * them apart means an unauthenticated share page does not ship a channel-log
  * validator it will never run.
  *
- * The validator reuses slice 1's own checks rather than restating them:
+ * The validator reuses `channel-log.ts`'s own checks rather than restating them:
  * {@link validateChannelRecordRef} owns `parent-position-not-identity` and
  * {@link findChannelForbiddenKeys} owns `forbidden-key`. A second copy of
  * either list is the drift those lists exist to prevent, and a binding whose
@@ -75,7 +75,8 @@ export const ANSWER_SHARE_CHANNEL_COORDINATE_KEYS: readonly string[] =
  * exactly as `channel-log.ts` and `channel-identity.ts` do.
  *
  * A private copy was the first cut and was wrong for this module above all
- * others: this file exists to hold ONE copy of slice 1's rules, and it reads
+ * others: this file exists to hold ONE copy of the channel-log rules, and it
+ * reads
  * `channel.ref` through {@link validateChannelRecordRef} (which uses the
  * canonical predicate) while gating the binding root and the coordinate with
  * its own. A `[object Object]` tag test and a prototype test disagree in both
@@ -164,7 +165,8 @@ function validateCoordinate(
  * argument here.
  *
  * `checkpointDigest` is required to be a non-empty string and no more.
- * Pinning it to lowercase sha-256 hex was the first cut and is wrong: slice 1
+ * Pinning it to lowercase sha-256 hex was the first cut and is wrong: this
+ * contract
  * types every log digest as a non-empty string
  * (`ChannelCheckpoint.headEnvelopeDigest`), and a validator stricter than the
  * producer refuses records the producer is entitled to emit.

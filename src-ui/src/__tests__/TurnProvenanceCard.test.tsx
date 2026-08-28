@@ -14,7 +14,7 @@ import { TurnProvenanceCard } from '../components/chat/TurnProvenanceCard';
  * zero, a success, or nothing at all) only ever shows up in what a person
  * sees.
  *
- * station#1802 redesign: the headline is the takeaway (engine/model/cost),
+ * archive#1802 redesign: the headline is the takeaway (engine/model/cost),
  * the badge only ever names something that can differ between two answers
  * (never Station's own backlog), and the four row kinds — earned claim,
  * meaningful absence, Station's own gap, and correlation id — must be
@@ -73,8 +73,8 @@ describe('TurnProvenanceCard', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  // station#1802 — the collapsed line is the whole point: a reader who never
-  // expands must still learn the engine, the model, and what this turn cost.
+// archive#1802 — the collapsed line is the whole point: a reader who never
+// expands must still learn the engine, the model, and what this turn cost.
   it('renders the earned facts on the collapsed line: engine, model, and usage', () => {
     render(
       <TurnProvenanceCard
@@ -94,11 +94,11 @@ describe('TurnProvenanceCard', () => {
     );
 
     const summary = screen.getByRole('button');
-    // SF7: the product name people know, not Station's internal slug.
+ // the product name people know, not Station's internal slug.
     expect(summary.textContent).toContain('Claude Code');
     expect(summary.textContent).toContain('claude-opus-5');
-    // The engine's own reported total, not a rebuilt in/out sentence — see
-    // headlineUsageText's docblock for why total wins over a breakdown here.
+// The engine's own reported total, not a rebuilt in/out sentence — see
+// headlineUsageText's docblock for why total wins over a breakdown here.
     expect(summary.textContent).toContain('24 tokens');
   });
 
@@ -115,7 +115,7 @@ describe('TurnProvenanceCard', () => {
     expect(screen.getByText('Engine')).toBeTruthy();
   });
 
-  // SF7 — product vocabulary up front, raw identifier still checkable.
+// product vocabulary up front, raw identifier still checkable.
   it('renders the engine by product name and keeps the raw slug available', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
 
@@ -141,11 +141,11 @@ describe('TurnProvenanceCard', () => {
 
     expect(screen.getByRole('button').textContent).toContain('some-new-engine');
     expand();
-    // No invented label — the identifier is the honest answer.
+// No invented label — the identifier is the honest answer.
     expect(valueFor('Engine')).toBe('some-new-engine');
   });
 
-  // N6 — many cards per transcript must not share one label.
+// N6 — many cards per transcript must not share one label.
   it('labels each card with its own turn', () => {
     render(<TurnProvenanceCard provenance={envelope({ turnId: 'turn-9' })} />);
     expect(
@@ -175,15 +175,15 @@ describe('TurnProvenanceCard', () => {
       'Claude Code · sonnet-9-20260701',
     );
     expand();
-    // Both are shown, separately labelled — the disagreement is the point.
+// Both are shown, separately labelled — the disagreement is the point.
     expect(valueFor('Model requested')).toContain('sonnet-latest');
     expect(valueFor('Model reported by engine')).toContain('sonnet-9-20260701');
   });
 
-  // station#1802 H-1 (review fix): a REQUESTED model is not a confirmed
-  // report. When the engine never echoed what it actually ran, the headline
-  // must not present the requested value as if it were confirmed — that is
-  // indistinguishable from an earned claim once this line is "the takeaway".
+ // archive#1802: a REQUESTED model is not a confirmed
+// report. When the engine never echoed what it actually ran, the headline
+// must not present the requested value as if it were confirmed — that is
+// indistinguishable from an earned claim once this line is "the takeaway".
   it('never presents a requested-but-unconfirmed model as the model that ran, on the headline', () => {
     render(
       <TurnProvenanceCard
@@ -193,20 +193,20 @@ describe('TurnProvenanceCard', () => {
             value: 'sonnet-latest',
             observedFrom: [{ eventId: 'e2', method: 'turn.started' }],
           },
-          // The engine never reported back what it actually used.
+// The engine never reported back what it actually used.
           reportedModel: gap,
         })}
       />,
     );
 
-    // The headline must not name the requested model at all — it is
-    // omitted, not presented unqualified as though it were confirmed.
+// The headline must not name the requested model at all — it is
+// omitted, not presented unqualified as though it were confirmed.
     expect(screen.getByRole('button').textContent).not.toContain(
       'sonnet-latest',
     );
 
-    // The expanded detail is unaffected: both slots still render honestly,
-    // separately labelled, exactly as before.
+// The expanded detail is unaffected: both slots still render honestly,
+// separately labelled, exactly as before.
     expand();
     expect(valueFor('Model requested')).toContain('sonnet-latest');
     expect(valueFor('Model reported by engine')).toBe(
@@ -214,7 +214,7 @@ describe('TurnProvenanceCard', () => {
     );
   });
 
-  // AC2 — the sharp one.
+// the sharp one.
   it('shows missing usage, routing receipt, sources, and trust report as named gaps, never 0 (AC2)', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
     expand();
@@ -232,8 +232,8 @@ describe('TurnProvenanceCard', () => {
       );
     }
 
-    // No digit anywhere in a gap's rendered value: no `0`, no count, no
-    // "1 source", nothing a reader could take for a measurement.
+// No digit anywhere in a gap's rendered value: no `0`, no count, no
+// "1 source", nothing a reader could take for a measurement.
     expect(gapLabels.map(valueFor).join(' ')).not.toMatch(/\d/);
     expect(
       screen.getByText('Usage').closest('dl')?.textContent ?? '',
@@ -263,20 +263,20 @@ describe('TurnProvenanceCard', () => {
     expand();
 
     const usage = valueFor('Usage');
-    // station#4196: for a provider DECLARED 'disjoint' (claude), the engine's
-    // reported total is input + output by protocol — the detail row names it
-    // "in+out" so it cannot contradict a cache-inclusive collapsed line.
+// archive#4196: for a provider DECLARED 'disjoint' (claude), the engine's
+// reported total is input + output by protocol — the detail row names it
+// "in+out" so it cannot contradict a cache-inclusive collapsed line.
     expect(usage).toBe('400 in+out tokens');
-    // Absent input/output are simply not named — never printed as "0 in".
-    // (Regex with a boundary: the label "400 in+out" itself contains the
-    // substring "0 in", which is not an invented zero figure.)
+// Absent input/output are simply not named — never printed as "0 in".
+// (Regex with a boundary: the label "400 in+out" itself contains the
+// substring "0 in", which is not an invented zero figure.)
     expect(usage).not.toMatch(/\b0 in\b/);
     expect(usage).not.toMatch(/\b0 out\b/);
   });
 
-  // station#4196: the collapsed line said "N tokens" from a total that is
-  // input + output only — cache-exclusive under a cache-inclusive label,
-  // right above a detail row listing thousands of cache tokens.
+// archive#4196: the collapsed line said "N tokens" from a total that is
+// input + output only — cache-exclusive under a cache-inclusive label,
+// right above a detail row listing thousands of cache tokens.
   it('includes cache in the collapsed-line total when the declared inclusivity backs the sum', () => {
     render(
       <TurnProvenanceCard
@@ -297,12 +297,12 @@ describe('TurnProvenanceCard', () => {
     );
 
     const summary = screen.getByRole('button');
-    // Claude is declared 'disjoint', so 130 + 9400 + 700 is an honest total.
+// Claude is declared 'disjoint', so 130 + 9400 + 700 is an honest total.
     expect(summary.textContent).toContain('10230 tokens');
     expect(summary.textContent).not.toMatch(/\b130 tokens/);
 
-    // The detail row keeps naming the components — the headline sum does
-    // not replace the checkable breakdown.
+// The detail row keeps naming the components — the headline sum does
+// not replace the checkable breakdown.
     expand();
     const usage = valueFor('Usage');
     expect(usage).toContain('9400 cache read');
@@ -333,9 +333,9 @@ describe('TurnProvenanceCard', () => {
     );
 
     const summary = screen.getByRole('button');
-    // Whether codex's cachedInputTokens is already inside inputTokens is
-    // unverified, so Station must not build 35 + 4 = 39 — the provider's
-    // own figure stands and the detail row discloses the cache component.
+// Whether codex's cachedInputTokens is already inside inputTokens is
+// unverified, so Station must not build 35 + 4 = 39 — the provider's
+// own figure stands and the detail row discloses the cache component.
     expect(summary.textContent).toContain('35 tokens');
     expect(summary.textContent).not.toContain('39 tokens');
   });
@@ -394,7 +394,7 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Tools')).toBe('read_file, bash (1 failed) — and 3 more');
   });
 
-  // R3 — drill-down into the existing trust surface, only when a reference exists.
+// drill-down into the existing trust surface, only when a reference exists.
   it('links to the referenced trust report, naming the exact bundle', () => {
     render(
       <TurnProvenanceCard
@@ -414,8 +414,8 @@ describe('TurnProvenanceCard', () => {
     expand();
 
     expect(valueFor('Trust report')).toContain('atlas / veritas-readiness');
-    // SF4: the label names where the link actually lands. There is no
-    // per-bundle deep link, so "Open trust report" over-promised.
+ // the label names where the link actually lands. There is no
+// per-bundle deep link, so "Open trust report" over-promised.
     expect(
       screen
         .getByRole('link', { name: 'Open project trust panel' })
@@ -431,14 +431,14 @@ describe('TurnProvenanceCard', () => {
     ).toBeNull();
   });
 
-  // SF1 — a reason string from a newer Station must not render as a blank.
+// a reason string from a newer Station must not render as a blank.
   it('names an unrecognized unavailable reason instead of rendering a blank', () => {
     render(
       <TurnProvenanceCard
         provenance={envelope({
           usage: {
             state: 'unavailable',
-            // Shape-valid, meaning unknown to this build.
+// Shape-valid, meaning unknown to this build.
             reason: 'quantum-decoherence' as never,
           },
         })}
@@ -452,7 +452,7 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Usage')).not.toBe('');
   });
 
-  // D3 — a reason that collides with an Object.prototype key.
+// a reason that collides with an Object.prototype key.
   it.each(['toString', 'constructor', 'hasOwnProperty', '__proto__'])(
     'does not render a prototype-chain value for the reason %s',
     (reason) => {
@@ -468,13 +468,13 @@ describe('TurnProvenanceCard', () => {
       expect(valueFor('Usage')).toBe(
         "Reported unavailable for a reason this version doesn't recognize",
       );
-      // Never a stringified function, and never blank.
+// Never a stringified function, and never blank.
       expect(valueFor('Usage')).not.toContain('function');
       expect(valueFor('Usage')).not.toBe('');
     },
   );
 
-  // SF3 — an engine whose usage scope nobody declared.
+// an engine whose usage scope nobody declared.
   it('says the engine has not declared its usage scope', () => {
     render(
       <TurnProvenanceCard
@@ -491,11 +491,11 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Usage')).not.toMatch(/\d/);
   });
 
-  // station#1423 — a reference this VIEWER may not dereference. The share
-  // projection is the only producer of this reason, and the copy has to say
-  // that the record exists: every other reason here means "Station has
-  // nothing", and telling a share viewer that about a trust report Station
-  // demonstrably holds would be false.
+// archive#1423 — a reference this VIEWER may not dereference. The share
+// projection is the only producer of this reason, and the copy has to say
+// that the record exists: every other reason here means "Station has
+// nothing", and telling a share viewer that about a trust report Station
+// demonstrably holds would be false.
   it('distinguishes a viewer restriction from a Station or engine gap', () => {
     render(
       <TurnProvenanceCard
@@ -514,19 +514,19 @@ describe('TurnProvenanceCard', () => {
     );
     expect(valueFor('Trust report')).not.toBe('Not captured by Station yet');
     expect(valueFor('Trust report')).not.toMatch(/\d/);
-    // No drill-down link is offered for something the viewer may not open.
+// No drill-down link is offered for something the viewer may not open.
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  // --- station#1802: the badge is per-answer standing, not a backlog tally ---
+// --- archive#1802: the badge is per-answer standing, not a backlog tally ---
 
   it('shows no badge for a healthy, unremarkable turn — even with three Station gaps present', () => {
     const { container } = render(
       <TurnProvenanceCard provenance={envelope()} />,
     );
-    // The default fixture carries three `not-captured-by-station` gaps
-    // (routing receipt, sources, trust report). None of them is per-answer
-    // information, so none of them may produce a badge.
+// The default fixture carries three `not-captured-by-station` gaps
+// (routing receipt, sources, trust report). None of them is per-answer
+// information, so none of them may produce a badge.
     expect(container.querySelector('.turn-provenance__badge')).toBeNull();
     expect(screen.queryByText(/gap/i)).toBeNull();
   });
@@ -566,10 +566,10 @@ describe('TurnProvenanceCard', () => {
     expect(badge?.textContent).not.toMatch(/captured/i);
   });
 
-  // Review finding (station#1802, lower-severity item, addressed alongside
-  // H-1): a tool call this turn started but never resolved is a genuine
-  // per-answer anomaly by turnFindings' own stated rule, distinct from a
-  // reported failure/cancellation.
+// Review finding (archive#1802, lower-severity item, addressed alongside
+ //): a tool call this turn started but never resolved is a genuine
+// per-answer anomaly by turnFindings' own stated rule, distinct from a
+// reported failure/cancellation.
   it('badges a turn with a tool call that started but never resolved', () => {
     const { container } = render(
       <TurnProvenanceCard
@@ -597,14 +597,14 @@ describe('TurnProvenanceCard', () => {
     expect(badge?.textContent).toBe('1 tool call unresolved');
   });
 
-  // --- station#1802: the four row kinds must be checkably distinct ---
+// --- archive#1802: the four row kinds must be checkably distinct ---
 
   it('renders an engine-didn’t-report row and a Station-hasn’t-built-it row with different classes and in different sections', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
     expand();
 
-    // "Tools" is a meaningful absence — a property of the engine — and stays
-    // in the checkable facts list.
+// "Tools" is a meaningful absence — a property of the engine — and stays
+// in the checkable facts list.
     const toolsValue = screen.getByText('Tools').nextElementSibling;
     expect(toolsValue?.className).toContain('turn-provenance__value--absence');
     expect(toolsValue?.className).not.toContain(
@@ -612,8 +612,8 @@ describe('TurnProvenanceCard', () => {
     );
     expect(toolsValue?.closest('.turn-provenance__facts--backlog')).toBeNull();
 
-    // "Routing receipt" is Station's own gap and is demoted to its own
-    // section, under its own heading, with a different class.
+// "Routing receipt" is Station's own gap and is demoted to its own
+// section, under its own heading, with a different class.
     expect(screen.getByText('Not yet captured by Station')).toBeTruthy();
     const receiptValue = screen.getByText('Routing receipt').nextElementSibling;
     expect(receiptValue?.className).toContain(
@@ -651,12 +651,12 @@ describe('TurnProvenanceCard', () => {
     );
   });
 
-  // --- station#1802: correlation ids are metadata, behind the disclosure ---
+// --- archive#1802: correlation ids are metadata, behind the disclosure ---
 
   it('correlates the card to its exact turn, only after expanding, under Metadata', () => {
     render(<TurnProvenanceCard provenance={envelope({ turnId: 'turn-42' })} />);
 
-    // Collapsed: the id is nowhere on screen.
+// Collapsed: the id is nowhere on screen.
     expect(screen.queryByText('turn-42')).toBeNull();
 
     expand();
@@ -700,13 +700,13 @@ describe('TurnProvenanceCard', () => {
     ).toBeTruthy();
   });
 
-  // AC5 — an envelope this build cannot read degrades honestly.
-  //
-  // The versioned-but-truncated cases are the sharp ones (MB2): the card
-  // reads `slot.state` on every field, so an envelope that passes a header
-  // check but is missing slots would throw on `undefined.state` and take the
-  // whole chat view down through RouteViewBoundary. Each of these was a
-  // crash before the guard validated every slot.
+// an envelope this build cannot read degrades honestly.
+//
+// The versioned-but-truncated cases are the sharp ones (MB2): the card
+// reads `slot.state` on every field, so an envelope that passes a header
+// check but is missing slots would throw on `undefined.state` and take the
+// whole chat view down through RouteViewBoundary. Each of these was a
+// crash before the guard validated every slot.
   it.each([
     ['a newer envelope version', { ...envelope(), envelopeVersion: 99 }],
     ['a truncated payload', { envelopeVersion: 1 }],
@@ -745,11 +745,11 @@ describe('TurnProvenanceCard', () => {
       },
     ],
     [
-      // #1456 — a slot claiming `observed` with a well-formed value but zero
-      // backing pointers is a vacuous observation: a confident fact with
-      // nothing behind it. This is distinct from the case above (which fails
-      // on the empty engine VALUE, not the pointer list) — here the value is
-      // perfectly valid and only `observedFrom` is empty.
+ // archive#1456 — a slot claiming `observed` with a well-formed value but zero
+// backing pointers is a vacuous observation: a confident fact with
+// nothing behind it. This is distinct from the case above (which fails
+// on the empty engine VALUE, not the pointer list) — here the value is
+// perfectly valid and only `observedFrom` is empty.
       'an observed slot with a valid value but no observation pointers (vacuous observation)',
       {
         ...envelope(),
@@ -785,7 +785,7 @@ describe('TurnProvenanceCard', () => {
           /cannot read\. Nothing about this answer is being claimed/,
         ),
       ).toBeTruthy();
-      // Nothing is decoded out of it — no engine, no counts, no gap tally.
+// Nothing is decoded out of it — no engine, no counts, no gap tally.
       expect(screen.queryByRole('button')).toBeNull();
       expect(screen.queryByText('Engine')).toBeNull();
       expect(screen.queryByText(/gap/)).toBeNull();
@@ -802,12 +802,12 @@ describe('TurnProvenanceCard', () => {
     expect(screen.getByText('The answer text.')).toBeTruthy();
   });
 
-  // --- station#2649: the Context row ---
-  //
-  // Four shapes, and the card must never render a fifth. The failure this
-  // row exists to prevent is a Station context section appearing on a turn
-  // Station never composed context for — so the external-engine case is
-  // asserted by what it must NOT say, not only by what it does.
+// --- archive#2649: the Context row ---
+//
+// Four shapes, and the card must never render a fifth. The failure this
+// row exists to prevent is a Station context section appearing on a turn
+// Station never composed context for — so the external-engine case is
+// asserted by what it must NOT say, not only by what it does.
   describe('Context row (station#2649)', () => {
     const stationEngine: TurnProvenanceEnvelope['engine'] = {
       state: 'observed',
@@ -849,12 +849,12 @@ describe('TurnProvenanceCard', () => {
       expect(text).toContain('3 chunks from guide.md, api.md');
       expect(text).toContain('Guidelines: 2 reinforce / 1 avoid');
       expect(text).toContain('Project rules');
-      // Approximate by construction (bytes/4 of the injected strings), so
-      // the reader is never handed an estimate dressed as a measurement.
+// Approximate by construction (bytes/4 of the injected strings), so
+// the reader is never handed an estimate dressed as a measurement.
       expect(text).toContain('~120 tokens');
       expect(text).toContain('~40 tokens');
       expect(text).not.toMatch(/[^~]\b120 tokens/);
-      // An earned claim, in the checkable list — not a gap, not the backlog.
+// An earned claim, in the checkable list — not a gap, not the backlog.
       const value = screen.getByText('Context').nextElementSibling;
       expect(value?.className).toContain('turn-provenance__value--earned');
       expect(value?.closest('.turn-provenance__facts--backlog')).toBeNull();
@@ -890,8 +890,8 @@ describe('TurnProvenanceCard', () => {
         />,
       );
       expand();
-      // Ambient is Station-composed at the same choke point, so a turn that
-      // carried it must never read as "nothing was composed".
+// Ambient is Station-composed at the same choke point, so a turn that
+// carried it must never read as "nothing was composed".
       expect(valueFor('Context')).toBe('Ambient (~9 tokens)');
       expect(valueFor('Context')).not.toContain('No Station-composed context');
     });
@@ -908,9 +908,9 @@ describe('TurnProvenanceCard', () => {
       expand();
 
       expect(valueFor('Context')).toBe('No Station-composed context');
-      // The wording names the record's real scope. It must not overclaim
-      // "no context" over a model input that always carries a system prompt,
-      // tool schemas, and prior history assembled elsewhere.
+// The wording names the record's real scope. It must not overclaim
+// "no context" over a model input that always carries a system prompt,
+// tool schemas, and prior history assembled elsewhere.
       expect(valueFor('Context')).not.toBe('No context');
       expect(
         screen.getByText('Context').nextElementSibling?.className,
@@ -918,9 +918,9 @@ describe('TurnProvenanceCard', () => {
     });
 
     it('never claims a Station context section on an external engine’s turn', () => {
-      // Claude Code owns its own context end-to-end. The card may say who
-      // manages it; it may not imply Station injected anything, and it may
-      // not borrow the Station-engine wording for "we injected nothing".
+// Claude Code owns its own context end-to-end. The card may say who
+// manages it; it may not imply Station injected anything, and it may
+// not borrow the Station-engine wording for "we injected nothing".
       render(<TurnProvenanceCard provenance={envelope()} />);
       expand();
 
@@ -930,8 +930,8 @@ describe('TurnProvenanceCard', () => {
       expect(value?.textContent).not.toContain('No Station-composed context');
       expect(value?.textContent).not.toMatch(/token/);
       expect(value?.textContent).not.toMatch(/chunk/);
-      // And it is not demoted to Station's backlog: this is a property of
-      // the engine, not a slot Station has yet to build.
+// And it is not demoted to Station's backlog: this is a property of
+// the engine, not a slot Station has yet to build.
       expect(value?.closest('.turn-provenance__facts--backlog')).toBeNull();
     });
 

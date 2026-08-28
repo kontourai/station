@@ -769,7 +769,7 @@ export function ensureOrchestrationAdoptionColumns(
  * pre-existing orchestration behaviour, so keeping it is not a regression.
  *
  * Garbage-collecting genuinely dead legacy claims needs its own mechanism
- * with a real liveness guarantee -- see the follow-up on #2238.
+ * with a real liveness guarantee -- see the follow-up on archive#2238.
  */
 export function ensureOrchestrationTurnDedupColumns(
   db: SessionStateSchemaDatabase,
@@ -798,7 +798,7 @@ export function ensureOrchestrationTurnDedupColumns(
 
 /**
  * Delegates to the shared layout rather than repeating the join. The CLI's
- * `station home verify` and the scheduled probe (station#3218) both need this
+ * `station home verify` and the scheduled probe (archive#3218) both need this
  * path and neither can import from `src-server`, so the segments live where
  * every process can reach one spelling of them.
  */
@@ -815,7 +815,7 @@ interface EventStoreSchemaDatabase {
 }
 
 /**
- * Rows backfilled per transaction (review follow-up, station#1092). A single
+ * Rows backfilled per transaction (review follow-up, archive#1092). A single
  * unbounded transaction over every unassigned row holds the write lock and
  * stalls startup on a large legacy store; batching keeps each transaction —
  * and the lock it holds — bounded regardless of how many rows are behind.
@@ -894,7 +894,7 @@ function backfillGlobalSequence(db: EventStoreSchemaDatabase): void {
 
 /**
  * `CREATE TABLE IF NOT EXISTS` does not migrate existing Station homes onto
- * the `global_sequence` column added for station#1092's event-stream resume.
+ * the `global_sequence` column added for archive#1092's event-stream resume.
  * Additive for both fresh and legacy databases: adds the column if missing,
  * then backfills any never-assigned (`= 0`) rows in the same global order
  * `listEvents()` already uses (`created_at ASC, sequence ASC`) so the
@@ -906,7 +906,7 @@ function backfillGlobalSequence(db: EventStoreSchemaDatabase): void {
  * `CREATE TABLE IF NOT EXISTS` is a no-op, so an index referencing a column
  * not added yet would fail before this function could repair the schema.
  * `(thread_id, global_sequence)` backs per-thread replay; the turn, request,
- * and session-state indexes back #1867's finite fact queries.
+ * and session-state indexes back archive#1867's finite fact queries.
  */
 const SETTLED_STOP_FACT_REPAIR_NAME = 'event-facts-v4';
 const SETTLED_STOP_FACT_REPAIR_BATCH_SIZE = 100;
@@ -963,7 +963,7 @@ export function ensureOrchestrationEventStoreColumns(
     // winner. Re-reading under the writer lock is what makes the marker a
     // mutex rather than a hint: without it the loser re-derives the same
     // projection and dies on the marker's primary key, taking its whole
-    // constructor down (station#3145 class, reproduced at ~1 in 80 concurrent
+    // constructor down (archive#3145 class, reproduced at ~1 in 80 concurrent
     // first-boot constructions).
     pending = !settled();
     if (!pending) db.exec('ROLLBACK');
@@ -1106,7 +1106,7 @@ export function ensureOrchestrationEventStoreColumns(
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_events_thread_method_session_state_sequence ON orchestration_events(thread_id, method, session_state, sequence) WHERE session_state IS NOT NULL',
   );
-  // station#3495: the recency index behind `EventStore.findSessionOwnerUserId`,
+  // archive#3495: the recency index behind `EventStore.findSessionOwnerUserId`,
   // the `/events` route's per-event authorization gate. Ordered
   // `(thread_id, created_at, sequence)` so a reverse scan satisfies that
   // query's `ORDER BY created_at DESC, sequence DESC` outright — measured
@@ -1239,7 +1239,7 @@ function repairSettledStopProjectionFacts(db: EventStoreSchemaDatabase): void {
 }
 
 // Mirrors event-store.ts's SQLITE_BUSY_TIMEOUT_MS: a STATION_HOME can be open
-// by more than one runtime (#2895/#3304), so this boot path must wait for a
+// by more than one runtime (archive#2895/#3304), so this boot path must wait for a
 // peer's write lock rather than die instantly on SQLITE_BUSY.
 const MIGRATION_BUSY_TIMEOUT_MS = 5_000;
 
@@ -1258,7 +1258,7 @@ export function runOrchestrationEventMigration(projectHomeDir: string): void {
   // WAL before the first write, outside any transaction (journal_mode cannot
   // change inside one). Best-effort: switching mode is itself a write that
   // needs an uncontended file, and the first uncontended open persists it.
-  // station#3661: bounded retry. The conversion needs an exclusive lock that
+  // archive#3661: bounded retry. The conversion needs an exclusive lock that
   // `busy_timeout` does not govern, so a swallow here meant the very boot that
   // raced ran the migration below against a rollback-journal file.
   applyWalJournalMode(db, { store: 'orchestration event store migration' });

@@ -1,5 +1,5 @@
 /**
- * ReceiptBus — TEST-ONLY typed milestone receipt bus (station#1101).
+ * ReceiptBus — TEST-ONLY typed milestone receipt bus (archive#1101).
  *
  * Production code publishes typed milestone receipts via `receiptBus.publish()`
  * — cheap, fire-and-forget, safe to call unconditionally (a `Set.size`
@@ -26,9 +26,9 @@
  * This replaces sleep/poll-based test synchronization (`setTimeout` waits,
  * `vi.waitFor`/hand-rolled polling loops) for orchestration milestones that
  * have no other deterministic signal: session recovery, a turn's completion
- * event landing in the read model, and (once station#1093 Part B lands the
+ * event landing in the read model, and (once archive#1093 Part B lands the
  * route-level KeyedCoalescingWorker construction) per-key coalescing
- * drains. See station#595/#1017/#1045 for the load-dependent flakes this
+ * drains. See archive#595/#1017/#1045 for the load-dependent flakes this
  * targets.
  */
 
@@ -69,7 +69,7 @@ export type OrchestrationTestReceipt =
     }
   | {
       /**
-       * station#1745: fires once per `OrchestrationService.initialize()`,
+       * archive#1745: fires once per `OrchestrationService.initialize()`,
        * after `recoverSessions()` settles — the moment `sessionAdapters`
        * starts meaning "the threads this process holds" rather than "the
        * threads recovery has reached so far".
