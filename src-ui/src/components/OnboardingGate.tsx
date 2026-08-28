@@ -132,9 +132,17 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
   const bootstrapRecoveryError = nativeProfileBootstrapRecoveryError();
   const [showModal, setShowModal] = useState(false);
+  const showModalRef = useRef(false);
+  useEffect(() => {
+    showModalRef.current = showModal;
+  }, [showModal]);
   const [connectionModalMode, setConnectionModalMode] =
     useState<ConnectionModalMode>('list');
   const [pairingPayload, setPairingPayload] = useState<string | undefined>();
+  const [pairingLinkError, setPairingLinkError] = useState<
+    string | undefined
+  >();
+  const pairingPayloadRef = useRef<string | undefined>(undefined);
   const [pendingExchange, setPendingExchange] =
     useState<PendingPairingExchange | null>(null);
   const [waitingForTransport, setWaitingForTransport] = useState(false);
@@ -281,12 +289,21 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   }, [showToast]);
 
   const openPairingPayload = useCallback((payload: string) => {
+    showModalRef.current = true;
+    pairingPayloadRef.current = payload;
+    setPairingLinkError(undefined);
     setPairingPayload(payload);
     setConnectionModalMode('pair-device');
     setShowModal(true);
   }, []);
   const reportPairingLinkError = useCallback(
-    (message: string) => showToast(message),
+    (message: string) => {
+      // A linked review owns its rejection where it stays above the dialog;
+      // without one, retain the normal visible toast for malformed launch,
+      // listener, and initialization failures.
+      if (showModalRef.current) setPairingLinkError(message);
+      else showToast(message);
+    },
     [showToast],
   );
   usePairingDeepLink({
@@ -800,13 +817,22 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       <ConnectionManagerModal
         isOpen={showModal}
         onClose={() => {
+          showModalRef.current = false;
           setShowModal(false);
+          pairingPayloadRef.current = undefined;
           setPairingPayload(undefined);
+          setPairingLinkError(undefined);
         }}
         checkHealth={checkServerHealthDetailed}
         checkCompatibility={checkHostCompatibility}
         initialPanel={connectionModalMode}
         initialPairingPayload={pairingPayload}
+        pairingLinkError={pairingLinkError}
+        onPairingReviewDismissed={() => {
+          pairingPayloadRef.current = undefined;
+          setPairingPayload(undefined);
+          setPairingLinkError(undefined);
+        }}
         originIsStation={!profile.isTauri}
         hostAppName={
           profile.isTauri ? profile.productName || 'Station' : undefined

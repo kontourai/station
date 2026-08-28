@@ -44,6 +44,9 @@ export interface ConnectionManagerModalProps {
   initialPanel?: ConnectionManagerPanel;
   /** A decoded, one-time pairing payload awaiting the user's confirmation. */
   initialPairingPayload?: string;
+  /** A rejected native link's safe, parser-authored remedy for the active review. */
+  pairingLinkError?: string;
+  onPairingReviewDismissed?: () => void;
   /**
    * True when the page was served by a Station host (the web case), so the
    * direct "Request access" flow can target `window.location.origin`. The app
@@ -82,6 +85,8 @@ export function ConnectionManagerModal({
   checkCompatibility,
   initialPanel,
   initialPairingPayload,
+  pairingLinkError,
+  onPairingReviewDismissed,
   originIsStation,
   hostAppName,
   allowManualCredentials,
@@ -100,6 +105,8 @@ export function ConnectionManagerModal({
         checkCompatibility={checkCompatibility}
         initialPanel={initialPanel}
         initialPairingPayload={initialPairingPayload}
+        pairingLinkError={pairingLinkError}
+        onPairingReviewDismissed={onPairingReviewDismissed}
         originIsStation={originIsStation}
         hostAppName={hostAppName}
         allowManualCredentials={allowManualCredentials}
