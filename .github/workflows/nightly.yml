@@ -982,7 +982,13 @@ jobs:
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
           node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly
+          # A config overlay that silently failed to apply would otherwise
+          # publish a production-identified build to the nightly channel —
+          # the same check the Android leg's badging grep proves, here
+          # against the notarized .app's own Info.plist.
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "${{ steps.identity.outputs.version }}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = "${{ steps.identity.outputs.product_name }}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "io.kontourai.station.nightly"
 
       - name: Assemble the signed updater manifest
         if: steps.decide.outputs.build == 'true'
