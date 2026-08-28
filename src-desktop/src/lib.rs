@@ -7410,6 +7410,10 @@ fn drive_supervisor_effects(
 /// attached durable service has no child in this state and is never signalled.
 #[cfg(not(mobile))]
 pub(crate) fn teardown_sidecar(app: &AppHandle) {
+    // The tray poll is app-owned, not sidecar-owned. Stop it explicitly on
+    // every native exit so its managed wake sender cannot be mistaken for a
+    // detached worker's lifetime.
+    crate::tray::shutdown(app);
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return;
     };
@@ -7977,6 +7981,42 @@ mod tests {
             ownership_management < tray_initialization,
             "tray polling must start only after DesktopServerState exists"
         );
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn listening_transition_kicks_the_managed_tray_after_publishing_running_state() {
+        let source = include_str!("lib.rs");
+        let listening = source
+            .find("Ok(SupervisorMessage::Listening {")
+            .expect("supervisor receives a listening transition");
+        let published = source[listening..]
+            .find("apply_supervisor_input(&supervisor, SupervisorInput::Listening { port });")
+            .map(|offset| listening + offset)
+            .expect("listening state is published before tray convergence");
+        let kick = source[published..]
+            .find("crate::tray::kick(&app);")
+            .map(|offset| published + offset)
+            .expect("listening state wakes the managed tray poll");
+        assert!(published < kick);
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn native_teardown_stops_the_managed_tray_before_sidecar_teardown() {
+        let source = include_str!("lib.rs");
+        let teardown = source
+            .find("pub(crate) fn teardown_sidecar(app: &AppHandle) {")
+            .expect("desktop teardown exists");
+        let tray_shutdown = source[teardown..]
+            .find("crate::tray::shutdown(app);")
+            .map(|offset| teardown + offset)
+            .expect("desktop teardown stops the app-owned tray poll");
+        let server_state = source[teardown..]
+            .find("app.try_state::<DesktopServerState>()")
+            .map(|offset| teardown + offset)
+            .expect("sidecar teardown remains guarded by managed desktop state");
+        assert!(tray_shutdown < server_state);
     }
 
     #[test]

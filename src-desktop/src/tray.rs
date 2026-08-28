@@ -10,8 +10,11 @@ use serde::Deserialize;
 use std::fmt::Display;
 use std::io::Read;
 use std::net::IpAddr;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::image::Image;
@@ -39,16 +42,59 @@ struct TrayState {
     service_action: MenuItem<Wry>,
     status: MenuItem<Wry>,
     tray: TrayIcon<Wry>,
+    connected_clients_in_flight: Arc<AtomicBool>,
 }
 
 /// Supervisor transitions wake this receiver; they never write a webview
 /// event themselves. This keeps the tray poll as the sole event writer.
-#[derive(Clone)]
-pub(crate) struct TrayKick(pub Sender<()>);
+///
+/// The sender and worker handle are managed by Tauri for the entire primary
+/// app lifetime. A detached worker whose last sender was accidentally dropped
+/// used to exit after its first update and leave the native menu at its setup
+/// placeholders without any diagnostic.
+struct TrayPoll {
+    wake: Sender<TrayWake>,
+    shutting_down: Arc<AtomicBool>,
+    worker: Mutex<Option<thread::JoinHandle<()>>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrayWake {
+    Kick,
+    Shutdown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrayPollExit {
+    Shutdown,
+    WakeChannelDisconnected,
+}
 
 pub(crate) fn kick(app: &AppHandle) {
-    if let Some(kick) = app.try_state::<TrayKick>() {
-        let _ = kick.0.send(());
+    if let Some(poll) = app.try_state::<TrayPoll>() {
+        let _ = poll.wake.send(TrayWake::Kick);
+    }
+}
+
+/// Stops and joins the app-owned tray poll during native teardown. A missing
+/// poll is deliberately harmless: setup can fail before tray initialization.
+pub(crate) fn shutdown(app: &AppHandle) {
+    let Some(poll) = app.try_state::<TrayPoll>() else {
+        return;
+    };
+    if poll.shutting_down.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _ = poll.wake.send(TrayWake::Shutdown);
+    let worker = {
+        let mut worker = poll
+            .worker
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        worker.take()
+    };
+    if let Some(worker) = worker {
+        let _ = worker.join();
     }
 }
 
@@ -159,7 +205,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     tray.set_icon_as_template(false)?;
-    app.manage(TrayState {
+    if !app.manage(TrayState {
         identity_text,
         icon_bytes,
         backend,
@@ -170,39 +216,99 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         service_action,
         status,
         tray,
-    });
-    let (kick, receiver) = channel();
-    app.manage(TrayKick(kick));
-    spawn_poll_thread(app.clone(), receiver);
+        connected_clients_in_flight: Arc::new(AtomicBool::new(false)),
+    }) {
+        return Err(std::io::Error::other("Station tray state was already initialized").into());
+    }
+    let (wake, receiver) = channel();
+    let shutting_down = Arc::new(AtomicBool::new(false));
+    if !app.manage(TrayPoll {
+        wake,
+        shutting_down: shutting_down.clone(),
+        worker: Mutex::new(None),
+    }) {
+        return Err(
+            std::io::Error::other("Station tray poll state was already initialized").into(),
+        );
+    }
+    let worker = spawn_poll_thread(app.clone(), receiver, shutting_down)?;
+    *app.state::<TrayPoll>()
+        .worker
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(worker);
     log::info!("Station tray initialized");
     Ok(())
 }
 
-fn spawn_poll_thread(app: AppHandle, kicks: Receiver<()>) {
+fn spawn_poll_thread(
+    app: AppHandle,
+    wakes: Receiver<TrayWake>,
+    shutting_down: Arc<AtomicBool>,
+) -> std::io::Result<thread::JoinHandle<()>> {
     thread::Builder::new()
         .name("station-service-tray-poll".into())
         .spawn(move || {
             // Keep the Rust tray and the Desktop webview on the same polling
             // path. In particular, an external service crash or recovery must
             // emit the status event even though no tray action was clicked.
-            let mut update = || update_once(&app);
-            while poll_step(&kicks, &mut update) {}
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let mut update = || update_once(&app);
+                run_poll_loop(&wakes, &mut update)
+            }));
+            match result {
+                Ok(TrayPollExit::Shutdown) if shutting_down.load(Ordering::SeqCst) => {
+                    log::debug!("Station tray poll stopped during desktop teardown");
+                }
+                Ok(TrayPollExit::Shutdown) => {
+                    log::error!("Station tray poll received shutdown outside desktop teardown");
+                    apply_poller_failure(&app);
+                }
+                Ok(TrayPollExit::WakeChannelDisconnected) => {
+                    log::error!("Station tray poll wake channel disconnected unexpectedly");
+                    apply_poller_failure(&app);
+                }
+                Err(_) => {
+                    log::error!("Station tray poll panicked; marking native tray unavailable");
+                    apply_poller_failure(&app);
+                }
+            }
         })
-        .expect("failed to start Station tray poll thread");
+}
+
+fn run_poll_loop<F>(wakes: &Receiver<TrayWake>, update: &mut F) -> TrayPollExit
+where
+    F: FnMut() -> ServiceHealth,
+{
+    loop {
+        match poll_step(wakes, update) {
+            TrayPollStep::Continue => {}
+            TrayPollStep::Shutdown => return TrayPollExit::Shutdown,
+            TrayPollStep::WakeChannelDisconnected => return TrayPollExit::WakeChannelDisconnected,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrayPollStep {
+    Continue,
+    Shutdown,
+    WakeChannelDisconnected,
 }
 
 /// Run one tray/webview convergence update and wait for either its normal
-/// cadence or a supervisor kick. A disconnected kick channel is application
-/// teardown, not a reason to spin indefinitely.
-fn poll_step<F>(kicks: &Receiver<()>, update: &mut F) -> bool
+/// cadence or a supervisor kick. The managed sender stays alive until explicit
+/// desktop teardown, so a disconnected channel is an observable fault rather
+/// than an implied teardown.
+fn poll_step<F>(wakes: &Receiver<TrayWake>, update: &mut F) -> TrayPollStep
 where
     F: FnMut() -> ServiceHealth,
 {
     let health = update();
-    !matches!(
-        kicks.recv_timeout(health.poll_interval()),
-        Err(RecvTimeoutError::Disconnected)
-    )
+    match wakes.recv_timeout(health.poll_interval()) {
+        Ok(TrayWake::Kick) | Err(RecvTimeoutError::Timeout) => TrayPollStep::Continue,
+        Ok(TrayWake::Shutdown) => TrayPollStep::Shutdown,
+        Err(RecvTimeoutError::Disconnected) => TrayPollStep::WakeChannelDisconnected,
+    }
 }
 
 fn packaged_channel(app: &AppHandle) -> Option<&'static str> {
@@ -217,13 +323,12 @@ fn station_home(app: &AppHandle) -> std::path::PathBuf {
     resolve_station_home_for_channel(packaged_channel(app).map(std::ffi::OsStr::new))
 }
 
-fn apply_health(state: &TrayState, snapshot: TrayBackendSnapshot, connected_clients: String) {
+fn apply_primary_health(state: &TrayState, snapshot: TrayBackendSnapshot) {
     let label = snapshot.health.label();
     let _ = state.status.set_text(format!("Station service: {label}"));
     let _ = state.backend.set_text(&snapshot.label);
     let _ = state.open.set_enabled(snapshot.can_open());
     let _ = state.connections.set_enabled(snapshot.can_navigate());
-    let _ = state.connected_clients.set_text(connected_clients);
     let _ = state.connected_clients.set_enabled(snapshot.can_navigate());
     let _ = state.updates.set_enabled(snapshot.can_navigate());
     let _ = state.service_action.set_text(snapshot.action.label);
@@ -237,6 +342,32 @@ fn apply_health(state: &TrayState, snapshot: TrayBackendSnapshot, connected_clie
         let _ = state.tray.set_icon(Some(icon));
         let _ = state.tray.set_icon_as_template(false);
     }
+}
+
+fn apply_connected_clients(state: &TrayState, connected_clients: String) {
+    let _ = state.connected_clients.set_text(connected_clients);
+}
+
+/// A tray poll fault must not leave a healthy-looking but indefinitely stale
+/// menu. This disables native actions without changing service ownership or
+/// issuing any service command.
+fn apply_poller_failure_ui(state: &TrayState) {
+    let _ = state.status.set_text("Station service: unavailable");
+    let _ = state.backend.set_text("Backend: unavailable");
+    let _ = state.open.set_enabled(false);
+    let _ = state.connections.set_enabled(false);
+    let _ = state
+        .connected_clients
+        .set_text("Connected clients: unavailable");
+    let _ = state.connected_clients.set_enabled(false);
+    let _ = state.updates.set_enabled(false);
+    let _ = state.service_action.set_text("Service unavailable");
+    let _ = state.service_action.set_enabled(false);
+    let _ = state.tray.set_tooltip(Some(tray_tooltip(
+        &state.identity_text,
+        "Backend: unavailable",
+        ServiceHealth::Unhealthy,
+    )));
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -785,12 +916,77 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
     let state = app.state::<TrayState>().inner().clone();
     let context = tray_context(app);
     let health = context.snapshot.health;
-    let connected_clients = connected_clients_label(app, &context);
-    record_dispatch_result(
-        app.run_on_main_thread(move || apply_health(&state, context.snapshot, connected_clients)),
+    let snapshot = context.snapshot.clone();
+    let primary_app = app.clone();
+    let primary_state = state.clone();
+    let projection_app = app.clone();
+    // A supervisor Listening kick must publish backend ownership, health, and
+    // native actions immediately. The paired-client aggregate is useful but
+    // optional: it may need a locked Keychain item or an unavailable HTTP
+    // endpoint, neither of which may hold the primary tray state hostage.
+    dispatch_primary_then_schedule_projection(
+        move || {
+            record_dispatch_result(primary_app.run_on_main_thread({
+                let state = primary_state;
+                move || apply_primary_health(&state, snapshot)
+            }));
+            crate::emit_service_status(&primary_app);
+        },
+        move || schedule_connected_clients_projection(projection_app, state, context),
     );
-    crate::emit_service_status(app);
     health
+}
+
+/// Keep the primary dispatch on the supervisor/poll path and schedule the
+/// optional projection only afterwards. This small seam is deliberately
+/// synchronous at the boundary: its optional closure must return promptly,
+/// while the Keychain/HTTP work itself runs on its own worker.
+fn dispatch_primary_then_schedule_projection<P, C>(primary: P, projection: C)
+where
+    P: FnOnce(),
+    C: FnOnce(),
+{
+    primary();
+    projection();
+}
+
+fn schedule_connected_clients_projection(app: AppHandle, state: TrayState, context: TrayContext) {
+    if state
+        .connected_clients_in_flight
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    let in_flight = state.connected_clients_in_flight.clone();
+    let worker_in_flight = in_flight.clone();
+    let spawn = thread::Builder::new()
+        .name("station-tray-connected-clients".into())
+        .spawn(move || {
+            let result = catch_unwind(AssertUnwindSafe(|| connected_clients_label(&app, &context)));
+            let connected_clients = match result {
+                Ok(label) => label,
+                Err(_) => {
+                    log::error!("Station tray connected-client projection panicked");
+                    "Connected clients: unavailable".to_string()
+                }
+            };
+            worker_in_flight.store(false, Ordering::SeqCst);
+            record_dispatch_result(
+                app.run_on_main_thread(move || apply_connected_clients(&state, connected_clients)),
+            );
+        });
+    if let Err(error) = spawn {
+        in_flight.store(false, Ordering::SeqCst);
+        log::error!("Station tray connected-client projection could not start: {error}");
+    }
+}
+
+fn apply_poller_failure(app: &AppHandle) {
+    if let Some(state) = app.try_state::<TrayState>() {
+        let state = state.inner().clone();
+        record_dispatch_result(app.run_on_main_thread(move || apply_poller_failure_ui(&state)));
+    }
 }
 
 /// A rejected main-thread dispatch is transient host state. The poller retains
@@ -1004,9 +1200,10 @@ mod tests {
 
     #[test]
     fn rejected_dispatch_retries_on_a_later_supervisor_kick() {
-        let (kick, receiver) = channel();
-        kick.send(()).expect("queue supervisor kick");
-        drop(kick);
+        let (wake, receiver) = channel();
+        wake.send(TrayWake::Kick).expect("queue supervisor kick");
+        wake.send(TrayWake::Shutdown)
+            .expect("queue desktop teardown");
         let mut dispatches = [Err("event loop is not ready"), Ok(())].into_iter();
         let mut attempts = 0;
         let mut update = || {
@@ -1015,9 +1212,80 @@ mod tests {
             ServiceHealth::Running
         };
 
-        assert!(poll_step(&receiver, &mut update));
-        assert!(!poll_step(&receiver, &mut update));
+        assert_eq!(poll_step(&receiver, &mut update), TrayPollStep::Continue);
+        assert_eq!(poll_step(&receiver, &mut update), TrayPollStep::Shutdown);
         assert_eq!(attempts, 2);
+    }
+
+    #[test]
+    fn managed_poll_lifetime_distinguishes_shutdown_from_sender_loss() {
+        let (wake, receiver) = channel::<TrayWake>();
+        wake.send(TrayWake::Shutdown)
+            .expect("queue desktop teardown");
+        let mut update = || ServiceHealth::Running;
+        assert_eq!(
+            run_poll_loop(&receiver, &mut update),
+            TrayPollExit::Shutdown
+        );
+
+        let (wake, receiver) = channel::<TrayWake>();
+        drop(wake);
+        assert_eq!(
+            run_poll_loop(&receiver, &mut update),
+            TrayPollExit::WakeChannelDisconnected
+        );
+    }
+
+    #[test]
+    fn primary_main_thread_dispatch_precedes_a_blocked_clients_projection() {
+        use std::sync::mpsc::sync_channel;
+
+        let (primary_done, primary_observed) = sync_channel(1);
+        let (projection_started, projection_observed) = sync_channel(1);
+        let (release_projection, projection_release) = sync_channel(1);
+        let worker = thread::spawn(move || {
+            dispatch_primary_then_schedule_projection(
+                || {
+                    primary_done
+                        .send(())
+                        .expect("record primary main-thread dispatch")
+                },
+                || {
+                    projection_started
+                        .send(())
+                        .expect("record optional projection start");
+                    projection_release
+                        .recv()
+                        .expect("release blocked optional projection");
+                },
+            );
+        });
+
+        primary_observed
+            .recv_timeout(Duration::from_millis(100))
+            .expect("primary backend/status dispatch happens before optional work");
+        projection_observed
+            .recv_timeout(Duration::from_millis(100))
+            .expect("optional projection may now block without delaying primary state");
+        release_projection
+            .send(())
+            .expect("unblock optional projection");
+        worker.join().expect("projection worker exits");
+    }
+
+    #[test]
+    fn initialization_manages_the_poll_before_starting_its_worker() {
+        let source = include_str!("tray.rs");
+        let state = source
+            .find("app.manage(TrayState {")
+            .expect("tray menu state is managed");
+        let poll = source
+            .find("app.manage(TrayPoll {")
+            .expect("tray poll lifetime is managed");
+        let spawn = source
+            .find("let worker = spawn_poll_thread(")
+            .expect("managed tray poll worker is started");
+        assert!(state < poll && poll < spawn);
     }
 
     #[test]
