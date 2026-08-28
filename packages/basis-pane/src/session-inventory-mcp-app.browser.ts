@@ -1,17 +1,17 @@
+import { SESSION_INVENTORY_GROUP_IDS } from '@kontourai/station-contracts/session-inventory';
+import { parseStationSessionInventoryMcpEnvelope } from '@kontourai/station-contracts/session-inventory-mcp';
+import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import {
   App,
   applyDocumentTheme,
   applyHostStyleVariables,
 } from '@modelcontextprotocol/ext-apps';
-import { parseStationSessionInventoryMcpEnvelope } from '@kontourai/station-contracts/session-inventory-mcp';
-import { SESSION_INVENTORY_GROUP_IDS } from '@kontourai/station-contracts/session-inventory';
-import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
+import { renderBasisPanel } from './basis-panel-dom';
+import { renderSessionInventoryDom } from './session-inventory-dom';
 import {
   buildSessionInventoryViewModel,
   mergeSessionInventoryGroupPages,
 } from './session-inventory-view';
-import { renderBasisPanel } from './basis-panel-dom';
-import { renderSessionInventoryDom } from './session-inventory-dom';
 
 const root = document.querySelector<HTMLElement>('#session-inventory-app');
 let app: App | null = null;
@@ -172,14 +172,19 @@ void (async () => {
   );
   app.onhostcontextchanged = appearance;
   app.ontoolresult = (result) => {
-    current = parseStationSessionInventoryMcpEnvelope(
+    const envelope = parseStationSessionInventoryMcpEnvelope(
       (result as { structuredContent?: unknown }).structuredContent,
     );
-    capability = readCapability(
+    const nextCapability = readCapability(
       (result as { _meta?: Record<string, unknown> })._meta?.[
         'station.session-inventory-app/v1'
       ],
     );
+    // The envelope and its occurrence capability are one authorization unit.
+    // Do not leave a read-only projection visible if host metadata is absent
+    // or malformed, even when the model-visible envelope itself parses.
+    current = envelope && nextCapability ? envelope : null;
+    capability = envelope && nextCapability ? nextCapability : null;
     render();
   };
   try {
