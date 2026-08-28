@@ -68,7 +68,7 @@ export function ACPAddConnectionModal({
   const isPending =
     createPending || installPending || state.stage === 'checking';
 
-  // a provider arriving from a deep link — the hub's "Connect this
+  // CI-R8: a provider arriving from a deep link — the hub's "Connect this
   // provider" card, whose own label reads as a status — used to submit
   // straight through, so one click on an informational-looking card wrote a
   // persistent connection and minted an agent with nothing asked and nothing

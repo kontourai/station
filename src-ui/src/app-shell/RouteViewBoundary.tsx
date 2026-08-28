@@ -17,7 +17,7 @@ import { routeTransitionStore } from './route-transition-store';
 
 /**
  * What actually failed, derived from the thrown error rather than assumed
- *. Every route failure used to render "Reload Station to retry the
+ * (SHELL-06). Every route failure used to render "Reload Station to retry the
  * route download" — a sentence that is only true for the first case, and that
  * discards all UI state for the other two.
  */

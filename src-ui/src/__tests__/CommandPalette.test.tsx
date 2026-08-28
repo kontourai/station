@@ -119,7 +119,7 @@ vi.mock('../contexts/KeyboardShortcutsContext', () => ({
         ...registeredShortcutAvailability,
       },
       // The real registry always carries these nine, whatever the session
-      // count is — that is exactly 's defect, so the harness has to
+      // count is — that is exactly SHELL-19's defect, so the harness has to
       // reproduce it or the assertion below proves nothing.
       ...Array.from({ length: 9 }, (_, index) => ({
         id: `dock.session${index + 1}`,
@@ -303,7 +303,7 @@ describe('rankCommands', () => {
   });
 
   test('a typed label outranks another command that claims it as a keyword', () => {
-    // 6-, measured: typing `monitor` returned ["Activity",
+    // 6-OPS-31, measured: typing `monitor` returned ["Activity",
     // "Monitoring"] and Enter navigated to Activity — Activity's `keywords`
     // include monitoring terms and scored an exact 1000, while the surface
     // literally named Monitoring only scored a label prefix.
@@ -466,7 +466,7 @@ describe('CommandPalette', () => {
   });
 
   test('advertises the chats that exist, not nine static session slots', async () => {
-    //measured: the palette listed "Switch to session 1" …
+    // SHELL-19, measured: the palette listed "Switch to session 1" …
     // "Switch to session 9" as static commands with ONE session open, and
     // eight of those rows ran a handler that returns without doing anything.
     // "New chat" also appeared twice — once from ⌘T, once as an Action whose

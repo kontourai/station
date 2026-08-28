@@ -12,7 +12,7 @@ import { ConsoleBoardView } from '../../views/ConsoleBoardView';
  * `@kontourai/station-board-pane`'s `ConsoleBoardPane`, which mounts
  * `@kontourai/console-ui`'s published `BoardView`; archive#4142) —
  * the bespoke `SessionBoardView` this file used to adapt is deleted (roadmap
- * archive#586, part of,; see `docs/design/work-plane-composition.md`
+ * archive#586, part of epic archive#580, S6; see `docs/design/work-plane-composition.md`
  * Decisions 5-7).
  */
 export function SessionBoardLayout({

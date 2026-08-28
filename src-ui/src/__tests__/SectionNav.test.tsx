@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * The shared scroll-spy / URL-section navigation primitive (archive#4463
- *). Real `<a aria-current="location">` anchors in a `nav`
+ * The shared scroll-spy / URL-section navigation primitive (archive#4463).
+ * Real `<a aria-current="location">` anchors in a `nav`
  * landmark — NOT `role="tab"` — covering the review's contract: no arrow-key
- * activation (that reproduced history-push/focus-steal defect on
+ * activation (that reproduced the history-push/focus-steal defect on
  * an earlier version that treated this the same as `Tabs`), a modifier
  * click bails out before `preventDefault`, and `dividerAfter` draws
  * a real presentational element rather than a border modifier on the item

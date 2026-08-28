@@ -16,7 +16,7 @@
 // of it in the same file and in
 // `node_modules/@pierre/diffs/dist/utils/areManagedSnapshotsEqual.js` that
 // gate the exact same field before a controlled update ever reaches React.
-// (Verified empirically, not by reading the.d.ts: patching all three of
+// (Verified empirically, not by reading the .d.ts: patching all three of
 // those checks to stop comparing `.version` is what makes the "same
 // version" assertion below go red — see the fault-injection note.)
 //

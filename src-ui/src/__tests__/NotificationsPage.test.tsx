@@ -387,7 +387,7 @@ describe('NotificationsPage', () => {
 
   // the failure branch dropped the header the loading branch
   // deliberately preserves, so a failed read took the route's own title and
-  // its Clear / Notification settings controls down with it — the 6-
+  // its Clear / Notification settings controls down with it — the 6-OPS-23
   // defect the loading branch had already been fixed for.
   test('a load failure keeps the page header the loading branch preserves', () => {
     notificationsError = new Error('Notification service unavailable');

@@ -162,7 +162,8 @@ export function getRunningConversations(
 
 /**
  * Monitoring's Active/Running counts, derived from the SAME orchestration
- * session read-model the chat dock and Developer → Archive read.
+ * session read-model the chat dock and Developer → Archive read
+ * (audit 6-OPS-26).
  *
  * They used to come from `/monitoring/stats`'s own agent projection, which is
  * folded from the monitoring event store — a different substrate that stayed

@@ -147,7 +147,7 @@ export function ProviderConnectionForm({
   onSetConfigField: (key: string, value: unknown) => void;
   onTypeChange: (type: string) => void;
   onTestConnection: (id: string) => void;
-  /** : what "Check to load" only ever named. */
+  /** RT-18: what "Check to load" only ever named. */
   onLoadModels?: () => void;
 }) {
   const fieldId = useId();
@@ -177,7 +177,7 @@ export function ProviderConnectionForm({
   const apiKeyConfigured = form.config.apiKeyConfigured === true;
 
   /*
-   * "Ready" used to come from `form.status`, which for a model
+   * RT-06 — "Ready" used to come from `form.status`, which for a model
    * connection is `statusFromPrerequisites` and whose only required
    * prerequisite is "a non-empty string is saved in the key box". A
    * knowingly-invalid key therefore read Ready, and clicking Test Connection
@@ -201,7 +201,7 @@ export function ProviderConnectionForm({
   });
   const verified = !isNew && presentation.readiness === 'Ready';
   /*
-   * the rail was three static spans with the first hardcoded
+   * RT-18 — the rail was three static spans with the first hardcoded
    * complete, so it read "Choose" forever no matter what the user did. Each
    * step is now the fact it names: the connection exists on the server, and
    * something has actually reached the provider.
@@ -295,7 +295,7 @@ export function ProviderConnectionForm({
             <strong>{modelOptions.length}</strong>
           ) : (
             /*
-             * "Check to load" was instruction-shaped copy with no
+             * RT-18: "Check to load" was instruction-shaped copy with no
              * control anywhere near it, and Test Connection neither populated
              * this nor changed the label. The catalogue load is a real
              * request; this is the button that makes it.
@@ -802,7 +802,7 @@ export function ProviderConnectionForm({
                 </>
               ) : (
                 <>
-                  {/* : "✗ Connection failed" with no reason, no HTTP
+                  {/* RT-06: "✗ Connection failed" with no reason, no HTTP
                       code and no remediation. The provider's own refusal
                       comes back with the result. */}
                   <CloseGlyph /> Connection failed

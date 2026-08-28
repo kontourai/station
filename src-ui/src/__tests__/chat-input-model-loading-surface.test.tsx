@@ -153,7 +153,7 @@ describe('model popover Suspense fallback (station#1825 item 2)', () => {
     // the lazy chunk's promise has had a chance to resolve — or the test
     // proves nothing about the first-open defect.
     // The wait now renders the shared row skeleton and names itself in the
-    // accessible label ('s one loading vocabulary) rather than as
+    // accessible label (SHELL-13's one loading vocabulary) rather than as
     // bespoke visible copy — but it keeps this wrapper class, because the
     // wrapper is what carries the surface this test exists to protect.
     const loading = screen.getByLabelText('Loading models');

@@ -127,7 +127,7 @@ export function KnowledgeConnectionView({
 
   const stats = status?.stats;
   /**
-   * the index result is the receipt, and a zero is the most important
+   * CI-R5: the index result is the receipt, and a zero is the most important
    * one to show — hiding the section until something had been indexed left
    * the surrounding "knowledge is on" copy standing next to nothing a reader
    * could check. Present whenever the server answered.
@@ -307,7 +307,7 @@ export function KnowledgeConnectionView({
             </div>
           ) : status?.vectorDb ? (
             /*
-             * this panel resolved only through `/api/connections`, and
+             * CI-R6: this panel resolved only through `/api/connections`, and
              * the built-in store (`lancedb-builtin`) is not a persisted
              * connection record on a real home — so the section rendered as a
              * blank bordered box while the server was reporting a working

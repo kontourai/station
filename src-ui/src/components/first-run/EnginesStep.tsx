@@ -1,6 +1,6 @@
 /**
- * EnginesStep — "which agents do you use?" (archive#3027; re-placed by the UX
- * audit's /).
+ * EnginesStep — "which agents do you use?" (station#3027; re-placed by the UX
+ * audit's RT-02/SHELL-12).
  *
  * Every box the user ticks becomes one authored Agent through the SAME server
  * path the picker's per-row Enable uses — `POST /agents/materialize-engine`,

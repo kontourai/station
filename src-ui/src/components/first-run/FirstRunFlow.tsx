@@ -4,8 +4,8 @@
  * WHAT THIS IS NOW, AND WHAT IT WAS. This used to be the whole guided run:
  * connect → "which agents do you use?" → about you → tour, all four chapters
  * rendered as fixed bottom-right cards at `--layer-notice` from an app-level
- * mount, on whatever route the user happened to be on. The (
- * ) found both halves of that broken — the run either never started or
+ * mount, on whatever route the user happened to be on. The UX audit (RT-02,
+ * SHELL-12) found both halves of that broken — the run either never started or
  * started ten seconds into someone's work, and the cards occluded page content
  * and out-stacked modal scrims. The questions moved to `FirstRunHomeChapter`,
  * which renders on Home as a real dialog and is gated by a durable fact about
@@ -119,7 +119,7 @@ export function FirstRunFlow() {
   // The only way in: `requestFirstRunTour`, from the command palette or from
   // `FirstRunHomeChapter` completing. The action says "Take the tour", so it
   // opens the TOUR — `resolveTourEntryPoint`, not the general resume rule,
-  // which would reopen a chapter the user already left
+  // which would reopen a chapter the user already left.
   useEffect(() => {
     const start = () => {
       const entry = resolveTourEntryPoint(firstRunStore.getSnapshot());

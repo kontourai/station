@@ -9,7 +9,7 @@
  * re-derive it from the HTTP verb:
  *
  *   - Bulk: `POST /api/attention/:id/ack` → `AttentionProjectionService
- *.acknowledge`. The attention ITEM is a projection; acknowledging it
+ *     .acknowledge`. The attention ITEM is a projection; acknowledging it
  *     drops it out of `pendingCount` and it resurfaces on its own when the
  *     underlying fact changes again (a session that fails a second time
  *     carries a newer `updatedAt` and reads unacknowledged).

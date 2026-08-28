@@ -71,7 +71,7 @@ export function isSettingsSectionVisible(
 }
 
 /**
- * Registry-driven pick of `config`'s / (`APP_SETTINGS_REGISTRY`) keys —
+ * Registry-driven pick of `config`'s S1/S2 (`APP_SETTINGS_REGISTRY`) keys —
  * used for both the export payload's `station` field and a parsed import
  * file's returned `serverConfig`, so a file can never carry (out) a raw
  * config spread or an internal, never-persisted field
@@ -93,7 +93,7 @@ function sanitizeStationConfig(raw: unknown): Partial<AppConfig> {
 
 /**
  * archive#1359's own shared root key (`station.device-settings`) — converged in
- * onto the registry-driven envelope's `shortcutOverrides`/
+ * slice 3 onto the registry-driven envelope's `shortcutOverrides`/
  * `modelPickerPreferences` entries (see `device-settings.ts`'s
  * `priorRead`). An OLD export file (from the coexistence window between
  * archive#1359 and this slice) can still carry this root's raw JSON string, either
@@ -115,7 +115,7 @@ function migrateSharedDeviceRoot(raw: unknown): Partial<DeviceSettings> {
 
 export interface SettingsExportPayloadV2 {
   version: 2;
-  /** Registry-driven / config (`APP_SETTINGS_REGISTRY` keys only). */
+  /** Registry-driven S1/S2 config (`APP_SETTINGS_REGISTRY` keys only). */
   station: Partial<AppConfig>;
   /** The full device-settings envelope (archive#settings-revamp slices 2-3) — now the sole owner of every device-scope field, including the archive#1359-era shortcut/model-picker preferences. */
   device: DeviceSettingsEnvelope;
@@ -139,7 +139,7 @@ export function buildSettingsExportPayload(
  * `SHARED_PRIOR_DEVICE_SETTINGS_KEY` and are migrated via
  * `migrateSharedDeviceRoot` instead of this per-key raw-string path. Also
  * excludes definitions with no `priorStorageKey` at all (archive#settings-
- * revamp : a setting that was never persisted pre-unification) —
+ * revamp: a setting that was never persisted pre-unification) —
  * there is no prior raw string for those to map from.
  */
 const PRIOR_KEY_TO_DEFINITION = new Map(

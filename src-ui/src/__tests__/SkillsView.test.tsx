@@ -137,7 +137,7 @@ afterEach(() => {
 });
 
 describe('SkillsView', () => {
-  //. `isLoading` was a hardcoded `false`, so for the ~2.2 s the skills
+  // SHELL-09. `isLoading` was a hardcoded `false`, so for the ~2.2 s the skills
   // read was in flight the list panel asserted "No installed skills yet" — the
   // definitive empty state, with a CTA to create one — and then swapped in 24
   // installed skills. Reproduced 3/3 in the audit; a new user's first
@@ -162,7 +162,7 @@ describe('SkillsView', () => {
     expect(screen.queryByLabelText('Loading list')).toBeNull();
   });
 
-  // The pending fix above left the other half of  open: a
+  // The pending fix above left the other half of SHELL-09 open: a
   // FAILED read also settles with no data, so `isPending === false` plus the
   // `= []` default rendered the same definitive "No installed skills yet" over
   // a 500. Error is not empty.

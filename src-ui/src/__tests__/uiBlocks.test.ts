@@ -65,8 +65,7 @@ describe('ui block helpers', () => {
     ]);
   });
 
-  // archive#1399, (independent review —, confirmed by
-  // triage): this test used to ENSHRINE the exact bug the review caught —
+  // archive#1399: this test used to ENSHRINE the exact bug the review caught —
   // it supplied a `derivedFrom` array and a completely fabricated
   // `provenanceDigest` ('a'.repeat(64), not a hash of anything) with no
   // `attestationState` claim at all, and asserted BOTH survived as
@@ -95,7 +94,7 @@ describe('ui block helpers', () => {
     expect(block?.provenanceDigest).not.toBe('a'.repeat(64));
   });
 
-  // archive#1399 fix, : this test does NOT
+  // archive#1399: this test does NOT
   // prove a forged tuple can't reach the UI — the reviewer's own probe
   // showed the opposite, that a WELL-SHAPED forged tuple (real derivedFrom
   // + fake digest + attestationState already 'attested', all mutually

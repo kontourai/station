@@ -60,7 +60,7 @@ describe('the pane close confirmation marks its destructive choice', () => {
     // `--danger` on the panel is what carries the surface and the tone; the
     // bespoke <section> had neither, so the prompt floated in normal flow.
     // The panel class moved with ConfirmModal onto the shared `Dialog`
-    // the variant modifier it carries is unchanged.
+    // (SHELL-02); the variant modifier it carries is unchanged.
     expect(document.querySelector('.station-dialog--danger')).toBeTruthy();
   });
 

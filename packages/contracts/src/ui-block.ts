@@ -273,8 +273,9 @@ export function parseUIBlockSourceRefs(
  * ambiguous — a delimiter that can also appear INSIDE a field value
  * collides two different refs onto the same key: `{ path: 'a', digest:
  * 'b c' }` and `{ path: 'a b', digest: 'c' }` both join to
- * `"fileDigest a b c"`, so normalizing `[refA, refB]` would silently drop
- * one as a "duplicate". `canonicalizeForDigest` + `JSON.stringify`
+ * `"fileDigest a b c"`, so normalizing `[refA, refB]` silently dropped
+ * one as a "duplicate" (proven live: the probe reduced a 2-element array to
+ * 1). `canonicalizeForDigest` + `JSON.stringify`
  * is a real serialization with string-escaping, so two structurally
  * different refs cannot collide onto the same bytes.
  */

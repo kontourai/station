@@ -12,7 +12,7 @@
  *
  * The `z-index` still comes from the shared overlay class, which sets
  * `--layer-dialog` with `!important`. Nothing here re-declares it: a first-run
- * surface that picks its own layer is the  defect.
+ * surface that picks its own layer is the SHELL-12 defect.
  */
 
 .first-run-home-card {

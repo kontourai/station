@@ -117,7 +117,7 @@ describe('ACPAddConnectionModal', () => {
     ).toBeTruthy();
   });
 
-  // the result panel said only "This provider needs more setup before
+  // CI-R8 — the result panel said only "This provider needs more setup before
   // it can run work" and offered two buttons that both walk away. The probe's
   // own failure is on the connection; the panel now reads it.
   test('a non-ready result names the observed failure and the action that fixes it', async () => {

@@ -36,8 +36,8 @@ describe('chat dock header keycap hints (station audit F6)', () => {
   });
 
   test('the per-button overrides that gave Maximize/New a different keycap color than the dock-toggle hint are gone', () => {
-    // Before the fix, `.chat-dock__new.chat-dock__subtitle` and
-    // `.chat-dock__maximize-btn.chat-dock__subtitle` restyled the keycap
+    // Before the fix, `.chat-dock__new .chat-dock__subtitle` and
+    // `.chat-dock__maximize-btn .chat-dock__subtitle` restyled the keycap
     // with a second, different color — reverting that (re-adding a
     // divergent override) reds this.
     expect(indexCss).not.toMatch(

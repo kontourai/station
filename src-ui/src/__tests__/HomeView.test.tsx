@@ -161,7 +161,7 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgentsLoaded: () => true,
   useAgentsSettled: () => true,
 }));
-// Home mounts the first-run chapter. These fixtures put the
+// Home mounts the first-run chapter (UX audit RT-02). These fixtures put the
 // home in the state every test in this file assumes — one that has already
 // been set up — so the chapter renders nothing and Home is what is asserted.
 // `FirstRunHomeChapter.test.tsx` owns the chapter's own behaviour.

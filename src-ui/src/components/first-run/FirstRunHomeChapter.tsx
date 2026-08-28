@@ -1,6 +1,6 @@
 /**
  * FirstRunHomeChapter — the guided first run, as one chapter with a surface of
- * its own.
+ * its own (UX audit RT-02, SHELL-12).
  *
  * THREE THINGS THIS FIXES, and where each used to live:
  *
@@ -159,7 +159,7 @@ export function FirstRunHomeChapter() {
   // underneath its scrim, with "Continue Without Setup" unclickable — caught
   // by the first-run E2E bucket after main's merge. It still goes false on an
   // ERROR, so a status query that fails lets the run open rather than
-  // stranding it, which is the failure mode.
+  // stranding it, which is the RT-02 failure mode.
   const { isFetching: systemStatusUnconfirmed } = useSystemStatus();
   // Whether this run has a disclosure to make. The SAME query the standalone
   // modal reads (React Query dedupes on the key), so the two cannot disagree

@@ -18,7 +18,7 @@
  *
  * WHERE THIS RENDERS. The second step of `FirstRunHomeChapter`'s dialog, on
  * Home. It used to be a fixed bottom-right card at `--layer-notice`, preceded
- * by a corner `AboutYouInvite` — both removed by the 's  fix.
+ * by a corner `AboutYouInvite` — both removed by the UX audit's SHELL-12 fix.
  * The invite existed to keep the questions from ambushing an
  * already-configured Station, which is a gate's job, not a card's; the gate is
  * now a durable fact about the home (`first-run-gate.ts`) and the questions

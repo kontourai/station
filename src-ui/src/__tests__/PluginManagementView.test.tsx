@@ -139,7 +139,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
     viewModel = baseViewModel();
   });
 
-  // 's own fix for this was itself inverted: `PluginEmptyState` was
+  // SHELL-09's own fix for this was itself inverted: `PluginEmptyState` was
   // passed unconditionally as `SplitPaneLayout`'s `emptyContent`, which
   // bypasses the shell's own double-empty guard, and its "Nothing selected"
   // rendered anyway when the list was genuinely empty — beside the list

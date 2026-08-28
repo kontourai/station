@@ -118,13 +118,13 @@ export function ProfilePage() {
   const totalCost = usageStats?.lifetime.totalCost || 0;
   const [showUserLookup, setShowUserLookup] = useState(false);
 
-  // Header first, skeleton only the awaited body (6-). The whole page —
+  // Header first, skeleton only the awaited body (6-OPS-23). The whole page —
   // eyebrow, name, every section heading — used to be replaced by the string
   // "Loading profile...", which is both a twelfth loading vocabulary and a
   // route that renders nothing identifying itself while it waits.
   if (loading && !usageStats) {
     return (
-      // The header wrote here is the FRAME's now : the route
+      // The header C2 wrote here is the FRAME's now (SHELL-11): the route
       // renders it above this body, on screen throughout the wait, so a
       // second one below it would be the page's name printed twice.
       <div className="profile-page">

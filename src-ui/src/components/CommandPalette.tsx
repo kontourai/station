@@ -203,7 +203,7 @@ export function CommandPalette() {
   const { data: agents = [] } = useAgentsQuery();
   const { data: projects = [] } = useProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
-  // the palette used to advertise "Switch to session 1" … "Switch to
+  // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
   // anything. These are the live open chats, so a row exists iff a chat does.
@@ -322,7 +322,7 @@ export function CommandPalette() {
     }
 
     // Actions
-    // "New chat" appeared twice — once from the ⌘T shortcut, which
+    // SHELL-19: "New chat" appeared twice — once from the ⌘T shortcut, which
     // starts one, and once here as an Action whose `run` was byte-identical to
     // "Open chat dock" below. Two labels for one behaviour, one of them a
     // promise the handler did not keep; the shortcut-derived row is the one

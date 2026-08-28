@@ -720,7 +720,7 @@
 .voice-provider-section {
   margin-bottom: 1rem;
 }
-/* Field label, same role as.settings__field-label above — which has always
+/* Field label, same role as .settings__field-label above — which has always
    said --text-secondary. The two only agreed by accident while the token was
    an alias of --text-primary. */
 .voice-provider-section__label {
@@ -1131,7 +1131,7 @@
   font-family: var(--font-mono);
 }
 
-/* ── Feature Toggle fix: override.form-group global styles ── */
+/* ── Feature Toggle fix: override .form-group global styles ── */
 .settings__feature-toggle {
   display: flex !important;
   width: 100%;

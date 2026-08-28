@@ -204,7 +204,7 @@ export function AppViewContent(props: AppViewContentProps) {
     // The frame is the outermost thing a route renders, above the boundary
     // and above Suspense: the page keeps its header while its chunk loads and
     // while its error state is on screen, so a failed route still tells you
-    // which page failed ('s companion — the route error used to be
+    // which page failed (SHELL-06's companion — the route error used to be
     // the entire screen). The frame takes the section surface identity so a
     // Connections list/edit pair can preserve its detail root; the boundary
     // below keeps the exact route identity for errors and pending state.
@@ -369,7 +369,7 @@ function AppViewContentBody({
     // Project modal until the projects-aware redirect routes to the default
     // project. Wait until we actually know no projects exist.
     //
-    // this used to be `FullScreenLoader` — Station's boot splash,
+    // SHELL-13: this used to be `FullScreenLoader` — Station's boot splash,
     // logo and cycling "Negotiating with the cloud..." phrases — rendered from
     // INSIDE an authenticated shell, so opening /projects/new tore down the
     // sidebar, toolbar and dock for the length of one list read. A full-screen

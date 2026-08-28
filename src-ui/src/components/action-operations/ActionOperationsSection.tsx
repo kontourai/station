@@ -151,7 +151,7 @@ export function ActionOperationsSection() {
       </p>
     );
   }
-  // Audit / : a bare "Connecting…" sentence read as debug output
+  // Audit F5 / SHELL-13: a bare "Connecting…" sentence read as debug output
   // in the Activity list pane — the canonical loading vocabulary is
   // SkeletonList/SkeletonBlock (src-ui/src/components/state), never a new
   // one-off string. Row-shaped, to mirror the operation rows this pane shows

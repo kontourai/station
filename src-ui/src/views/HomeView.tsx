@@ -147,7 +147,7 @@ export function HomeView({
     // not a stronger signal than one — it is an ambiguous landmark list and a
     // skip target that means two different things.
     <section className="home-view" aria-label="Home">
-      {/* Home is where the guided first run lives.
+      {/* Home is where the guided first run lives (UX audit RT-02/SHELL-12).
           Mounted HERE rather than in `DeferredAppOverlays` on purpose: a
           surface that renders only inside this route cannot follow the user
           across routes, and cannot render on a page it has nothing to do

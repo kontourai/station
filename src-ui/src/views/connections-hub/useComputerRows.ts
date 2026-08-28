@@ -1,6 +1,6 @@
 /**
  * The Computers list, as ONE derivation shared by everything that makes a
- * claim about it (; lane design P5).
+ * claim about it (lane design P5).
  *
  * Two consumers used to answer "how many computers are there?" independently:
  * `ComputersSection` folded manual + paired + SSH records into one row per

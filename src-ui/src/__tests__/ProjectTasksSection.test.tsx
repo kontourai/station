@@ -92,7 +92,7 @@ let workItemsData: {
     reason?: string;
   }>;
 } = { providers: [] };
-// Roadmap archive#584, part of, : AssignmentProvider claim state.
+// Roadmap archive#584, part of epic archive#580, S4: AssignmentProvider claim state.
 let taskClaim: {
   state: string;
   actor?: {
@@ -889,7 +889,7 @@ describe('ProjectTasksSection', () => {
     );
   });
 
-  // Roadmap archive#584, part of, : dispatch-as-claim UI.
+  // Roadmap archive#584, part of epic archive#580, S4: dispatch-as-claim UI.
   describe('AssignmentProvider claim state', () => {
     test('a claimed-by-other task guards the Dispatch button with the actor surfaced', () => {
       tasks[0] = { ...tasks[0], workItemRef: 'github:kontourai/station#584' };

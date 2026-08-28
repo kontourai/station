@@ -5,7 +5,7 @@
  * closed, found again in this component: `index.css`'s global mobile
  * touch-target net is a DESCENDANT selector
  * (`:is([class*="__actions"], [class*="__footer"], [class*="__toolbar"],...)
- * > :is(button, a,.button, [role="button"])`), so it only reaches a control
+ * > :is(button, a, .button, [role="button"])`), so it only reaches a control
  * that is a CHILD of one of those named wrappers. Three controls in this
  * component sit outside its reach:
  *

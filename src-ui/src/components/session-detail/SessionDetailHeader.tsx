@@ -8,7 +8,7 @@ import { Button } from '../Button';
  * (with copy affordance), provider/model/status/live-indicator meta row,
  * and the Stop task action. Split out of `MutableSessionDetail` per
  * archive#1204; the compact-viewport CSS contract
- * (`.sessions-detail--viewport-compact.sessions-detail__eyebrow` etc. in
+ * (`.sessions-detail--viewport-compact .sessions-detail__eyebrow` etc. in
  * SessionsView.css) depends on these exact class names staying put here.
  */
 export function SessionDetailHeader({

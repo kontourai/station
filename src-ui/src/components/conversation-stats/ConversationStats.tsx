@@ -26,7 +26,7 @@ export function ConversationStats({
   onToggle,
   messageCount,
 }: ConversationStatsProps) {
-  // Same defect shape as 's SkillsView: `useStats` already derives a
+  // Same defect shape as SHELL-09's SkillsView: `useStats` already derives a
   // loading flag and this discarded it for a hardcoded `false`, so the modal's
   // own `isLoading ? <Loading> : <stats>` branch could never take its loading
   // arm and rendered zeroed stats as settled fact.

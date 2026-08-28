@@ -475,7 +475,7 @@ export function BannerHost({
     // sub-pixel layout rounding without letting a stack that merely touches
     // its bound (no overflow at all) read as scrollable.
     //
-    // archive#3432, : `ResizeObserver` only fires when the
+    // archive#3432: `ResizeObserver` only fires when the
     // OBSERVED BOX's own size changes. Once the stack is already pinned at
     // its `max-height` cap, adding more content grows `scrollHeight` without
     // moving `clientHeight` at all — no resize, no callback, and the class

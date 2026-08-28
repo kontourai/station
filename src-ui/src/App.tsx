@@ -517,7 +517,7 @@ function App() {
     ]),
   );
 
-  // `.content-view` is the shell's one scroll container, so its
+  // SHELL-07: `.content-view` is the shell's one scroll container, so its
   // scroll memory belongs here rather than in any route. Keyed on pathname —
   // the same key an in-app navigation and a browser Back both land on.
   const contentViewRef = useRef<HTMLDivElement>(null);
@@ -545,7 +545,7 @@ function App() {
             componentProps={{ apiBase: API_BASE }}
           />
           <div className="app app--with-sidebar">
-            {/* : the shell chrome is already first in DOM order
+            {/* SHELL-14: the shell chrome is already first in DOM order
               (measured: sidebar → toolbar → route → dock), so the keyboard
               defect was not the order — it was that there is no way PAST the
               chrome. This is the first focusable element in the document and
@@ -597,7 +597,7 @@ function App() {
                 />
               )}
 
-              {/* : the route outlet had no `main` landmark at all — a
+              {/* SHELL-14: the route outlet had no `main` landmark at all — a
                 screen reader's landmark list held only the sidebar's `nav`
                 and the toolbar's `header`. `tabIndex={-1}` makes it a
                 programmatic focus target for the skip control without adding

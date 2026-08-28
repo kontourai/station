@@ -1,6 +1,6 @@
 /**
  * Computers — one list, one row shape, for every computer this Station knows
- * (lane design §4).
+ * (lane design §4; audit CI-R9, CI-R13, CI-R14, CI-R21).
  *
  * It replaces `KnownEnvironmentsSection` + `SshEnvironmentsSection`, which
  * rendered two lists with two card grammars — and, because both folded the
@@ -12,7 +12,7 @@
  * Rules this section keeps:
  * - Every row: name · kind chip · one server-derived state · one action.
  * - Loading is the shared `SkeletonList`, never a "Loading environments…"
- * string ; a failed read is `ErrorState` + Retry, never an empty
+ *   string (CI-R21); a failed read is `ErrorState` + Retry, never an empty
  *   list pretending there is nothing to show.
  * - No state word this client invented: a paired connection is "Authorized"
  *   or "Not authorized" from its own credential state, never "Ready" (which
@@ -351,7 +351,7 @@ export function ComputersSection() {
         {peerCredentialsQuery.isSuccess &&
           (peerCredentialsQuery.data.length === 0 ? (
             /*
-             * this was a card with a second empty-state grammar whose
+             * CI-R13: this was a card with a second empty-state grammar whose
              * only content was a CLI command the reader could not act on.
              * `POST /api/environments/peers` exists, but provisioning means
              * obtaining a bearer from the OTHER Station, which the CLI owns

@@ -40,7 +40,7 @@ export function MonitoringLogControls(props: MonitoringLogControlsProps) {
                 key={group}
                 onClick={() => props.onToggleEventType(group)}
                 className={`event-filter ${allSelected ? 'active' : ''}`}
-                // 6-: same derivation the `active` class already reads,
+                // 6-OPS-34: same derivation the `active` class already reads,
                 // now also exposed to assistive technology rather than being
                 // carried by colour alone.
                 aria-pressed={allSelected}

@@ -250,7 +250,7 @@ describe('shouldRenderSetupLauncher', () => {
     expect(decide({ pathname: '/connections/providers' })).toBe(false);
   });
 
-  // Audit : the setup banner rendered on the very page its action
+  // Audit CI-R12: the setup banner rendered on the very page its action
   // targets, offering "Open Connections" to a reader already there. Every
   // section of the redesigned hub — and every legacy path that redirects into
   // one — must suppress it, not just the one route this suite used to name.

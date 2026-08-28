@@ -13,7 +13,7 @@ import {
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
 
 /**
- * archive#3444 fix-round : three arms, one per FACT about what
+ * archive#3444: three arms, one per FACT about what
  * happened — not one per retry-state, which is what the first pass of this
  * fix got wrong.
  *
@@ -65,7 +65,7 @@ function describeFleetReceiptsFailure(error: unknown, subject: string): string {
  *    appearing). Every exclusion in the receipt is rendered.
  * 3. **A fallback is a named state.** A turn that succeeded locally after a
  *    fleet candidate failed renders its `fell-back-to-local` failure, not a
- * plain success. §4.5's second banned behavior is falling back silently.
+ *    plain success. §4.5's second banned behavior is falling back silently.
  * 4. **A failed read is not an empty list.** The query throws on failure and
  *    this renders the error; "nothing has been fleet-routed" is only said
  *    when the Station actually said it.
@@ -99,7 +99,7 @@ export function FleetReceipts() {
 export function FleetServeReceipts() {
   const { data, isLoading, error } = useFleetServeReceiptsQuery();
 
-  // archive#3444 fix-round : `!error && !data` is also true before
+  // archive#3444: `!error && !data` is also true before
   // the query has even started — e.g. while `PersistQueryClientProvider` is
   // still restoring from IndexedDB, `isLoading` (`isPending && isFetching`)
   // reads `false` because nothing has begun fetching yet. That is not an
@@ -177,7 +177,7 @@ export function FleetServeReceipts() {
 export function FleetRoutingReceipts() {
   const { data, isLoading, error } = useFleetRoutingReceiptsQuery();
 
-  // archive#3444 fix-round : see the serving-side sibling above —
+  // archive#3444: see the serving-side sibling above —
   // `!error && !data` before the query has even started (e.g. mid
   // `PersistQueryClientProvider` IndexedDB restore) is not an error state.
   if (isLoading || (!error && !data)) {

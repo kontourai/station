@@ -312,8 +312,8 @@ export type ChatUIState = {
    * The approval posture the adapter last confirmed as actually applied
    * (from `session.configured` at start, then refreshed by every
    * `turn.started`'s metadata). Not persisted — deliberately ephemeral,
-   * re-derived fresh from the next server event on reconnect (archive#727
-   *). Used only to detect "an escalation to `never` was
+   * re-derived fresh from the next server event on reconnect
+   * (archive#727). Used only to detect "an escalation to `never` was
    * confirmed client-side but not yet applied server-side" so the composer
    * chip can show a pending state instead of overclaiming.
    */

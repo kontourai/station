@@ -124,7 +124,7 @@ export function RegistryCatalog({
   };
   return (
     <>
-      {/* The page header is the frame's ; what is left here is the
+      {/* The page header is the frame's (SHELL-11); what is left here is the
           tab's own action, which travels to the header's action cell, as the
           one shared `Button` rather than a page-scoped button class. */}
       <PageFrameActions>

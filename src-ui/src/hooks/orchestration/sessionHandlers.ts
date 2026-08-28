@@ -16,8 +16,8 @@ export function handleSessionLifecycleEvent(
     { method: 'session.started' | 'session.configured' }
   >,
 ) {
-  // Only session.configured carries a resolved approvalMode (archive#727
-  //) — session.started fires first and has none, so this
+  // Only session.configured carries a resolved approvalMode (archive#727) —
+  // session.started fires first and has none, so this
   // must not overwrite an existing lastAppliedApprovalMode with undefined.
   const approvalMode =
     event.method === 'session.configured' &&
@@ -105,7 +105,7 @@ export function handleSessionStateChangedEvent(
   // turn.started, cleared by terminal turn events, reseeded from the
   // snapshot's hasActiveTurn). `status === 'sending'` alone is NOT a valid
   // fold: an in-turn approval drops status to 'idle', and the post-approval
-  // 'running' state-change must re-engage the shell  The
+  // 'running' state-change must re-engage the shell. The
   // optimistic local send still counts — it covers the window before the
   // server's first turn event, which the fold cannot yet know about. For
   // state-first adapters a non-initiating client may see a brief idle blip

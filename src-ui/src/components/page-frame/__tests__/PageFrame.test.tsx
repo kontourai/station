@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * The page-header contract (station ): one component renders
+ * The page-header contract (station UX audit SHELL-11): one component renders
  * every page header, the route table decides which routes get one, and a view
  * may only publish the TEXT of a title it alone can know — never where it
  * sits, how big it is, or whether it exists.
@@ -166,7 +166,7 @@ describe('PageFrame', () => {
 
   it('renders the route table’s first-run anchor on the frame root', () => {
     // The coachmark the first-run tour points at. It moved off the view with
-    // the rest of the page shell, so the frame is the only thing
+    // the rest of the page shell (SHELL-11), so the frame is the only thing
     // that renders it now — `tour-steps.test.ts` reads the same declaration
     // from the route table and this is the half that proves it reaches DOM.
     const { container } = render(

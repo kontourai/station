@@ -103,7 +103,7 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       //     attribute on the layout root (the rendered result is pinned by
       //     `SessionsView.test.tsx`'s DOM assertion, so this literal check is
       //     the source-of-the-anchor half, not the whole proof);
-      //   - the route's frame spec, since  moved the page shell out of
+      //   - the route's frame spec, since SHELL-11 moved the page shell out of
       //     the views: `page-frame-registry.ts` declares the anchor and
       //     `PageFrame` renders it on the frame root (pinned by
       //     `PageFrame.test.tsx`). This one is READ, not grepped — the route

@@ -161,7 +161,7 @@ const LazyActivityWorkspacePane = lazy(() =>
  * hand-roll the same `ChatDockHeader` call (archive#4460). `occupantPicker`
  * is NOT included: it is occupant-specific (a different `current` per
  * occupant) and already lives, pre-rendered, on `shellChrome.occupantPicker`
- * see `AmbientDockShellApi`.
+ * — see `AmbientDockShellApi`.
  */
 function ambientNonChatHeaderProps(shellChrome: AmbientDockShellApi) {
   return {
@@ -223,7 +223,7 @@ function AmbientHomeDock({
 }) {
   // This renderer remains behind the ambient host's lazy boundary. While Home
   // occupies the dock, `/` renders its away state instead of a second
-  // co-mounted copy — archive#4090's open question, answered by.
+  // co-mounted copy — archive#4090's open question.
   const model = useHomeViewModel(onNavigate);
   return (
     <>
@@ -256,8 +256,8 @@ function AmbientHomeDock({
  * exactly this shape (archive#4460) — one contract, not three per-occupant
  * ones.
  *
- * `occupantPicker` is pre-rendered, not `{current, onChoose}` data (
- * round): `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and all
+ * `occupantPicker` is pre-rendered, not `{current, onChoose}` data:
+ * `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and all
  * three pane-descriptor contracts modules, and this host is the one place
  * that chunk stays LAZY — passing the raw data through would let a consumer
  * (`ChatDockHeader`, which the EAGER `ChatDock.tsx` imports) reconstruct the

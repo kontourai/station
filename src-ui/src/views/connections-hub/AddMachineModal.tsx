@@ -2,7 +2,7 @@
  * archive#1134 — one "Add a computer" entry point that asks the GOAL
  * first, then routes into the flow that serves it. Three branches, because
  * three mechanisms exist and the audit found all three reachable by
- * differently-shaped affordances within 300px of each other :
+ * differently-shaped affordances within 300px of each other (CI-R9):
  *   - "control this Station" -> device pairing, via `ConnectionManagerModal`'s
  *     already-shipped `pair-host` panel (create an offer, approve requests,
  *     manage paired devices — `HostDevicePairingPanel` in
@@ -11,10 +11,10 @@
  *     `GuidedConnect`/`OnboardingGate` wiring.
  *   - "reach another Station" -> `StationAddressDialog`, which absorbs the
  *     sibling inline "Add Station" form this replaced.
- * - "run work over SSH" -> `SshComputerCreatorDialog`, which replaced
+ *   - "run work over SSH" -> `SshComputerCreatorDialog` (D7), which replaced
  *     `SshEnvironmentSetupModal`: that one dead-ended in the browser and, on
  *     desktop, created a saved connection rather than the SSH environment
- * profile this section lists.
+ *     profile this section lists (CI-R1).
  *
  * The underlying flows stay distinct on purpose (per the issue: "the flows
  * can stay distinct underneath; the decision should not be the user's to

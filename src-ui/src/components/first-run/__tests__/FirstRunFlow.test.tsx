@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * FirstRunFlow is the TOUR now ( / moved the questions to
+ * FirstRunFlow is the TOUR now (UX audit RT-02/SHELL-12 moved the questions to
  * `FirstRunHomeChapter`). What these cover is what the `Coachmark` tests below
  * it cannot see: that the tour only ever opens because someone asked for it,
  * that focus is captured and restored across a whole run, and that a chapter
@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('the tour opens only when it is asked for', () => {
   test('a cold mount renders nothing at all', () => {
-    // The whole defect in one assertion: nothing about mounting, about a
+    // The whole RT-02 defect in one assertion: nothing about mounting, about a
     // readiness probe, or about how long the page has been open may put a
     // first-run surface on screen.
     render(<FirstRunFlow />);

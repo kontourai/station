@@ -92,7 +92,7 @@ function parseTopLevelBlocks(css: string): Block[] {
  * three `:root.is-dev-build*` rules (index.css:28/39/43), so a token added to one
  * of those below the light block is a realistic edit, not a hypothetical.
  *
- * Descendant forms (`:root.thing`) are excluded: those target a different
+ * Descendant forms (`:root .thing`) are excluded: those target a different
  * element, not the root, so they cannot shadow a root-level token.
  *
  * `BARE_LIGHT` stays strict — it identifies *where the light block is*, and a

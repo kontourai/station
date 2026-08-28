@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * The first-run chapter's placement and gate.
+ * The first-run chapter's placement and gate (UX audit RT-02, SHELL-12).
  *
  * These are the assertions the old surface could not make, because its
  * activation was a readiness probe and its placement was a fixed corner slot:
@@ -226,7 +226,7 @@ describe('AC1 — the gate is a durable fact about the home', () => {
   });
 
   test('the engines on this machine cannot decide whether the chapter runs', () => {
-    // exactly: with `claude`/`codex` ready on first paint the launcher
+    // RT-02 exactly: with `claude`/`codex` ready on first paint the launcher
     // never appeared and the run never happened. Ready engines now change what
     // the chapter SAYS, never whether it exists.
     engineState.engines = [READY_CODEX, READY_CLAUDE];

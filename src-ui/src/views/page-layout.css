@@ -1,7 +1,7 @@
 /* ═══ Shared Page Layout ═══
  * Common classes for all core management views.
  * Provides consistent header, typography, animation, and container styling.
-* All management views MUST use.page as their root container class.
+* All management views MUST use .page as their root container class.
  */
 
 /* ── Page Container ── */

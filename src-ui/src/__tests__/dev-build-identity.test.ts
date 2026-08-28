@@ -134,8 +134,8 @@ describe('the dev mark matches the dev launcher icon', () => {
   });
 
   it('selects by src, so every render site is covered', () => {
-    // The same file renders as.app-toolbar__logo,.sidebar__logo,
-    //.guided-connect__logo and the SDK's.fs-logo; a class-based rule would
+    // The same file renders as .app-toolbar__logo, .sidebar__logo,
+    // .guided-connect__logo and the SDK's .fs-logo; a class-based rule would
     // miss whichever one was not listed.
     const css = read('index.css');
     expect(css).toContain('img[src="/favicon.png"]');

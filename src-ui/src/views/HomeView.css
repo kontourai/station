@@ -326,7 +326,7 @@
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .home-view {
-    /* The shell reserves the dock (--dock-bottom-clearance on.content-view,
+    /* The shell reserves the dock (--dock-bottom-clearance on .content-view,
        station#3902); this is only the page's own bottom gutter. */
     padding: 24px 16px 32px;
   }

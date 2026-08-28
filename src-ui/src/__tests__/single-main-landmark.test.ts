@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * the shell gained a `main` landmark (`App.tsx`'s `#station-main`)
+ * SHELL-14: the shell gained a `main` landmark (`App.tsx`'s `#station-main`)
  * because a landmark scan of the running app returned only the sidebar's
  * `nav` and the toolbar's `header` — there was no way for a screen reader to
  * jump to the route, and no target for a skip control.

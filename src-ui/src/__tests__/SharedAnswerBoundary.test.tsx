@@ -63,7 +63,7 @@ describe('SharedAnswerBoundary', () => {
       </SharedAnswerBoundary>,
     );
     // A null Suspense fallback is another silent white page. The fallback is
-    // now the shared region skeleton, which paints placeholder
+    // now the shared region skeleton (SHELL-13), which paints placeholder
     // blocks and names the wait in its accessible label rather than in visible
     // copy — so "non-blank" is asserted on rendered marks, not on textContent.
     expect(screen.getByLabelText('Loading the shared answer')).toBeTruthy();

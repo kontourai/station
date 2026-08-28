@@ -1,4 +1,4 @@
-/* Eyebrow-style page breadcrumb — matches.page__label /.split-pane__label
+/* Eyebrow-style page breadcrumb — matches .page__label / .split-pane__label
    (monospace, small, uppercase) so deep page headers read as one system. */
 .page-breadcrumb {
   display: flex;

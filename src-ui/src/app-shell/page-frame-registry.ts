@@ -8,7 +8,7 @@ import { APP_SURFACE_REGISTRY } from './surface-registry';
  * This table is the reason the app has one page header instead of eight. It
  * is a `Record` over `NavigationView['type']`, so a route added to the union
  * without a decision here is a TYPE ERROR, not a silently bespoke page — the
- * gap  found in the six-file conformance ratchet, closed at the point
+ * gap SHELL-17 found in the six-file conformance ratchet, closed at the point
  * where routes are actually declared.
  *
  * `null` is a decision too, and every one is justified below. It means the

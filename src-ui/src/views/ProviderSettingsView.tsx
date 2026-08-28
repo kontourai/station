@@ -197,7 +197,7 @@ export function ProviderSettingsView({
       status: conn.status,
       prerequisites: [...conn.prerequisites],
       lastCheckedAt: conn.lastCheckedAt ?? null,
-      // never a form field — the server's derivation, carried so the
+      // RT-06: never a form field — the server's derivation, carried so the
       // summary rail can render what was observed instead of what was saved.
       ...(conn.readinessEvidence
         ? { readinessEvidence: conn.readinessEvidence }
@@ -410,7 +410,7 @@ export function ProviderSettingsView({
   const llmEmbeddingProviders = filterModelProviders(modelProviders, '');
   const filtered = filterModelProviders(modelProviders, search);
 
-  // 6-: the list rail used to carry no readiness at all — a green dot
+  // 6-OPS-27: the list rail used to carry no readiness at all — a green dot
   // meaning `enabled` — while the hub card for the same connection asserted
   // "Ready". One derivation now feeds both.
   const items = filtered.map((p) => {
@@ -701,7 +701,7 @@ export function ProviderSettingsView({
             onTypeChange={handleTypeChange}
             onTestConnection={(id) => testMutation.mutate(id)}
             isLoadingModels={isFetchingProviders}
-            // the catalogue load is the same live request the
+            // RT-18: the catalogue load is the same live request the
             // connections listing performs; refetching it re-asks the
             // provider rather than reading a cached answer.
             onLoadModels={() => {

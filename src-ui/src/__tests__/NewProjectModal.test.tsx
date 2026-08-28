@@ -1076,7 +1076,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
   });
 
   /**
-   * the 6-8s window where Create looked ignored is what invited the
+   * SHELL-01: the 6-8s window where Create looked ignored is what invited the
    * double submit. The directory check is the first await on the submit path,
    * so pending state must already be showing while it runs.
    */

@@ -28,7 +28,7 @@ export function defaultConfig(type: string): Record<string, unknown> {
 
 /**
  * Bedrock only persists the fields its selected `authMode` actually uses
- * (docs/design/connections-onboarding.md §3.1;, review):
+ * (docs/design/connections-onboarding.md §3.1):
  * `authMode` itself is omitted for the default "chain" mode (keeping the
  * absent-means-chain convention), and `profile`/`apiKey` are omitted — not
  * merely emptied — for the modes that don't use them, so a save never
@@ -36,8 +36,7 @@ export function defaultConfig(type: string): Record<string, unknown> {
  * A no-op for every non-bedrock type.
  */
 /**
- * Whether a connection's config is complete enough to save (/,
- * review): a Bedrock connection in "profile" or "api-key" auth
+ * Whether a connection's config is complete enough to save: a Bedrock connection in "profile" or "api-key" auth
  * mode must have its corresponding field filled in before Save is enabled —
  * an empty required field must never silently persist as chain auth.
  * A no-op (`true`) for every non-bedrock type.

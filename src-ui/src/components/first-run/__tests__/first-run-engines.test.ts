@@ -595,7 +595,7 @@ describe('AC4 — item order and copy are stable across renders', () => {
   ];
 
   test('identical data renders the identical list, twice', () => {
-    //  caught the same card rendering a different order and different
+    // SHELL-12 caught the same card rendering a different order and different
     // copy on two routes seconds apart. This is the property that makes that
     // impossible: the listing is a pure function of the engine rows and the
     // agent catalog, with no clock, no probe and no render counter in it.

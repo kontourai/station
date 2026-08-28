@@ -194,8 +194,8 @@ function toOption(
  * inside each group.
  *
  * The FIND runs over the GLOBAL-context scope, never the raw catalog — the
- * same rule `NewChatModal.handleEnable` applies for the same reason (archive#3027
- *), stated once in `selectGlobalContextAgents`. First run has no project
+ * same rule `NewChatModal.handleEnable` applies for the same reason
+ * (archive#3027), stated once in `selectGlobalContextAgents`. First run has no project
  * context, so a project-OWNED Agent is out of scope here: counting one would
  * render "Already set up as X" for an Agent this context cannot reach, while
  * the global picker still offers Enable for that very engine.
@@ -222,7 +222,7 @@ export function buildFirstRunEngineOptions({
 
 /**
  * The row's own sentence, derived from its state rather than written once and
- * reused for every state ( : the card rendered "Already set up
+ * reused for every state (UX audit SHELL-12: the card rendered "Already set up
  * as X" beside an unticked box and a "Set up 2" button on two routes seconds
  * apart, so the copy and the state were separately authored and disagreed).
  *
@@ -277,8 +277,8 @@ export function buildFirstRunEnableBatch(
 }
 
 /**
- * The engines a batch was ASKED for and cannot even ATTEMPT (review :
- * the empty-plan shortcut).
+ * The engines a batch was ASKED for and cannot even ATTEMPT (the
+ * empty-plan shortcut).
  *
  * `buildFirstRunEnableBatch` plans from the CURRENT catalog, so a requested
  * engine that has left it — dropped from `externalEngines`, flipped to
@@ -396,7 +396,7 @@ export function firstRunEnableOutcomeMessage(
 }
 
 /**
- * The engines a confirm tried to enable and could NOT
+ * The engines a confirm tried to enable and could NOT.
  *
  * The distinction this carries is the whole point: `created`, `existing` and
  * `warned` all mean the Agent is materialised — a warned create is a 2xx save

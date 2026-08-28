@@ -128,8 +128,8 @@ export { DEFAULT_SYSTEM_PROMPT } from './config-loader-app.js';
  * chokidar removed glob support in v4:
  *
  *   config/*.json
- *   agents/&archive#42;/agent.json
- *   integrations/&archive#42;/integration.json
+ *   agents/&#42;/agent.json
+ *   integrations/&#42;/integration.json
  *
  * Exported so the pattern set is testable on its own — a watcher that silently
  * matches nothing looks identical to a quiet system.

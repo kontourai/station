@@ -26,7 +26,7 @@ export interface PageFrameContextValue {
   /**
    * The header's right-aligned action cell, or null when the route renders
    * without a header. A view portals its primary action here instead of
-   * inventing a place for it (: eight of the eight split-pane routes
+   * inventing a place for it (SHELL-11: eight of the eight split-pane routes
    * had their primary action in a list-pane footer, below the fold on short
    * viewports).
    */

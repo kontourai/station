@@ -21,7 +21,7 @@ import { ruleBodiesFor } from './helpers/css-rules';
 function cssBlock(source: string, selector: string): string {
   // Every top-level block that TARGETS `selector`, not only one spelled
   // exactly that way: archive#3929 moved the dock's shared geometry into
-  // `:is(.chat-dock,.dock-slot)`, and an exact-match reader reported a
+  // `:is(.chat-dock, .dock-slot)`, and an exact-match reader reported a
   // missing z-index on a dock that has one.
   const bodies = ruleBodiesFor(source, selector);
   if (bodies.length === 0)
@@ -65,7 +65,7 @@ describe('settings save pill vs chat dock (station#1831)', () => {
 
   test('the mobile full-width override does not reintroduce a fixed bottom', () => {
     // The base rule carries the dock-aware bottom; any later
-    //.settings__save-pill rule that sets `bottom` must stay dock-aware.
+    // .settings__save-pill rule that sets `bottom` must stay dock-aware.
     const rules = settingsCss.match(
       /\.settings__save-pill\s*\{[^}]*\}/g,
     ) as string[];

@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * the SSH computer creator (audit BLOCKER: nothing in the UI could
- * create an SSH environment, and : a failure that named no cause and no
+ * D7 — the SSH computer creator (audit CI-R1 BLOCKER: nothing in the UI could
+ * create an SSH environment, and CI-R14: a failure that named no cause and no
  * next step).
  */
 
@@ -71,8 +71,8 @@ function reached(
 
 /**
  * What the server composes for an unknown host: it appends the EXACT key line
- * whose fingerprint the dialog displays, and re-scans nothing (sol delta
- *). The dialog must hand this over verbatim.
+ * whose fingerprint the dialog displays, and re-scans nothing.
+ * The dialog must hand this over verbatim.
  */
 const TRUST_COMMAND = `printf '%s\\n' '192.168.1.20 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEZha2U=' >> "$HOME/.ssh/known_hosts"`;
 

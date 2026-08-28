@@ -1,6 +1,6 @@
 /**
  * The Computers section's row model — one derivation, shared by every kind of
- * computer the section lists (lane design §4).
+ * computer the section lists (audit CI-R9, lane design §4).
  *
  * Before this, three differently-shaped lists sat within 300px of each other:
  * paired saved connections and manual Station entries as `connections-page__card`
@@ -90,7 +90,7 @@ export function computerKind(environment: KnownEnvironment): ComputerKind {
  * The SSH connection phases, each with the state word the SERVER's phase
  * supports and the sentence that says what to do about it. Moved verbatim
  * from `SshEnvironmentsSection` so the merged list keeps the phase-specific
- * copy archive#1116's review put there — is about the `error` phase
+ * copy archive#1116's review put there — CI-R14 is about the `error` phase
  * being the one that says nothing, which the section now supplements with
  * the server's own action string.
  */

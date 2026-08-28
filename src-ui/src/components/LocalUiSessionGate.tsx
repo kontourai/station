@@ -66,7 +66,7 @@ export function LocalUiSessionGate({
   if (!resolution) {
     // The ONE loading treatment that legitimately replaces the shell: nothing
     // else can render until this browser is known to have a device session
-    // ( keeps full-screen loaders pre-shell only, and this is the
+    // (SHELL-13 keeps full-screen loaders pre-shell only, and this is the
     // pre-shell case). What it did not have was a bound — a bootstrap request
     // that never settles left this sentence on screen forever with nothing to
     // press. Past the shared degraded window it says so and offers a reload,
@@ -94,7 +94,7 @@ export function LocalUiSessionGate({
         <section aria-label="Station sample workspace">
           <Suspense
             fallback={
-              // not a twelfth wait sentence. The wait names itself
+              // SHELL-13: not a twelfth wait sentence. The wait names itself
               // in the skeleton's `label`; only the pre-auth access check
               // above still renders a full-screen sentence, and it is the one
               // recorded exception to the vocabulary.

@@ -136,7 +136,7 @@ describe('ProfilePage', () => {
     expect(screen.queryByText(/No usage data yet/i)).toBeNull();
     expect(screen.getByText('Unable to load profile')).toBeTruthy();
     expect(screen.getByText('usage read failed')).toBeTruthy();
-    // Header first, in a failure exactly as in a wait (6-): the page
+    // Header first, in a failure exactly as in a wait (6-OPS-23): the page
     // title is the frame's (page-frame-registry.ts) and never depended on
     // the read, so the page itself renders only the failure here.
 

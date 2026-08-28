@@ -32,7 +32,7 @@
  * but cannot detect a HIGHER-specificity selector elsewhere in the same file
  * overriding it regardless of source order. The lazy-sheet check matches any
  * selector that mentions `.responsive-dialog-header` at all — including a
- * scoped/compound one like `.session-model-picker.responsive-dialog-header
+ * scoped/compound one like `.session-model-picker .responsive-dialog-header
  * { display: block }` — not only a bare redeclaration, but it is still a
  * textual scan of one file, not a build-time cascade resolution.
  */

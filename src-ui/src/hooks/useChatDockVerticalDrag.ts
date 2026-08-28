@@ -127,8 +127,7 @@ export function useChatDockVerticalDrag({
       // Only a primary-button press is a dock gesture. A right-click, middle
       // click, or pen barrel press keeps its native behavior — capture-first
       // would otherwise swallow it and the replay would synthesize a primary
-      // activation the browser never intended ( of this change,
-      //). isPrimary is deliberately not consulted: a second concurrent
+      // activation the browser never intended. isPrimary is deliberately not consulted: a second concurrent
       // pointer replacing the gesture is the accepted multi-touch limitation,
       // and constructed PointerEvents default it to false.
       if (event.button !== 0) return;

@@ -249,7 +249,7 @@ export type ProviderReadiness =
    */
   | 'Reachable — no model catalog'
   /**
-   * a model connection's `status` is derived from "a non-empty string
+   * RT-06: a model connection's `status` is derived from "a non-empty string
    * is saved in the key box", so a knowingly invalid key read "Ready" on both
    * this hub card and the provider page. This is what the server actually
    * computed until something asks the provider and it answers.
@@ -438,7 +438,7 @@ export function resolveProviderPresentation(
   }
 
   /*
-   * / 6- — one readiness derivation, read by the hub card and the
+   * RT-06 / 6-OPS-27 — one readiness derivation, read by the hub card and the
    * provider page alike. `status: 'ready'` on a model connection only means
    * its prerequisites are satisfied, and the only required prerequisite is a
    * saved key; the server already computes what actually happened

@@ -210,7 +210,7 @@ describe('ConversationStatsModal — partially measured figures', () => {
  * `stats === null` is what a settled-empty read AND a failed read
  * both look like, and `useStats` dropped the query error entirely — so a
  * failed stats read was drawn as "No stats available", a measurement claim
- * over a request that never answered. Same defect shape as.
+ * over a request that never answered. Same defect shape as SHELL-09.
  */
 describe('ConversationStatsModal read failure', () => {
   test('renders the failure with a retry, not "No stats available"', () => {

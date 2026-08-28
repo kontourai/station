@@ -1331,7 +1331,7 @@ describe('useSessionEventStream', () => {
    * archive#3518: `recoverPersistedEvents`'s success path checks
    * `epoch.current` TWICE — once right after the `await`, once inside the
    * `queue.current.then` callback it goes on to enqueue. The first check is
-   * provably redundant against the two tests above (: dropping
+   * provably redundant against the two tests above (fault injection: dropping
    * either check alone still passes both, because in both tests the terminal
    * branch — which does not touch `queue.current` at all — has already run by
    * the time EITHER checkpoint gets its turn). This test constructs the one

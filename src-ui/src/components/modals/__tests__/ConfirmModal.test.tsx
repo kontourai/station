@@ -72,7 +72,7 @@ describe('ConfirmModal focus contract (station#1110)', () => {
     render(<TriggerHarness />);
     fireEvent.click(screen.getByRole('button', { name: 'Remove connection' }));
 
-    // Three controls now, in DOM order: the header close X ( — the
+    // Three controls now, in DOM order: the header close X (SHELL-02 — the
     // shared `Dialog` gives every dialog one, where Delete Job used to be the
     // only dialog in the app without it), then Cancel, then the confirm.
     const close = screen.getByRole('button', {

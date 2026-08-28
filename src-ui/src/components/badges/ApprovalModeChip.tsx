@@ -46,8 +46,7 @@ export interface ApprovalModeChipProps {
    * The mode the adapter last confirmed as actually applied (from
    * `session.configured` / `turn.started` metadata — see
    * ChatUIState.lastAppliedApprovalMode). Used only to detect "confirmed
-   * client-side but not yet applied server-side" for 'never' (archive#727
-   *).
+   * client-side but not yet applied server-side" for 'never' (archive#727).
    */
   lastAppliedApprovalMode?: unknown;
   onChange: (mode: ApprovalMode) => void;
@@ -78,10 +77,10 @@ export interface ApprovalModeChipProps {
  * 'never' may even be rejected outright if the process wasn't spawned with
  * the required flag — see claude-adapter.ts). While the override says
  * 'never' but the adapter hasn't confirmed it yet, the chip shows a
- * distinct pending state rather than overclaiming (archive#727 3,
- *). Render callers MUST remount this component (e.g. `key={sessionId}`)
+ * distinct pending state rather than overclaiming (archive#727). Render
+ * callers MUST remount this component (e.g. `key={sessionId}`)
  * when the active session changes — its local confirm state is not reset by
- * prop changes alone (archive#727 3).
+ * prop changes alone (archive#727).
  */
 export function ApprovalModeChip({
   engineConnectionId,

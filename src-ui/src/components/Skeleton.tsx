@@ -23,7 +23,7 @@ export interface SkeletonBlockProps {
  * settings section, a stat panel.
  *
  * `SkeletonList` mirrors a row rhythm; this mirrors a prose/card region, and
- * the two together are the whole loading vocabulary ( counted eleven
+ * the two together are the whole loading vocabulary (SHELL-13 counted eleven
  * treatments in the shipped app, nine of them one-off strings). A view that
  * needs to say "waiting" reaches for one of these, never for a new sentence:
  * a bespoke "Loading X..." string is untranslatable, unstyled, holds no

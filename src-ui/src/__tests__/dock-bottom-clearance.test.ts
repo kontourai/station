@@ -110,7 +110,7 @@ describe('the dock clearance is one derivation (station#3902)', () => {
     // archive#4460: every occupant (Chat, Home, Activity) now renders
     // through the shared `DockShell`, whose root carries `.chat-dock`
     // regardless of which occupant is docked — there is exactly one wrapper
-    // class, not the old `:is(.chat-dock,.dock-slot)` fork where a non-chat
+    // class, not the old `:is(.chat-dock, .dock-slot)` fork where a non-chat
     // occupant's OWN `.dock-slot` element carried a second copy of the same
     // placement geometry. `.dock-slot` no longer exists in any rendered
     // markup; this guards against it (or an equivalent second wrapper)

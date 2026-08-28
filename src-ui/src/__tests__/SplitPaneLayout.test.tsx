@@ -1406,7 +1406,7 @@ describe('SplitPaneLayout', () => {
     removeSpy.mockRestore();
   });
 
-  // eight routes had no page header because this layout drew its own
+  // SHELL-11: eight routes had no page header because this layout drew its own
   // 14.7px panel title instead. Framed, the collection's identity goes UP into
   // the page header and the pane keeps only its search and its list.
   describe('inside a page frame', () => {

@@ -145,7 +145,7 @@ export function usePluginManagementViewModel() {
   const revokePermissionMutation = useRevokePluginPermissionMutation();
   // archive#3815: the permission being withdrawn, so its own row shows the
   // pending state instead of the whole section going busy.
-  // A SET, not one string : the UI deliberately leaves every
+  // A SET, not one string — the UI deliberately leaves every
   // other row actionable, so two removals can be in flight at once. With a
   // single slot the second replaced the first, and whichever settled first
   // cleared the pending state of the one still running.
@@ -387,8 +387,7 @@ export function usePluginManagementViewModel() {
       });
     } catch (error) {
       // A failed withdrawal used to be silent: the row stopped spinning, the
-      // confirmation closed, and the permission was still there (
-      //). Nothing is more misleading on a permission surface than a
+      // confirmation closed, and the permission was still there. Nothing is more misleading on a permission surface than a
       // removal that looks like it happened.
       setMessage({
         type: 'error',

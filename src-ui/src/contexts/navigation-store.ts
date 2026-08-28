@@ -476,7 +476,7 @@ class NavigationStore {
     const previousPathname = url.pathname;
     url.pathname = target.pathname;
     if (target.pathname !== previousPathname) {
-      // 6-: a route change used to carry the SOURCE route's query string
+      // 6-OPS-30: a route change used to carry the SOURCE route's query string
       // to the destination — `/settings?view=notifications` → "View the
       // notifications inbox" landed on `/notifications?view=notifications`,
       // and ⌘K from `/settings?view=developer-tools` landed on

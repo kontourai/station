@@ -4,8 +4,8 @@ import { Fragment, forwardRef } from 'react';
 import '../views/page-layout.css';
 
 /**
- * The shared scroll-spy / URL-section navigation primitive (archive#4463
- *). For the family that switches a deep-linkable URL
+ * The shared scroll-spy / URL-section navigation primitive (archive#4463).
+ * For the family that switches a deep-linkable URL
  * section — Settings, ProjectSettingsView, KnowledgeConnectionView — NOT
  * for true in-place tab widgets; those use `components/Tabs.tsx` instead.
  *
@@ -22,11 +22,11 @@ import '../views/page-layout.css';
  *   arrow-key press pushed a browser history entry per keystroke, and the
  *   host's own deep-link "reveal" effect (`focusSection` in
  *   `useSectionNavigation`) then stole focus back out of the strip —
- * archive#4463.
+ *   archive#4463.
  * - Ctrl/Cmd/Shift/Alt+click bails out BEFORE `preventDefault`, so a
  *   modified click still opens the section in a new tab / window exactly
  *   like any other link, rather than always hijacking the click into an
- * in-app navigation
+ *   in-app navigation.
  */
 export interface SectionNavItem {
   /** Stable identity — what `activeKey` compares against and `onNavigate` receives. */
@@ -40,7 +40,7 @@ export interface SectionNavItem {
    * Defaults / This device). A dedicated `aria-hidden` element, not a
    * border on the item itself: an earlier version put the divider on the
    * LAST item's own border, which visibly conflicted with that same item's
-   * active-pill border when it was also the selected tab
+   * active-pill border when it was also the selected tab.
    */
   dividerAfter?: boolean;
 }
@@ -78,7 +78,7 @@ export const SectionNav = forwardRef<HTMLElement, SectionNavProps>(
                 onClick={(event) => {
                   // A modified click means "open elsewhere" — let the
                   // browser's native link behavior win, same as any other
-                  // anchor on the page
+                  // anchor on the page.
                   if (
                     event.metaKey ||
                     event.ctrlKey ||

@@ -12,7 +12,7 @@ describe('SurfaceRegistry', () => {
     // Feature Previews is a Settings section (palette deep link only); the
     // Developer surfaces advertise only with the developer-tools flag on.
     //
-    // / : Agents, Connections and Activity lead as a
+    // UX audit RT-13 / SHELL-08: Agents, Connections and Activity lead as a
     // flat `primary` band. The order below is also the assertion that
     // `primary` sorts FIRST — sections used to be ordered by
     // `String.localeCompare`, under which 'primary' would have landed between
@@ -56,7 +56,7 @@ describe('SurfaceRegistry', () => {
       'guidance-skills',
       'registry',
       'connections',
-      // 6-: Notifications and Profile are top-level destinations that
+      // 6-OPS-32: Notifications and Profile are top-level destinations that
       // ⌘K could not reach at all — "notif" and "prof" each returned zero
       // results in a palette carrying 72 entries.
       'notifications',

@@ -223,8 +223,8 @@ describe('AgentConnectionView', () => {
     window.localStorage.clear();
   });
 
-  // /connections/providers and /connections/engines both rendered the
-  // "Providers" and the breadcrumb CONNECTIONS / PROVIDERS, so four paths
+  // CI-R10: /connections/providers and /connections/engines both rendered the
+  // H1 "Providers" and the breadcrumb CONNECTIONS / PROVIDERS, so four paths
   // produced one indistinguishable title. The engines route owns the noun the
   // redirect table already treats as canonical.
   /**

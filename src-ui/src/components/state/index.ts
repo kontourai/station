@@ -14,7 +14,7 @@
 //   wrapper) so loading state lives under the same barrel. `SkeletonList` is
 //   the row-shaped wait, `SkeletonBlock` the region-shaped one; between them
 //   they are the ONLY loading vocabulary a view should reach for. A new
-//   "Loading X..." string is a regression.
+//   "Loading X..." string is a regression (SHELL-13).
 //
 // Recorded, reasoned exceptions (not migrated, not gaps — see CLAUDE.md
 // "State primitives"): `FullScreenLoader`/`FullScreenError`

@@ -711,7 +711,7 @@
   /* archive#3453: BOTH declarations below are inert, in both directions —
 * not just "below the floor and harmless." `.banner-host__action` sits
 * inside `.banner-host__actions`, which the global mobile touch-target net
-* in index.css (`:is([class*="__actions"],...) > :is(button, a,.button,
+* in index.css (`:is([class*="__actions"], ...) > :is(button, a, .button,
 * [role="button"])`, same breakpoint) already matches at `(0,2,0)`
 * specificity — strictly higher than this single-class rule's `(0,1,0)`.
 * The cascade picks ONE winning declaration per property, not a min/max

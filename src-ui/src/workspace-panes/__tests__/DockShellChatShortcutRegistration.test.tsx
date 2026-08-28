@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * archive#4460 /: `ChatWorkspacePane`'s local `useDockShellChrome`
+ * archive#4460: `ChatWorkspacePane`'s local `useDockShellChrome`
  * call (rules-of-hooks forces it to exist even when Chat is DOCKED and
  * `DockShell` already owns the real chrome) must never register
  * `dock.toggle`/`dock.maximize` itself — the shared shortcut registry keys
@@ -35,7 +35,7 @@ import { navigationStore } from '../../contexts/navigation-store';
 // --- Everything NOT under test: mocked to the lightest shape that lets the
 // real ChatWorkspacePane mount without crashing. Navigation, device settings
 // (a real store, no provider needed) and the keyboard-shortcut registry stay
-// real — those are exactly what / exercise.
+// real — those are exactly what the shortcut registry exercises.
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),

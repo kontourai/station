@@ -115,7 +115,7 @@ describe('Button pending state (SHELL-01 / SHELL-12 / SHELL-16)', () => {
   });
 
   test('an explicitly disabled button stays disabled without a spinner', () => {
-    // measured a disabled `Save Changes` painted as a full-strength
+    // RT-05 measured a disabled `Save Changes` painted as a full-strength
     // primary — `opacity: 1`, `cursor: pointer`, no tooltip. `disabled` must
     // reach the DOM so `.button:disabled`'s treatment applies; it is not a
     // pending state and must not grow a spinner.

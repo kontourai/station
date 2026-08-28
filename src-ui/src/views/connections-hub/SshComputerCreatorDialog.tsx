@@ -1,5 +1,5 @@
 /**
- * the SSH computer creator
+ * D7 — the SSH computer creator (audit CI-R1, CI-R14, CI-R19).
  *
  * Before this, "Add computer → Run work on another computer over SSH" opened
  * `SshEnvironmentSetupModal`, which in a browser was a dead end ("available
@@ -14,12 +14,12 @@
  * - **Nothing is claimed that the server did not observe.** "Test connection"
  *   calls `POST /api/environments/ssh/probe`, and the sentence rendered on
  *   success or failure is the server's own `summary`/`action` from the
- * readiness-evidence shape — not a string composed here. defect
+ *   readiness-evidence shape — not a string composed here. CI-R14's defect
  *   was a free-text action line that named neither cause nor next step.
  * - **Save follows a real observation.** The primary action stays disabled
  *   until a probe actually reached the computer, and says why.
  * - **One dialog chrome.** The shared `Dialog` (backdrop, centring, focus
- * containment, Escape, mobile sheet geometry) — was this flow
+ *   containment, Escape, mobile sheet geometry) — CI-R19 was this flow
  *   floating uncentred with no scrim while its own chooser dimmed the page.
  *
  * Field scope, deliberately (deviation from the lane design's "host · user ·

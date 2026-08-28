@@ -10,9 +10,9 @@ import {
 } from '../useScrollRestoration';
 
 /**
- *measured on the audited build:
+ * SHELL-07, measured on the audited build:
  *
- * | step |.content-view.scrollTop |
+ * | step | .content-view.scrollTop |
  * | /settings scrolled (scrollHeight 8428) | 3000                    |
  * | → /registry                            | 0                       |
  * | → back to /settings                    | 0  ← position lost      |

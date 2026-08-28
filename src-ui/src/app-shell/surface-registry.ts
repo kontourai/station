@@ -239,7 +239,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     label: () => 'Agents',
     keywords: ['agents', 'manage'],
     icon: 'agents',
-    // the owner's #1 surface was two clicks deep behind a collapsed
+    // RT-13: the owner's #1 surface was two clicks deep behind a collapsed
     // group labelled with a verb ("Customize") that does not obviously
     // contain "my agents".
     sidebar: primary(10),
@@ -283,7 +283,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     label: () => 'Connections',
     keywords: ['connections', 'providers', 'integrations'],
     icon: 'connections',
-    // promoted alongside Agents.
+    // RT-13: promoted alongside Agents.
     sidebar: primary(20),
     managementGroup: 'connections',
     palette: { order: 50 },
@@ -342,7 +342,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     keywords: ['notifications', 'inbox', 'alerts', 'attention'],
     icon: 'notifications',
     sidebar: system(30),
-    // 6-: a top-level destination that ⌘K could not reach — "notif"
+    // 6-OPS-32: a top-level destination that ⌘K could not reach — "notif"
     // returned zero results in a palette carrying 72 entries.
     palette: { order: 55 },
     managementGroup: 'notifications',
@@ -390,7 +390,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     label: () => 'Activity',
     keywords: ['activity', 'sessions', 'monitor', 'events'],
     icon: 'activity',
-    //  / lane 7's open question, decided yes: Activity resolved but
+    // SHELL-08 / lane 7's open question, decided yes: Activity resolved but
     // had no sidebar entry, so its only advertised entry point was ⌘K.
     sidebar: primary(30),
     palette: { order: 65 },
@@ -475,7 +475,7 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
     route: '/profile',
     label: () => 'Profile',
     keywords: ['profile', 'account', 'me', 'avatar'],
-    // 6-: `hiddenFromNav` keeps it out of the sidebar; without a
+    // 6-OPS-32: `hiddenFromNav` keeps it out of the sidebar; without a
     // `palette` key as well, the header avatar was its only entry point in
     // the entire app.
     palette: { order: 140 },

@@ -287,7 +287,7 @@ export function SharedAnswerView() {
 function SharedAnswerBody({ state }: { state: ViewState }) {
   switch (state.phase) {
     case 'loading':
-      // one loading vocabulary. The wait names itself in the
+      // SHELL-13: one loading vocabulary. The wait names itself in the
       // skeleton's `label` rather than in a sentence that agrees with no
       // other wait in the app on casing, ellipsis or noun.
       return (

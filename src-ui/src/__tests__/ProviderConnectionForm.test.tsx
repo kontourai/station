@@ -283,7 +283,7 @@ function anthropicForm(
     enabled: true,
     capabilities: ['llm'],
     // What the server derives from "a non-empty string is saved in the key
-    // box" — the state found rendering as "Ready".
+    // box" — the state RT-06 found rendering as "Ready".
     status: 'ready',
     prerequisites: [],
     lastCheckedAt: null,

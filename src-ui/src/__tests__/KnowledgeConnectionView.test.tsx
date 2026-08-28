@@ -136,9 +136,9 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(window.location.search).toBe('?section=embedding-model');
   });
 
-  // archive#settings-revamp 2(b): this
+  // archive#settings-revamp: this
   // cross-link already routed through the internal `guard` correctly
-  // (`guard( => navigate(...))`, the pattern the other four cross-link
+  // (`guard(() => navigate(...))`, the pattern the other four cross-link
   // sites were fixed to match) — this file just never asserted the target or
   // the dirty-intercept behavior.
   describe('the "Open Settings → My knowledge store" cross-link', () => {
@@ -191,7 +191,7 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     });
   });
 
-  // Audit : the panel resolved only through `/api/connections`, where the
+  // Audit CI-R6: the panel resolved only through `/api/connections`, where the
   // built-in store has no record on a real home — so the section rendered as a
   // blank box while `/api/knowledge/status` was reporting a working store.
   it('renders the built-in vector store from the knowledge-status payload when no connection record backs it', () => {
@@ -234,7 +234,7 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(navigateMock).toHaveBeenCalledWith('/settings?view=knowledge');
   });
 
-  // a zero is the index receipt that matters most — hiding the section
+  // CI-R5: a zero is the index receipt that matters most — hiding the section
   // until something had been indexed left the capability copy standing beside
   // nothing a reader could check.
   it('shows the server index counts even when nothing has been indexed yet', () => {

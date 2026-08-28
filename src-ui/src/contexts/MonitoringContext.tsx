@@ -156,8 +156,8 @@ function monitoringEventTime(event: MonitoringEvent): number {
 }
 
 /**
- * The store's one ordering rule (archive#3658, and
- *): chronological, oldest first, and capped to the MOST RECENT
+ * The store's one ordering rule (archive#3658): chronological, oldest
+ * first, and capped to the MOST RECENT
  * `MAX_RETAINED_EVENTS`.
  *
  * ORDER. Historical rows arrive oldest-first — the route says so in its own

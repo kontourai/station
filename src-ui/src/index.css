@@ -528,7 +528,7 @@ button:hover {
   flex-direction: row;
 }
 
-/* the first focusable element in the document, and off-layout until
+/* SHELL-14: the first focusable element in the document, and off-layout until
    it is focused — `position: fixed` keeps it out of `.app`'s flex row, so it
    costs the sighted layout nothing while remaining a real, reachable control.
    Not `display: none` / `visibility: hidden`, either of which would make it
@@ -668,7 +668,7 @@ button:hover {
   font-size: var(--text-xs);
 }
 
-/* ═══ station-dialog — the one Station dialog chrome  ═══════════
+/* ═══ station-dialog — the one Station dialog chrome (SHELL-02) ═══════════
    The audit opened four dialogs in one session and found four systems: New
    Project (eyebrow, sentence-case labels, dark-outlined Create), New Chat (no
    footer at all — clicking a row commits), Add Job (UPPERCASE labels, teal
@@ -4819,7 +4819,7 @@ button.tool-call__line:hover {
   color: var(--status-error);
 }
 
-/* Pending state : every async primary action in
+/* Pending state (SHELL-01/SHELL-12/SHELL-16): every async primary action in
    the audit fired with no acknowledgement — Create project looked ignored for
    6-8 seconds. The button keeps its own colours (it is still the primary
    action, just busy) and gains a spinner; `disabled` supplies the dimming and

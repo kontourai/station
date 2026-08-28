@@ -164,7 +164,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
 });
 
 /**
- * 6-. A `git ls-remote` against a cold remote took ~30 s in the audit,
+ * 6-OPS-44. A `git ls-remote` against a cold remote took ~30 s in the audit,
  * and for that whole window the card replaced Channel/Branch/Current/Latest
  * with one disabled "Checking…" — so the user LOST the answer they already had
  * in order to be told an answer was coming. The review confirmed the source

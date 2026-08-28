@@ -1,6 +1,6 @@
 /**
  * device-settings-store — the unified, versioned, device-scope client-
- * settings store (docs/design/settings-architecture.md §3 ". Device",
+ * settings store (docs/design/settings-architecture.md §3 "S3. Device",
  * §6). Module-singleton pattern modeled on
  * `src-ui/src/contexts/onboarding-setup-store.ts` (subscribe/getSnapshot/
  * notify for `useSyncExternalStore`).
@@ -52,7 +52,7 @@ const PRIOR_DEVICE_SETTINGS_EVENT = 'station-device-settings-changed';
  * missing from an ALREADY-EXISTING v1 envelope from the shared archive#1359 root —
  * see `migrateEnvelopeV1ToV2` below. This closes a real reachability gap:
  * `migrateFromPriorStorage` (the store's other prior-setting import path) only runs when
- * the envelope key is entirely ABSENT, but (already live on main
+ * the envelope key is entirely ABSENT, but slice 2 (already live on main
  * before this slice) writes an empty v1 envelope on every device's first
  * boot — so the exact devices with real archive#1359 customizations never hit that
  * path at all, and without this ladder step their `station.device-settings`
@@ -69,8 +69,7 @@ export interface DeviceSettingsEnvelope {
 export interface DeviceSettingsImportResult {
   /**
    * Registered keys present in the imported file whose value failed
-   * descriptor validation (archive#settings-revamp
-   * 2) — dropped rather than merged. Every other present, valid key was
+   * descriptor validation (archive#settings-revamp) — dropped rather than merged. Every other present, valid key was
    * merged into the store.
    */
   droppedKeys: (keyof DeviceSettings)[];
@@ -231,7 +230,7 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
 
 /**
  * The known boolean-field shape of each composite device setting — used
- * only to validate an IMPORTED composite value's structure (: a
+ * only to validate an IMPORTED composite value's structure (a
  * `{version:1, values:{inboxSections:null}}` file, or one with a non-
  * boolean field, must be dropped rather than accepted and later crash a
  * consumer that dereferences it). A field missing from the imported object
@@ -240,8 +239,7 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
  *
  * `shortcutOverrides`/`modelPickerPreferences` are validated by their own
  * dedicated checks below (`validateShortcutOverrides`/
- * `validateModelPickerPreferences`) instead of this table — archive#
- * settings-revamp : neither had a shape entry here
+ * `validateModelPickerPreferences`) instead of this table — archive#settings-revamp: neither had a shape entry here
  * at all, so `structurallyValid` silently defaulted to `true` for ANY
  * plain object, letting a malformed import (e.g. `modelPickerPreferences.
  * order` as a string, or a `shortcutOverrides` binding with a non-string
@@ -300,8 +298,8 @@ function validateFeatureSettings(
 /**
  * Validates an imported `shortcutOverrides` composite: EVERY entry must be
  * a valid binding or `null` (`normalizePriorShortcutBinding` — shared with
- * the prior-root migration reader, archive#settings-revamp
- *) or the whole value is rejected, matching the field-level
+ * the prior-root migration reader, archive#settings-revamp) or the whole
+ * value is rejected, matching the field-level
  * (not per-entry) drop granularity every other composite in this module
  * uses. Valid imports are re-normalized (modifier de-dup) rather than
  * passed through raw.
@@ -608,7 +606,7 @@ function migrateEnvelopeV1ToV2(
  * or with an unrecognized/malformed shape, is treated conservatively rather
  * than thrown away wholesale: unrecognized shapes fall back to an empty,
  * current-version envelope. (`importEnvelope` rejects a genuinely-future
- * version with a thrown error BEFORE calling this — see — so by
+ * version with a thrown error BEFORE calling this — so by
  * the time a future version reaches this loop it is only ever from the
  * general boot-time load path, which must never throw.)
  */
@@ -742,7 +740,7 @@ class DeviceSettingsStore {
     return envelope;
   }
 
-  /** Re-reads the persisted envelope fresh ('s read-merge-write basis); falls back to the in-memory envelope when storage has nothing (or nothing readable) yet — e.g. a still-failing quota-full write from `migrateFromPriorStorage`. */
+  /** Re-reads the persisted envelope fresh (this store's read-merge-write basis); falls back to the in-memory envelope when storage has nothing (or nothing readable) yet — e.g. a still-failing quota-full write from `migrateFromPriorStorage`. */
   private readPersistedEnvelope(): DeviceSettingsEnvelope {
     const raw = readRaw(ENVELOPE_STORAGE_KEY);
     if (raw === null) return this.envelope;
@@ -841,7 +839,7 @@ class DeviceSettingsStore {
   getEnvelope = (): DeviceSettingsEnvelope => this.envelope;
 
   /**
-   * Adopts an imported envelope wholesale : throws
+   * Adopts an imported envelope wholesale: throws
    * `DeviceSettingsImportVersionError` for a version newer than this app
    * understands rather than importing it unchanged; every present,
    * registry-known value is validated against its descriptor — invalid
@@ -863,7 +861,7 @@ class DeviceSettingsStore {
     return { droppedKeys };
   };
 
-  /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (: read-merge-write, not a blind overwrite from this tab's stale snapshot). */
+  /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (read-merge-write, not a blind overwrite from this tab's stale snapshot). */
   merge = (partial: Partial<DeviceSettings>): void => {
     const fresh = this.readPersistedEnvelope();
     this.applyEnvelope({

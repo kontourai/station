@@ -3873,7 +3873,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
   });
 
   /**
-   * archive#1684 review fix (uncaught injection archive#11).
+   * archive#1684 review fix (uncaught injection #11).
    *
    * The `GATE OFF: newSession is called exactly ONCE` test above only ever
    * observed the SUCCESS path — nothing drove `session/new` to reject, so a

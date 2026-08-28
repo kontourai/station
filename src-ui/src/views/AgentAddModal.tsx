@@ -42,7 +42,7 @@ export function AgentAddModal({
   // Was a hand-rolled overlay with `responsive-surface-*` classes pasted on:
   // it looked like a dialog and behaved like a div — no focus containment, no
   // Escape, no focus restoration, and its own header/footer/button chrome.
-  // On the shared `Dialog` it gets the lifecycle and the one chrome.
+  // On the shared `Dialog` it gets the lifecycle and the one chrome (SHELL-02).
   return (
     <Dialog
       title={`Add ${noun}`}

@@ -613,8 +613,8 @@ interface ConvertedSurface {
    * It must paint a *translucent* fill. Without this a tint-only surface is
    * an inert assertion: its text colour comes from a token the tint work did not
    * touch, so reverting the tint leaves the ratio comfortable and the test
-   * green (`.coding-inspector__cta-action` passed
-   * against the pre-fix build until this was added).
+   * green. Proven by fault injection — `.coding-inspector__cta-action` passed
+   * against the pre-fix build until this was added.
    */
   tinted?: boolean;
 }

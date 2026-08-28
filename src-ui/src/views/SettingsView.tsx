@@ -532,8 +532,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
   if (!configData) {
     return (
-      // The page header is the frame's  and is already on screen
-      // above this body; the section nav and error-is-not-loading fork
+      // The page header is the frame's (SHELL-11) and is already on screen
+      // above this body; the section nav and C2's error-is-not-loading fork
       // stay exactly as they are.
       <div className="settings">
         {highlightNotice}
@@ -927,7 +927,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
 /**
  * The settings section rail, extracted so it can render BEFORE the config
- * read settles (6-).
+ * read settles (6-OPS-23).
  *
  * Every link here is derived from the static `SETTINGS_SECTIONS` catalog and
  * from the URL — none of it waits on `/api/config/app`. Rendering it only in
@@ -963,7 +963,7 @@ export function settingsSectionNavItems(
     // A divider marks a boundary BETWEEN two groups — never after the last
     // group's last item, which matches the original markup: Knowledge
     // rendered outside every `.settings__nav-group` wrapper, so the CSS
-    // sibling-divider (`.settings__nav-group +.settings__nav-group`) never
+    // sibling-divider (`.settings__nav-group + .settings__nav-group`) never
     // fired between "This device" and Knowledge.
     const isLastGroup = groupIndex === NAV_GROUPS.length - 1;
     return groupSections.map((section, index) => ({

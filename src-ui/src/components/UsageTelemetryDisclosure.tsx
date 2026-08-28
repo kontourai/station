@@ -191,7 +191,7 @@ function acknowledgeErrorNotice(isError: boolean): ReactNode {
 
 /**
  * The disclosure as the FIRST STEP of the guided first run, rather than as a
- * modal of its own over the top of it ( follow-up to /).
+ * modal of its own over the top of it (UX audit follow-up to RT-02/SHELL-12).
  *
  * On a brand-new home both surfaces used to fire at once: this dialog is
  * mounted by `OnboardingGate` after its children, so it landed at

@@ -76,14 +76,14 @@ export function IntegrationEditorPanel({
 }) {
   const isBuiltin = editForm.kind === 'builtin';
   /**
-   * server-derived (`GET /integrations`), not inferred from `kind` —
+   * CI-R7: server-derived (`GET /integrations`), not inferred from `kind` —
    * Station's own tool servers persist as `kind: 'mcp'`, so the `isBuiltin`
    * test above (which means "Strands vended tool") was false for them and
    * this panel offered a Delete the runtime silently undid on next start.
    */
   const isRuntimeManaged = editForm.builtin === true;
   /**
-   * the live catalogue only carries names once an agent session has
+   * CI-R15: the live catalogue only carries names once an agent session has
    * opened a client, so fall back to the names the last probe recorded. Never
    * a count without a way to see what it counted.
    */

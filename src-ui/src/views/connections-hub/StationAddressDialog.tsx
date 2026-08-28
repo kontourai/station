@@ -1,5 +1,5 @@
 /**
- * "Reach another Station" — the chooser's second branch.
+ * "Reach another Station" — the chooser's second branch (audit CI-R9).
  *
  * This is the old inline "Add Station" form, which sat unlabelled directly
  * below the "Add computer" button and bypassed the very chooser whose copy
@@ -17,8 +17,8 @@ import { Dialog } from '../../components/Dialog';
 import { knownEnvironmentRegistry } from './known-environment-registry';
 
 /**
- * Best-effort identity upgrade for a freshly-added manual entry (archive#1096
- *). Fires the well-known handshake in the background, AFTER the
+ * Best-effort identity upgrade for a freshly-added manual entry
+ * (archive#1096). Fires the well-known handshake in the background, AFTER the
  * synchronous local add already succeeded, and attaches `environmentId` only
  * on a clean, well-shaped response.
  *

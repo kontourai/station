@@ -264,7 +264,7 @@ export function handleTurnAbortedEvent(
 export function handleRuntimeErrorEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.error' }>,
 ) {
-  // archive#3451 ( : corrected wording, not code):
+  // archive#3451 (corrected wording, not code):
   // `RuntimeErrorEvent extends CanonicalRuntimeEventBase`, which carries an
   // optional TOP-LEVEL `turnId` — publishers set it there (muse-adapter.ts,
   // bedrock-adapter.ts's `publishTurnFailure`, codex's `'error'`/

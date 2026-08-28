@@ -182,7 +182,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     );
 
     expect(screen.getByText(/started without a workspace/i)).toBeTruthy();
-    // review: on this refusal the action is not a plain retry —
+    // on this refusal the action is not a plain retry —
     // it continues the conversation without the workspace — so the label says
     // that rather than promising a repeat of a deterministic failure.
     fireEvent.click(

@@ -28,7 +28,7 @@ import { BannerHost } from '../BannerHost';
  * wins once a more (or less) specific rule elsewhere in the app is in play.
  * archive#3453 found exactly that gap live: `.banner-host__action`'s mobile
  * `min-height` read 42px in the stylesheet, but a *global* touch-target net
- * in `index.css` (`:is([class*="__actions"],...) > :is(button, a,.button,
+ * in `index.css` (`:is([class*="__actions"], ...) > :is(button, a, .button,
  * [role="button"])`, itself scoped to the same mobile breakpoint) is MORE
  * specific and already won that fight at 44px — so the real, rendered
  * control was never actually broken. Its sibling `.banner-host__dismiss`

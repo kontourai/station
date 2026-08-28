@@ -25,7 +25,7 @@ describe('ProjectSidebarNav', () => {
   });
 
   test('marks only the row whose route is still loading', () => {
-    // a cold route chunk takes ~1.4 s to arrive. `aria-busy` and
+    // SHELL-05: a cold route chunk takes ~1.4 s to arrive. `aria-busy` and
     // the spinner are rendered from the SAME derivation — the suspended route
     // outlet — so neither can claim a pending state the other does not have.
     // The published value is a SURFACE ID, resolved through the same
@@ -69,12 +69,12 @@ describe('ProjectSidebarNav', () => {
 
     const customize = screen.getByRole('button', { name: 'Customize' });
     const system = screen.getByRole('button', { name: 'System' });
-    // both groups start open. They used to be MUTUALLY EXCLUSIVE
+    // SHELL-15: both groups start open. They used to be MUTUALLY EXCLUSIVE
     // accordions derived from the route — exactly one open, and neither on
     // Home — so every cross-group move cost two clicks.
     expect(customize.getAttribute('aria-expanded')).toBe('true');
     expect(system.getAttribute('aria-expanded')).toBe('true');
-    //  / : Agents, Connections and Activity are top-level rows
+    // RT-13 / SHELL-08: Agents, Connections and Activity are top-level rows
     // ahead of both group toggles, not entries inside a collapsed group.
     expect(
       screen.getAllByRole('button').map((button) => button.textContent?.trim()),
@@ -130,7 +130,7 @@ describe('ProjectSidebarNav', () => {
     expect(customize.getAttribute('aria-controls')).toBe(
       'sidebar-customize-nav',
     );
-    //  measured Home as the worst case: BOTH groups collapsed, so
+    // SHELL-15 measured Home as the worst case: BOTH groups collapsed, so
     // every one of the management destinations cost two clicks from Home.
     expect(customize.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByRole('button', { name: 'Guidance' })).toBeTruthy();
@@ -200,7 +200,7 @@ describe('ProjectSidebarNav', () => {
   });
 
   test("keeps the user's own collapse across navigation instead of deriving it from the route", () => {
-    // 's mechanism, not just its symptom: the open group used to be
+    // SHELL-15's mechanism, not just its symptom: the open group used to be
     // COMPUTED from the active route, so a collapse the user performed was
     // silently reinstated (or reversed) by the next navigation. Collapsing
     // System here and then navigating INTO a System route is the case that

@@ -79,7 +79,7 @@ export function SkillsView({
   const createChatSession = useCreateChatSession();
   const sendMessage = useSendMessage(apiBase);
 
-  // this read `const isLoading = false`, so for the ~2.2s the skills
+  // SHELL-09: this read `const isLoading = false`, so for the ~2.2s the skills
   // query was in flight the list panel rendered its DEFINITIVE empty state —
   // "No installed skills yet", with a CTA to create one — and then replaced it
   // with 24 installed skills (reproduced 3/3). A loading flag nothing derives

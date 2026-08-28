@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- *durable half: a dismissed notice that has an `occurrence` stays
+ * SHELL-10, durable half: a dismissed notice that has an `occurrence` stays
  * dismissed across a reload, and one WITHOUT an occurrence does not — because
  * an id-only dismissal, made durable, means the banner never comes back.
  *

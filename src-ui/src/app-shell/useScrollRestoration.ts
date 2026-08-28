@@ -27,7 +27,7 @@ const MAX_REMEMBERED_ROUTES = 50;
  * Eight seconds, not the two this shipped with first: at two seconds it did
  * not restore Settings at runtime. Settings' 8,705 px column is still
  * arriving then — the audit measured route content settling 4.0–7.0 s
- *.
+ * (SHELL-21).
  */
 const RESTORE_WINDOW_MS = 8000;
 

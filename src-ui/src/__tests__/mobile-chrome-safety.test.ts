@@ -167,10 +167,10 @@ describe('the connection banner slot bounds without reserving', () => {
     // And the host's OWN box must never take pointer events, in any mode —
     // matching `BannerHost.tsx`'s docblock ("the host stays pointer-events:
     // none... in every state"). A rule "targets the host's own box" when
-    // its rightmost simple selector (after any combinator — `>.banner-host`
+    // its rightmost simple selector (after any combinator — `> .banner-host`
     // inside the dock `:has` rules counts) is `.banner-host` or
     // `.banner-host--<modifier>`; `.banner-host--connection-slot
-    //.banner-host__stack` does NOT (its rightmost selector is the inner
+    // .banner-host__stack` does NOT (its rightmost selector is the inner
     // `__stack`, a genuine descendant), so it is correctly excluded.
     const ruleBlockPattern = /([^{}]+)\{([^{}]*)\}/g;
     const hostOnlyPattern = /^\.banner-host(?:--[\w-]+)?$/;
@@ -292,7 +292,7 @@ describe('overlapping chrome has an explicit interaction order', () => {
     // that only checks the FIRST `.chat-dock {` block can miss a z-index
     // declared in a later one and report a missing layer on a dock that has
     // one. (Before archive#4460, a non-chat occupant's OWN `.dock-slot`
-    // element shared this placement through `:is(.chat-dock,.dock-slot)`;
+    // element shared this placement through `:is(.chat-dock, .dock-slot)`;
     // every occupant now renders through the one shared `.chat-dock` root,
     // so that fork is gone — this scan still needs every block, not that one.)
     const dockBodies = ruleBodiesFor(index, '.chat-dock');

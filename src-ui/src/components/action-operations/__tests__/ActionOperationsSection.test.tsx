@@ -122,9 +122,9 @@ describe('ActionOperationsSection', () => {
   });
 
   /**
-   * Audit / : the initial read used to render a bare
+   * Audit F5 / SHELL-13: the initial read used to render a bare
    * "Connecting…" sentence — the exact one-off-loading-string shape
-   *  banned in favor of SkeletonList/SkeletonBlock. Not covered by
+   * SHELL-13 banned in favor of SkeletonList/SkeletonBlock. Not covered by
    * any existing test (the reconnecting case below only exercises the
    * HEADER's "Reconnecting…" chip, which requires cached `data`) — this
    * pins the fix.

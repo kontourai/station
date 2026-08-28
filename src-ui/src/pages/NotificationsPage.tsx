@@ -138,7 +138,7 @@ export function NotificationsPage() {
     return () => window.removeEventListener('popstate', syncFromLocation);
   }, []);
 
-  // 6- shape: the frame a page owns is known before its data is. This
+  // 6-OPS-23 shape: the frame a page owns is known before its data is. This
   // used to replace the WHOLE page — header, title, settings link and all —
   // with one grey sentence, so for the length of the read the route rendered
   // nothing that identified it. Header first, skeleton only the list the page
@@ -163,7 +163,7 @@ export function NotificationsPage() {
   // the failure branch dropped the header the wait branch above
   // deliberately preserves, so a read that failed took the route's own title,
   // Clear and Settings controls down with it. The frame a page owns does not
-  // depend on the read (6-) — in a wait OR in a failure.
+  // depend on the read (6-OPS-23) — in a wait OR in a failure.
   if (loadError) {
     return (
       <div className="notifications-page">

@@ -1,7 +1,7 @@
 /*
  * First-run "About you" questions.
  *
- * Placement and chrome are NOT here any more. This used to
+ * Placement and chrome are NOT here any more (UX audit SHELL-12). This used to
  * be a fixed bottom-right panel at --layer-notice that followed the user
  * across routes and painted over page content; it is now one step inside
  * `FirstRunHomeChapter`'s shared dialog, which owns the surface, the scrim,

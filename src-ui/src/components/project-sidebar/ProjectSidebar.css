@@ -658,7 +658,7 @@
   opacity: 0.72;
 }
 
-/* the clicked row stays marked while its route outlet is suspended.
+/* SHELL-05: the clicked row stays marked while its route outlet is suspended.
    `aria-busy` is set from the same derivation, so this is a rendering of the
    pending state rather than a second, independent claim about it. Perpetual
    status category: the spin is not the only signal (`aria-busy` is), and the

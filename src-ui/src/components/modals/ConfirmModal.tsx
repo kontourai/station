@@ -63,7 +63,7 @@ export function ConfirmModal({
   // overlay is `position: fixed`, which is only relative to the viewport while
   // no ancestor establishes a containing block — and a `transform` does, even
   // an identity one mid-transition. archive#1069: the profile page's stat cards
-  // lift on hover (`.profile-stats-grid >.profile-card:hover { transform }`),
+  // lift on hover (`.profile-stats-grid > .profile-card:hover { transform }`),
   // and because this modal rendered inside one of those cards the two states
   // fed each other every frame — full-viewport overlay covers the cursor, so
   // the card is `:hover`, so the card takes a transform, so the overlay

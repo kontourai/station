@@ -266,7 +266,7 @@ function isShallowEqual<T>(a: T, b: T): boolean {
  * on any field change — including every composer keystroke, which writes
  * `{ input }` via updateChat. active-chats-store.updateChat replaces the
  * session's whole object on every call (mergeChatUpdates spreads
- * `{...current,...updates}`), but fields the update didn't touch keep their
+ * `{...current, ...updates}`), but fields the update didn't touch keep their
  * prior reference. That means a selector comparing only the fields a
  * consumer actually reads can reliably skip re-notifying it when an
  * unrelated field (like `input`) changes — this is what stops composer

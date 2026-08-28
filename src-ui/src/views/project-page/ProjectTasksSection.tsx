@@ -26,8 +26,8 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
 
-/** Human-readable label for a claim actor (part of,
- *) — used by both the local-task guard and the provider-item badge. */
+/** Human-readable label for a claim actor (roadmap archive#584, part of epic
+ * archive#580, S4) — used by both the local-task guard and the provider-item badge. */
 function actorLabel(actor: {
   runtime: string;
   sessionId: string;
@@ -67,7 +67,7 @@ function isNamespacedWorkItemRef(ref: string): boolean {
 
 /**
  * Provider-backed work items to render alongside local tasks (archive#583, part of
- *). Local-kind provider results are excluded — the local task
+ * epic archive#580, S3). Local-kind provider results are excluded — the local task
  * list above already renders those TaskRecords directly — and any item
  * whose (namespaced) `workItemRef` already matches a local task's
  * `workItemRef` is excluded too, so a task that has already joined its

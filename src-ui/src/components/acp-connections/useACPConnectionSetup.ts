@@ -9,7 +9,7 @@ export type ACPConnectionSetupStage =
   | 'catalog'
   | 'custom'
   /**
-   * a hub card reading "Cursor — Found, not connected — Connect this
+   * CI-R8: a hub card reading "Cursor — Found, not connected — Connect this
    * provider" reads as informational, and one click used to create a
    * persistent connection outright. A provider arriving from that card stops
    * here first, so the durable write follows an explicit yes.

@@ -352,7 +352,7 @@ describe('FilePreviewPane', () => {
 
       // The initial fallback proves this assertion traverses the production
       // React.lazy boundary before it checks the inert renderer's sanitizer.
-      // The fallback is the shared region skeleton now ('s one loading
+      // The fallback is the shared region skeleton now (SHELL-13's one loading
       // vocabulary), so it names the wait in its accessible label rather than
       // as visible copy — the boundary it proves is the same one.
       expect(

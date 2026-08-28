@@ -154,9 +154,9 @@ export interface NativeStationProfileRepository {
     exactOrigin: string,
   ): NativeProfileRequestBinding | null;
   /**
-   * Same-user local self-authorization (archive#1715, revised archive#1818
-   *): the process-selected Station's name, IF it is a local-service install
-   * otherwise `undefined`. Every other profile shape (remote, no selection
+   * Same-user local self-authorization (archive#1715, revised archive#1818):
+   * the process-selected Station's name, IF it is a local-service install
+   * — otherwise `undefined`. Every other profile shape (remote, no selection
    * selected) returns `undefined` so the caller falls straight through to
    * today's pairing-ceremony UI with no special-casing.
    *

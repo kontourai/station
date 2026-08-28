@@ -211,7 +211,7 @@ describe('AppViewContent — R3 un-stacking', () => {
   });
 
   test('wraps every route in the shared entrance, split-pane routes included', async () => {
-    // the entrance used to live on `.page`, which the eight
+    // SHELL-05: the entrance used to live on `.page`, which the eight
     // split-pane routes never render — Agents is one of them, so it had no
     // page-level entrance at all. The wrapper is the seam every route passes
     // through, which is what makes that inherited rather than re-declared.

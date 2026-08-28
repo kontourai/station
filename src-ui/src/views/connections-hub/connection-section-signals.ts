@@ -76,7 +76,7 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
 
   const needsAttention = (id: ConnectionSectionId): boolean => {
     if (id === 'knowledge') return Boolean(knowledge && !knowledge.vectorDb);
-    // `connected` is "an agent session currently holds a client",
+    // CI-R3: `connected` is "an agent session currently holds a client",
     // which is false for every tool server — including the built-ins — until
     // a turn runs, so deriving attention from it put a warn dot on a healthy
     // section forever. A probe that FAILED is the observation that means

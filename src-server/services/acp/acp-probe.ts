@@ -275,10 +275,10 @@ export const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
  * depended on: attempts are now consumed at a rate bounded by pass duration,
  * while new entries can arrive at the probe's own (now much faster) cadence,
  * so the set is only stable while `cadence >= MAX_CLEANUP_RETRY_ATTEMPTS x
- * (time per attempt)` -- and nothing enforced that. At a 50ms probe interval
- * the serialized shape stays flat at 4; without a bound, the set climbs past
- * 20 within 25 cycles --
- * each one a live orphaned engine at roughly archive#3422's measured ~300MB.
+ * (time per attempt)` -- and nothing enforced that. A/B'd against
+ * `origin/main` at a 50ms probe interval: `main` stayed flat at 4; this
+ * branch, pre-fix, climbed past 20 within 25 cycles -- each one a live
+ * orphaned engine at roughly archive#3422's measured ~300MB.
  *
  * This constant makes the bound structural instead of incidental:
  *

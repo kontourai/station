@@ -146,7 +146,7 @@ interface SplitPaneLayoutProps {
    * Every split-pane route derives its list from a query, and a failed query
    * settles with no data — which `items.length === 0` cannot tell apart from
    * a genuinely empty collection. Guidance therefore asserted "No installed
-   * skills yet" over a 500  Error is not empty: when this is
+   * skills yet" over a 500. Error is not empty: when this is
    * truthy AND `items` is empty, the list pane renders `ErrorState` with a
    * Retry instead of the empty branch below.
    *
@@ -178,8 +178,8 @@ interface SplitPaneLayoutProps {
    * Without this, a route whose collection is genuinely empty AND has a
    * stale/typed query attributed the emptiness to the query — "Nothing in
    * X matches your search" with a "Clear filter" action that fixes
-   * nothing, because there is nothing regardless of the filter (archive#4463
-   *). Defaults to `false`
+   * nothing, because there is nothing regardless of the filter (archive#4463).
+   * Defaults to `false`
    * (unset callers keep exactly their current behavior).
    */
   collectionEmpty?: boolean;
@@ -674,7 +674,7 @@ export function SplitPaneLayout({
   /**
    * Framed, the eyebrow is the page header's: `framedBreadcrumbSegments`
    * drops the trailing crumb that restates the frame's own `<h1>`
-   * unconditionally (archive#4463 — the
+   * unconditionally (archive#4463 — the shell audit
    * retired the self-referential eyebrow this used to render, e.g.
    * `SCHEDULE` above `Schedule`), leaving only real ancestors — none for a
    * top-level route, the parent for a subpage. Unframed, the old dedup
@@ -751,7 +751,7 @@ export function SplitPaneLayout({
   /**
    * Framed, the collection's title belongs to the page header — the pane
    * keeps its search and its list and stops rendering a page-level heading
-   * of its own. This is the whole of 's split-pane fork: eight routes
+   * of its own. This is the whole of SHELL-11's split-pane fork: eight routes
    * substituted a 14.7px panel title for a page header, and no route can do
    * that any more because the layout that made it possible now publishes
    * upward instead.

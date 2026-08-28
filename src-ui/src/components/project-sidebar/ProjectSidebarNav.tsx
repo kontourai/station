@@ -37,7 +37,7 @@ export function ProjectSidebarNav({
   );
   const pendingSurfaceId = usePendingRouteSurfaceId();
 
-  // `Customize` and `System` used to be mutually exclusive
+  // SHELL-15: `Customize` and `System` used to be mutually exclusive
   // accordions whose open state was DERIVED FROM THE ROUTE — exactly one
   // could be open, and on Home neither was, so every one of the nine
   // management destinations cost two clicks from Home and every cross-group
@@ -59,7 +59,7 @@ export function ProjectSidebarNav({
   const renderRow = (surface: SurfaceDefinition) => {
     const label = surface.label();
     const isActive = activeSurface?.id === surface.id;
-    // the route chunk takes ~1.4 s to arrive on a cold surface, and
+    // SHELL-05: the route chunk takes ~1.4 s to arrive on a cold surface, and
     // the row the user clicked said nothing for all of it. `pendingSurfaceId`
     // is the suspended route outlet itself, not a timer started at click, and
     // it is resolved through the same `getSurfaceForView` that decides which

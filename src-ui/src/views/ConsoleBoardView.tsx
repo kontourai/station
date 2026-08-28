@@ -13,7 +13,7 @@ import { BoardWorkspacePane } from './board/BoardWorkspacePane';
 /**
  * The `project-session-board` route (and the `session-board` layout
  * adapter's body): the standalone placement of the Board Workspace Pane
- * (archive#4142, following / route-as-placement shape for
+ * (archive#4142, following the route-as-placement shape for
  * `/` and `/activity`).
  *
  * A route is a placement, not an identity (`docs/design/pane-or-shell.md`):

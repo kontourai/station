@@ -14,7 +14,7 @@
  *
  * Keyboard semantics follow the native elements the roles imitate (this is
  * what screen reader users' muscle memory expects, per the ARIA authoring
- * practices —):
+ * practices):
  * - `role="button"`: Enter activates on keydown; Space activates on KEYUP,
  *   with the page-scroll default suppressed on keydown — native buttons
  *   depress on keydown and fire on keyup, and keyup also cannot auto-repeat,
@@ -61,7 +61,7 @@ export interface ActivatableProps {
 
 /**
  * The activation event, whichever way the user got here. Handlers that only
- * act need not declare it — a ` => void` is assignable — but handlers that
+ * act need not declare it — a `() => void` is assignable — but handlers that
  * must `stopPropagation` do, and they must get it on BOTH paths. The chat
  * dock's project row is the case that forced this: the row is also the dock's
  * click-to-toggle surface, so an activation that does not stop propagation
@@ -81,7 +81,7 @@ export type InertProps = Record<string, never>;
 
 /**
  * Which elements have a LIVE, unprevented Space press on them — press
- * provenance for the keyup activation below
+ * provenance for the keyup activation below.
  * Without it, a bare keyup activates: press Space on control A, Tab away
  * while holding, release over control B, and B fires with no press of its
  * own; a keydown a nested handler prevented would likewise still activate on

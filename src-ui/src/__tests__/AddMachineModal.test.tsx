@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * The one "Add computer" entry point and its three branches (:
+ * The one "Add computer" entry point and its three branches (audit CI-R9:
  * three differently-shaped ways to add a machine within 300px, one of which
  * bypassed the chooser whose copy exists to explain the difference).
  */

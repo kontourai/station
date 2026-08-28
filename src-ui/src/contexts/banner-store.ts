@@ -211,7 +211,7 @@ export function useBanner() {
 }
 
 /**
- * Durable dismissals (: "dismissing it does not clear the notice —
+ * Durable dismissals (SHELL-10: "dismissing it does not clear the notice —
  * after a reload the dismissed banner is back").
  *
  * ONLY banners that carry an `occurrence` are persisted, and that is the

@@ -13,7 +13,9 @@
 
 ## Issue references
 
-`archive#NNNN` — and any `station#NNNN` with a number below the reseeded backlog's start — refers to [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 backlog and history. Those discussions remain readable there; this repository's own issues start fresh. Write new references as plain `#NNNN` for this repo or `archive#NNNN` for the archive.
+`archive#NNNN` — and any `station#NNNN` or bare `#NNNN` below #550, the reseeded backlog's start — refers to [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 backlog and history. Those discussions remain readable there; this repository's own issues start fresh. Write new references as plain `#NNNN` for this repo or `archive#NNNN` for the archive.
+
+Bare `#NNNN` references in areas the sweep has not touched (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`) predate the reset and refer to the archive as well.
 
 ## Read only the route you need
 

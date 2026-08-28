@@ -135,7 +135,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
 
       // The list pane's own listEmptyTitle is the ONE place this is
       // said — the detail panel's compact Empty is suppressed entirely
-      // (: llmEmbeddingProviders.length === 0).
+      // (llmEmbeddingProviders.length === 0).
       expect(screen.getAllByText('No model connections yet')).toHaveLength(1);
       expect(
         screen.queryByText('Add a model connection to power chats and agents.'),
@@ -289,7 +289,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     ]);
   });
 
-  // 6- — the list rail carried no readiness at all (a green dot meaning
+  // 6-OPS-27 — the list rail carried no readiness at all (a green dot meaning
   // `enabled`) while the hub card for the same connection asserted "Ready".
   // One resolver feeds both, so they cannot disagree about one connection.
   test('the provider list carries the same readiness the hub card does', () => {
@@ -320,7 +320,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(screen.getByText(/Saved — not verified · LLM/)).toBeTruthy();
   });
 
-  // agent delete has always opened a confirm modal; provider delete
+  // RT-17 — agent delete has always opened a confirm modal; provider delete
   // was a single click that removed the connection and its saved API key from
   // disk with no confirmation of any kind.
   test('provider delete confirms before removing the connection', () => {

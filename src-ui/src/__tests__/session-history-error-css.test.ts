@@ -1,9 +1,9 @@
 /**
  * @vitest-environment node
  *
- * archive#3427 2. Nothing in this repo's test suite rendered
- * `ChatDockBody`'s history-failure notice before this file, so an
- * that deleted the whole
+ * archive#3427. Nothing in this repo's test suite rendered
+ * `ChatDockBody`'s history-failure notice before this file, so a
+ * fault injection that deleted the whole
  * `.session-history-error` CSS block left 13 files / 172 tests passing — the
  * bundle ceiling cannot catch it either, since a ceiling is a maximum and
  * deleting CSS only lowers the measurement. These are CSS-shaped assertions
@@ -36,7 +36,7 @@ describe('the chat dock history-failure notice (station#3427)', () => {
   it('is a flex child, defensively floored to shrink below its content width', () => {
     const [rule] = ruleBodies(read('index.css'), '.session-history-error');
     expect(rule, 'missing .session-history-error rule').toBeDefined();
-    // Review, : measured with `min-width: auto` forced, every
+    // Measured with `min-width: auto` forced, every
     // geometry metric was identical — `.chat-dock__body` is a column flex
     // container, so this notice's auto min-size floor binds min-height, not
     // min-width, and `auto` already computes to 0 on this axis. The rule is
@@ -59,7 +59,7 @@ describe('the chat dock history-failure notice (station#3427)', () => {
     // directly above the composer, so an unbounded reason must not push the
     // composer off a 390x844 screen, and the whole recorded cause must stay
     // reachable rather than hidden.
-    // Review, : pin the VALUE, not just the property's
+    // Pin the VALUE, not just the property's
     // presence — an injection widening `max-height: 5.6em` to `560em` (the
     // rule still present, `overflow-y: auto` still present) passed every
     // prior assertion here while the notice grew to 2548px and pushed the
@@ -101,7 +101,7 @@ describe('the chat dock history-failure notice (station#3427)', () => {
   });
 
   it('places .session-history-error__retry after .button in source order, so its override actually wins', () => {
-    // Review, : both selectors carry (0,1,0) specificity, so
+    // Both selectors carry (0,1,0) specificity, so
     // whichever rule is later in source order wins. This rule shipped ~1800
     // lines BEFORE `.button {}` once, which made the whole override inert —
     // `.button`'s own 10px/16px sizing rendered instead. Measured on the

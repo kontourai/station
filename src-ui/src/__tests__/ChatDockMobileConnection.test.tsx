@@ -215,7 +215,7 @@ describe('ChatDockMobileConnection', () => {
   });
 
   /**
-   * archive#4512 (-4) — WCAG 2.5.3 (Label in Name): the
+   * archive#4512 — WCAG 2.5.3 (Label in Name): the
    * accessible name must contain the visible label text. HeaderActions
    * (the toolbar chip) already pins this, and it holds there by
    * CONSTRUCTION — the chip's visible label and its accessible name both

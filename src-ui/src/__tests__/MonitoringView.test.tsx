@@ -90,7 +90,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       },
       isLoading: false,
     }),
-    // the view's Active/Running numbers are derived from this
+    // audit 6-OPS-26: the view's Active/Running numbers are derived from this
     // read-model — the same one the chat dock reads — so it must be stubbed
     // here, not left to a QueryClient this shell test does not provide.
     useOrchestrationSessionsQuery: () => orchestrationSessionsFixture,
@@ -204,7 +204,7 @@ describe('MonitoringView shell port', () => {
     orchestrationSessionsFixture.refetch = vi.fn();
   });
 
-  // review : `data` is undefined while the read is
+  // audit 6-OPS-26: `data` is undefined while the read is
   // pending and while it failed; defaulting that to `[]` reported an
   // authoritative `0 / 0` — the same false-zero discrepancy in a new costume.
   test('reports no count at all while the session read is pending', () => {
@@ -236,7 +236,7 @@ describe('MonitoringView shell port', () => {
     expect(orchestrationSessionsFixture.refetch).toHaveBeenCalledTimes(1);
   });
 
-  // Monitoring reported `Active: 0 / Running: 0` while a real
+  // audit 6-OPS-26: Monitoring reported `Active: 0 / Running: 0` while a real
   // Claude Code turn was visibly running in the chat dock, because its
   // numbers came from the monitoring event store's own agent fold rather than
   // from the session projection the dock reads. Same projection now.

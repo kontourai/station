@@ -103,7 +103,7 @@ const WATCH_TEST_TIMEOUT_MS = 40_000;
 
 /**
  * Regression guard for the chokidar v4 glob removal: watching
- * `agents/&archive#42;/agent.json` resolves to watching *nothing* — `getWatched()` returns
+ * `agents/&#42;/agent.json` resolves to watching *nothing* — `getWatched()` returns
  * `{}` and no event ever fires — which is indistinguishable from a quiet
  * system. The two halves of that are asserted separately below, because only
  * one of them is within the test's power to guarantee.

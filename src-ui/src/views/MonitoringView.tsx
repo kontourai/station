@@ -37,7 +37,7 @@ function MonitoringView() {
     readError,
     retryRead,
   } = useMonitoring();
-  // Monitoring's two summary numbers now come from the SAME
+  // audit 6-OPS-26: Monitoring's two summary numbers now come from the SAME
   // orchestration session projection the chat dock and Developer -> Archive
   // read, rather than from the monitoring event store's own agent fold — that
   // fold reported `Active: 0 / Running: 0` while a real Claude Code turn was
@@ -47,7 +47,7 @@ function MonitoringView() {
     status: orchestrationSessionsStatus,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
-  // `data` is `undefined` while the read is
+  // audit 6-OPS-26: `data` is `undefined` while the read is
   // pending and while it has failed, and defaulting that to `[]` reported an
   // authoritative `0 / 0` — a transient (and, on a failed read, permanent)
   // false zero, which is the same discrepancy in a new costume. Counts are

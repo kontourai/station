@@ -20,7 +20,7 @@ describe('Activity rename sweep', () => {
   test('the surface is labeled Activity, on the sidebar and on the palette', () => {
     expect(surface).not.toBeNull();
     expect(surface!.label()).toBe('Activity');
-    //  / lane 7's open question, decided yes: Home's lanes were the
+    // SHELL-08 / lane 7's open question, decided yes: Home's lanes were the
     // only advertised way in, and Activity was one of five surfaces that
     // resolved but appeared in no navigation at all. It now leads the
     // sidebar's flat `primary` band with Agents and Connections.

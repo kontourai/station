@@ -329,7 +329,7 @@ function GateRouteBackDetail({ item }: { item: GateRouteBackAttentionItem }) {
 /**
  * Shared affordance for `gate-route-back` and `gate-blocked`: a deep link
  * into the owning Flow run console plus an optional re-evaluate, which posts
- * to the same `POST.../runs/:runId/evaluate` route the console itself uses
+ * to the same `POST .../runs/:runId/evaluate` route the console itself uses
  * — resolving the gate here produces the identical run-history trail as
  * resolving it in place.
  */
@@ -369,7 +369,7 @@ function GateReEvaluateAction({
 /**
  * `gate-exception`: the gate's retry budget is exhausted, so re-evaluating
  * cannot resolve it — a human exception decision is genuinely pending. The
- * dialog posts to the EXISTING `POST.../runs/:runId/exception` endpoint
+ * dialog posts to the EXISTING `POST .../runs/:runId/exception` endpoint
  * (receipt parity with accepting the exception from the run console).
  */
 function GateExceptionAction({ item }: { item: GateExceptionAttentionItem }) {

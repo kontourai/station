@@ -399,7 +399,7 @@ export function JobDetail({
       {viewIdx !== null && (
         // Was a hand-rolled overlay: no focus trap, no Escape, no focus
         // restoration — a dialog in appearance only. On the shared `Dialog` it
-        // gets all three, plus the one dialog chrome.
+        // gets all three, plus the one dialog chrome (SHELL-02).
         <Dialog
           eyebrow="Schedule"
           title={`${name} — Run Output`}

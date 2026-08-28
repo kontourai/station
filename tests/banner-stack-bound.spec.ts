@@ -492,9 +492,9 @@ async function wheelScroll(page: Page, deltaY: number) {
  * from the stack's own box (as this used to be, alone) moves down WITH the
  * box, so a defect that grows the box (e.g. stray padding) grows the "safe"
  * point right along with it and the probe can never observe the one failure
- * mode it exists to guard — e.g. `padding-bottom: 320px` on the stack
- * produces a 496px box with 277px of empty, click-absorbing space below
- * the content, and the box-derived probe still lands on `underneath`.
+ * mode it exists to guard — proven live: `padding-bottom: 320px` on the stack
+ * produced a 496px box with 277px of empty, click-absorbing space below
+ * the content, and the box-derived probe still landed on `underneath`, `3 passed`.
  */
 async function pointBelowStack(
   page: Page,

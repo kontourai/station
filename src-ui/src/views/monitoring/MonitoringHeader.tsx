@@ -9,7 +9,7 @@ export function MonitoringHeader({
 }: {
   /**
    * Derived from the orchestration session read-model — the same projection
-   * the chat dock and Developer -> Archive read. These used
+   * the chat dock and Developer -> Archive read (audit 6-OPS-26). These used
    * to be `stats.summary.activeAgents/runningAgents`, folded from the
    * monitoring event store, which reported 0/0 while a real turn was running
    * in the dock.
@@ -37,7 +37,7 @@ export function MonitoringHeader({
       }
     >
       <div className="monitoring-summary">
-        {/* A number here is a claim about this Station.
+        {/* audit 6-OPS-26: a number here is a claim about this Station.
             Until the read succeeds there is no number to make — `—` while it
             is in flight, and a retry when it failed, rather than a `0` that
             reads as "nothing is running". */}

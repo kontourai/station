@@ -129,7 +129,7 @@ describe('ACPConnectionsView', () => {
     expect(screen.getByRole('button', { name: /Kiro CLI/i })).toBeTruthy();
   });
 
-  // the hub card that routes here reads as a status ("Found, not
+  // CI-R8 — the hub card that routes here reads as a status ("Found, not
   // connected"), and one click used to write a persistent connection and mint
   // an agent with nothing asked and nothing said.
   it('a routed detected provider confirms before creating anything', async () => {

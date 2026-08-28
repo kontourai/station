@@ -292,7 +292,7 @@ export function ACPConnectionCatalogStage({
 }
 
 /**
- * / — what "Connect this provider" actually does, before it does
+ * CI-R8 / RT-11 — what "Connect this provider" actually does, before it does
  * it: a persistent connection is written to this Station's config, and the
  * engine also gains an agent of its own (`materializeEngineAgent`), which the
  * old one-click path never mentioned anywhere.
@@ -386,7 +386,7 @@ export function ACPConnectionSetupStatus({
   label?: string;
   error: string | null;
   /**
-   * the probe's own most recent failure, when it has one. "This
+   * CI-R8: the probe's own most recent failure, when it has one. "This
    * provider needs more setup before it can run work" named nothing and both
    * buttons walked away from the problem; this is the observation that says
    * what actually happened.
