@@ -328,6 +328,8 @@ describe('markdown regeneration', () => {
     expect(markdown).toMatch(/without authentication/);
     // The site controls its transport and presentation, while the ledger
     // remains the source-generated input.
+    expect(markdown).toContain('archive#4572');
+    expect(markdown).not.toContain('station#4572');
     expect(markdown).toMatch(/site PR decides/);
     expect(markdown).toMatch(/reads that URL directly or copies the JSON/);
     for (const channel of DEPLOY_LEDGER_CHANNELS) {

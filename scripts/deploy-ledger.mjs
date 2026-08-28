@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Deploy ledger appender (station#4572).
+ * Deploy ledger appender (archive#4572).
  *
  * Appends one entry to docs/reference/deploy-ledger.json (array, newest
  * first) and regenerates docs/reference/deploy-ledger.md from the JSON, so
@@ -14,7 +14,7 @@
  *   (`steps.decide.outputs.head_sha` in nightly.yml, `needs.*.outputs.sha` in
  *   the release flows). This script never runs `git rev-parse` to "find" a
  *   SHA: a gate or ledger on a different SHA than the one that shipped is a
- *   lie, and that mistake is exactly what station#4572 closes.
+ *   lie, and that mistake is exactly what archive#4572 closes.
  * - Every field is validated (timestamp not in the future beyond clock skew,
  *   channel from the closed list, version over a strict charset, sha 40
  *   lowercase hex, https run URL, non-empty artifacts and gate sentence);
@@ -275,7 +275,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
   const lines = [
     '# Deploy ledger',
     '',
-    'Every ship this repository makes, recorded by the workflow that shipped it — the answer to "on this date, this version was deployed; how out of date am I?" (station#4572).',
+    'Every ship this repository makes, recorded by the workflow that shipped it — the answer to "on this date, this version was deployed; how out of date am I?" (archive#4572).',
     '',
     '## Machine-readable source of truth',
     '',
@@ -296,7 +296,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
     '',
     '### Site consumption',
     '',
-    'This file decides nothing about how `station.kontourai.io` will read the ledger (station#4572 site follow-up). What is true today: the in-repo path and schema above are the source of truth, every publish appends exactly one entry per shipped surface and commits it back to `main`, and the public raw JSON URL above is available to consumers without authentication. The site PR decides whether it reads that URL directly or copies the JSON, along with caching, refresh, and presentation. Because `main` moves, consumers should retain each entry’s `sha` and `workflowRunUrl` as evidence rather than treating a later fetch as an immutable release receipt.',
+    'This file decides nothing about how `station.kontourai.io` will read the ledger (archive#4572 site follow-up). What is true today: the in-repo path and schema above are the source of truth, every publish appends exactly one entry per shipped surface and commits it back to `main`, and the public raw JSON URL above is available to consumers without authentication. The site PR decides whether it reads that URL directly or copies the JSON, along with caching, refresh, and presentation. Because `main` moves, consumers should retain each entry’s `sha` and `workflowRunUrl` as evidence rather than treating a later fetch as an immutable release receipt.',
     '',
     '## Ledger',
     '',
