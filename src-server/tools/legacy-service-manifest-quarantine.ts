@@ -33,16 +33,14 @@ import {
   reconcileStaleDesktopSidecars,
   withInstanceRegistryMutationLock,
 } from '@kontourai/station-shared/instance-registry';
-import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { birthProvesReuse } from '@kontourai/station-shared/process-identity';
 import {
   admitStationRuntimeHome,
   resolveStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import {
-  acquireStationHomeMaintenanceLease,
-  StationHomeActiveError,
-  StationHomeLifecycleUnavailableError,
+  acquireStationHomeMaintenanceLeaseAsync,
+  type StationHomeAsyncMaintenanceLease,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { withProfileStoreLock } from '../../packages/cli/src/commands/profile-store.js';
 
@@ -855,291 +853,321 @@ function ensureQuarantineDirectory(stationHome: string): {
  * `refused`; unexpected I/O errors throw and are also fail-closed at the
  * bridge protocol boundary.
  */
-export function quarantineLegacyServiceManifest(
+interface PreparedQuarantineTransaction {
+  readonly stationRoot: string;
+  readonly stationHome: string;
+  readonly admittedHome: Stats;
+  readonly hooks: LegacyServiceManifestQuarantineHooks;
+}
+
+function prepareQuarantineTransaction(
   requestedHome: string,
   requestedRoot: string,
   hooks: LegacyServiceManifestQuarantineHooks = {},
-): LegacyServiceManifestQuarantineResult {
-  try {
-    // Resolve only from the supplied shared-root authority; do not consult cwd
-    // or STATION_HOME while determining the global profile location.
-    const stationRoot = resolveStationRoot({ STATION_ROOT: requestedRoot });
-    if (stationRoot !== resolve(requestedRoot)) refuse();
-    const stationHome = admitStationRuntimeHome(requestedHome, {
-      STATION_ROOT: stationRoot,
-    } as NodeJS.ProcessEnv);
-    const admittedHome = trustedDirectory(stationHome);
-    // Admission and the private-directory check establish that this selected
-    // home is safe before asking the shared lifecycle authority to coordinate
-    // it. The lease then spans every classification and publication step.
-    let lease: ReturnType<typeof acquireStationHomeMaintenanceLease>;
-    try {
-      lease = acquireStationHomeMaintenanceLease(stationHome, {
-        acquireMutationLock: (path) =>
-          acquireFileMutationLock(path, {
-            timeoutMs: PREPARATION_LOCK_TIMEOUT_MS,
-          }),
-        // A prior desktop generation can leave its registry claim behind
-        // after its sidecar has exited. Reap only a claim whose PID/birth
-        // identity proves that prior owner is gone, while maintenance still
-        // excludes a new runtime. This preserves the required authority order:
-        // maintenance -> registry -> profile. In particular, do not use the
-        // broader ephemeral reconciler here: runtime preparation owns neither
-        // worktree nor inline records.
-        afterMaintenanceAcquired: () => {
-          reconcileStaleDesktopSidecars(stationHome, {
-            processProbe: hooks.registryProcessProbe,
-            mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
-          });
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof StationHomeActiveError ||
-        error instanceof StationHomeLifecycleUnavailableError
-      ) {
-        return { kind: 'refused' };
-      }
-      return { kind: 'refused' };
-    }
-    try {
-      // Every recovery write (including target-only receipt publication and
-      // dual-name unlink) takes the same authority order.  Acquiring registry
-      // before profile is deliberate: it is the bounded lock beneath native
-      // preparation, and both are released before maintenance is released.
-      return withInstanceRegistryMutationLock(
-        stationHome,
-        () =>
-          withProfileStoreLock(() => {
-            const serviceDirectory = join(stationHome, 'service');
-            let serviceInfo: Stats;
-            try {
-              serviceInfo = lstatSync(serviceDirectory);
-            } catch (error) {
-              if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-                const evidence = inspectQuarantineEvidence(stationHome);
-                if (evidence)
-                  return recoverMovedManifest(
-                    stationHome,
-                    stationRoot,
-                    evidence,
-                    hooks.registryProcessProbe,
-                  );
-                return { kind: 'absent' };
-              }
-              refuse();
-            }
-            if (
-              !serviceInfo!.isDirectory() ||
-              serviceInfo!.isSymbolicLink() ||
-              !ownerOnly(serviceInfo!)
-            )
-              refuse();
+): PreparedQuarantineTransaction {
+  // Resolve only from the supplied shared-root authority; do not consult cwd
+  // or STATION_HOME while determining the global profile location.
+  const stationRoot = resolveStationRoot({ STATION_ROOT: requestedRoot });
+  if (stationRoot !== resolve(requestedRoot)) refuse();
+  const stationHome = admitStationRuntimeHome(requestedHome, {
+    STATION_ROOT: stationRoot,
+  } as NodeJS.ProcessEnv);
+  return {
+    stationRoot,
+    stationHome,
+    admittedHome: trustedDirectory(stationHome),
+    hooks,
+  };
+}
 
-            // Capture the home admitted before coordination and the original
-            // service parent before a prepared receipt or any hook can run.
-            // Every later directory check compares against these identities;
-            // it must never establish a new parent baseline after a swap.
-            const originalParents = {
-              home: admittedHome,
-              service: serviceInfo!,
-            };
-
-            const sourcePath = join(stationHome, LEGACY_SOURCE_RELATIVE_PATH);
-            const source = readTrustedFile(sourcePath, MAX_MANIFEST_BYTES);
-            const evidence = inspectQuarantineEvidence(stationHome, source);
-            if (!source) {
-              return evidence
-                ? recoverMovedManifest(
-                    stationHome,
-                    stationRoot,
-                    evidence,
-                    hooks.registryProcessProbe,
-                  )
-                : { kind: 'absent' };
-            }
-            if (evidence?.target) {
-              if (
-                evidence.committed ||
-                source.digest !== evidence.target.digest ||
-                !sameIdentity(source, evidence.target) ||
-                source.nlink !== 2 ||
-                evidence.target.nlink !== 2
-              )
-                return { kind: 'refused' };
-              // A cross-directory rename replay can expose both names after crash.
-              // The target directory is acknowledged first, then the source link is
-              // removed; only the exact shared inode is eligible.
-              fsyncDirectorySync(evidence.directory);
-              assertNoCurrentLegacyAuthority(
-                stationRoot,
-                stationHome,
-                hooks.registryProcessProbe,
-              );
-              rmSync(sourcePath);
-              fsyncDirectorySync(serviceDirectory);
-              const target = readTrustedFile(
-                join(stationHome, quarantinePathFor(evidence.receipt.digest)),
-                MAX_MANIFEST_BYTES,
-              );
-              if (
-                target?.nlink !== 1 ||
-                !sameIdentity(target, evidence.receipt.source)
-              )
-                refuse();
+/** Runs only after the caller has captured and admitted the runtime home. */
+function runQuarantineTransaction({
+  stationRoot,
+  stationHome,
+  admittedHome,
+  hooks,
+}: PreparedQuarantineTransaction): LegacyServiceManifestQuarantineResult {
+  // The async admission path captured this identity before waiting for the
+  // maintenance lock. A pathname replacement while waiting must refuse before
+  // the transaction classifies evidence or creates its quarantine directory.
+  if (!sameIdentity(trustedDirectory(stationHome), admittedHome)) refuse();
+  // Every recovery write (including target-only receipt publication and
+  // dual-name unlink) takes the same authority order. Acquiring registry
+  // before profile is deliberate: it is the bounded lock beneath native
+  // preparation, and both are released before maintenance is released.
+  return withInstanceRegistryMutationLock(
+    stationHome,
+    () =>
+      withProfileStoreLock(() => {
+        const serviceDirectory = join(stationHome, 'service');
+        let serviceInfo: Stats;
+        try {
+          serviceInfo = lstatSync(serviceDirectory);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            const evidence = inspectQuarantineEvidence(stationHome);
+            if (evidence)
               return recoverMovedManifest(
                 stationHome,
                 stationRoot,
-                {
-                  ...evidence,
-                  target,
-                },
+                evidence,
                 hooks.registryProcessProbe,
               );
-            }
-            if (source.nlink !== 1) refuse();
-            if (!isExactLegacyManifest(parseJson(source.raw), stationRoot))
+            return { kind: 'absent' };
+          }
+          refuse();
+        }
+        if (
+          !serviceInfo!.isDirectory() ||
+          serviceInfo!.isSymbolicLink() ||
+          !ownerOnly(serviceInfo!)
+        )
+          refuse();
+
+        // Capture the home admitted before coordination and the original
+        // service parent before a prepared receipt or any hook can run.
+        // Every later directory check compares against these identities;
+        // it must never establish a new parent baseline after a swap.
+        const originalParents = {
+          home: admittedHome,
+          service: serviceInfo!,
+        };
+
+        const sourcePath = join(stationHome, LEGACY_SOURCE_RELATIVE_PATH);
+        const source = readTrustedFile(sourcePath, MAX_MANIFEST_BYTES);
+        const evidence = inspectQuarantineEvidence(stationHome, source);
+        if (!source) {
+          return evidence
+            ? recoverMovedManifest(
+                stationHome,
+                stationRoot,
+                evidence,
+                hooks.registryProcessProbe,
+              )
+            : { kind: 'absent' };
+        }
+        if (evidence?.target) {
+          if (
+            evidence.committed ||
+            source.digest !== evidence.target.digest ||
+            !sameIdentity(source, evidence.target) ||
+            source.nlink !== 2 ||
+            evidence.target.nlink !== 2
+          )
+            return { kind: 'refused' };
+          // A cross-directory rename replay can expose both names after crash.
+          // The target directory is acknowledged first, then the source link is
+          // removed; only the exact shared inode is eligible.
+          fsyncDirectorySync(evidence.directory);
+          assertNoCurrentLegacyAuthority(
+            stationRoot,
+            stationHome,
+            hooks.registryProcessProbe,
+          );
+          rmSync(sourcePath);
+          fsyncDirectorySync(serviceDirectory);
+          const target = readTrustedFile(
+            join(stationHome, quarantinePathFor(evidence.receipt.digest)),
+            MAX_MANIFEST_BYTES,
+          );
+          if (
+            target?.nlink !== 1 ||
+            !sameIdentity(target, evidence.receipt.source)
+          )
+            refuse();
+          return recoverMovedManifest(
+            stationHome,
+            stationRoot,
+            {
+              ...evidence,
+              target,
+            },
+            hooks.registryProcessProbe,
+          );
+        }
+        if (source.nlink !== 1) refuse();
+        if (!isExactLegacyManifest(parseJson(source.raw), stationRoot))
+          refuse();
+        // A durable prepared event with the original source still present is
+        // the one resumable pre-rename state. Every other evidence/source pair
+        // is a second variant or conflict and refuses.
+        if (evidence && !sourceMatchesPrepared(evidence, source))
+          return { kind: 'refused' };
+        const lockedEvidence = inspectQuarantineEvidence(stationHome);
+        if (
+          (!evidence && lockedEvidence) ||
+          (evidence &&
+            (!lockedEvidence ||
+              !sourceMatchesPrepared(lockedEvidence, source) ||
+              !sameReceipt(lockedEvidence.receipt, evidence.receipt)))
+        ) {
+          return { kind: 'refused' };
+        }
+        assertNoCurrentLegacyAuthority(
+          stationRoot,
+          stationHome,
+          hooks.registryProcessProbe,
+        );
+        const quarantine = ensureQuarantineDirectory(stationHome);
+        const quarantineDirectory = quarantine.path;
+        const parents: QuarantineDirectoryBaseline = {
+          ...originalParents,
+          quarantine: quarantine.identity,
+        };
+        assertDirectoriesUnchanged(
+          stationHome,
+          serviceDirectory,
+          quarantineDirectory,
+          parents,
+        );
+        const targetPath = join(stationHome, quarantinePathFor(source.digest));
+        const preparedPath = join(stationHome, receiptPathFor(source.digest));
+        if (
+          readTrustedFile(targetPath, MAX_MANIFEST_BYTES) !== undefined ||
+          (readReceipt(preparedPath) !== undefined && !lockedEvidence)
+        ) {
+          return { kind: 'refused' };
+        }
+        if (!lockedEvidence) {
+          writeReceipt(
+            preparedPath,
+            receiptFor('prepared', source),
+            quarantineDirectory,
+            {
+              beforeFsync: hooks.beforePreparedFsync,
+              afterFsyncBeforeLink: hooks.afterPreparedFsyncBeforeLink,
+              afterLinkBeforeDirectoryFsync:
+                hooks.afterPreparedLinkBeforeDirectoryFsync,
+            },
+          );
+        }
+        hooks.afterPreparedBeforeRename?.();
+
+        hooks.beforeRename?.();
+        // Cooperating writers are blocked by the locks above. Recheck the
+        // policy facts as well so a non-cooperating direct mutation made
+        // by a failpoint cannot authorize the record behind our back.
+        assertNoCurrentLegacyAuthority(
+          stationRoot,
+          stationHome,
+          hooks.registryProcessProbe,
+        );
+        assertSourceStillObserved(sourcePath, source);
+        if (readTrustedFile(targetPath, MAX_MANIFEST_BYTES) !== undefined)
+          return { kind: 'refused' };
+        // Recheck after the descriptor/path observation: an identical
+        // byte replacement must not inherit the prepared inode receipt.
+        assertDirectoriesUnchanged(
+          stationHome,
+          serviceDirectory,
+          quarantineDirectory,
+          parents,
+        );
+        assertSourceStillObserved(sourcePath, source);
+        hooks.afterFinalObservationBeforeRename?.();
+        assertDirectoriesUnchanged(
+          stationHome,
+          serviceDirectory,
+          quarantineDirectory,
+          parents,
+        );
+        assertSourceStillObserved(sourcePath, source);
+        renameSync(sourcePath, targetPath);
+        assertDirectoriesUnchanged(
+          stationHome,
+          serviceDirectory,
+          quarantineDirectory,
+          parents,
+        );
+        if (!targetMatchesSource(targetPath, source)) refuse();
+        hooks.afterRenameBeforeSourceFsync?.();
+        fsyncDirectorySync(quarantineDirectory);
+        hooks.afterSourceFsyncBeforeTargetFsync?.();
+        fsyncDirectorySync(serviceDirectory);
+        if (!targetMatchesSource(targetPath, source)) refuse();
+
+        hooks.afterRenameBeforeCommit?.();
+        assertTargetStillPrepared(stationHome, source);
+        // A direct non-cooperating writer can still change either source
+        // while the durable move is in progress.  Do not publish the
+        // commit marker unless the current profile and birth-live registry
+        // still deny ownership at the exact commit boundary.
+        assertNoCurrentLegacyAuthority(
+          stationRoot,
+          stationHome,
+          hooks.registryProcessProbe,
+        );
+        writeReceipt(
+          join(stationHome, committedPathFor(source.digest)),
+          receiptFor('committed', source),
+          quarantineDirectory,
+          {
+            afterFsyncBeforeLink: () => {
+              hooks.afterCommittedFsyncBeforeLink?.();
+              assertTargetStillPrepared(stationHome, source);
+            },
+            afterLinkBeforeDirectoryFsync: () => {
+              hooks.afterCommittedLinkBeforeDirectoryFsync?.();
+              assertTargetStillPrepared(stationHome, source);
+            },
+          },
+        );
+        // `writeReceipt` has removed its temporary and synced the final
+        // committed publication. Only an exact one-link target may report
+        // the new effect.
+        assertTargetStillPrepared(stationHome, source);
+        return { kind: 'new' };
+      }, stationRoot),
+    { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
+  );
+}
+
+export async function quarantineLegacyServiceManifest(
+  requestedHome: string,
+  requestedRoot: string,
+  hooks: LegacyServiceManifestQuarantineHooks = {},
+): Promise<LegacyServiceManifestQuarantineResult> {
+  try {
+    // Admission and identity are captured before the asynchronous wait. The
+    // transaction receives exactly this baseline and never re-admits a swapped
+    // directory after it owns maintenance.
+    const transaction = prepareQuarantineTransaction(
+      requestedHome,
+      requestedRoot,
+      hooks,
+    );
+    let lease: StationHomeAsyncMaintenanceLease;
+    try {
+      lease = await acquireStationHomeMaintenanceLeaseAsync(
+        transaction.stationHome,
+        {
+          mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
+          afterMaintenanceAcquired: () => {
+            // This is the first post-acquisition operation. The home was
+            // admitted before awaiting the mutation lock, so a pathname
+            // replacement must refuse before stale-sidecar reconciliation can
+            // inspect or mutate the replacement registry.
+            if (
+              !sameIdentity(
+                trustedDirectory(transaction.stationHome),
+                transaction.admittedHome,
+              )
+            )
               refuse();
-            // A durable prepared event with the original source still present is
-            // the one resumable pre-rename state. Every other evidence/source pair
-            // is a second variant or conflict and refuses.
-            if (evidence && !sourceMatchesPrepared(evidence, source))
-              return { kind: 'refused' };
-            const lockedEvidence = inspectQuarantineEvidence(stationHome);
-            if (
-              (!evidence && lockedEvidence) ||
-              (evidence &&
-                (!lockedEvidence ||
-                  !sourceMatchesPrepared(lockedEvidence, source) ||
-                  !sameReceipt(lockedEvidence.receipt, evidence.receipt)))
-            ) {
-              return { kind: 'refused' };
-            }
-            assertNoCurrentLegacyAuthority(
-              stationRoot,
-              stationHome,
-              hooks.registryProcessProbe,
-            );
-            const quarantine = ensureQuarantineDirectory(stationHome);
-            const quarantineDirectory = quarantine.path;
-            const parents: QuarantineDirectoryBaseline = {
-              ...originalParents,
-              quarantine: quarantine.identity,
-            };
-            assertDirectoriesUnchanged(
-              stationHome,
-              serviceDirectory,
-              quarantineDirectory,
-              parents,
-            );
-            const targetPath = join(
-              stationHome,
-              quarantinePathFor(source.digest),
-            );
-            const preparedPath = join(
-              stationHome,
-              receiptPathFor(source.digest),
-            );
-            if (
-              readTrustedFile(targetPath, MAX_MANIFEST_BYTES) !== undefined ||
-              (readReceipt(preparedPath) !== undefined && !lockedEvidence)
-            ) {
-              return { kind: 'refused' };
-            }
-            if (!lockedEvidence) {
-              writeReceipt(
-                preparedPath,
-                receiptFor('prepared', source),
-                quarantineDirectory,
-                {
-                  beforeFsync: hooks.beforePreparedFsync,
-                  afterFsyncBeforeLink: hooks.afterPreparedFsyncBeforeLink,
-                  afterLinkBeforeDirectoryFsync:
-                    hooks.afterPreparedLinkBeforeDirectoryFsync,
-                },
-              );
-            }
-            hooks.afterPreparedBeforeRename?.();
-
-            hooks.beforeRename?.();
-            // Cooperating writers are blocked by the locks above. Recheck the
-            // policy facts as well so a non-cooperating direct mutation made
-            // by a failpoint cannot authorize the record behind our back.
-            assertNoCurrentLegacyAuthority(
-              stationRoot,
-              stationHome,
-              hooks.registryProcessProbe,
-            );
-            assertSourceStillObserved(sourcePath, source);
-            if (readTrustedFile(targetPath, MAX_MANIFEST_BYTES) !== undefined)
-              return { kind: 'refused' };
-            // Recheck after the descriptor/path observation: an identical
-            // byte replacement must not inherit the prepared inode receipt.
-            assertDirectoriesUnchanged(
-              stationHome,
-              serviceDirectory,
-              quarantineDirectory,
-              parents,
-            );
-            assertSourceStillObserved(sourcePath, source);
-            hooks.afterFinalObservationBeforeRename?.();
-            assertDirectoriesUnchanged(
-              stationHome,
-              serviceDirectory,
-              quarantineDirectory,
-              parents,
-            );
-            assertSourceStillObserved(sourcePath, source);
-            renameSync(sourcePath, targetPath);
-            assertDirectoriesUnchanged(
-              stationHome,
-              serviceDirectory,
-              quarantineDirectory,
-              parents,
-            );
-            if (!targetMatchesSource(targetPath, source)) refuse();
-            hooks.afterRenameBeforeSourceFsync?.();
-            fsyncDirectorySync(quarantineDirectory);
-            hooks.afterSourceFsyncBeforeTargetFsync?.();
-            fsyncDirectorySync(serviceDirectory);
-            if (!targetMatchesSource(targetPath, source)) refuse();
-
-            hooks.afterRenameBeforeCommit?.();
-            assertTargetStillPrepared(stationHome, source);
-            // A direct non-cooperating writer can still change either source
-            // while the durable move is in progress.  Do not publish the
-            // commit marker unless the current profile and birth-live registry
-            // still deny ownership at the exact commit boundary.
-            assertNoCurrentLegacyAuthority(
-              stationRoot,
-              stationHome,
-              hooks.registryProcessProbe,
-            );
-            writeReceipt(
-              join(stationHome, committedPathFor(source.digest)),
-              receiptFor('committed', source),
-              quarantineDirectory,
-              {
-                afterFsyncBeforeLink: () => {
-                  hooks.afterCommittedFsyncBeforeLink?.();
-                  assertTargetStillPrepared(stationHome, source);
-                },
-                afterLinkBeforeDirectoryFsync: () => {
-                  hooks.afterCommittedLinkBeforeDirectoryFsync?.();
-                  assertTargetStillPrepared(stationHome, source);
-                },
-              },
-            );
-            // `writeReceipt` has removed its temporary and synced the final
-            // committed publication. Only an exact one-link target may report
-            // the new effect.
-            assertTargetStillPrepared(stationHome, source);
-            return { kind: 'new' };
-          }, stationRoot),
-        { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
+            reconcileStaleDesktopSidecars(transaction.stationHome, {
+              processProbe: hooks.registryProcessProbe,
+              mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
+            });
+          },
+        },
       );
+    } catch {
+      return { kind: 'refused' };
+    }
+    try {
+      return runQuarantineTransaction(transaction);
     } finally {
-      lease.release();
+      await lease.release();
     }
   } catch (error) {
     if (error instanceof LegacyServiceManifestRefusal)

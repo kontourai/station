@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 interface PackageManifest {
+  dependencies?: Record<string, string>;
   workspaces?: string[];
 }
 
@@ -23,12 +24,17 @@ function readJson<T>(path: string): T {
 describe('example workspace installation contract', () => {
   it('provisions the Fieldwork review example from the root install', () => {
     const manifest = readJson<PackageManifest>('package.json');
+    const example = readJson<PackageManifest>(
+      'examples/fieldwork-review/package.json',
+    );
     const lock = readJson<PackageLock>('package-lock.json');
     const packages = lock.packages ?? {};
+    const fieldworkVersion = example.dependencies?.['@kontourai/fieldwork'];
+    expect(fieldworkVersion).toMatch(/^\d+\.\d+\.\d+$/);
 
     expect(manifest.workspaces).toContain('examples/fieldwork-review');
     expect(packages['examples/fieldwork-review']?.dependencies).toMatchObject({
-      '@kontourai/fieldwork': '0.6.1',
+      '@kontourai/fieldwork': fieldworkVersion,
     });
     expect(
       packages['node_modules/@kontourai/station-fieldwork-review'],
@@ -37,7 +43,7 @@ describe('example workspace installation contract', () => {
       resolved: 'examples/fieldwork-review',
     });
     expect(packages['node_modules/@kontourai/fieldwork']?.version).toBe(
-      '0.6.1',
+      fieldworkVersion,
     );
     expect(existsSync('examples/fieldwork-review/package-lock.json')).toBe(
       false,

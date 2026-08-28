@@ -89,6 +89,21 @@ describe('primary CI workflow governance', () => {
     ).toContain('Primary CI workflow must trigger on pull requests to main.');
   });
 
+  test('accepts and requires the reviewed pull_request_target title-routing types', () => {
+    const targetWorkflow = cleanWorkflow.replace(
+      '  pull_request:\n    branches: [main]\n',
+      '  pull_request_target:\n    branches: [main]\n    types: [opened, synchronize, reopened, edited]\n',
+    );
+    expect(collectPrimaryCiWorkflowTriggerFindings(targetWorkflow)).toEqual([]);
+    expect(
+      collectPrimaryCiWorkflowTriggerFindings(
+        targetWorkflow.replace(', edited', ''),
+      ),
+    ).toContain(
+      'Primary CI pull_request_target must include exactly opened, synchronize, reopened, and edited types.',
+    );
+  });
+
   test('does not accept a comment-only readiness command', () => {
     const workflow = cleanWorkflow.replace(
       '- name: Veritas readiness evidence',
@@ -286,8 +301,11 @@ describe('primary CI workflow governance', () => {
         }>
       | undefined;
     expect(
-      forkSteps?.find((step) => step.uses?.startsWith('actions/checkout@'))
-        ?.with,
+      forkSteps?.find(
+        (step) =>
+          step.with?.repository ===
+          `\${{ github.event.pull_request.head.repo.full_name }}`,
+      )?.with,
     ).toMatchObject({
       'persist-credentials': false,
       repository: `\${{ github.event.pull_request.head.repo.full_name }}`,
@@ -312,7 +330,11 @@ describe('primary CI workflow governance', () => {
         fastChecks?.steps as
           | Array<{ uses?: string; with?: Record<string, unknown> }>
           | undefined
-      )?.find((step) => step.uses?.startsWith('actions/checkout@'))?.with,
+      )?.find(
+        (step) =>
+          step.with?.repository ===
+          `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`,
+      )?.with,
     ).toMatchObject({
       'persist-credentials': false,
       repository: `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`,

@@ -14,6 +14,7 @@ import {
   subjectFromMessage,
   teachingMessage,
   validateMessage,
+  validatePullRequestTitle,
   validateSubject,
 } from '../commit-message-gate.mjs';
 
@@ -472,23 +473,63 @@ describe('.githooks/commit-msg wiring (a wrapper that never refused is unproven)
   });
 });
 
-describe('corpus: the vocabulary constant must fit the repo it governs', () => {
-  it('matches only the named immutable history record', () => {
-    const [record] = FROZEN_IMMUTABLE_HISTORY_RECORDS;
-    expect(matchingFrozenImmutableHistoryRecord(record)).toBe(record);
+describe('pull-request title mode', () => {
+  it('derives the exact conventional subject and accepts a valid title', () => {
+    const title = 'fix(cli): retain bounded reconcile lock ownership';
+    expect(validatePullRequestTitle(title, '641')).toEqual(
+      validateSubject(`${title} (#641)`),
+    );
+    expect(runGate(['--pull-request-title', title, '641']).status).toBe(0);
+  });
 
-    for (const changed of [
-      { ...record, sha: `${record.sha.slice(0, -1)}0` },
-      {
-        ...record,
-        parents: `${record.parents} 0000000000000000000000000000000000000000`,
-      },
-      { ...record, subject: `${record.subject} changed` },
-    ]) {
-      expect(matchingFrozenImmutableHistoryRecord(changed)).toBeNull();
+  it.each(['0', '-1', '1.5', 'abc', ''])(
+    'rejects invalid pull-request number %j',
+    (number) => {
+      expect(validatePullRequestTitle('fix: valid title', number).ok).toBe(
+        false,
+      );
+      expect(
+        runGate(['--pull-request-title', 'fix: valid title', number]).status,
+      ).toBe(1);
+    },
+  );
+
+  it('does not admit frozen records or future uppercase titles', () => {
+    const frozen = FROZEN_IMMUTABLE_HISTORY_RECORDS.find((record) =>
+      record.subject.endsWith('(#635)'),
+    );
+    expect(frozen).toBeTruthy();
+    const title = 'Reconcile stale desktop sidecar before runtime preparation';
+    expect(validatePullRequestTitle(title, '635')).toMatchObject({
+      ok: false,
+      subject: frozen?.subject,
+    });
+    expect(runGate(['--pull-request-title', title, '635']).status).toBe(1);
+    expect(
+      validatePullRequestTitle('Fix: future uppercase title', '642').ok,
+    ).toBe(false);
+  });
+});
+
+describe('corpus: the vocabulary constant must fit the repo it governs', () => {
+  it('matches only the named immutable history records', () => {
+    for (const record of FROZEN_IMMUTABLE_HISTORY_RECORDS) {
+      expect(matchingFrozenImmutableHistoryRecord(record)).toBe(record);
+
+      for (const changed of [
+        { ...record, sha: `${record.sha.slice(0, -1)}0` },
+        {
+          ...record,
+          parents: `${record.parents} 0000000000000000000000000000000000000000`,
+        },
+        { ...record, subject: `${record.subject} changed` },
+      ]) {
+        expect(matchingFrozenImmutableHistoryRecord(changed)).toBeNull();
+      }
+
+      expect(validateSubject(record.subject).ok).toBe(false);
     }
 
-    expect(validateSubject(record.subject).ok).toBe(false);
     expect(
       validateSubject('Fix: future uppercase subject remains rejected').ok,
     ).toBe(false);

@@ -6,15 +6,25 @@ import { describe, expect, it } from 'vitest';
 import { buildSyntheticTrustBundle } from './trust-bundle.js';
 
 /**
- * Foundation proof for the Flow 1.3.x migration: a Station-asserted synthetic
+ * Foundation proof for the Flow 5.1 trust-bundle contract: a Station-asserted synthetic
  * TrustBundle must satisfy a real `trust.bundle` gate expectation through the
  * REAL `@kontourai/flow` matcher (`evidenceMatchesExpectation`) after the same
  * `normalizeTrustBundle` pass `attachEvidence` performs. This pins both the
  * schema shape and the enforced status semantics.
  */
 describe('buildSyntheticTrustBundle — real flow matcher', () => {
+  const CLAIM_AT = '2026-08-28T00:00:00.000Z';
+  const EVALUATED_AT = '2026-08-28T00:00:01.000Z';
   const matches = (entry: unknown, expectation: unknown): boolean =>
-    Boolean(evidenceMatchesExpectation(entry, expectation));
+    Boolean(
+      evidenceMatchesExpectation(
+        entry,
+        expectation,
+        undefined,
+        null,
+        EVALUATED_AT,
+      ),
+    );
 
   // Mirror exactly what `attachEvidence` stores for a trust.bundle file:
   // `normalizeTrustBundle(raw)` returns `{ bundle, bundle_report }`, both of
@@ -27,12 +37,14 @@ describe('buildSyntheticTrustBundle — real flow matcher', () => {
     return { kind: 'trust.bundle', status: 'attached', bundle, bundle_report };
   };
 
-  it('an `assumed` quality claim satisfies a quality gate (accepted_statuses:[assumed])', () => {
+  it('an `assumed` quality claim satisfies only explicit assumed acceptance', () => {
     const bundle = buildSyntheticTrustBundle({
       claimType: 'quality.tests',
       subjectId: 'run-1',
       value: 'pass',
+      now: CLAIM_AT,
     });
+    const entry = entryFor(bundle);
     const expectation = {
       kind: 'trust.bundle',
       bundle_claim: {
@@ -40,13 +52,28 @@ describe('buildSyntheticTrustBundle — real flow matcher', () => {
         accepted_statuses: ['assumed'],
       },
     };
-    expect(matches(entryFor(bundle), expectation)).toBe(true);
+    expect(
+      (entry.bundle_report as { claims: Array<{ status?: string }> }).claims[0]
+        ?.status,
+    ).toBe('assumed');
+    expect(Boolean(evidenceMatchesExpectation(entry, expectation))).toBe(false);
+    expect(matches(entry, expectation)).toBe(true);
+    expect(
+      matches(entry, {
+        ...expectation,
+        bundle_claim: {
+          ...expectation.bundle_claim,
+          accepted_statuses: ['verified'],
+        },
+      }),
+    ).toBe(false);
   });
 
   it('does NOT satisfy a gate selecting a different claimType', () => {
     const bundle = buildSyntheticTrustBundle({
       claimType: 'quality.tests',
       subjectId: 'run-1',
+      now: CLAIM_AT,
     });
     const expectation = {
       kind: 'trust.bundle',
@@ -55,7 +82,12 @@ describe('buildSyntheticTrustBundle — real flow matcher', () => {
         accepted_statuses: ['assumed'],
       },
     };
-    expect(matches(entryFor(bundle), expectation)).toBe(false);
+    const entry = entryFor(bundle);
+    expect(
+      (entry.bundle_report as { claims: Array<{ status?: string }> }).claims[0]
+        ?.status,
+    ).toBe('assumed');
+    expect(matches(entry, expectation)).toBe(false);
   });
 
   it('a `verified` assertion is DOWNGRADED — cannot satisfy accepted_statuses:[verified] without backing', () => {
@@ -65,6 +97,7 @@ describe('buildSyntheticTrustBundle — real flow matcher', () => {
       claimType: 'quality.tests',
       subjectId: 'run-1',
       status: 'verified',
+      now: CLAIM_AT,
     });
     const expectation = {
       kind: 'trust.bundle',
@@ -73,6 +106,11 @@ describe('buildSyntheticTrustBundle — real flow matcher', () => {
         accepted_statuses: ['verified'],
       },
     };
-    expect(matches(entryFor(bundle), expectation)).toBe(false);
+    const entry = entryFor(bundle);
+    expect(
+      (entry.bundle_report as { claims: Array<{ status?: string }> }).claims[0]
+        ?.status,
+    ).toBe('unknown');
+    expect(matches(entry, expectation)).toBe(false);
   });
 });

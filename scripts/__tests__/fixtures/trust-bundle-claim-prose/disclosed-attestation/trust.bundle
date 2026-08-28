@@ -1,0 +1,15 @@
+{
+  "evidence": [
+    {
+      "claimId": "fixture.disclosed-session-local-count",
+      "evidenceType": "attestation"
+    }
+  ],
+  "claims": [
+    {
+      "id": "fixture.disclosed-session-local-count",
+      "fieldOrBehavior": "Recorded as a session-local attestation, not a CI-reconcilable test_output claim: 12/12 fixture files passed.",
+      "verificationPolicyId": "fixture:attestation"
+    }
+  ]
+}

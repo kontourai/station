@@ -22,6 +22,7 @@ function workflowTriggerDeclaration(workflowText) {
     triggers,
     pushIncludesMain: false,
     pullRequestIncludesMain: false,
+    pullRequestTargetTypes: null,
   });
   const declarationIndices = lines.flatMap((line, index) =>
     /^(?:on|"on"|'on')\s*:\s*.*$/.test(line) ? [index] : [],
@@ -35,8 +36,10 @@ function workflowTriggerDeclaration(workflowText) {
   const triggers = new Set();
   let triggerIndent = null;
   let activeTrigger = null;
-  let branchIndent = null;
+  let filterIndent = null;
+  let activeFilter = null;
   const branchesByTrigger = new Map();
+  const typesByTrigger = new Map();
 
   for (const line of lines.slice(declarationIndex + 1)) {
     if (!line.trim() || /^\s*#/.test(line)) continue;
@@ -59,6 +62,7 @@ function workflowTriggerDeclaration(workflowText) {
         if (value) return invalid(triggers);
         activeTrigger = name;
         branchesByTrigger.set(name, null);
+        typesByTrigger.set(name, null);
       } else if (name === 'workflow_dispatch') {
         if (value && value !== '{}') return invalid(triggers);
         activeTrigger = 'workflow_dispatch';
@@ -67,7 +71,8 @@ function workflowTriggerDeclaration(workflowText) {
       }
       if (triggers.has(name)) return invalid(triggers);
       triggers.add(name);
-      branchIndent = null;
+      filterIndent = null;
+      activeFilter = null;
       continue;
     }
 
@@ -78,32 +83,43 @@ function workflowTriggerDeclaration(workflowText) {
     ) {
       return invalid(triggers);
     }
-    if (branchIndent === null) {
-      const branchMapping = line
+    if (filterIndent !== null && indent === filterIndent) {
+      filterIndent = null;
+      activeFilter = null;
+    }
+    if (filterIndent === null) {
+      const filterMapping = line
         .trim()
-        .match(/^branches:\s*(\[[^[]*\]|[A-Za-z0-9_-]+)?\s*(?:#.*)?$/);
-      if (!branchMapping) return invalid(triggers);
-      branchIndent = indent;
-      const value = branchMapping[1];
+        .match(/^(branches|types):\s*(\[[^[]*\]|[A-Za-z0-9_-]+)?\s*(?:#.*)?$/);
+      if (!filterMapping) return invalid(triggers);
+      const [, filter, value] = filterMapping;
+      if (filter === 'types' && activeTrigger !== 'pull_request_target')
+        return invalid(triggers);
+      filterIndent = indent;
+      activeFilter = filter;
+      const target = filter === 'branches' ? branchesByTrigger : typesByTrigger;
+      if (target.get(activeTrigger) !== null) return invalid(triggers);
       if (!value) {
-        branchesByTrigger.set(activeTrigger, []);
+        target.set(activeTrigger, []);
         continue;
       }
       const values = value
         .replace(/^\[|\]$/g, '')
         .split(',')
-        .map((branch) => branch.trim())
+        .map((entry) => entry.trim())
         .filter(Boolean);
-      if (!values.every((branch) => /^[A-Za-z0-9_-]+$/.test(branch))) {
+      if (!values.every((entry) => /^[A-Za-z0-9_-]+$/.test(entry))) {
         return invalid(triggers);
       }
-      branchesByTrigger.set(activeTrigger, values);
+      target.set(activeTrigger, values);
       continue;
     }
-    if (indent <= branchIndent) return invalid(triggers);
-    const branch = line.trim().match(/^-\s+([A-Za-z0-9_-]+)\s*(?:#.*)?$/);
-    if (!branch) return invalid(triggers);
-    branchesByTrigger.get(activeTrigger).push(branch[1]);
+    if (indent <= filterIndent) return invalid(triggers);
+    const entry = line.trim().match(/^-\s+([A-Za-z0-9_-]+)\s*(?:#.*)?$/);
+    if (!entry) return invalid(triggers);
+    (activeFilter === 'branches' ? branchesByTrigger : typesByTrigger)
+      .get(activeTrigger)
+      .push(entry[1]);
   }
 
   const includesOnlyMain = (trigger) => {
@@ -119,6 +135,7 @@ function workflowTriggerDeclaration(workflowText) {
     pushIncludesMain: includesOnlyMain('push'),
     pullRequestIncludesMain: includesOnlyMain('pull_request'),
     pullRequestTargetIncludesMain: includesOnlyMain('pull_request_target'),
+    pullRequestTargetTypes: typesByTrigger.get('pull_request_target'),
   };
 }
 
@@ -163,6 +180,7 @@ export function collectPrimaryCiWorkflowTriggerFindings(workflowText) {
     pushIncludesMain,
     pullRequestIncludesMain,
     pullRequestTargetIncludesMain,
+    pullRequestTargetTypes,
   } = workflowTriggerDeclaration(workflowText);
   const findings = [];
   if (!valid) {
@@ -179,6 +197,15 @@ export function collectPrimaryCiWorkflowTriggerFindings(workflowText) {
     (!triggers.has('pull_request_target') || !pullRequestTargetIncludesMain)
   ) {
     findings.push('Primary CI workflow must trigger on pull requests to main.');
+  }
+  if (
+    triggers.has('pull_request_target') &&
+    JSON.stringify(pullRequestTargetTypes) !==
+      JSON.stringify(['opened', 'synchronize', 'reopened', 'edited'])
+  ) {
+    findings.push(
+      'Primary CI pull_request_target must include exactly opened, synchronize, reopened, and edited types.',
+    );
   }
   if (!triggers.has('workflow_dispatch')) {
     findings.push('Primary CI workflow must support workflow_dispatch.');

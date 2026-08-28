@@ -13,6 +13,14 @@ const safeResult = {
   omittedMetadataBytes: 0,
 };
 
+const safeResultRef = {
+  authority: '@kontourai/thread',
+  schemaVersion: '1.2.0',
+  kind: 'result',
+  threadId: 'session/1',
+  resultId: safeResult.resultId,
+};
+
 beforeEach(() => {
   originalExitCode = process.exitCode;
   process.exitCode = undefined;
@@ -103,7 +111,14 @@ describe('task tool-result CLI operations', () => {
       new Response(
         JSON.stringify({
           success: true,
-          data: [{ id: 'link-1', state: 'available', result: safeResult }],
+          data: [
+            {
+              id: 'link-1',
+              state: 'available',
+              ref: safeResultRef,
+              result: safeResult,
+            },
+          ],
         }),
       ),
     );
@@ -113,11 +128,19 @@ describe('task tool-result CLI operations', () => {
       expect.objectContaining({ method: 'GET' }),
     );
     expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toEqual([
-      { id: 'link-1', state: 'available', result: safeResult },
+      {
+        id: 'link-1',
+        state: 'available',
+        ref: safeResultRef,
+        result: safeResult,
+      },
     ]);
     const rendered = String(stdout.mock.calls[0]?.[0]);
-    if (modeArgs.length === 0) expect(rendered).toContain('\n');
-    else expect(rendered).not.toContain('\n');
+    if (modeArgs.length === 0) {
+      expect(rendered).toContain('\n');
+      expect(rendered).toContain('authorized result');
+      expect(rendered).toContain('@kontourai/thread');
+    } else expect(rendered).not.toContain('\n');
   });
 
   it.each([
@@ -154,8 +177,10 @@ describe('task tool-result CLI operations', () => {
       );
       expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toEqual(safeResult);
       const rendered = String(stdout.mock.calls[0]?.[0]);
-      if (modeArgs.length === 0) expect(rendered).toContain('\n');
-      else expect(rendered).not.toContain('\n');
+      if (modeArgs.length === 0) {
+        expect(rendered).toContain('\n');
+        expect(rendered).toContain('authorized result');
+      } else expect(rendered).not.toContain('\n');
     },
   );
 });

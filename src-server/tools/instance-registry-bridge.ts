@@ -239,14 +239,14 @@ export function readRegistryInstances(
  * Compatibility entry point for the native bridge.  The transaction itself is
  * isolated so this protocol adapter cannot grow another filesystem authority.
  */
-export function prepareRuntime(
+export async function prepareRuntime(
   stationHome: string,
   stationRoot: string,
-): ReturnType<typeof quarantineLegacyServiceManifest> {
+): Promise<Awaited<ReturnType<typeof quarantineLegacyServiceManifest>>> {
   return quarantineLegacyServiceManifest(stationHome, stationRoot);
 }
 
-export function runInstanceRegistryBridge(): void {
+export async function runInstanceRegistryBridge(): Promise<void> {
   const operation = process.argv[2];
   if (
     typeof operation !== 'string' ||
@@ -264,7 +264,7 @@ export function runInstanceRegistryBridge(): void {
     return;
   }
   if (operation === 'prepareRuntime') {
-    const result = prepareRuntime(stationHome!, home(inputValue.root));
+    const result = await prepareRuntime(stationHome!, home(inputValue.root));
     if (result.kind === 'refused') {
       // Keep refusal structured and path-free while preserving the native
       // caller's current fail-closed nonzero-exit contract.
@@ -332,7 +332,7 @@ if (
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   try {
-    runInstanceRegistryBridge();
+    await runInstanceRegistryBridge();
   } catch (error) {
     // This protocol reaches native logs/UI. Never serialize Error.message: the
     // shared registry intentionally includes filesystem paths in diagnostics.
