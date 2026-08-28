@@ -95,7 +95,7 @@ function AchievementCard({
    *
    * This used to be four steps on `--accent-success` / `--accent-warning` /
    * `--accent-secondary` / `--accent-primary`, and only the last one existed
-   * (station#1254). An undefined `var()` makes `background-color` invalid at
+   * (archive#1254). An undefined `var` makes `background-color` invalid at
    * computed-value time, so the fill collapsed to `transparent`: every
    * achievement past 25% progress drew an **empty track**, at every width, in
    * both themes. Only the 0-25% step was ever visible.

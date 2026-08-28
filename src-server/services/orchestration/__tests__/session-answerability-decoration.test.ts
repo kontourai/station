@@ -1,8 +1,8 @@
 /**
- * station#1778 — EVERY EMISSION ROUTE CARRIES THE DECORATION, AND NOTHING IS
+ * archive#1778 — EVERY EMISSION ROUTE CARRIES THE DECORATION, AND NOTHING IS
  * WRITTEN TO COMPUTE IT (ADR 0012, AC2/AC3/AC4).
  *
- * The consumer sweep recorded on station#1745 found SIX independent routes
+ * The consumer sweep recorded on archive#1745 found SIX independent routes
  * that hand an `OrchestrationSessionSummary`-shaped payload to a client, plus
  * two sibling wire shapes that re-declare the same lifecycle fields. There is
  * no natural choke point among them: `listSessionReadModel` is the base read,
@@ -251,7 +251,7 @@ describe('session-summary answerability decoration (station#1778)', () => {
     const service = await settledService();
 
     const answerable = { answerable: true };
-    // station#1778 delta review, finding 2: `observedBy` is pinned to THIS
+    // archive#1778 delta review, finding 2: `observedBy` is pinned to THIS
     // process's real identity, not `expect.any(String)`. The verifier
     // collapsed `servingInstanceIdentity()` to a constant and 125 tests
     // stayed green — a wildcard here is exactly how the field that IS the
@@ -377,7 +377,7 @@ describe('session-summary answerability decoration (station#1778)', () => {
   });
 
   /**
-   * station#1778 AC3: the decoration's inputs are live process state, so the
+   * archive#1778 AC3: the decoration's inputs are live process state, so the
    * read path writes NOTHING. Compared as raw persisted rows rather than a
    * count — a replacement in place, or a mutated payload, would keep any
    * count identical (protocol section 6: an assertion that counts cannot see
@@ -412,7 +412,7 @@ describe('session-summary answerability decoration (station#1778)', () => {
   });
 
   /**
-   * station#1778 AC4: the board's hand-copied re-folds are DELETED, not
+   * archive#1778 AC4: the board's hand-copied re-folds are DELETED, not
    * relocated. `pendingReview` is carried from the base summary, so the two
    * agree by construction rather than by two derivations happening to match.
    *
@@ -496,7 +496,7 @@ describe('session-summary answerability decoration (station#1778)', () => {
   });
 
   /**
-   * station#1778 delta review, finding 2 (second half): `observedAt` must be
+   * archive#1778 delta review, finding 2 (second half): `observedAt` must be
    * WHEN THIS READ HAPPENED.
    *
    * Nothing checked its content before — the verifier froze it at the epoch

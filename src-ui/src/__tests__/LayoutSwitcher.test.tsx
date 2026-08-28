@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Review H1: `data: layouts = []` alone makes a failed
+ * `data: layouts = []` alone makes a failed
  * `useProjectLayoutsQuery` read indistinguishable from a project genuinely
  * having no layouts, so the menu asserted "No layouts" over a read that
  * never answered. These tests pin the fix: an errored read renders

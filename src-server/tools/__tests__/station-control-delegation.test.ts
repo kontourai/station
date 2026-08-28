@@ -216,7 +216,7 @@ function localDelegatedTaskService(
     })),
     startSessionInternal: vi.fn(async (command) => ({
       status: 'accepted',
-      // Every SessionCommandOutcome variant carries a receipt; #4232 made the
+      // Every SessionCommandOutcome variant carries a receipt; archive#4232 made the
       // foreground seam read `receipt.commandId`, so a double that omits it
       // no longer models the real contract.
       receipt: { commandId: 'start-command-1', status: 'accepted' },
@@ -610,7 +610,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
   });
 
-  // station#4543 LOW-2: a caller-supplied `sessionId` is stamped into
+  // archive#4543 LOW-2: a caller-supplied `sessionId` is stamped into
   // `metadata.conversationId` via the `conversationIdentity` internal
   // escape hatch — a reserved key whose contract (provider.ts's
   // `CONVERSATION_ID_RESERVED_METADATA_KEY` docblock) promises it is
@@ -1066,7 +1066,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
-  // station#3421: this is the seam the bug lived in. The pure binding function
+  // archive#3421: this is the seam the bug lived in. The pure binding function
   // is tested separately; what was broken is that a DIRECTORY-bound
   // conversation reached the continuation with no workspace at all, because
   // only the project shape was rebuilt. Swapping the session-cwd read for a
@@ -1471,7 +1471,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
   });
 
   /**
-   * station#3414. This is a Conversation capability, not a claim that its
+   * archive#3414. This is a Conversation capability, not a claim that its
    * current child Session itself can be reopened. A busy child refuses a
    * concurrent turn; a completed/failed/canceled child is continued by
    * reserving the next child.
@@ -1765,7 +1765,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
 });
 
 /**
- * station#1783 (ADR 0012 residual) — the delegation tool is an HTTP client
+ * archive#1783 (ADR 0012 residual) — the delegation tool is an HTTP client
  * to a TARGET environment's Station, and the delegating AGENT reads its
  * snapshot as a statement about that environment. Reporting an open request
  * with no qualification told the agent to wait for an answer that
@@ -1895,12 +1895,12 @@ describe('observeDelegatedTask answerability passthrough (station#1783)', () => 
     });
   });
 
-  // station#3963: `message` is pinned alongside `name`/`kind`/`status` for
+  // archive#3963: `message` is pinned alongside `name`/`kind`/`status` for
   // every row here. The http rows (401/403/500) carry the target's own
   // `payload.error` text through unmodified; `timeout` (transport) and
   // `malformed` have no body to read a message from, so `getCanonical` falls
   // back to its fixed `unavailableMessage` — that fallback sentence is the
-  // one #3963 found silently collapsing distinct conditions when nothing
+  // one archive#3963 found silently collapsing distinct conditions when nothing
   // pinned its wording, so it is asserted explicitly here rather than left
   // to drift in either direction.
   test.each([
@@ -1973,7 +1973,7 @@ describe('observeDelegatedTask answerability passthrough (station#1783)', () => 
     },
   );
 
-  // station#3963: `observeDelegatedTaskEvents` shares `getCanonical` with
+  // archive#3963: `observeDelegatedTaskEvents` shares `getCanonical` with
   // `observeDelegatedTask` above but has no equivalent coverage of its own
   // canonical-failure classification. Only the two classifications that
   // actually fall back to the generic `unavailableMessage` are pinned here
@@ -2151,7 +2151,7 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
     );
   });
 
-  // station#3408: the message must name only what this branch checks. User
+  // archive#3408: the message must name only what this branch checks. User
   // ownership is enforced by the authority-filtered session read, not here.
   test('the binding refusal does not claim to have checked the Station user (station#3408)', async () => {
     installCurrentStationFetch();
@@ -2169,7 +2169,7 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
   });
 
   /**
-   * station#3408, the contract the issue is actually about: `delegate status`
+   * archive#3408, the contract the issue is actually about: `delegate status`
    * and `delegate events` must agree about one task.
    *
    * They read the SAME launch binding through two different paths — status
@@ -2254,7 +2254,7 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
       service as never,
     );
 
-    // The #3408 contract itself, asserted first so a regression in the
+    // The archive#3408 contract itself, asserted first so a regression in the
     // projection reads as "the two verbs disagree" rather than as a shape nit.
     expect(status.target).toEqual({ kind: 'agent', id: 'reviewer' });
     expect(page.target).toEqual(status.target);

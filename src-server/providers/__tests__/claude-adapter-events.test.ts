@@ -346,7 +346,7 @@ describe('claude-adapter-events', () => {
   });
 
   /**
-   * station#1827. A `result` message's `is_error: true` is the SDK's own
+   * archive#1827. A `result` message's `is_error: true` is the SDK's own
    * structured protocol flag (see `classifyClaudeResultOutcome`'s doc
    * comment) — this must publish a terminal `runtime.error`, never fold the
    * engine's raw error text into `turn.completed` as if it were an ordinary
@@ -1026,7 +1026,7 @@ describe('station#1182 — claude-adapter-events runtime-reported model', () => 
   test('captures message.message.model off a top-level assistant message and carries it onto turn.completed as reportedModel — distinct from the requested/init model', () => {
     const publish = vi.fn();
     // The init message (session.configured) reports the REQUESTED alias —
-    // this is the exact station#1182 incident: the badge said
+    // this is the exact archive#1182 incident: the badge said
     // 'claude-fable-5' while the model's own reply said Opus 4.5.
     const record = makeRecord({ activeTurnId: 'turn-1' });
     mapClaudeSdkMessage({
@@ -1404,7 +1404,7 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
     // 10 uncached + 4,000 read from cache + 90 written to cache: what the
     // model actually read. `contextWindowTokens` is NOT emitted — Claude
     // does not report the window size, and inventing one here is exactly
-    // the fabrication station#3201 is about.
+    // the fabrication archive#3201 is about.
     expect(event).toMatchObject({ contextTokens: 4_100 });
     expect(event).not.toHaveProperty('contextWindowTokens');
   });

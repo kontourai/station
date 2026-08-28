@@ -3,13 +3,13 @@
  */
 
 /**
- * station#1245 — a call site the issue does not list, found by its sweep.
+ * archive#1245 — a call site the issue does not list, found by its sweep.
  *
  * `MobileTaskSwitcher` is hand-rolled rather than a `ResponsiveDialogSurface`
  * (its own comment says so, about the history layer), and its restore was
- * `requestAnimationFrame(() => triggerRef.current?.focus())` — no `isConnected`
+ * `requestAnimationFrame( => triggerRef.current?.focus)` — no `isConnected`
  * guard at all, the same shape as `CommandPalette`'s and worse than the one
- * station#1126 was filed against. Selecting a row switches chat, which can
+ * archive#1126 was filed against. Selecting a row switches chat, which can
  * replace the header the trigger lives in.
  *
  * COVERAGE HONESTY. jsdom, scoped to the wiring: the sheet captures a chain
@@ -17,7 +17,7 @@
  * `@kontourai/station-shared/return-focus`. The module's structural veto is
  * proven in jsdom (`packages/shared/src/__tests__/return-focus.test.ts`) and
  * its post-focus verification only in Chromium
- * (`tests/dialog-return-focus.spec.ts`) — jsdom reports `.focus()` on a hidden
+ * (`tests/dialog-return-focus.spec.ts`) — jsdom reports `.focus` on a hidden
  * node as successful, so neither suite alone covers the behaviour.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -111,8 +111,8 @@ describe('MobileTaskSwitcher return focus (station#1245)', () => {
   /**
    * The sheet's own action removes its trigger: selecting a row switches the
    * active chat, and the mobile header re-renders around the new one. Pre-fix
-   * `triggerRef.current?.focus()` on a detached node was a silent no-op and
-   * focus sat on `<body>` (station#1126).
+   * `triggerRef.current?.focus` on a detached node was a silent no-op and
+   * focus sat on `<body>` (archive#1126).
    */
   test('falls back to a surviving ancestor when the trigger did not survive', () => {
     const header = document.createElement('header');

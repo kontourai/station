@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Reproduces the station#726 fix contract end-to-end against the real
+ * Reproduces the archive#726 fix contract end-to-end against the real
  * store, the real selector hook, and the real (memoized) ChatMessageList:
  * a composer keystroke — updateChat(sessionId, { input }) — must not
  * re-render the transcript, while a `messages` update must.
@@ -155,8 +155,8 @@ describe('chat transcript render isolation (station#726)', () => {
 
     // The composer-facing selector still reflects every keystroke...
     expect(getByTestId('input-echo').textContent).toBe('hel');
-    // ...but none of them re-rendered the memoized transcript row. This is
-    // the station#726 regression: without the selector split + memoization,
+    //...but none of them re-rendered the memoized transcript row. This is
+    // the archive#726 regression: without the selector split + memoization,
     // each of these three keystrokes would re-render (and re-parse markdown
     // for) every transcript row.
     expect(rowRenderProbe).toHaveBeenCalledTimes(1);

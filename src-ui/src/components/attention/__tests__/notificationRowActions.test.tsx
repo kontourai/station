@@ -8,7 +8,7 @@ import {
 } from '../notificationRowActions';
 
 /**
- * station#3779. These pin the MEASURED mechanism, not the HTTP verb: the row
+ * archive#3779. These pin the MEASURED mechanism, not the HTTP verb: the row
  * action's `DELETE /notifications/:id` sets `status: 'dismissed'` and keeps
  * the record (`NotificationService.dismiss`), verified live — the request
  * answers 200 and the row is still on the page and still in
@@ -27,7 +27,7 @@ describe('the notification row action model', () => {
   test('they differ in whether the fact can surface again by itself', () => {
     // An attention item is a projection: the same session failing again
     // re-derives it unacknowledged. A dismissed notification is terminal for
-    // its dedupe tag — `schedule()` refuses to re-raise it.
+    // its dedupe tag — `schedule` refuses to re-raise it.
     expect(ACKNOWLEDGE_ATTENTION_ACTION.reversibleByFact).toBe(true);
     expect(DISMISS_NOTIFICATION_ACTION.reversibleByFact).toBe(false);
   });

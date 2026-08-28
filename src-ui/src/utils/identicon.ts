@@ -1,6 +1,6 @@
 /**
  * Deterministic identicon color for an agent avatar's initials fallback
- * (station#1424). Given the same seed (an agent's slug/id/name), always
+ * (archive#1424). Given the same seed (an agent's slug/id/name), always
  * returns the same hue — no randomness, no server round-trip, stable across
  * reloads and between clients. Purely a display affordance: never used to
  * derive or compare identity, only to give two different agents without

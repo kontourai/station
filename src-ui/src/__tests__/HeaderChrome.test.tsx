@@ -58,7 +58,7 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
 import { Header } from '../components/header/Header';
 
 /**
- * Coverage gap closed in PR #1277 round 2: nothing asserted the header's
+ * Coverage gap closed: nothing asserted the header's
  * home/breadcrumb roles or that the decorative logo stays out of the tab
  * order (both logo and wordmark are visible at the mobile breakpoint — two
  * tab stops for one destination).

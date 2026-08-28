@@ -4,7 +4,7 @@ import { vi as vitestConfigVi } from 'vitest';
 // This file exercises REAL SQLite EventStores per test (one writes 401
 // 3KB rows synchronously). Under full-corpus worker contention the default
 // 5s budgets red these tests with hook-chain timeout shapes while every
-// focused run is green — 4 of 5 corpus runs on a quiet host (station#2654).
+// focused run is green — 4 of 5 corpus runs on a quiet host (archive#2654).
 // The budget below prices the fs work honestly; no assertion changes.
 vitestConfigVi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
@@ -378,14 +378,14 @@ describe('answer assessment producer route', () => {
 });
 
 /** Minimal `OrchestrationService`-shaped fake backed by a real EventStore
- * (station#1092): the resume feature's correctness lives entirely in
+ * (archive#1092): the resume feature's correctness lives entirely in
  * EventStore's global_sequence bookkeeping + the route's replay/snapshot
  * decision, so this avoids standing up the rest of OrchestrationService's
  * provider/session machinery, which is unrelated to what these tests cover.
  *
- * station#1205 (LOW): `readEventStreamReplay` used to be a 2-arg stub that
+ * archive#1205 (LOW): `readEventStreamReplay` used to be a 2-arg stub that
  * ignored `userId` and returned every candidate unfiltered — a
- * permanently-open fake shape for the exact ownership gate #1197 added to
+ * permanently-open fake shape for the exact ownership gate archive#1197 added to
  * the real (3-arg) `OrchestrationService.readEventStreamReplay`. Call sites
  * pass this fake via `service as any`, so the widened production signature
  * gave no compile-time signal the stub was stale. It now takes `userId` and
@@ -433,7 +433,7 @@ function makeResumeTestService(
       }
       return { count, fitsBudget: true };
     },
-    // station#1410 (D2): mirrors production's `replayTurnProvenanceSidecar`
+    // archive#1410 (D2): mirrors production's `replayTurnProvenanceSidecar`
     // — same shared fold, same strict per-turn filter — so a route test
     // proves the route ATTACHES the sidecar rather than proving a stub does.
     replayTurnProvenanceSidecar: (event: CanonicalRuntimeEvent) => {
@@ -465,7 +465,7 @@ const personalReadAuthority = (userId: string) =>
   });
 
 describe('Orchestration Routes', () => {
-  // station#4075 stage 2 acceptance: "Missing principal fails closed at
+  // archive#4075 stage 2 acceptance: "Missing principal fails closed at
   // dispatch — typed refusal, no 'unknown-user', no alias." Every OTHER
   // test in this file configures `getUserId` (the legacy test-only escape
   // hatch) or `resolvePrincipal`; these deliberately configure NEITHER, to
@@ -882,7 +882,7 @@ describe('Orchestration Routes', () => {
   });
 
   test('POST /chat surfaces an unavailable-Agent refusal as a clean 400 carrying the reason (#3027)', async () => {
-    // station#3027 clean break: a turn sent into a conversation bound to a
+    // archive#3027 clean break: a turn sent into a conversation bound to a
     // spec-less engine-default alias refuses at target resolution. The
     // client must receive the exact enable-remedy reason as a structured
     // error envelope — never an opaque 500.
@@ -1657,7 +1657,7 @@ describe('Orchestration Routes', () => {
     });
   });
 
-  // station#4075 stage 2 review round 1 (F1, HIGH): /chat/:conversationId
+  // archive#4075 stage 2 review round 1 (F1, HIGH): /chat/:conversationId
   // /continue is the PRIMARY send path after session start (the composer's
   // own mutation) — it resolved a principal for `userId` but dropped it
   // from the payload to `continueForegroundMessage`, so most ordinary
@@ -2823,7 +2823,7 @@ describe('Orchestration Routes', () => {
     );
   });
 
-  // station#4466: the test above mocks `OrchestrationService` entirely, so
+  // archive#4466: the test above mocks `OrchestrationService` entirely, so
   // it proves the route calls `listSessionReadModel` but says nothing about
   // how that method reads the store. This test enters through the REAL
   // route handler with a REAL `OrchestrationService`/`EventStore` pair (the
@@ -3939,7 +3939,7 @@ describe('Orchestration Routes', () => {
   });
 
   /**
-   * station#1778 delta review, finding 1 — THE SEAM THE COMPILER DOES NOT
+   * archive#1778 delta review, finding 1 — THE SEAM THE COMPILER DOES NOT
    * REACH.
    *
    * The SSE snapshot is one of the six claimed emission routes, and it is the
@@ -4086,7 +4086,7 @@ describe('Orchestration Routes', () => {
   });
 
   describe('GET /events authorization gate (station#1164)', () => {
-    // Integration coverage for #1164: every other test in this file mocks
+    // Integration coverage for archive#1164: every other test in this file mocks
     // `canUserReadSession` permanently open, so none of them prove the real
     // route actually consults it, or that a denied user's frames are
     // genuinely withheld. This suite stands up a REAL `OrchestrationService`
@@ -4492,7 +4492,7 @@ describe('Orchestration Routes', () => {
       expect(otherPayload).not.toContain('thread-owner');
     });
 
-    // station#1197: the two live-path tests above prove `canUserReadSession`
+    // archive#1197: the two live-path tests above prove `canUserReadSession`
     // gates the *live* forwarding branch. Neither exercises a reconnect —
     // `Last-Event-ID` is never sent, so `resolveStreamResumePlan` always
     // takes `no_cursor` -> `snapshot`, and the *replay* branches
@@ -4628,7 +4628,7 @@ describe('Orchestration Routes', () => {
         // on a global (no threadId) replay this lands in the SAME batch as
         // the owner's history, so the single reconnecting connection can
         // legitimately receive its own event before we check for the leak
-        // (station#1197 AC4).
+        // (archive#1197 AC4).
         adapter.events.push({
           eventId: 'evt-attacker-session-started',
           provider: 'claude',
@@ -5062,7 +5062,7 @@ describe('Orchestration Routes', () => {
       expect(payloadReads).not.toHaveBeenCalled();
     });
 
-    // station#1410 (D2): a turn that completed while the client was
+    // archive#1410 (D2): a turn that completed while the client was
     // disconnected is delivered ONLY by this replay branch — the live publish
     // already happened, and nothing here triggers a REST refetch — so the
     // replayed frame must carry the same provenance sibling the live frame

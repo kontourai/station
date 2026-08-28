@@ -11,7 +11,7 @@ type Listener = () => void;
 
 /**
  * Module-level store for the "has the user dismissed the first-run setup
- * banner" flag. Lifted out of `OnboardingGate` (#191 R3) so any consumer
+ * banner" flag. Lifted out of `OnboardingGate` (archive#191) so any consumer
  * (currently `OnboardingGate` and `AppViewContent`) can read/derive the same
  * dismissed state without prop-drilling or duplicating the readiness
  * derivation — mirrors the `activeChatsStore`/`conversationsStore` pattern.
@@ -24,14 +24,14 @@ class OnboardingSetupStore {
    * good the moment a user went to *do* the setup — while Connections still
    * read "chat: setup needed" and New Chat still offered no Station agent, and
    * the launcher's own copy promised it "disappears automatically once chat is
-   * ready" (#794). Deferred state dies with the page, so a reload with chat
+   * ready" (archive#794). Deferred state dies with the page, so a reload with chat
    * still unready brings the launcher back, which is what that copy claims.
    */
   private deferredState = false;
   private listeners = new Set<Listener>();
 
   constructor() {
-    // station#settings-revamp slice2 review finding 5: `dismissedState` used
+    // archive#settings-revamp: `dismissedState` used
     // to be copied out of the device store ONCE at construction and never
     // read again, so an import (or a cross-tab change forwarded by the
     // device store's own `storage` listener) that flips
@@ -56,7 +56,7 @@ class OnboardingSetupStore {
     if (deviceSettingsStore.get('onboardingSetupDismissed')) return;
     // `deviceSettingsStore.set` notifies its own subscribers synchronously,
     // which (via the constructor's subscription above) already calls this
-    // store's `notify()` — no separate call needed here.
+    // store's `notify` — no separate call needed here.
     deviceSettingsStore.set('onboardingSetupDismissed', true);
   };
 
@@ -75,7 +75,7 @@ class OnboardingSetupStore {
    * Without this the launcher stays hidden for the whole session — a user who
    * abandons setup partway and navigates elsewhere would never see it again
    * even though chat is still unready, which is a session-scoped version of
-   * the same bug (#794 review). A persisted `dismiss()` is untouched.
+   * the same bug (archive#794). A persisted `dismiss` is untouched.
    */
   rearm = () => {
     if (!this.deferredState) return;
@@ -103,7 +103,7 @@ class OnboardingSetupStore {
 export const onboardingSetupStore = new OnboardingSetupStore();
 
 /**
- * Whether Home's first-run chapter currently owns the screen (review H2).
+ * Whether Home's first-run chapter currently owns the screen
  *
  * ONE piece of state, read by both first-run overlays, so at most one of them
  * can exist. The chapter used to consult `isBlockingFullScreen` only at its
@@ -157,7 +157,7 @@ export interface OnboardingSetupState {
   isBlockingFullScreen: boolean;
   /**
    * What the PROBE says about the launcher, before the first-run chapter's
-   * suppression is applied (review H2).
+   * suppression is applied
    *
    * The chapter's own auto-open gate reads this, not `visible`: `visible` is
    * false *because the chapter is open*, so gating on it would be circular.
@@ -170,8 +170,8 @@ export interface OnboardingSetupState {
    * Connect is genuinely FINISHED — the user made a durable choice to skip it,
    * or the system reports setup complete.
    *
-   * Deliberately NOT `!visible` (station#2652 delta review HIGH-1). `visible`
-   * is also false for a `defer()`, and `defer()` is what the launcher's own
+   * Deliberately NOT `!visible` (archive#2652). `visible`
+   * is also false for a `defer`, and `defer` is what the launcher's own
    * "Open Connections" / action-target buttons call — the user who is actively
    * DOING the setup. Reading hidden as resolved therefore fires on the primary
    * setup path, mid-setup. It is also false while `status` is momentarily
@@ -185,10 +185,10 @@ export interface OnboardingSetupState {
   dismiss: () => void;
   /**
    * Hide the launcher while the user completes setup elsewhere, which must not
-   * be recorded as if setup had succeeded (#794).
+   * be recorded as if setup had succeeded (archive#794).
    */
   defer: () => void;
-  /** Undo a deferral once the user has left that surface (#794 review). */
+  /** Undo a deferral once the user has left that surface (archive#794). */
   rearm: () => void;
 }
 

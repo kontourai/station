@@ -94,8 +94,8 @@ describe('return focus across the run (review H2, MEDIUM-2)', () => {
   });
 
   test('falls back to a surviving ancestor when the trigger unmounts', async () => {
-    // THE PRODUCTION PATH. `CommandPalette.runCommand` is `close();
-    // command.run();` and `close()` is a batched setState, so when we capture,
+    // THE PRODUCTION PATH. `CommandPalette.runCommand` is `close;
+    // command.run;` and `close` is a batched setState, so when we capture,
     // focus is still on the palette's own input — a node that unmounts a tick
     // later.
     const shell = document.createElement('div');
@@ -120,7 +120,7 @@ describe('return focus across the run (review H2, MEDIUM-2)', () => {
 
     // The captured node is gone, so the shared helper walks to the nearest
     // surviving ancestor. What matters is that it is NOT <body> — that is the
-    // station#1126 defect this whole mechanism exists to avoid.
+    // archive#1126 defect this whole mechanism exists to avoid.
     await waitFor(() => expect(document.activeElement).toBe(shell));
     expect(document.activeElement).not.toBe(document.body);
   });

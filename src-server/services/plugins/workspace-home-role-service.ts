@@ -1,6 +1,6 @@
 /**
  * Workspace Home role — server-side grant store and live-standing derivation
- * (station#3122 stage 3).
+ * (archive#3122 stage 3).
  *
  * WHY SERVER-SIDE: the granted party is a `trusted-plugin-react` renderer,
  * which executes as same-origin JavaScript in the app page. Any
@@ -29,7 +29,7 @@
  * route stays on the built-in Home with the concrete reason.
  *
  * Storage follows the plugin consent-store policy ({@link GrantsFileStore},
- * station#1835): fail-closed reads, durable atomic writes, no silent
+ * archive#1835): fail-closed reads, durable atomic writes, no silent
  * coercion. A grant that fails the contract's own fail-closed reparse reads
  * as no grant — the floor direction — rather than as an error.
  */

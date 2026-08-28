@@ -7,7 +7,7 @@ import { param } from '../schemas/schemas.js';
  * Mostly read-only; source-specific mutations deliberately remain at their
  * sources (approve/deny goes through notifications, gate outcomes through
  * Flow's own run routes). The one exception is `POST /:id/ack`
- * (station#1914): a `session-failed` item is DERIVED, never stored, so
+ * (archive#1914): a `session-failed` item is DERIVED, never stored, so
  * there is no source route to dismiss it at — the acknowledgement belongs
  * to the item itself, not to the session it was derived from.
  */

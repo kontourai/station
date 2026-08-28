@@ -164,7 +164,7 @@ describe('PendingPairingReconciler', () => {
 
     expect(callbacks.onTerminalFailure).toHaveBeenCalledWith(
       'Access request declined',
-      // station#3849: the shared map's DEVICE-subject decline, naming the
+      // archive#3849: the shared map's DEVICE-subject decline, naming the
       // Station this request was for by its browser-local label — not "the
       // host", and not the Station the reader happens to be looking at.
       'Exact target declined this device. Request access again if that was unexpected.',

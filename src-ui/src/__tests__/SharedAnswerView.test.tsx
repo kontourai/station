@@ -5,7 +5,7 @@ import { SharedAnswerView } from '../views/share/SharedAnswerView';
 import { resetCapturedShareTokenForTests } from '../views/share/share-token';
 
 /**
- * The shared-answer permalink page (station#1423).
+ * The shared-answer permalink page (archive#1423).
  *
  * Every assertion reads the RENDERED HUMAN TEXT. The failures this page
  * exists to prevent — a revoked share reading as "never existed", a
@@ -289,7 +289,7 @@ describe('SharedAnswerView', () => {
     vi.stubGlobal('fetch', stub);
     render(<SharedAnswerView />);
 
-    // N-2: the copy must not blame the recipient for something the page did
+    // the copy must not blame the recipient for something the page did
     // — this state is reached both by a truncated link and by refreshing
     // after Station cleared the token itself.
     expect(

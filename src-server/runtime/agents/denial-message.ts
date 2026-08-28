@@ -1,9 +1,9 @@
 /**
- * station#3210: the ONE place a user-visible tool-denial reason is composed.
+ * archive#3210: the ONE place a user-visible tool-denial reason is composed.
  *
  * Why this module exists rather than a template string at each `deny()` site:
  * every denial message interpolates at least one value Station does not
- * author, and until #3210 nothing bounded any of them.
+ * author, and until archive#3210 nothing bounded any of them.
  *
  * - `tool.toolName` is in EVERY denial message (all eight `pre-tool-policy.ts`
  *   sites, both `agent-hooks.ts` templates, and both engine adapters'
@@ -38,7 +38,7 @@
  *    non-Station source that produced it.
  *
  * That marker — not `policyDenied`, which derives provenance ("the policy
- * evaluator produced this") and drives station#3091's badge — is what licenses
+ * evaluator produced this") and drives archive#3091's badge — is what licenses
  * an engine adapter to carry a denial reason to the user verbatim.
  */
 
@@ -81,7 +81,7 @@ const QUOTE_CLOSE = '”';
  * cannot reach a tool name.
  *
  * The letter/mark/number classes are Unicode-wide rather than `A-Za-z0-9`
- * (station#3210 LOW-4): this message is the ONLY place the user learns WHICH
+ * (archive#3210 LOW-4): this message is the ONLY place the user learns WHICH
  * tool was blocked, and an ASCII-only allowlist rendered a Japanese tool name
  * as `Tool '?' was denied.` — a denial that names nothing is one the user
  * cannot act on. None of the safety properties above depend on the script:
@@ -106,7 +106,7 @@ const UNSAFE_TOOL_NAME_RUN = /[^\p{L}\p{M}\p{N}_.:\-/]+/gu;
  * This used to be the C0/C1 range alone: a set that reads as "the control
  * characters" while covering only half of the class that matters here. U+202E
  * RIGHT-TO-LEFT OVERRIDE, U+200B ZERO WIDTH SPACE and U+00AD SOFT HYPHEN all
- * passed through untouched (station#3210 MED-2). The quoted fragment is
+ * passed through untouched (archive#3210 MED-2). The quoted fragment is
  * painted into a `<pre>` (`ToolCallDisplay.tsx`), so an RLO inside it reorders
  * the closing ” under the bidi algorithm: attacker text then DISPLAYS
  * outside the visible quotation, reading as the continuation of Station's own
@@ -130,7 +130,7 @@ const CONTROL_AND_FORMAT_CHARACTERS = /[\p{Cc}\p{Cf}]+/gu;
  * the lone surrogate left behind renders as U+FFFD — Station corrupting the
  * last character of the text it is quoting, at exactly the boundary where a
  * reader is least able to tell whether the mojibake came from Station or from
- * the source (station#3210 LOW-3). Both caps below are therefore stated in
+ * the source (archive#3210 LOW-3). Both caps below are therefore stated in
  * code points; for the ASCII names and messages that dominate in practice the
  * two units are the same number.
  */
@@ -199,7 +199,7 @@ export function boundQuotedDenialText(text: string): string {
 export function denialReason(input: DenialReasonInput): string {
   const sentence = `Tool '${toolNameForDenialMessage(input.toolName)}' ${input.predicate}`;
   if (!input.quoted) return sentence;
-  // Accepted residue (station#3210 MED-2, secondary): the fragment may itself
+  // Accepted residue (archive#3210 MED-2, secondary): the fragment may itself
   // contain the words of an attribution sentence and a `"`, so it can read as
   // a nested, fake attribution. That is left alone deliberately. The outer
   // attribution LEADS — a reader meets "Quoted from the <source> (not
@@ -218,7 +218,7 @@ export function denialReason(input: DenialReasonInput): string {
 
 export interface StationDenialInput extends DenialReasonInput {
   /**
-   * station#3091 provenance: set only where the staged pre-tool policy
+   * archive#3091 provenance: set only where the staged pre-tool policy
    * evaluator produced the denial. It drives the client's policy-denied badge
    * and is deliberately NOT what licenses verbatim rendering.
    */
@@ -232,7 +232,7 @@ export interface StationDenialInput extends DenialReasonInput {
  * else, so a denial that reaches an engine adapter through the hook contract
  * without coming through this composer stays redacted.
  *
- * What that is NOT (station#3210 review, MED-3): a construction-level
+ * What that is NOT (archive#3210 review, MED-3): a construction-level
  * guarantee that no other text can ever wear the marker. Two limits, stated
  * rather than glossed:
  *

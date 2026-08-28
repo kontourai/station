@@ -1,5 +1,5 @@
 /**
- * The ONE map of host-naming copy (station#3843 §2).
+ * The ONE map of host-naming copy (archive#3843 §2).
  *
  * A paired device is a remote control for the host, not a second host.
  * Every affordance that executes on the host's machine therefore says two
@@ -29,17 +29,17 @@ import type { DevicePresentation } from '@kontourai/station-contracts/system-sta
 export type HostActionReach = 'remote-safe' | 'host-hands';
 
 export type HostActionId =
-  /** #3843 T1 — the SSH creator's trust command (#3733's creator). */
+  /** archive#3843 — the SSH creator's trust command (archive#3733's creator). */
   | 'ssh-trust-command'
-  /** #3843 T2 — the first-run engines chapter's scan lede. */
+  /** archive#3843 — the first-run engines chapter's scan lede. */
   | 'engine-scan'
-  /** #3843 T2 — the first-run engines chapter's still-scanning line. */
+  /** archive#3843 — the first-run engines chapter's still-scanning line. */
   | 'engine-scan-pending'
-  /** #3843 T2 — an engine the scan did not find. */
+  /** archive#3843 — an engine the scan did not find. */
   | 'engine-missing'
-  /** #3843 T2 — the Agents row's one fixing verb, accessibly named. */
+  /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
   | 'agent-engine-setup'
-  /** #3843 T3 — the Developer surface's redacted log read. */
+  /** archive#3843 — the Developer surface's redacted log read. */
   | 'developer-logs';
 
 export interface HostActionCopyEntry {
@@ -94,7 +94,7 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     paired: (hostName) => `on ${hostName}`,
   },
   'developer-logs': {
-    // The read itself works from anywhere; D6 redacts it for a principal
+    // The read itself works from anywhere; redacts it for a principal
     // that did not prove home possession. Saying so is the whole point —
     // a silently degraded page reads as a broken one.
     reach: 'remote-safe',

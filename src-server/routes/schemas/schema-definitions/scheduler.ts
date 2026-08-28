@@ -2,7 +2,7 @@ import { validateSchedule } from '@kontourai/ephemeris';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 
-// station#2829: a scheduled job's prompt starts an agent turn on a cadence,
+// archive#2829: a scheduled job's prompt starts an agent turn on a cadence,
 // unattended. Bound it at SCHEDULE time — the validate() boundary of the
 // add/edit routes — so the refusal reaches the person creating the job, not
 // a fire-time failure nobody is watching. Both the create and edit forms

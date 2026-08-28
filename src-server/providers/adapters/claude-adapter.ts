@@ -213,19 +213,19 @@ type ClaudeSessionRecord = {
    * set at `query()` time for `permissionMode: 'bypassPermissions'` to take
    * effect, and it cannot be granted mid-session via `setPermissionMode`.
    * A mid-session escalation to `'never'` when this is `false` must be
-   * rejected rather than silently applied (#727 review item 1).
+   * rejected rather than silently applied (archive#727 review item 1).
    */
   allowsBypassPermissions: boolean;
   /** Model controls confirmed at spawn or by a successful SDK control call. */
   currentModelOptions: ClaudeAppliedModelOptions;
   /**
-   * station#1182: mirrors `ClaudeMessageState.lastReportedModel`
+   * archive#1182: mirrors `ClaudeMessageState.lastReportedModel`
    * (`claude-adapter-events.ts`) — same object at runtime, declared here too
    * so `sendTurn` can reset it per-turn. See that field's docblock.
    */
   lastReportedModel?: string;
   /**
-   * station#1174: set only when this session's skills were materialized
+   * archive#1174: set only when this session's skills were materialized
    * into the Station-owned cwd-less overlay (see claude-skills-overlay.ts)
    * rather than a real project/user cwd. stopSession uses this to clean up
    * and remove the overlay directory; a session with a real cwd leaves this
@@ -233,7 +233,7 @@ type ClaudeSessionRecord = {
    */
   skillsOverlayDir?: string;
   /**
-   * station#1827: mirrors `ClaudeMessageState.terminalResultObserved`
+   * archive#1827: mirrors `ClaudeMessageState.terminalResultObserved`
    * (`claude-adapter-events.ts`) — same object at runtime, declared here too
    * so `consumeMessages`' catch can read it. See that field's docblock.
    */
@@ -262,7 +262,7 @@ export interface ClaudeAdapterOptions {
    */
   resolveSkillDir?: (id: string) => Promise<string | null>;
   /**
-   * App-home profile env (#896, agent-engine-unification.md §6.1's overlay
+   * App-home profile env (archive#896, agent-engine-unification.md §6.1's overlay
    * model, channel 2) — `undefined` when the claude-runtime connection has
    * not opted in (`config.useAppHome`) or on any resolution failure; the
    * caller degrades to `undefined` rather than throwing. Applied at
@@ -507,8 +507,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // and `listSessions`/`deleteSession` on discard/recovery below),
       // which are bound to the server's own (global) config root and have
       // no per-call config-dir override — running the forked child under a
-      // different config home would orphan it there (#896, decision 2). The
-      // login-PATH augmentation (station#1156) is unrelated to that
+      // different config home would orphan it there (archive#896, decision 2). The
+      // login-PATH augmentation (archive#1156) is unrelated to that
       // config-root concern and DOES still apply here — an adopted session
       // spawns MCP servers exactly like a fresh one.
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
@@ -553,7 +553,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (typeof cursor === 'string') {
       // Best-effort: a session that ran under an app-home profile may have
       // its transcript under a different config root than the server-env
-      // `deleteSession` call resolves (#896, decision 5) — Station owns the
+      // `deleteSession` call resolves (archive#896, decision 5) — Station owns the
       // profile dir, so an orphaned transcript there is not a discard
       // failure. Profile GC is a wave-2 follow-up, not implemented here.
       await deleteSession(cursor, { dir: cwd }).catch((error) => {
@@ -651,14 +651,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // Explicit resolved values (not just the raw modelOptions spread
       // above) so the durable record reflects what the adapter actually
       // applied — including the 'plan' escape hatch and the
-      // allowDangerouslySkipPermissions grant (#727 review item 5).
+      // allowDangerouslySkipPermissions grant (archive#727 review item 5).
       permissionMode,
       allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
       // Lets the client track a durable lastAppliedApprovalMode baseline at
-      // session start (#727 review round 3, item 1 — the pending-apply chip
+      // session start (archive#727 review round 3, item 1 — the pending-apply chip
       // state).
       approvalMode: mapPermissionModeToApprovalMode(permissionMode),
-      // #896: whether this session's SDK spawn env was layered with the
+      // archive#896: whether this session's SDK spawn env was layered with the
       // claude-runtime app-home profile, or left at the global config
       // (opted out, adoption, or a degraded lookup).
       appHome,
@@ -670,7 +670,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           skillsReport,
         )
       : baseConfiguredMetadata;
-    // #1157: chained over the skills merge above, same composition
+    // archive#1157: chained over the skills merge above, same composition
     // rationale as the systemPrompt merge below — mergeCapabilityDeliveryMetadata
     // prepends any resolution-stage undelivered entries already present in
     // inputMetadata (session-agent-resolution.ts's engine-unsupported/
@@ -683,7 +683,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         toolServers.report,
       );
     }
-    // #895 wave B: chained over the skills merge above —
+    // archive#895 wave B: chained over the skills merge above —
     // mergeCapabilityDeliveryMetadata composes (it prepends any
     // resolution-stage undelivered entries already present in
     // inputMetadata), so passing the previous call's output as
@@ -736,7 +736,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const record = this.requireSession(input.threadId);
     const turnId = crypto.randomUUID();
     record.activeTurnId = turnId;
-    // station#1182: a fresh turn has not reported anything yet — clear the
+    // archive#1182: a fresh turn has not reported anything yet — clear the
     // previous turn's value so a turn that ends before any assistant
     // message arrives publishes no `reportedModel` rather than a stale one.
     record.lastReportedModel = undefined;
@@ -907,7 +907,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       attachments: input.attachments,
       ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
       // Durable per-turn record of the resolved (actually-applied, not
-      // merely requested) approval posture (#727 review item 5).
+      // merely requested) approval posture (archive#727 review item 5).
       metadata: {
         ...effectiveModelMetadata(
           record.session.model,
@@ -1033,7 +1033,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (!record) return;
     this.sessions.delete(threadId);
     // Settle outstanding canUseTool promises before teardown so the SDK
-    // callback never hangs on a stopped session (mirrors acp-adapter, #148).
+    // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     for (const [requestId, pending] of record.pendingRequests) {
       pending.resolve(
         mapClaudeDecisionToPermissionResult(
@@ -1065,7 +1065,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       reason: 'stopped',
     });
     if (record.skillsOverlayDir) {
-      // station#1174: the overlay is fully Station-owned (see
+      // archive#1174: the overlay is fully Station-owned (see
       // claude-skills-overlay.ts), so cleanup goes further than the
       // real-cwd path below — after the hash-verified per-file cleanup,
       // the whole per-session overlay directory is removed unconditionally.
@@ -1361,7 +1361,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
       includePartialMessages: true,
       persistSession,
-      // station#1174: a cwd-less session materializes its skills into a
+      // archive#1174: a cwd-less session materializes its skills into a
       // Station-owned overlay directory (see claude-skills-overlay.ts)
       // rather than the real (home-defaulted) cwd, so it is delivered here
       // as an additional working-directory root instead of by changing
@@ -1382,7 +1382,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(mcpServers !== undefined
         ? { mcpServers, strictMcpConfig: true }
         : {}),
-      // #895 wave B (agent-engine-unification.md §4.1 System-prompt row,
+      // archive#895 wave B (agent-engine-unification.md §4.1 System-prompt row,
       // channel 'flag'): deliver the agent's authored prompt as an APPEND to
       // the engine's own claude_code preset prompt — the engine owns its
       // loop; Station adds the agent's instructions. NOTE the SDK's default
@@ -1411,7 +1411,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // resolve, threaded down from `resolveAugmentedSpawnEnv`) must be
       // layered in even when no app-home profile is active, or those
       // children only ever see Station's own (possibly minimal
-      // launchd/service) PATH one layer down from what #1150 fixed for
+      // launchd/service) PATH one layer down from what archive#1150 fixed for
       // Station's own CLI-binary search. `augmentedEnv` is already
       // `{...process.env, PATH: <augmented>}` (see `augmentedSpawnEnv` in
       // cli-auth.ts) — never a bare override — so this still never drops
@@ -1421,11 +1421,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // (dedup only, no login-shell/well-known-dir additions), so the
       // session env this produces preserves that PATH layering, while the
       // final Station-owned TMPDIR below deliberately replaces any ambient
-      // value — see the `#1156: login-PATH augmentation` and `station#1908`
+      // value — see the `archive#1156: login-PATH augmentation` and `archive#1908`
       // describe blocks in claude-adapter.test.ts.
       // TMPDIR must be final: both augmentedEnv and appHomeEnv can contain a
       // caller/ambient value, but every Claude SDK spawn must use Station's
-      // reaped engine-spawn directory (#1908).
+      // reaped engine-spawn directory (archive#1908).
       env: scrubBootInternalSecrets({
         ...(augmentedEnv ?? process.env),
         ...appHomeEnv,
@@ -1552,7 +1552,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * explicit raw `permissionMode: 'plan'` (predates approvalMode) wins,
    * then a mapped `approvalMode`, then the adapter's existing default.
    *
-   * Disclosed gap (#727 review item 6): plan mode has no `ApprovalMode`
+   * Disclosed gap (archive#727 review item 6): plan mode has no `ApprovalMode`
    * analog and isn't reachable through the composer chip, so entering plan
    * via this raw escape hatch is real server-side precedence but the chip
    * will keep showing whatever `approvalMode` resolves to — it does not
@@ -1571,7 +1571,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         this.mapMessage(record, message);
       }
     } catch (error) {
-      // station#1827: once `mapMessage` has already published a structured
+      // archive#1827: once `mapMessage` has already published a structured
       // `runtime.error` for a `terminal`-classified `result` message
       // (`classifyClaudeResultOutcome`, `claude-adapter-events.ts`), the SDK
       // re-throws the SAME underlying failure a moment later as a generic
@@ -1629,7 +1629,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   /**
    * Resolves the app-home profile env for a fresh `startSession` call
-   * (#896) — never for adoption, see `adoptSession`'s doc comment. A missing
+   * (archive#896) — never for adoption, see `adoptSession`'s doc comment. A missing
    * resolver or opted-out legacy connection degrades to global config. A
    * selected credential-profile lookup fails closed so Station cannot commit
    * a candidate that was never applied.
@@ -1655,7 +1655,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   /**
    * Station#1156: resolves the augmented spawn env (`{...process.env, PATH:
    * <login-shell + well-known-dir augmented PATH>}`, `augmentedSpawnEnv` in
-   * cli-auth.ts — the SAME reviewed helper station#1150 uses for Station's
+   * cli-auth.ts — the SAME reviewed helper archive#1150 uses for Station's
    * own CLI-binary resolution/probing/ACP subprocess spawn) for both a
    * fresh `startSession` AND `adoptSession` — unlike the app-home env
    * above, PATH augmentation has no config-root concern that would make
@@ -1691,7 +1691,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * shared manifest. Never rejects — a materialization failure degrades to
    * "no materialized skills", not a blocked session start.
    *
-   * station#1174: when `cwdDefaulted` is true (no real project/user cwd —
+   * archive#1174: when `cwdDefaulted` is true (no real project/user cwd —
    * see `ProviderSessionStartInput.cwdDefaulted`'s doc comment), skills are
    * materialized into a Station-owned per-session overlay directory instead
    * of the real (home-defaulted) `cwd` — see claude-skills-overlay.ts. The
@@ -1701,7 +1701,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * session with a real project/user cwd (`cwdDefaulted` absent/false)
    * takes the exact pre-existing path, byte-for-byte.
    *
-   * #895 wave A: `agent.skills` (including an authored empty array) wins
+   * archive#895 wave A: `agent.skills` (including an authored empty array) wins
    * over the connection's `getProvideSkills` opt-in — see
    * ResolvedAgentDefinition's doc comment (authored-field-wins). Returns
    * the channel-delivery report to merge into `session.configured`
@@ -1772,7 +1772,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       try {
         skillIds = (await this.options.getProvideSkills()) ?? [];
       } catch (error) {
-        // #895 review MEDIUM: never-silent — a lookup failure degrades to
+        // archive#895 review MEDIUM: never-silent — a lookup failure degrades to
         // "no materialized skills" for the session, but that outcome is
         // still receipted (delivery-failed), not dropped.
         logger.warn?.(
@@ -1808,10 +1808,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     if (!useOverlay && !materializeCwd) {
-      // #895 review MEDIUM: never-silent — there ARE requested skill ids
+      // archive#895 review MEDIUM: never-silent — there ARE requested skill ids
       // (agent-authored or a non-empty connection-default list), but there
       // is no session cwd to materialize into (and no cwdDefaulted signal
-      // to route through the station#1174 overlay instead). Receipt every
+      // to route through the archive#1174 overlay instead). Receipt every
       // requested id as undelivered rather than silently dropping the whole
       // report (an absent report here would let a resolution-stage-only
       // report — set upstream by session-agent-resolution.ts for an

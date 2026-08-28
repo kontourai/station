@@ -90,7 +90,7 @@ describe('useUnsavedGuard', () => {
     window.removeEventListener('keydown', parentEscapeHandler);
   });
 
-  // Review of #1138 found the migration reintroduced #1110's defect here, on
+  // Review of archive#1138 found the migration reintroduced archive#1110's defect here, on
   // the one call site CLAUDE.md makes mandatory. `DiscardModal` was declared
   // inline in the hook, so it was a new component TYPE per host render: React
   // remounted the dialog, the unmounting instance's cleanup scheduled an rAF
@@ -126,7 +126,7 @@ describe('useUnsavedGuard', () => {
       `focus left the dialog for ${(document.activeElement as HTMLElement)?.textContent ?? 'nothing'}`,
     ).toBe(true);
 
-    // ...and Escape still closes it from wherever focus actually landed.
+    //.and Escape still closes it from wherever focus actually landed.
     fireEvent.keyDown(document.activeElement ?? document.body, {
       key: 'Escape',
     });

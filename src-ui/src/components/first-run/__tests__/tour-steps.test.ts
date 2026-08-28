@@ -16,7 +16,7 @@ import {
 } from '../tour-steps';
 
 /**
- * Post-#2678 the repo has one canonical spelling per surface plus a central
+ * Post-archive#2678 the repo has one canonical spelling per surface plus a central
  * retirement table. A tour anchored on a retired spelling would still *work*
  * (the redirect catches it) and would quietly put the retired name back into
  * the product — which is the exact failure the one-name-per-concept work
@@ -65,8 +65,8 @@ describe('first-run tour anchors resolve to canonical routes', () => {
     // falls back to unanchored — it looks fine and teaches nothing about the
     // surface it claims to point at.
     //
-    // Review L2: accepting the `nav-${type}` template alone was partly vacuous
-    // — it proved the sidebar CAN emit `nav-*` anchors, not that the specific
+    // accepting the `nav-${type}` template alone was partly vacuous
+    // it proved the sidebar CAN emit `nav-*` anchors, not that the specific
     // group a step names is still in the list. So a `nav-` anchor is checked
     // against the actual nav registry, which is what decides whether that
     // element renders at all.
@@ -132,7 +132,7 @@ describe('tourStepIndexForId', () => {
     expect(tourStepIndexForId('a-step-that-was-removed')).toBe(0);
   });
 
-  // station#3280: tourStepId is durable resume state; the sessions->activity
+  // archive#3280: tourStepId is durable resume state; the sessions->activity
   // step rename must keep previously persisted ids resolving to the renamed
   // step, not silently restarting the tour.
   test("resolves the persisted pre-rename 'sessions' id to the activity step", () => {

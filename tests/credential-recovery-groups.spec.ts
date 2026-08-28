@@ -276,7 +276,7 @@ for (const viewport of [
     const fixture = await seedCredentialRecoveryRoutes(page);
     await page.goto('/connections/engines/claude-runtime');
 
-    // #1359 moved implementation-level engine controls behind the detail
+    // archive#1359 moved implementation-level engine controls behind the detail
     // view's Advanced disclosure. Credential profiles remain available there;
     // open the intentional disclosure rather than treating the new default
     // presentation as a missing recovery surface.

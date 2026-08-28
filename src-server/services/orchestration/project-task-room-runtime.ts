@@ -125,7 +125,7 @@ export interface ProjectTaskRoomRuntimeDeps {
     agents: ProjectTaskRoomAgentGrantAuthority;
     links?: ProjectTaskRoomLinkAuthority;
   }) => ProjectTaskRoomAuthority;
-  /** #3546 bridge: recorder, scope-bound resolver, and lifecycle owner. */
+  /** archive#3546 bridge: recorder, scope-bound resolver, and lifecycle owner. */
   readonly revisionEvidence?: ProjectTaskRoomRevisionEvidencePort;
   readonly working: ProjectTaskRoomWorkingState;
   readonly requestAuthority: ProjectTaskRoomRequestAuthority;

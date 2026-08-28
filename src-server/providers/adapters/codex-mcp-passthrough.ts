@@ -1,5 +1,5 @@
 /**
- * station#1195 (epic #1191 slice C, the Codex analog of #1157): maps a
+ * archive#1195 (epic archive#1191 slice C, the Codex analog of archive#1157): maps a
  * resolved agent's authored `toolServers` (`ResolvedAgentToolServer[]`,
  * already secret-boundary-filtered at resolution — see
  * session-agent-resolution.ts) into `-c mcp_servers....` config-override
@@ -15,7 +15,7 @@
  * `session/new` WIRE payload the external app can read — env must never
  * cross that boundary (channel 'wire'). Codex's `codex app-server` is
  * ALSO 'wire' (an external process that independently manages its own
- * outbound MCP connections — station#1195's investigation confirmed there
+ * outbound MCP connections — archive#1195's investigation confirmed there
  * is no way for Station to inject env into that connection at all), but
  * unlike ACP, Codex's `-c mcp_servers.<id>....` session-layer override is a
  * SPAWN-TIME ARGV, not a payload the external process stores/forwards

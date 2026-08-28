@@ -106,7 +106,7 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
         listEmptyTitle={
           agentsLoadFailed ? 'Couldn’t load agents' : 'No agents yet'
         }
-        // station#4463 slice 2 fix round (H2b): when the list is genuinely
+        // archive#4463: when the list is genuinely
         // empty (no filter active), authoredAgents.length is always 0 too, so
         // the detail pane's create-first-run card is always showing beside
         // this — and its description was the exact same sentence. The card

@@ -32,12 +32,12 @@ type Toast = {
   message: string;
   sessionId?: string;
   duration?: number;
-  // 'pairing-request' (station#1982): NotificationContainer.tsx already
+  // 'pairing-request' (archive#1982): NotificationContainer.tsx already
   // renders a dedicated Allow/Deny card for this variant — grouped into the
   // persistent approval queue alongside 'tool-approval', never the ephemeral
   // toast stack — and routes both actions through the same
   // `/api/notifications/:id/action/:actionId` handler `handleAction` already
-  // calls. No producer constructs one yet (nothing calls `show()` with this
+  // calls. No producer constructs one yet (nothing calls `show` with this
   // type), so it is currently unreachable at runtime; it belongs in this
   // union regardless, because the rendering code already switches on it and
   // a real device-pairing notification producer is meant to opt into this
@@ -140,7 +140,7 @@ class ToastStore {
     this.notify();
     this.notifyHistory();
 
-    // station#4512 review (B2) — `duration > 0` guards this the same way
+    // archive#4512 — `duration > 0` guards this the same way
     // the existing-toast refresh path above already does. Before this fix,
     // `duration: 0` (the "sticky, no auto-dismiss" contract `showToolApproval`
     // below establishes by never scheduling a timeout at all) instead
@@ -401,7 +401,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     toastStore.clearHistory();
   }, []);
 
-  // station#3796: one memoised value per provider — a fresh object literal
+  // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
   const value = useMemo(

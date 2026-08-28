@@ -14,7 +14,7 @@ import {
   toToolEnvelope as toBoardEnvelope,
 } from './station-control-shared.js';
 
-// station#1195: resolved fresh on every call — see the matching note in
+// archive#1195: resolved fresh on every call — see the matching note in
 // station-control-operations-tools.ts.
 function controlApiBase(): string {
   return resolveControlApiBase();
@@ -44,7 +44,7 @@ const formFieldSchema = z.object({
 const sourceRefSchema = z.record(z.string(), z.unknown());
 
 /**
- * station#4079 slice 1: the block payload station#1399's `render_component`
+ * archive#4079: the block payload archive#1399's `render_component`
  * accepts, reused verbatim for `board_pin` — a pinned widget IS a
  * provenance-bound UI block. The provenance boundary itself
  * (`assertUIBlockProvenanceAccepted` via `acceptUIBlockProvenance`) runs
@@ -103,7 +103,7 @@ const blockSchema = z.discriminatedUnion('type', [
 const sizeSchema = z.enum(['sm', 'md', 'lg', 'full']);
 
 /**
- * station#4079 slice 1 — `board_pin`/`board_unpin`/`board_move`, the agent
+ * archive#4079 — `board_pin`/`board_unpin`/`board_move`, the agent
  * verbs for the board face. Mirrors `station-control-operations-tools.ts`'s
  * registration pattern: each tool is a thin `z.object` shape over the
  * canonical `@kontourai/station-sdk/client` fetcher (`client/board.ts`),

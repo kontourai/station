@@ -21,7 +21,7 @@ export interface CliCommandResult {
   code: number | null;
 }
 
-// station#977: Station may run as a launchd/systemd service, which starts
+// archive#977: Station may run as a launchd/systemd service, which starts
 // with a MINIMAL PATH -- not the users interactive-shell PATH. Tools like
 // mise/nvm/asdf/direnv export PATH from .zshrc/.bashrc, which a shell only
 // sources when INTERACTIVE (-i), not merely a login shell (-l) -- so an
@@ -187,7 +187,7 @@ export async function augmentedSpawnEnv(
   baseEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<NodeJS.ProcessEnv> {
   const combined = await resolveAugmentedPath();
-  // station#1908: every caller of this helper spawns (or PATH-probes) an
+  // archive#1908: every caller of this helper spawns (or PATH-probes) an
   // external engine binary -- claude-adapter.ts's Claude Agent SDK spawn,
   // acp-process.ts's ACP-connected engines (OpenCode, Kiro, ...), and this
   // module's own `runCliCommand` auth/version probes. Handing the child a
@@ -210,11 +210,11 @@ export async function augmentedSpawnEnv(
  * into `null` is what would send an absolute miss back down the PATH search to
  * be answered by a same-named binary somewhere else.
  *
- * station#766: a fully qualified command names the binary directly. Joining it
+ * archive#766: a fully qualified command names the binary directly. Joining it
  * onto each PATH dir builds `/usr/bin//abs/path`, which never exists, so an
  * absolute command reported "missing" while the ACP spawn launched that same
  * path successfully -- detection and launch disagreeing about one string.
- * station#3155: a `~/…` command is an absolute path in the shell's spelling.
+ * archive#3155: a `~/…` command is an absolute path in the shell's spelling.
  * Unexpanded it is not `isAbsolute`, so it fell through to the PATH search and
  * came back as "~/bin/agent not found on PATH" -- true of PATH, false about
  * the binary. Expanding first lets the absolute branch handle it.
@@ -226,7 +226,7 @@ function resolveAbsoluteCommand(command: string): string | null | undefined {
 }
 
 export function findCliBinary(command: string): string | null {
-  // station#977: lazy, not module-load-eager -- kicking this off on first
+  // archive#977: lazy, not module-load-eager -- kicking this off on first
   // use (fire-and-forget; the returned promise never rejects) instead of
   // at import means a vitest suite that never calls findCliBinary/
   // resolveAugmentedPath never spawns a real shell just by importing this

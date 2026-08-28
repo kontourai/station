@@ -34,7 +34,7 @@ const starterWorkLock = {
     callback: () => Promise<T>,
   ): Promise<T> => callback(),
 };
-// Review H1: `= []` alone makes a failed `useTasksQuery` read indistinguishable
+// `= []` alone makes a failed `useTasksQuery` read indistinguishable
 // from a project with no tasks — both the task list AND the detail pane
 // claimed "No tasks yet." / "Select a task." over a read that never answered.
 let tasksError: unknown;
@@ -92,7 +92,7 @@ let workItemsData: {
     reason?: string;
   }>;
 } = { providers: [] };
-// Roadmap #584, part of epic #580, S4: AssignmentProvider claim state.
+// Roadmap archive#584, part of epic archive#580, S4: AssignmentProvider claim state.
 let taskClaim: {
   state: string;
   actor?: {
@@ -265,7 +265,7 @@ describe('ProjectTasksSection', () => {
       target: { value: 'Starter task' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
-    // station#3965: plain language now, but the two facts it must carry are
+    // archive#3965: plain language now, but the two facts it must carry are
     // unchanged — the task EXISTS, and whether the agent picked it up is
     // unknown, so the reader must look before starting it again.
     expect(
@@ -779,7 +779,7 @@ describe('ProjectTasksSection', () => {
 
   test('does not hide a provider item behind an unnamespaced (opaque) local workItemRef', () => {
     // An unnamespaced ref ('583', not 'github:owner/repo#583') must never be
-    // treated as a safe cross-provider join key — see the #583 review
+    // treated as a safe cross-provider join key — see the archive#583
     // finding on false-hiding via bare-string collisions.
     tasks[0] = { ...tasks[0], workItemRef: '583' };
     workItemsData = {
@@ -889,7 +889,7 @@ describe('ProjectTasksSection', () => {
     );
   });
 
-  // Roadmap #584, part of epic #580, S4: dispatch-as-claim UI.
+  // Roadmap archive#584, part of epic archive#580, S4: dispatch-as-claim UI.
   describe('AssignmentProvider claim state', () => {
     test('a claimed-by-other task guards the Dispatch button with the actor surfaced', () => {
       tasks[0] = { ...tasks[0], workItemRef: 'github:kontourai/station#584' };
@@ -1002,7 +1002,7 @@ describe('ProjectTasksSection', () => {
 });
 
 /**
- * Review H1: `data: tasks = []` alone makes a failed `useTasksQuery` read
+ * `data: tasks = []` alone makes a failed `useTasksQuery` read
  * indistinguishable from a project with no tasks — the task list claimed
  * "No tasks yet." over a read that never answered.
  */

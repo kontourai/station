@@ -16,7 +16,7 @@ export interface ProjectMetadata {
   layoutCount: number;
   hasKnowledge: boolean;
   defaultProviderId?: string;
-  /** Server-owned explicit sidebar position (station#3315); list is pre-sorted by it. */
+  /** Server-owned explicit sidebar position (archive#3315); list is pre-sorted by it. */
   position?: number;
 }
 
@@ -41,7 +41,7 @@ export function useProjects(): {
   projects: ProjectMetadata[];
   isLoading: boolean;
   /**
-   * station#4525 review (HIGH-1): true only once the list has been
+   * archive#4525: true only once the list has been
    * POSITIVELY confirmed by a successful, error-free load with real data —
    * never true for the pending shape (`isLoading`) OR the error shape,
    * because both fold `data` to the same `[]` `projects` reads. A caller

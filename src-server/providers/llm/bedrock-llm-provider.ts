@@ -181,7 +181,7 @@ export class BedrockLLMProvider extends AiSdkLLMProvider {
         id: selector,
         name: profile?.inferenceProfileName || model.modelName || selector,
         supportsVision: model.inputModalities?.includes('IMAGE'),
-        // station#1430: deliberately no `supportsTools` here, not an
+        // archive#1430: deliberately no `supportsTools` here, not an
         // oversight. Checked both `FoundationModelSummary` (this call) and
         // `FoundationModelDetails` (`GetFoundationModelCommand`) in the
         // installed `@aws-sdk/client-bedrock` (v3.1095.0) type definitions —
@@ -208,7 +208,7 @@ export class BedrockLLMProvider extends AiSdkLLMProvider {
       // `source: 'unavailable'` is the signal callers act on; an unconfigured
       // Bedrock must not print on every catalog request.
       //
-      // #3654: it used to be the ONLY signal. The error was discarded here, so
+      // archive#3654: it used to be the ONLY signal. The error was discarded here, so
       // no `reason` and no `reasonKind` ever left this method — and
       // `recordModelCatalogDiscovery` writes no receipt at all without them,
       // which is why a Bedrock connection read "Saved — not verified" whatever
@@ -229,7 +229,7 @@ export class BedrockLLMProvider extends AiSdkLLMProvider {
 
   /**
    * Whether AWS answered — the inherited contract, restored deliberately
-   * (#3654).
+   * (archive#3654).
    *
    * This class used to override `healthCheck` with the credential resolution
    * below, and `testConnection` short-circuits to a PASSED check receipt when

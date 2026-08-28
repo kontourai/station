@@ -1,5 +1,5 @@
 /**
- * station#1224 (offline slice 2): end-to-end proof that the direct `/chat`
+ * archive#1224 (offline): end-to-end proof that the direct `/chat`
  * route's dedup short-circuit (`chat-primary-stream.ts`) actually prevents a
  * second agent execution for a replayed `clientTurnId` — exercised through
  * the REAL `streamPrimaryAgentChat` (not mocked, unlike `chat.routes.test.ts`)

@@ -2,13 +2,13 @@ import type { ReactNode } from 'react';
 
 /**
  * `color` is optional because most of the palette it was written against does
- * not exist (station#1254).
+ * not exist (archive#1254).
  *
  * The call sites passed a categorical accent per metric family —
  * `--accent-primary` for counts of messages, `--accent-secondary` for token
  * counts, `--accent-warning` for money, `--accent-success` for averages,
  * `--accent-info` for per-turn rates. Only `--accent-primary` is a real token.
- * The other four are defined nowhere, so `var()` was invalid at
+ * The other four are defined nowhere, so `var` was invalid at
  * computed-value time and `color` fell back to `inherit`: twelve of the
  * fifteen cards in this app have always rendered `--text-primary`, and the
  * scheme has never been visible.
@@ -18,7 +18,7 @@ import type { ReactNode } from 'react';
  * status tokens that could be reached for — `--warning-text` on Total Cost,
  * `--success-text` on Avg Cost/Turn — would assert a state the number does not
  * carry. Inventing `--accent-secondary` / `--accent-info` is the "second name
- * for one concept" that station#1168 and station#1246 both ruled out.
+ * for one concept" that archive#1168 and archive#1246 both ruled out.
  *
  * So the undefined values are dropped rather than replaced, `--accent-primary`
  * stays where it already rendered, and nothing on screen changes.
@@ -34,7 +34,7 @@ export function StatCard({
   /**
    * What the figure above is a measurement OF, when that is not "everything".
    * Rendered only when supplied — an unqualified number stays unqualified
-   * rather than gaining a permanent caveat (station#3245).
+   * rather than gaining a permanent caveat (archive#3245).
    */
   detail?: ReactNode;
   icon: ReactNode;

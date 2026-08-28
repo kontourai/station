@@ -36,12 +36,12 @@ interface UserMessage {
 }
 
 /**
- * Fold an orchestration `SessionUsageAggregate` (station#1299) into the
+ * Fold an orchestration `SessionUsageAggregate` (archive#1299) into the
  * shape `buildConversationStatsView` expects.
  *
  * Field-for-field pass-through, deliberately: whatever the engine did not
  * report arrives here as `undefined` and leaves as `undefined`
- * (station#3201). Two figures this function used to invent are gone —
+ * (archive#3201). Two figures this function used to invent are gone —
  * `estimatedCost: 0`, which rendered as `$0.0000` for engines that report
  * no cost at all, and `contextTokens: … ?? totalTokens`, which presented a
  * cumulative across-turns token sum as context occupancy. Cost now carries
@@ -54,7 +54,7 @@ function usageAggregateToConversationStats(
     inputTokens: aggregate.inputTokens,
     outputTokens: aggregate.outputTokens,
     totalTokens: aggregate.totalTokens,
-    // station#4196: the fold has carried these since the birth-site fix;
+    // archive#4196: the fold has carried these since the birth-site fix;
     // dropping them here is exactly what made every stats surface
     // cache-blind while the context bar beside it was cache-inclusive.
     cacheReadTokens: aggregate.cacheReadTokens,
@@ -96,7 +96,7 @@ export async function getConversationStats(
   _modelCatalog: BedrockModelCatalog | undefined,
   _logger: any,
   /**
-   * station#1299 slice 1: reads a native-SDK (Claude/Codex) session's
+   * archive#1299: reads a native-SDK (Claude/Codex) session's
    * persisted runtime events (threadId === conversationId) and folds them
    * into usage totals — the stats-route counterpart to how the messages
    * route already falls back to `sessionMessageReader.readSessionMessages`
@@ -105,7 +105,7 @@ export async function getConversationStats(
    */
   readSessionUsage?: (threadId: string) => SessionUsageAggregate | undefined,
   /**
-   * station#1299 item 3a: resolves a model's real context-window size (e.g.
+   * archive#1299 item 3a: resolves a model's real context-window size (e.g.
    * from the launchable-model-inventory's cached `effectiveContextTokens`)
    * so `calculateContextWindowPercentage` can report a real percentage.
    * Optional — absence, or an unresolved model, leaves the percentage
@@ -191,7 +191,7 @@ export async function getConversationStats(
       // Station's estimates of ITS OWN prompt and tool schema for this
       // agent. An external engine composed its own context, so passing
       // them here would describe a prompt the engine never sent — that is
-      // where station#3201's `MCP Tools: 1` (`Math.ceil(len('[]') / 4)`)
+      // where archive#3201's `MCP Tools: 1` (`Math.ceil(len('[]') / 4)`)
       // came from. The context breakdown is a Station-engine measurement;
       // for an engine-events view it is honestly absent.
       contextWindowTokens:

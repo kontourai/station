@@ -181,7 +181,7 @@ export function useWorkspacePaneAvailabilityFacts(): WorkspacePaneAvailabilityFa
     : selectedEndpoint?.kind === 'managed-loopback'
       ? 'present'
       : 'missing';
-  // station#3794: this object is a dependency of the resolved-catalog memo,
+  // archive#3794: this object is a dependency of the resolved-catalog memo,
   // so a fresh literal per render rebuilt `catalog.entries` — and every
   // availability object inside it — on every render of every consumer, which
   // made any `useCallback(..., [catalog.entries])` downstream inert.

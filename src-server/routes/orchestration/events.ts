@@ -2,7 +2,7 @@
  * SSE endpoint — single event stream for all real-time updates.
  * Replays current state on connect so clients don't miss events that fired before they subscribed.
  *
- * station#1205 / station#3525 / station#3567: this route has NO user-identity
+ * archive#1205 / archive#3525 / archive#3567: this route has NO user-identity
  * concept (`EventRouteDeps` carries none) and forwards `EventBus` events to
  * every connected client. `SERVER_EVENTS.ORCHESTRATION_EVENT` carries
  * per-session content (`request.opened` payloads with `requestId`/`title`,
@@ -10,13 +10,13 @@
  * REDISPATCH_FAILED` carries `{threadId, turnId, provider}` for the same
  * reason; `OPERATIONAL_EVENT` wraps an arbitrary internal durable-work
  * event with no scoping of its own. Each reached this route once already —
- * `ORCHESTRATION_EVENT` at #1205, `INTERNAL_STOP_REDISPATCH_FAILED` at
- * #3525 — because the relay decision used to be a hand-maintained denylist
+ * `ORCHESTRATION_EVENT` at archive#1205, `INTERNAL_STOP_REDISPATCH_FAILED` at
+ * archive#3525 — because the relay decision used to be a hand-maintained denylist
  * at this file: the default for anything NOT named here was broadcast, and
  * adding a new session-scoped `SERVER_EVENTS` member was, by itself, enough
  * to auto-enroll it in verbatim broadcast.
  *
- * station#3567 inverted that default. The relay decision below reads
+ * archive#3567 inverted that default. The relay decision below reads
  * `SERVER_EVENT_BROADCAST_SAFETY` (defined alongside `SERVER_EVENTS` in
  * `@kontourai/station-contracts/runtime-events`) — a map TypeScript refuses
  * to compile unless every `SERVER_EVENTS` member has an explicit
@@ -183,7 +183,7 @@ export function createEventRoutes({
         // live events. Events emitted while the initial snapshot is being built or
         // written are buffered and flushed immediately after that snapshot.
         unsub = eventBus.subscribe((evt) => {
-          // station#3567: the relay decision is an allow-list keyed off each
+          // archive#3567: the relay decision is an allow-list keyed off each
           // channel's declared `broadcastSafety` — see the file header. Only
           // `'broadcast'` relays unconditionally.
           if (SERVER_EVENT_BROADCAST_SAFETY[evt.event] === 'broadcast') {
@@ -194,7 +194,7 @@ export function createEventRoutes({
           // dedicated identity gate this route recognizes by name. No gate
           // recognized for a channel means it is denied, not broadcast; this
           // is what keeps a newly-added scoped channel safe by default without
-          // any change to this file (station#1205, station#3525).
+          // any change to this file (archive#1205, archive#3525).
           if (isNotificationEvent(evt.event)) {
             if (
               canRelayNotificationEvent(
@@ -398,7 +398,7 @@ function canRelayApprovalEvent(
  * all — unlike notifications/approvals, there is no id or session field a
  * predicate could compare against a caller's authority. So there is no
  * `canReadUiNavigateEvent` callback to invoke; the decision is entirely
- * personal-vs-hosted (station#3567 fix round FIX 1):
+ * personal-vs-hosted (archive#3567 fix round FIX 1):
  *
  * - Personal mode (a real `SessionReadAuthority` with `mode: 'personal'`):
  *   deliver. This route reaches only the single process-wide user's own
@@ -409,7 +409,7 @@ function canRelayApprovalEvent(
  * - Hosted multi-tenant: deny. Nothing in the payload identifies which
  *   tenant's connections should receive it, so broadcasting would drive
  *   every connected client's UI regardless of who issued the command.
- * - `authority === undefined`: deny. station#3567 second fix round FIX 2 —
+ * - `authority === undefined`: deny. archive#3567 second fix round FIX 2 —
  *   an earlier version of this function treated missing authority as
  *   clearance (`if (!authority) return true`), making it the only relay
  *   predicate on this route that read "unknown" as "safe" rather than as

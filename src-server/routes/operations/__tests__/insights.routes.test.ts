@@ -11,7 +11,7 @@ import { RuntimeEventLog } from '../../../runtime/conversation/runtime-event-log
 vi.mock('../../../telemetry/metrics.js', () => ({
   insightOps: { add: vi.fn() },
 }));
-// station#3130: the route now resolves the caller the same way
+// archive#3130: the route now resolves the caller the same way
 // /monitoring/events does, alias fallback included. Pinning the alias to the
 // fixtures' user means these tests exercise the DEFAULT (no ?userId=) call —
 // the only one `fetchInsights` actually makes, and the one that was unscoped.
@@ -133,7 +133,7 @@ describe('Insights Routes', () => {
     expect(body.data.agentUsage.default.chats).toBe(1);
     expect(body.data.modelUsage['claude-3']).toBe(1);
     expect(body.data.totalErrors).toBe(1);
-    // outcomeUnknown is new (station#3075): results whose producer reported
+    // outcomeUnknown is new (archive#3075): results whose producer reported
     // no terminal status are counted explicitly instead of disappearing into
     // `calls`, which made the error RATE read better than reality.
     // `legacy_tool` is exactly that case — it has an END span with no
@@ -301,7 +301,7 @@ describe('Insights slicing and export (#3075, #3076)', () => {
   it('an agent filter of (unnamed) selects the slug-less rows', async () => {
     // The dashboard renders that bucket as a clickable row, and it is the
     // one agent name the codebase expects a human to click — it exists so
-    // slug-less rows are reachable at all (station#3086). Comparing the raw
+    // slug-less rows are reachable at all (archive#3086). Comparing the raw
     // field against it matched nothing, so a row reading "(unnamed): N"
     // filtered to an all-zero rollup.
     write([

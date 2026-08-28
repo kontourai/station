@@ -80,7 +80,7 @@ export function isKnownFirstRunStatus(
 /**
  * What the chapter asks the server to record.
  *
- * A STATUS AND NOTHING ELSE (review M1). These used to build the whole record,
+ * A STATUS AND NOTHING ELSE. These used to build the whole record,
  * timestamp included, and hand it to the generic config write — which meant
  * the moment a decision was said to have happened came from the browser, and
  * any other caller of that route could say the same thing about a run that

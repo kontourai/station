@@ -341,8 +341,8 @@ describe('MCPToolUIFrame', () => {
     // Seed the nonce where `resolveCspNonce` actually reads it (the marker
     // element). Seeding the old `window.__STATION_CSP_NONCE__` global left
     // this regression test powerless: that carrier was removed, so the
-    // assertion would pass even if someone wired `resolveCspNonce()` in here
-    // tomorrow (station#4287 review).
+    // assertion would pass even if someone wired `resolveCspNonce` in here
+    // tomorrow (archive#4287).
     // `globalThis.document` on purpose: this test shadows `document` further
     // down with the PARSED srcdoc, so the bare name is in its TDZ up here.
     const cspMarker = globalThis.document.createElement('script');

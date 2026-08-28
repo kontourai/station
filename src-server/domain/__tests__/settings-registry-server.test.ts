@@ -202,7 +202,7 @@ describe('buildAppConfigProvenance', () => {
     },
   );
 
-  // station#1557. Provenance reports where the effective value comes from.
+  // archive#1557. Provenance reports where the effective value comes from.
   // A set AWS_REGION does not make a stored region inert — `resolveBedrockRegion`
   // reads the stored value first — so the entry stays a plain 'file'.
   test('a stored value is source "file" even when the declared env fallback is set', () => {
@@ -235,7 +235,7 @@ describe('buildAppConfigProvenance', () => {
     });
   });
 
-  // station#1557 review fix (M4). `resolveBedrockRegion` trims and treats a
+  // archive#1557 review fix (M4). `resolveBedrockRegion` trims and treats a
   // whitespace-only value as absent. Provenance used a bare truthiness test,
   // so these two cases had Settings naming a source the resolver discards —
   // the surface re-deriving "absent" for itself, which is exactly what the

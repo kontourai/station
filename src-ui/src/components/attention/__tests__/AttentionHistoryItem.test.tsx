@@ -120,7 +120,7 @@ function renderRow(
 }
 
 describe('AttentionHistoryItem — session-failed kind', () => {
-  // station#1914: the popover's own Dismiss for a derived kind, wired
+  // archive#1914: the popover's own Dismiss for a derived kind, wired
   // independently of the notification-delete `onDismiss` prop — there is no
   // notification id for a session-failed item to route through it.
   test('Dismiss acknowledges the item by its own id, not via onDismiss', () => {
@@ -144,7 +144,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
   });
 
   /*
-   * station#3203. THIS is the surface the owner was reading: the tray row
+   * archive#3203. THIS is the surface the owner was reading: the tray row
    * rendered only the kind eyebrow and the title, so the projection's `body`
    * — the failure's own cause — and its `updatedAt` were both carried here
    * and thrown away, and three failures were one indistinguishable row
@@ -204,7 +204,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     expect(new Set(rows).size).toBe(3);
   });
 
-  // station#3203 defect 2: the count stayed at 4 after acting on a row.
+  // archive#3203 defect 2: the count stayed at 4 after acting on a row.
   test('opening the row acknowledges it before navigating', async () => {
     const onClose = vi.fn();
     renderRow(baseFailure(), { onClose });

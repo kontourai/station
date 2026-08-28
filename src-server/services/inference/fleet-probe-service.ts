@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 5 — the CONSUMER-VERIFIED probe
+ * archive#1398 — the CONSUMER-VERIFIED probe
  * (`docs/design/inference-fleet.md` §4.3, §4.5, §10 OQ-6, §11 slice 5).
  *
  * Slices 3 and 4 relay a peer's claim and say so: every fleet candidate is
@@ -16,7 +16,7 @@
  *    is synchronous and answers only from cache; when the cache is missing or
  *    expired it SCHEDULES a refresh and returns the pre-probe answer
  *    (peer-attested, exactly as before slice 5). The upgrade lands on a later
- *    resolution window, the same way station#1431's evidence TTL works. A
+ *    resolution window, the same way archive#1431's evidence TTL works. A
  *    design where the first fleet turn pays for a probe would make the
  *    feature's own verification its worst latency case.
  * 2. **Bounded in every dimension.** One in-flight probe per candidate
@@ -211,7 +211,7 @@ function probeKey(environmentId: string, modelId: string): string {
   // The `\u0000` ESCAPE, never a literal NUL byte — a literal control
   // character makes the whole source file `data` to file(1) and invisible to
   // `git grep -I`, which is how a file silently opts out of the repo's own
-  // content scanners (station#1398 security review, M-5).
+  // content scanners (archive#1398 security review, M-5).
   return `${environmentId}\u0000${modelId}`;
 }
 

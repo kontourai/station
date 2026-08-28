@@ -8,7 +8,7 @@ import {
 } from '../views/share/share-token';
 
 /**
- * station#1423 L-3 + N-2. Scrubbing the token from the address bar is only
+ * archive#1423 L-3 +. Scrubbing the token from the address bar is only
  * honest if it does not silently break the page's own recovery paths — the
  * error boundary's Reload and an ordinary refresh both re-read the URL.
  */

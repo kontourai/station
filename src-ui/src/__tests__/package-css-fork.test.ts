@@ -7,13 +7,13 @@ import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#883 — a package stylesheet and a src-ui stylesheet must not both
+ * archive#883 — a package stylesheet and a src-ui stylesheet must not both
  * define the same selector at top level.
  *
  * When a component's CSS lives in `packages/*` but a copy of its rules is
  * forked into a src-ui stylesheet, which copy wins is decided by nothing more
  * than the order the two sheets happen to load — and that order is a property
- * of CHUNKING, not of anything a reviewer reads. #883 deferred the SDK barrel
+ * of CHUNKING, not of anything a reviewer reads. archive#883 deferred the SDK barrel
  * out of the entry chunk, which moved `LayoutHeader.css` into a lazily
  * injected sheet and silently inverted TWO such forks: one in `chat.css` (a
  * 16px→8px padding change across every project-layout header) and one in
@@ -25,7 +25,7 @@ import { describe, expect, test } from 'vitest';
  * version, so a third fork fails here instead of shipping a restyle.
  *
  * Deliberately TOP-LEVEL only. An app-level override inside an `@media` block
- * — e.g. index.css raising `.workspace-header__prompt-btn` to a 44px touch
+ * e.g. index.css raising `.workspace-header__prompt-btn` to a 44px touch
  * target on coarse pointers — is real layering, not a fork: it adds a property
  * the package sheet never sets, and it is meant to sit on top.
  */

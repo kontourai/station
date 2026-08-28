@@ -52,8 +52,8 @@ export interface SessionTranscriptReadsDeps {
 }
 
 /**
- * Transcript read, search, and usage projections (epic #4024 slice 4,
- * #4144): the C10 cluster from the seam map — zero owned fields, every
+ * Transcript read, search, and usage projections (epic archive#4024,
+ * archive#4144): the C10 cluster from the seam map — zero owned fields, every
  * external consumer already structurally typed against exactly these
  * methods. The service keeps flat same-named public forwarders (the test
  * Proxy injects read authority by METHOD NAME for `readSessionMessages`,

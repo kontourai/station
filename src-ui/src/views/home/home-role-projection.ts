@@ -2,8 +2,8 @@ import type { WorkspaceHomeProjectionField } from '@kontourai/station-contracts/
 import type { HomeWorkItem } from './home-view-model';
 
 /**
- * The derivation coupling behind the Home role consent page (station#3122
- * stage 3).
+ * The derivation coupling behind the Home role consent page (archive#3122
+ *).
  *
  * The canonical projection record — field names AND user-readable claims —
  * lives in `@kontourai/station-contracts/workspace-home-role`
@@ -16,7 +16,7 @@ import type { HomeWorkItem } from './home-view-model';
  *
  * - {@link _EveryHomeWorkItemFieldIsDescribed}: adding a field to
  *   `HomeWorkItem` fails typecheck here until the contracts record names it
- *   — and that same change widens the stored field list, which invalidates
+ * and that same change widens the stored field list, which invalidates
  *   existing grants (`workspaceHomeRoleGrantCoversProjection`). "A widened
  *   projection is a new grant" stays mechanical.
  * - {@link _NoDescribedFieldIsMissingFromHomeWorkItem}: the record cannot

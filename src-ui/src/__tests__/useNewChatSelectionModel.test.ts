@@ -33,7 +33,7 @@ describe('resolveProviderManagedAgentConnectionId', () => {
     // This used to answer `engineConnectionId('station')`. The registry can
     // never hold an engine connection with that id, so the picker was minting
     // a binding its own dispatch check would then fail to resolve — the
-    // client-side twin of the seeded record #3662 removed. Absent means
+    // client-side twin of the seeded record archive#3662 removed. Absent means
     // Station's own engine, which is what every other seam already reads.
     expect(
       resolveProviderManagedAgentConnectionId(undefined, undefined),
@@ -81,8 +81,8 @@ describe('acpCatalogModelOptions (#3028)', () => {
   });
 
   test('the live ACP shape — { value, name } option objects — yields selectable models', () => {
-    // Copied from a real /acp/connections record (OpenCode, 2026-08-17):
-    // ACP select options are objects, not strings. The original #3028 fix
+    // Copied from a real /acp/connections record (OpenCode):
+    // ACP select options are objects, not strings. The original archive#3028 fix
     // mapped them as strings, so the picker stayed empty in production
     // while the string-shaped fixture above stayed green.
     const live = [

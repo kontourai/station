@@ -9,7 +9,7 @@ import {
 
 /**
  * station-docs — Station's credential-free documentation MCP server
- * (station#1547).
+ * (archive#1547).
  *
  * Deliberately NOT built on `StationControlToolRegistry`: importing that
  * module would pull `station-control-shared.ts` and the SDK HTTP client into
@@ -31,13 +31,13 @@ import {
 /**
  * Station's own package version, inlined at build time.
  *
- * Deliberately NOT described as a build identifier (station#1547 review,
+ * Deliberately NOT described as a build identifier (archive#1547 review,
  * HIGH). It has read `0.1.0` since the founding commit and this repo does not
  * publish from it, so a claim that a served topic is "attributable to the
  * Station build that shipped it" attributed nothing — the same string is
  * returned by every build that has ever existed. It is reported because MCP's
  * server-info requires a version, and it identifies the package, not the
- * build. Wiring a real build stamp is station#1635; until then this must not
+ * build. Wiring a real build stamp is archive#1635; until then this must not
  * be presented to a model as provenance.
  */
 export const STATION_DOCS_VERSION: string = packageJson.version;

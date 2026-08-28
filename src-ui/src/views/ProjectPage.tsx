@@ -217,7 +217,7 @@ export function ProjectPage({ slug }: { slug: string }) {
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
         />
 
-        {/* station#3202: what is live in this project leads the page, because
+        {/* archive#3202: what is live in this project leads the page, because
             that is what the sidebar badge sent you here for. Renders nothing
             when nothing is in flight. */}
         <ProjectLiveWorkSection slug={slug} />

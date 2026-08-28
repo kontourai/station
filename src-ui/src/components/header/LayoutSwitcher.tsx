@@ -23,7 +23,7 @@ export function LayoutSwitcher({
   layoutSlug,
 }: LayoutSwitcherProps) {
   const { setLayout } = useNavigation();
-  // Review H1: `= []` on its own makes a failed read indistinguishable from a
+  // `= []` on its own makes a failed read indistinguishable from a
   // project with no layouts, so the menu asserted "No layouts" over a read
   // that never answered.
   const {

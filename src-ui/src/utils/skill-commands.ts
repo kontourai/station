@@ -88,7 +88,7 @@ export type SkillVariableSubstitution =
 
 /**
  * Substitute a skill's `{{variables}}` — the ONE derivation shared by the
- * Test modal and the slash handler (review M3: the two used to disagree, and
+ * Test modal and the slash handler (the two used to disagree, and
  * both would substitute an empty string for a variable nobody supplied).
  *
  * A declared default applies when no value was provided. A CLEARED value
@@ -130,7 +130,7 @@ export type ShellWords =
 
 /**
  * Split a typed command line the way a shell would — the ONE parser every
- * slash-command consumer uses (delta review: a plain whitespace split turned
+ * slash-command consumer uses (a plain whitespace split turned
  * `/release "release notes" prod` into three broken words).
  *
  * Double and single quotes group; inside double quotes a backslash escapes
@@ -201,7 +201,7 @@ export type SkillVariableArgs =
   | { ok: false; error: string };
 
 /**
- * Map parsed command words onto a skill's declared variables (delta review:
+ * Map parsed command words onto a skill's declared variables (
  * pure positional fill could not skip an earlier defaulted variable).
  *
  * A word whose `name=` prefix names a DECLARED variable assigns by name; every

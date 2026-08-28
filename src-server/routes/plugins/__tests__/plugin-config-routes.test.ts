@@ -15,7 +15,7 @@ import {
   registerPluginConfigRoutes,
 } from '../plugin-config-routes.js';
 
-// station#3576: `field.secret` is manifest-author-controlled, so a plugin
+// archive#3576: `field.secret` is manifest-author-controlled, so a plugin
 // author who declares a genuinely sensitive setting and forgets
 // `"secret": true` would otherwise have its value broadcast to every
 // connected client on `PLUGINS_SETTINGS_CHANGED`. `emittedPluginSettings`
@@ -141,7 +141,7 @@ describe('emittedPluginSettings (station#3576)', () => {
     });
   });
 
-  // station#3577 review round 2 (NIT): the field key here must NOT also
+  // archive#3577 review round 2 (NIT): the field key here must NOT also
   // trip the key-name axis (unlike the previous fixture, `password`, which
   // does) — otherwise this test cannot tell "declared `secret: true` is
   // honored" apart from "the key-name axis also caught it," and would keep
@@ -185,7 +185,7 @@ describe('emittedPluginSettings (station#3576)', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  // station#3577 review round 2 (MEDIUM-3): the round-1 docblock claimed
+  // archive#3577 review round 2 (MEDIUM-3): the round-1 docblock claimed
   // "0 false positives on a real corpus." There was no corpus — nine
   // hand-picked names. Measured against `isSecretField`, a standard,
   // entirely non-secret OAuth-shaped manifest is mostly withheld, and a
@@ -289,7 +289,7 @@ describe('emittedPluginSettings (station#3576)', () => {
   });
 });
 
-// station#4307. `PUT /api/plugins/:name/settings` derived its store key from
+// archive#4307. `PUT /api/plugins/:name/settings` derived its store key from
 // `manifest.name || name` and used it against a plain-prototype `overrides`
 // object loaded by `ConfigLoader.loadPluginOverrides`. A plugin installed in
 // `demo/` whose manifest declared `"name": "__proto__"` therefore:
@@ -351,7 +351,7 @@ describe('PUT /:name/settings prototype pollution (station#4307)', () => {
     );
   }
 
-  // Each case carries the refusal it must produce (station#4307 review): a
+  // Each case carries the refusal it must produce (archive#4307 review): a
   // bare `status !== 200` passes for ANY throw in the handler — including one
   // that has nothing to do with the name — so it could not tell a working
   // refusal from an unrelated crash. It also has to be a refusal a caller can
@@ -452,7 +452,7 @@ describe('PUT /:name/settings prototype pollution (station#4307)', () => {
 });
 
 /**
- * station#4307 review. `PUT /:name/settings` copies every undeclared body key
+ * archive#4307 review. `PUT /:name/settings` copies every undeclared body key
  * VERBATIM into `plugin-overrides.json`, and nothing bounded how deeply those
  * values nest. Three limits, all measured on this Node:
  *
@@ -530,7 +530,7 @@ describe('PUT /:name/settings unbounded nesting (station#4307 review)', () => {
     // `PUT /:name/overrides` copies `body.disabled` verbatim into the same
     // file, so it is the same vector — and its cap is a SEPARATE `.refine`
     // instance. Removing it left the whole suite green, which is why this
-    // exists (station#4307 delta review, LOW-4).
+    // exists (archive#4307 delta review, LOW-4).
     const root = mkdtempSync(join(tmpdir(), 'station-override-depth-'));
     cleanupDirs.push(root);
     seedDemo(root);

@@ -196,7 +196,7 @@ export function packageNameOf(specifier) {
  * (the pure-function tests below, deliberately, to keep exercising it
  * directly) must pass `null` explicitly. A default of `null` would let a
  * future caller inherit this gate's original false-green hole simply by
- * forgetting the third argument (station#3423 review LOW-2) — omitting it
+ * forgetting the third argument (archive#3423) — omitting it
  * now throws instead of silently resolving unbounded.
  */
 export function packageResolvesFrom(fromDir, packageName, boundaryRoot) {

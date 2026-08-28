@@ -1,5 +1,5 @@
 /**
- * station#1398 security review, M-2 — the serve-receipt write FAILURE path.
+ * archive#1398 security review, M-2 — the serve-receipt write FAILURE path.
  *
  * Its own file because proving loudness needs the route module's module-scope
  * logger mocked before import, and the sibling suite deliberately exercises

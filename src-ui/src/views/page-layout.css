@@ -1,7 +1,7 @@
 /* ═══ Shared Page Layout ═══
  * Common classes for all core management views.
  * Provides consistent header, typography, animation, and container styling.
- * All management views MUST use .page as their root container class.
+* All management views MUST use .page as their root container class.
  */
 
 /* ── Page Container ── */
@@ -580,7 +580,7 @@
   color: var(--text-on-accent);
 }
 
-/* station#4463 slice 2 review HIGH-1 (fix round): `.page__tab` is
+/* archive#4463: `.page__tab` is
    `display: inline-flex`, and flexbox trims a flex item's OWN leading
    whitespace at the start of its line box — the count span's text content
    (" 3") therefore rendered as "3" with no visible gap ("Models0"), even
@@ -610,7 +610,7 @@
   min-height: 0;
 }
 
-/* ── SectionNav (scroll-spy / URL-section links; station#4463 slice 2) ──
+/* ── SectionNav (scroll-spy / URL-section links; archive#4463) ──
    Shares `.page__tab`'s pill visual for each link but is a `<nav>` of real
    anchors, not a `role="tablist"` — see `components/SectionNav.tsx`. Scrolls
    at every viewport like `.page__tabs` above, with an ALWAYS-visible thin

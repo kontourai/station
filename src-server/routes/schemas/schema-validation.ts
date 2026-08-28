@@ -9,7 +9,7 @@ interface ValidationOptions {
 /**
  * Thrown by {@link readRequestText} when a body exceeds its cap — either by
  * declared `Content-Length` or by bytes actually observed on the stream.
- * Exported (station#1398 slice 2) so a route that does its own parsing can
+ * Exported (archive#1398) so a route that does its own parsing can
  * distinguish "too large" from "unreadable" and answer with its own refusal
  * vocabulary instead of `validate()`'s generic envelope.
  */
@@ -23,7 +23,7 @@ export class RequestBodyTooLargeError extends Error {}
  * no length at all, is therefore stopped mid-ingestion rather than buffered
  * in full and measured afterwards.
  *
- * Exported (station#1398 slice 2) rather than reimplemented: it already
+ * Exported (archive#1398) rather than reimplemented: it already
  * works on both the node-server and the in-process test-harness paths —
  * `PUT /config/app` has ridden it via {@link validate} since it was written.
  * A route that parses its own body should use this instead of

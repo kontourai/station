@@ -272,7 +272,7 @@ describe('BranchToolbar', () => {
     render(<BranchToolbar workingDir="/repo" />);
     // The repo label text is present...
     expect(screen.getByText('repo')).toBeTruthy();
-    // ...but there is no "Switch repository" combobox.
+    //.but there is no "Switch repository" combobox.
     expect(
       screen.queryByRole('button', { name: /Switch repository/ }),
     ).toBeNull();

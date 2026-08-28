@@ -101,8 +101,8 @@ const WATCHED_ROOT_NAMES = ['config', 'agents', 'integrations'] as const;
  * This is a startup-only backoff, not a poller. `ready` means chokidar finished
  * its own directory scan; it does not mean the platform's notification stream
  * is live, and a change made in that gap is lost outright rather than delayed
- * (issue #952). Measured on this repo: first-event latency ran to 4.8s even on
- * successful rounds, and #952 recorded 11.6s under load — so the last pass sits
+ * (issue archive#952). Measured on this repo: first-event latency ran to 4.8s even on
+ * successful rounds, and archive#952 recorded 11.6s under load — so the last pass sits
  * well past that, and the passes stop entirely once the window has closed.
  * Steady-state correctness is the watcher's job; polling the whole config tree
  * forever would cost far more than the gap it closes.
@@ -161,7 +161,7 @@ export function isWatchedConfigPath(
  * `onLaunchabilityChange`/`observeExternalAppMutation`, and other
  * unrelated files like `hosts.json`/`host-credentials.json`).
  *
- * station#983 (scoped advance, station#settings-revamp slice 6, docs/design/
+ * archive#983 (scoped advance, station#settings-revamp slice 6, docs/design/
  * settings-architecture.md §6): the watcher already filters/dedupes/
  * reconciles these events into `notifyListeners()`, but nothing in
  * production ever subscribed — see `observeRuntimeConfigurationSources` in
@@ -239,14 +239,14 @@ export class ConfigLoader {
   private readonly enforceHomeSchema: boolean;
   private readonly homeSchemaReady: Promise<void>;
   /**
-   * station#3063: per-integration-id resolvers for the RUNNING instance's
+   * archive#3063: per-integration-id resolvers for the RUNNING instance's
    * spawn identity (`command`/`args`/`env`) of the built-in tool servers.
    * Registered by `StationRuntime`'s constructor for `station-control` and
    * `station-docs`. For a registered id, `loadIntegration` overlays these
    * fields fresh on every read and `saveIntegration`/`updateIntegration`
    * strip them from every write — the persisted file carries only
    * instance-INDEPENDENT bytes, so two servers sharing one home (desktop
-   * app + launchd service) agree on the file's content and the #1588
+   * app + launchd service) agree on the file's content and the archive#1588
    * byte-identical save skip converges instead of ping-ponging each
    * other's config watchers forever.
    */
@@ -307,7 +307,7 @@ export class ConfigLoader {
    * Load plugin provider overrides.
    *
    * The returned object is NULL-PROTOTYPE, top level and all the way down
-   * (station#4307). Its top-level keys are plugin names and its `settings`
+   * (archive#4307). Its top-level keys are plugin names and its `settings`
    * keys are manifest-declared field names — both external identifiers, so
    * the plain-prototype form gave `overrides['__proto__']` an
    * `Object.prototype` answer that is truthy (skipping a caller's
@@ -610,7 +610,7 @@ export class ConfigLoader {
   }
 
   /**
-   * station#3063: declare that integration `id` is a built-in whose spawn
+   * archive#3063: declare that integration `id` is a built-in whose spawn
    * identity (`command`/`args`/`env`) belongs to the running instance, not
    * to the persisted file. `resolveIdentity` is called lazily on every
    * `loadIntegration` so the values always reflect THIS process's actually
@@ -657,7 +657,7 @@ export class ConfigLoader {
   }
 
   /**
-   * Review fix (station#3063 LOW-1): a credential written to a built-in
+   * Review fix (archive#3063 LOW-1): a credential written to a built-in
    * integration id would be silently DEAD — the runtime-identity overlay
    * replaces the loaded `env` wholesale, so a stored value is never read at
    * spawn. Fail the write with a clear reason instead of accepting material
@@ -790,11 +790,11 @@ export class ConfigLoader {
    * Instead, a byte-identical save is skipped entirely — the runtime re-saves
    * the station-control integration on every agents reload, and re-writing
    * identical content fed the watcher an "external edit" that scheduled the
-   * next reload, forever (#1588, the reload loop behind #1574's catalog
+   * next reload, forever (archive#1588, the reload loop behind archive#1574's catalog
    * churn). A genuine content change still writes and still activates.
    */
   async saveIntegration(id: string, def: ToolDef): Promise<void> {
-    // station#3063: a registered built-in's spawn identity never reaches
+    // archive#3063: a registered built-in's spawn identity never reaches
     // disk — projected out BEFORE the byte comparison so the compare runs
     // against the bytes that would actually be written. Credential writes
     // to a built-in id fail closed first (they would be silently dead).
@@ -849,7 +849,7 @@ export class ConfigLoader {
   async listIntegrations(): Promise<ToolMetadata[]> {
     await this.ensureHomeSchema();
     const metadata = await listIntegrationMetadata(this.projectHomeDir, logger);
-    // station#3063: the persisted built-in files no longer carry
+    // archive#3063: the persisted built-in files no longer carry
     // command/env, so derive the listing's identity-dependent projections
     // (`source`, `requiresEnvSecrets`) from the runtime overlay — the same
     // truth `loadIntegration` serves. Without this, station-control would
@@ -1464,7 +1464,7 @@ export class ConfigLoader {
    * closer inline and returns an already-settled promise: the whole cost is a
    * *synchronous* block of the JS thread, in `uv_fs_event_stop` tearing the
    * process-wide macOS FSEvents stream down on a CFRunLoop thread. Measured
-   * here (#956), splitting the synchronous call from the promise it returns:
+   * here (archive#956), splitting the synchronous call from the promise it returns:
    *
    *   sync=1045.0ms async=0.0ms      sync=5931.7ms async=0.0ms
    *   sync= 958.3ms async=0.0ms      sync=2592.4ms async=0.0ms   (8 rounds)

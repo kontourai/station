@@ -22,7 +22,7 @@ import {
 import { toastStore } from '../contexts/ToastContext';
 
 /**
- * The frame (tier 3) adapter for the pane-host contract (station#4201 step 3).
+ * The frame (tier 3) adapter for the pane-host contract (archive#4201 step 3).
  *
  * The sibling `PluginFrameHost.test.tsx` proves the real component routes real
  * frame messages through this adapter. This file drives the adapter itself,
@@ -385,7 +385,7 @@ describe('a message the frame adapter cannot serve is refused, never dropped', (
 });
 
 /**
- * Acceptance 1 of station#4201 step 3, as a tripwire rather than a one-time
+ * Acceptance 1 of archive#4201 step 3, as a tripwire rather than a one-time
  * grep: `PluginFrameHost` must route these intents THROUGH the contract, not
  * beside it. The failure this guards against is not a broken feature -- it is
  * a second implementation growing back next to the first, which is exactly

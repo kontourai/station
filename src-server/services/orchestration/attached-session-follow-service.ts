@@ -43,7 +43,7 @@ interface FollowState {
    * nobody asked for and, worse, would make an attach fact the newest event
    * on every one of those threads.
    *
-   * It is also the PREDECESSOR half of the envelope id (station#3495): the
+   * It is also the PREDECESSOR half of the envelope id (archive#3495): the
    * id addresses the transition `storedAttribution -> fingerprint`, so this
    * field is the only thing the id needs beyond the new value. See
    * {@link envelopeEventId}.
@@ -83,14 +83,14 @@ export interface AttachedProjectRoot {
 const DEFAULT_ROOT_RESOLUTION_CONCURRENCY = 4;
 
 /**
- * station#1501 slice 3b, seam S5: the candidate roots for the reverse map,
+ * archive#1501, seam S5: the candidate roots for the reverse map,
  * with each project's directory taken from `resolveProjectResource` when that
  * resolver can vouch for it.
  *
  * **It UPGRADES a root; it never REMOVES one.** When the resolver answers
  * anything but `bound`, the raw stored `workingDirectory` is kept as the
  * candidate. That is not a softening of the exact-match-or-honest-unavailable
- * rule — it is station#1462's finding applied in the direction it points.
+ * rule — it is archive#1462's finding applied in the direction it points.
  * `canonicalPath`'s docblock below records that DROPPING a root that does not
  * resolve right now (an unmounted volume, a deleted checkout) "hid a real
  * second project on the same directory", turning a genuine ambiguity into a
@@ -116,7 +116,7 @@ const DEFAULT_ROOT_RESOLUTION_CONCURRENCY = 4;
  * mattering once a manifest and a binding exist and the binding points
  * somewhere other than `workingDirectory`.
  *
- * ## Concurrency (station#1501 slice 3b review, FIX 3)
+ * ## Concurrency (archive#1501 review, FIX 3)
  *
  * `resolvePath` is not cheap: for a manifest-bearing project it spawns a
  * `git remote -v` subprocess. This runs once per project per poll, and the
@@ -192,7 +192,7 @@ export interface AttachedSessionFollowServiceOptions {
    */
   listProjects: () => AttachedProjectRoot[];
   /**
-   * station#1501 slice 3b, seam S5 (`docs/design/portable-project-identity.md`
+   * archive#1501, seam S5 (`docs/design/portable-project-identity.md`
    * §2.2.1): where the roots come from. Optional so an unwired host (and every
    * existing test) keeps resolving through `listProjects()` unchanged.
    */
@@ -202,7 +202,7 @@ export interface AttachedSessionFollowServiceOptions {
   /** Testable lower bound for the fixed production deduplication cache. */
   maxSeenEventIds?: number;
   /**
-   * station#1399 fix round 2, B1/B4: optional so every existing caller/test
+   * archive#1399 fix round 2, B1/B4: optional so every existing caller/test
    * keeps constructing this service unchanged. When present, a
    * provenance-sanitizer failure inside `appendAndPublish` is logged
    * through it rather than silently swallowed; absent, sanitization still
@@ -315,7 +315,7 @@ export class AttachedSessionFollowService {
         });
         // An ambiguous attribution is still followed: the session is real and
         // dropping it would hide a live external session entirely. What it
-        // does NOT get is a slug it hasn't earned (station#1462).
+        // does NOT get is a slug it hasn't earned (archive#1462).
         if (attribution.state === 'unattributed') continue;
         await this.follow(source, session, attribution);
         followedSessions += 1;
@@ -336,7 +336,7 @@ export class AttachedSessionFollowService {
     attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
   ): Promise<void> {
     const state = this.followState(descriptor);
-    // station#1997: one persisted-sessions snapshot for both the ownership
+    // archive#1997: one persisted-sessions snapshot for both the ownership
     // check and the alias lookup — this ran up to four separate full
     // `readSessions()` scans per followed session per 2s tick (two here, up
     // to two more inside `followState` above), and every scan is synchronous
@@ -403,12 +403,12 @@ export class AttachedSessionFollowService {
     // repeatedly issuing indexed duplicate lookups until it caught up. Persist
     // the opaque offset together with the discovery snapshot's opaque handle;
     // a moved/replaced source gets a different handle and safely restarts from
-    // its bounded recent window (#1997).
+    // its bounded recent window (archive#1997).
     this.persistAttachedSession(descriptor, read.cursor);
     // Legacy rows and a source whose opaque handle changed still replay one
     // bounded transcript window. Discard durable ids with one indexed read per
     // batch instead of making each duplicate enter appendEventIfAbsent's
-    // synchronous write/sequence path (#1997).
+    // synchronous write/sequence path (archive#1997).
     const persistedEventIds = this.options.eventStore.existingEventIds(
       read.events.map((event) => event.eventId),
     );
@@ -471,12 +471,12 @@ export class AttachedSessionFollowService {
     ) {
       this.options.eventStore.deleteThread(descriptor.threadId);
     }
-    // station#1867 class: never materialize the full thread via listEvents on
+    // archive#1867 class: never materialize the full thread via listEvents on
     // the cold path — large Claude-import threads (10k–20k events) held the
     // event loop inside sqlite3_step and made identity probes time out while
     // the port stayed bound.
     //
-    // station#3495: "ownership rows" was still an UNBOUNDED read. On a thread
+    // archive#3495: "ownership rows" was still an UNBOUNDED read. On a thread
     // this service had itself grown to 259,286 `session.started` rows it cost
     // ~1.2 GB of parsed payloads at boot with no client connected. Only ONE
     // fact is wanted — the attribution the newest `session.configured`
@@ -564,7 +564,7 @@ export class AttachedSessionFollowService {
   }
 
   /**
-   * station#1399 fix round 2, B1 (independent review) — a SECOND
+   * archive#1399 fix round 2, B1 (independent review) — a SECOND
    * provenance-sanitizing writer, sibling to
    * `OrchestrationService#publishCanonicalEvent`. This service imports
    * source events straight off an attached transcript
@@ -684,7 +684,7 @@ export function resolveAttachedSessionPollInterval(
 }
 
 /**
- * station#1462: the reverse map is deterministic and honest, never an
+ * archive#1462: the reverse map is deterministic and honest, never an
  * arbitrary winner.
  *
  * - `attributed` — exactly one project owns the longest canonical root that
@@ -705,7 +705,7 @@ export function resolveAttachedSessionPollInterval(
  * content-addressed event id, so a wrong attribution is written once and
  * never re-derived on a later poll or a restart. A `readdir`-ordered winner
  * is therefore a permanent, silent lie about which project a session belongs
- * to. "Exact match, or an honest unavailable" is the same idiom station#189
+ * to. "Exact match, or an honest unavailable" is the same idiom archive#189
  * slice 4 settled on.
  */
 export type AttachedProjectAttribution =
@@ -767,10 +767,10 @@ export function resolveAttachedProjectRoot(
   };
 }
 
-// station#1120 cross-reference: this envelope's `session.started`/
+// archive#1120 cross-reference: this envelope's `session.started`/
 // `session.configured` pair is published via `appendAndPublish()` below,
 // NOT via OrchestrationService.projectAndPublishEvent — it bypasses the
-// `sessionOwnerCache` invalidation (SessionAuthorization since epic #4024
+// `sessionOwnerCache` invalidation (SessionAuthorization since epic archive#4024
 // slice 6) entirely. That's safe only
 // because neither event below ever sets `metadata.userId`, so
 // SessionAuthorization.sessionOwnerUserId() never resolves (and therefore
@@ -798,7 +798,7 @@ function attachedSessionEnvelope(
         ? latestEventAt
         : session.createdAt,
   } as const;
-  // station#1462: an ambiguous attribution carries the named candidates and
+  // archive#1462: an ambiguous attribution carries the named candidates and
   // deliberately no `projectSlug` — every consumer that reads a slug off this
   // metadata would otherwise read an unproven one.
   const projectMetadata =
@@ -853,7 +853,7 @@ function attachedSessionEnvelope(
  * expressing ANY attribution wins, and a slug on that event outranks an
  * ambiguity marker on the same event.
  *
- * station#3495: it used to also COUNT every attributed configured event on the
+ * archive#3495: it used to also COUNT every attributed configured event on the
  * thread, which is why it needed every one of them. The count is gone (see
  * {@link envelopeEventId}), so this stops at the first match and its input is
  * a bounded window.
@@ -888,7 +888,7 @@ function persistedEnvelopeFacts(
 
 /**
  * How many of the thread's newest `session.configured` events the cold path
- * reads to find the attribution the log expresses (station#3495).
+ * reads to find the attribution the log expresses (archive#3495).
  *
  * Only the newest one that expresses an attribution is used, so this is
  * headroom for configured events that express none (a Station-owned
@@ -916,7 +916,7 @@ function yieldEventLoop(): Promise<void> {
  * disagree with the writer, so a session carrying such a slug would report
  * "nothing stored", differ from the freshly computed fingerprint on every
  * COLD START, and write another envelope pair — once per restart, forever
- * under the `generation` id this predates. station#3495's transition-addressed
+ * under the `generation` id this predates. archive#3495's transition-addressed
  * id bounds that particular leak at ONE pair (`undefined -> fingerprint` is a
  * fixed id), but agreeing with the writer is still the right rule: it keeps
  * the write suppressed rather than merely deduped. The residual
@@ -940,7 +940,7 @@ function metadataAttributionFingerprint(
 }
 
 /**
- * station#1462 fix round: the attribution is part of the envelope's identity,
+ * archive#1462 fix round: the attribution is part of the envelope's identity,
  * not just its payload.
  *
  * `appendEventIfAbsent` is an `INSERT OR IGNORE` keyed on `eventId`, so an id
@@ -949,7 +949,7 @@ function metadataAttributionFingerprint(
  * session the resolver and the metric both called ambiguous while the stored
  * envelope - and every surface reading it - still named the pre-existing
  * winner, permanently; removing the duplicate never cleared the ambiguity
- * either. That is #1462's actual harm surviving the fix meant to end it, and
+ * either. That is archive#1462's actual harm surviving the fix meant to end it, and
  * it is why the error message's own remediation ("remove the duplicate
  * project") changed nothing.
  *
@@ -961,7 +961,7 @@ function metadataAttributionFingerprint(
  * place.
  *
  * Deliberate consequence: sessions stamped BEFORE this branch are repaired
- * too - #1462 is about the arbitrary winners already written, not only the
+ * too - archive#1462 is about the arbitrary winners already written, not only the
  * ones this branch prevents. But ONLY those that need it. A pre-branch id was
  * derived without a fingerprint, so it never collides with a fingerprinted
  * one and `appendEventIfAbsent`'s INSERT OR IGNORE cannot protect that case;
@@ -973,7 +973,7 @@ function metadataAttributionFingerprint(
  * That mattered more than it looks. The extra pair is inert in the lifecycle
  * fold - `session.started` with `initialState: 'created'` and
  * `session.configured` are both transition-neutral attach facts
- * (`session-lifecycle-service.ts`, #1073) - but NOT in the read model: it
+ * (`session-lifecycle-service.ts`, archive#1073) - but NOT in the read model: it
  * becomes `events.at(-1)`, and the envelope is dated `descriptor.createdAt`,
  * which for a Claude transcript is the FIRST record's timestamp. Every
  * attached session's `lastEventAt` - read as last activity by
@@ -1004,7 +1004,7 @@ function attributionFingerprint(
  *
  *   beta -> ambiguous[alpha,beta] -> beta      reads "ambiguous", permanently
  *
- * That third step is the remediation #1462's own error message prescribes,
+ * That third step is the remediation archive#1462's own error message prescribes,
  * applied to the realistic starting state (a session already attributed
  * before the duplicate appeared), so the branch fixed the harm only for
  * sessions whose destination attribution happened to be a first-time write.
@@ -1015,7 +1015,7 @@ function attributionFingerprint(
  * persisted log, so two processes folding the same log derive the same id and
  * the write stays idempotent across restarts.
  *
- * ## station#3495: what the transition must NOT be addressed by
+ * ## archive#3495: what the transition must NOT be addressed by
  *
  * The predecessor used to be a `generation` COUNTER — how many attributions
  * the thread's log had recorded. That is a count the emit itself increments,
@@ -1042,7 +1042,7 @@ function attributionFingerprint(
  * An earlier revision of this comment said that lasts "until the attribution
  * moves somewhere it has not been from here before". That is true only while
  * unvisited transitions remain. For a BOUNDED flapping set — which is exactly
- * the population that caused station#3495's outage, 4 `cwd` values cycling
+ * the population that caused archive#3495's outage, 4 `cwd` values cycling
  * onto one threadId — the transitions are exhausted within seconds, and from
  * then on EVERY write is a repeat and every one is dropped. Measured by "a
  * cycle of attributions saturates instead of growing without bound": a
@@ -1053,7 +1053,7 @@ function attributionFingerprint(
  * process restarts. The saturation bound above is the accurate half of that
  * sentence; the temporariness was not, and the test now pins both halves.
  *
- * Every FIRST-TIME transition still lands, which covers #1462's remediation
+ * Every FIRST-TIME transition still lands, which covers archive#1462's remediation
  * (`beta -> ambiguous -> beta` is three distinct transitions) and every
  * ordinary operator correction; what no longer lands is a repeat lap of a
  * cycle.
@@ -1068,7 +1068,7 @@ function attributionFingerprint(
  * `EventStore.projectSessionProjectionFacts`, folded into the read model by
  * `listSessionProjectionEvents`). Re-sequencing the suppressed row, or
  * re-pointing that fact at it, would both keep the newest read correct under
- * saturation. Neither is done here: station#3495 is an outage fix, and
+ * saturation. Neither is done here: archive#3495 is an outage fix, and
  * changing what the log means is a design change that belongs in its own
  * decision. What this branch chose is an IMMUTABLE LOG over a correct newest
  * read for a saturated flap — stated so the next reader can revisit the
@@ -1092,7 +1092,7 @@ function boundedPollInterval(value: number): number {
 }
 
 /**
- * station#1462 fix round: canonicalisation must never SILENTLY DROP a
+ * archive#1462 fix round: canonicalisation must never SILENTLY DROP a
  * configured project, because a dropped candidate removes one side of a tie
  * — turning a genuine ambiguity into a confident, wrong `attributed`. Three
  * ways the first cut did exactly that:

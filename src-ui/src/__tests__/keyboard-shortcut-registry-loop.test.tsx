@@ -22,7 +22,7 @@ const RUNAWAY_RENDER_LIMIT = 50;
 const renderBudget = { spent: 0 };
 
 /**
- * station#3736: enabling a slash command on one skill took out every route.
+ * archive#3736: enabling a slash command on one skill took out every route.
  *
  * The loop needed three ingredients that all shipped: `register` set provider
  * state, the provider rebuilt its context value on every render, and a

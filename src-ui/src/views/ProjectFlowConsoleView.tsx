@@ -13,7 +13,7 @@ export interface ProjectFlowConsoleViewProps {
 /**
  * Deterministic route for the Flow run console
  * (`/projects/:slug/flow-console` — mirrors the `project-session-board`
- * routing precedent). The attention inbox's gate items (station#612)
+ * routing precedent). The attention inbox's gate items (archive#612)
  * deep-link here with `?run=` so a route-back, blocked, or
  * exception-pending decision lands directly on its run, instead of
  * whichever run happens to sort first.

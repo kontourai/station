@@ -44,7 +44,7 @@ import {
 } from '../plugin-permissions.js';
 
 /**
- * station#4288: a grant is bound to the plugin's installed bytes, so every
+ * archive#4288: a grant is bound to the plugin's installed bytes, so every
  * consent write refuses when the tree cannot be digested. Fixtures therefore
  * need a real tree — which matches production, where every grant surface
  * checks `plugin.json` before recording anything.
@@ -493,7 +493,7 @@ describe('fail-closed grants storage (#1835)', () => {
         ).toBe(false);
         // The MUTATE path's infrastructure failures (lock file creation under
         // an unreadable parent) surface as the SAME typed error the call
-        // sites catch — never a raw EACCES (#1835 review finding 5).
+        // sites catch — never a raw EACCES (archive#1835 review finding 5).
         await expect(
           grantPermissions(dir, 'keeper', ['tools.invoke']),
         ).rejects.toThrow(PluginGrantsUnavailableError);
@@ -526,8 +526,8 @@ describe('fail-closed grants storage (#1835)', () => {
     expect(final.first.permissions).toEqual(['navigation.dock']);
     expect(final.second.permissions).toEqual(['network.fetch']);
     // The concurrently-written LEGACY-shaped entry survives verbatim: a
-    // read-modify-write must not rewrite rows it is not about (station#4288
-    // keeps #1835's invariant true across the shape change).
+    // read-modify-write must not rewrite rows it is not about (archive#4288
+    // keeps archive#1835's invariant true across the shape change).
     expect(final.sneaky).toEqual(['tools.invoke']);
   });
 
@@ -607,7 +607,7 @@ describe('processInstallPermissions', () => {
 });
 
 /**
- * station#4288 — an update must not inherit the consent given to the code it
+ * archive#4288 — an update must not inherit the consent given to the code it
  * replaces.
  *
  * The defect: `POST /:name/update` replaced a plugin's code, agents,
@@ -675,7 +675,7 @@ describe('grants are bound to plugin content (station#4288)', () => {
     // the record regardless of what any particular caller could spend it on.
     // (The rebuttal this comment used to carry — the isolated frame's
     // `api-request` bridge turning any surviving name into a credentialed
-    // `/api/` call — named a bridge station#4300 deleted.)
+    // `/api/` call — named a bridge archive#4300 deleted.)
     expect(hasGrant(dir, 'bound-plugin', 'navigation.dock')).toBe(false);
     expect(state.granted).toEqual([]);
     expect(state.withheld.sort()).toEqual([
@@ -762,7 +762,7 @@ describe('grants are bound to plugin content (station#4288)', () => {
   });
 
   /**
-   * The invariant the permissions panel depends on (station#4288, delta
+   * The invariant the permissions panel depends on (archive#4288, delta
    * review LOW 2). `changed` is only reachable for a plugin that HAS recorded
    * permissions, and it withholds all of them, so `changed` with an empty
    * `withheld` is a state the derivation cannot produce. That is what makes
@@ -847,7 +847,7 @@ describe('grants are bound to plugin content (station#4288)', () => {
     // Passive is the interesting case: it is auto-granted with no prompt, so
     // "the operator already said yes once" is the weakest possible reason to
     // keep it across a content change the new manifest no longer justifies.
-    // Written with a single grant since station#4301 retired `storage.read`,
+    // Written with a single grant since archive#4301 retired `storage.read`,
     // leaving `navigation.dock` as the only passive permission in the
     // vocabulary. The retained-non-empty path is covered by the preceding
     // acceptance, which keeps `navigation.dock` because v2 still declares it.

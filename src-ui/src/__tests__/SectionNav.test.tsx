@@ -1,14 +1,14 @@
 /**
  * @vitest-environment jsdom
  *
- * The shared scroll-spy / URL-section navigation primitive (station#4463
- * slice 2 fix round). Real `<a aria-current="location">` anchors in a `nav`
+ * The shared scroll-spy / URL-section navigation primitive (archive#4463).
+ * Real `<a aria-current="location">` anchors in a `nav`
  * landmark — NOT `role="tab"` — covering the review's contract: no arrow-key
- * activation (that reproduced HIGH-2's history-push/focus-steal defect on
+ * activation (that reproduced the history-push/focus-steal defect on
  * an earlier version that treated this the same as `Tabs`), a modifier
- * click bails out before `preventDefault` (MED-3), and `dividerAfter` draws
+ * click bails out before `preventDefault`, and `dividerAfter` draws
  * a real presentational element rather than a border modifier on the item
- * itself (MED-2).
+ * itself.
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';

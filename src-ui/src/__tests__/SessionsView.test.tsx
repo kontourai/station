@@ -104,7 +104,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   getStarterWork: (starterId: string, apiBase?: string) =>
     getStarterWork(starterId, apiBase),
   useProjectQuery: () => ({ data: undefined }),
-  // The open-chats refactor (#2683) renders shared membership metadata.
+  // The open-chats refactor (archive#2683) renders shared membership metadata.
   useAgentsQuery: () => ({ data: [], isLoading: false }),
   useOrchestrationSessionsQuery: () => ({
     data: sessions,
@@ -320,7 +320,7 @@ describe('SessionsView', () => {
         status: 'idle',
         lifecycleState: 'needs_input',
         model: 'claude-sonnet',
-        // REQUIRED on the wire since station#1791 (ADR 0012); the SDK
+        // REQUIRED on the wire since archive#1791 (ADR 0012); the SDK
         // normalizes it for real callers, and this mock stands in for the SDK.
         answerability: { answerable: true },
         isLoaded: true,
@@ -347,7 +347,7 @@ describe('SessionsView', () => {
     }));
   });
 
-  // station#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
+  // archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
   // `loading` prop but the sessions query's `error` was never passed
   // through, so a settled read failure rendered the same "Nothing has run
   // yet" empty state as a host with no sessions — no error, no retry.
@@ -729,7 +729,7 @@ describe('SessionsView', () => {
 
     // It shipped as a bare <button> with no className, inside a wrapper class
     // that has no CSS rule anywhere in the repo — so it rendered as raw
-    // browser chrome in a fully themed transcript (station#3150). Pin the
+    // browser chrome in a fully themed transcript (archive#3150). Pin the
     // shared treatment: a class name that matches no stylesheet is worse than
     // none, because it tells the next reader the styling is handled.
     const more = screen.getByRole('button', { name: 'Load earlier events' });
@@ -739,7 +739,7 @@ describe('SessionsView', () => {
     );
   });
 
-  // station#3378: the history alert is the only place a user learns which of
+  // archive#3378: the history alert is the only place a user learns which of
   // the two outcomes they are in. Both directions, because a message that
   // always says "retrying" is exactly as dishonest as one that never does.
   test('says a failing session history is being retried, and stops saying so once it is not', async () => {
@@ -770,7 +770,7 @@ describe('SessionsView', () => {
   });
 
   /**
-   * station#3386 review (MEDIUM). This surface and the chat dock read the SAME
+   * archive#3386. This surface and the chat dock read the SAME
    * bounded window. The dock disclosed what its size budget withheld and this
    * one rendered the identical amputated turn in silence, because the hook
    * unwrapped `item.event` and dropped the read's own budget report.
@@ -804,7 +804,7 @@ describe('SessionsView', () => {
 
   /**
    * The attached branch places the notice in a DIFFERENT container from the
-   * mutable one — `#2630` keeps the upgrade/error stories inside the detail
+   * mutable one — `archive#2630` keeps the upgrade/error stories inside the detail
    * for a read-only attached session, so only the pagination control and this
    * notice sit above it. Nothing exercised that placement, which is how a
    * ~150-character sentence came to share a centered flex row with a button.
@@ -837,7 +837,7 @@ describe('SessionsView', () => {
       'session-history-controls',
     );
     // The detail owns the upgrade/error stories; the notice must not also be
-    // handed down and rendered a second time (#2630).
+    // handed down and rendered a second time (archive#2630).
     expect(screen.getAllByTestId('session-history-elided')).toHaveLength(1);
   });
 
@@ -858,7 +858,7 @@ describe('SessionsView', () => {
     renderView();
 
     const coordinator = screen.getByTestId('delegated-task-coordinator');
-    // station#3227 C1: was `getByText('review release')` — the coordinator's
+    // archive#3227: was `getByText('review release')` — the coordinator's
     // `<h3>` rendered a bare `humanizeId(taskId)`, which is the same helper
     // that returns a raw hash unchanged when there is no task id. It renders
     // `sessionTitle` now, the one name this session is listed under, so the
@@ -897,7 +897,7 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
-  // #1073 closure LOW: pin both sides of isStreamingSession's fallback.
+  // archive#1073 closure: pin both sides of isStreamingSession's fallback.
   test('a legacy running summary without the turn fold stays conservatively locked', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -931,7 +931,7 @@ describe('SessionsView', () => {
   });
 
   test('stops running delegated work directly from the coordinator', async () => {
-    // Post-#1073 a running session carries the turn fold; the Stop control
+    // Post-archive#1073 a running session carries the turn fold; the Stop control
     // gates on it, not on lifecycleState.
     sessions[0] = {
       ...sessions[0],
@@ -1006,18 +1006,18 @@ describe('SessionsView', () => {
   });
 
   /**
-   * station#1245 — a call site the issue does not list, found by its sweep.
+   * archive#1245 — a call site the issue does not list, found by its sweep.
    *
-   * `closeDelegation` was `requestAnimationFrame(() =>
-   * delegationTriggerRef.current?.focus())` with no `isConnected` guard at all.
+   * `closeDelegation` was `requestAnimationFrame( =>
+   * delegationTriggerRef.current?.focus)` with no `isConnected` guard at all.
    * The trigger is a per-row control in the sessions list, and delegating
    * invalidates that list — so the launcher's own action is what removes it,
-   * which is station#1126 exactly. It now goes through
+   * which is archive#1126 exactly. It now goes through
    * `@kontourai/station-shared/return-focus`.
    *
    * COVERAGE HONESTY: jsdom, wiring only. The module's post-focus verification
    * needs a real browser (`tests/dialog-return-focus.spec.ts`); jsdom reports
-   * `.focus()` on an unfocusable node as successful.
+   * `.focus` on an unfocusable node as successful.
    */
   describe('delegation launcher return focus (station#1245)', () => {
     function withStubbedFrame<T>(run: (fire: () => void) => T): T {
@@ -1314,7 +1314,7 @@ describe('SessionsView', () => {
     expect(within(detail).queryByText('Project workflows')).toBeNull();
   });
 
-  // #1170: a terminal session must never render an action that contradicts
+  // archive#1170: a terminal session must never render an action that contradicts
   // its own state — Stop task previously stayed in the DOM (merely
   // disabled) for a completed/failed session, and the live "● live"/"○
   // connecting" indicator and the free-text compose box didn't check
@@ -1368,7 +1368,7 @@ describe('SessionsView', () => {
   });
 
   /*
-   * station#3203 defect 3: "when I click open session.. it brings me
+   * archive#3203 defect 3: "when I click open session.. it brings me
    * somewhere.. but I don't see an error message". A `session-failed`
    * notification's `openHref` now lands HERE, and it lands COLD — the user
    * was not watching when the session died, so the live feed replayed to this
@@ -1422,13 +1422,13 @@ describe('SessionsView', () => {
   });
 
   /*
-   * station#3244. A failed session is RETRYABLE — the lifecycle contract
+   * archive#3244. A failed session is RETRYABLE — the lifecycle contract
    * declares `failed -> queued | running`, and the server's only send-path
    * terminal gate rejects `completed` alone — so the composer must stay,
    * exactly as the chat dock keeps its own composer enabled beside the same
    * session's failure banner. This pane used to hide it via a hand-written
    * `['completed','failed','canceled']`, a third copy of the drift
-   * station#1548 deleted server-side.
+   * archive#1548 deleted server-side.
    */
   test('a failed session keeps the composer, below its failure alert, and it really sends (station#3244)', async () => {
     sessions[0] = {
@@ -1461,7 +1461,7 @@ describe('SessionsView', () => {
         apiBase: 'http://test.local',
       }),
     );
-    // #1170's decisions stand alongside the new composer: no live
+    // archive#1170's decisions stand alongside the new composer: no live
     // indicator, no Stop task on a stopped session.
     expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
     expect(
@@ -1488,7 +1488,7 @@ describe('SessionsView', () => {
    * it: composer visibility must agree with the CONTRACT-DERIVED terminal
    * predicate for every lifecycle state the contract knows. Reintroducing a
    * hand-written list that hides `failed` or `canceled` — the exact drift of
-   * station#1548 and station#3244 — turns this red without anyone
+   * archive#1548 and archive#3244 — turns this red without anyone
    * remembering which states were once mislisted. Attention is resolved
    * empty here so the only gate under test is terminality (`needs_input`'s
    * attention-driven suppression has its own tests below).
@@ -1633,7 +1633,7 @@ describe('SessionsView', () => {
       {
         id: 'needs_input:thread-alpha',
         kind: 'needs_input',
-        // requestType mirrors the server's own projection (station#1188):
+        // requestType mirrors the server's own projection (archive#1188):
         // the item is only a genuine duplicate of the live request when
         // this matches the open request's own requestType below.
         requestType: 'input',
@@ -1663,7 +1663,7 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-request')).toBeTruthy();
   });
 
-  // Review HIGH (station#1170 fix round): the previous filter suppressed
+  // (archive#1170): the previous filter suppressed
   // needs_input/review_pending whenever ANY request was pending, with no
   // correlation to which request. Reproduced live: a review_pending
   // session plus an unrelated permission request made the review reason
@@ -1710,7 +1710,7 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-request')).toBeTruthy();
   });
 
-  // Review HIGH (station#1170 fix round): needs_input correlation must be
+  // (archive#1170): needs_input correlation must be
   // by requestType, not "any pending request" — an unrelated request type
   // (e.g. permission) must not suppress a needs_input item either.
   test('does not suppress needs_input against an unrelated (non-matching-requestType) pending request', () => {
@@ -1748,7 +1748,7 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-request')).toBeTruthy();
   });
 
-  // Review MEDIUM (station#1170 fix round): attentionQuery.data?.items
+  // (archive#1170): attentionQuery.data?.items
   // defaulted to [] for BOTH "still loading" and "fetch failed" — a
   // needs_input session's generic compose box could flash visible before
   // the query resolved and hideGenericCompose flipped it back off.
@@ -1763,7 +1763,7 @@ describe('SessionsView', () => {
     expect(screen.queryByLabelText('Answer this session')).toBeNull();
   });
 
-  // Review MEDIUM (station#1170 fix round): a genuine fetch failure used to
+  // (archive#1170): a genuine fetch failure used to
   // make a session that DOES need attention look identical to one that
   // doesn't — no error, no retry. This asserts the two are distinguishable
   // and that retry re-triggers the query.
@@ -1832,7 +1832,7 @@ describe('SessionsView', () => {
     ).toBeTruthy();
   });
 
-  // Review HIGH: describeEvent's default case returns '' for every method it
+  // describeEvent's default case returns '' for every method it
   // doesn't special-case (platform.mutation among them), and the collapse
   // used to fire on any two consecutive same-method entries with equal
   // bodies — '' === '' — asserting two DIFFERENT governed-mutation receipts
@@ -1877,7 +1877,7 @@ describe('SessionsView', () => {
     expect(within(diagnostics).queryByText(/platform\.mutation ×/)).toBeNull();
   });
 
-  // Review HIGH (station#1170 fix round): buildDiagnosticsLog reused the
+  // (archive#1170): buildDiagnosticsLog reused the
   // merge-identity key (`${method}:${itemId}`) as the React list key even
   // for NON-adjacent occurrences. Streaming protocols commonly reset
   // itemId per turn, so two turns whose first content block both use
@@ -1934,18 +1934,18 @@ describe('SessionsView', () => {
     consoleError.mockRestore();
   });
 
-  // Review HIGH, DOM-presence coverage ONLY — this does NOT prove visibility.
+  // Review, DOM-presence coverage ONLY — this does NOT prove visibility.
   // jsdom never loads/applies SessionsView.css, so this test cannot see a
   // `display: none` rule and would stay green even if
   // `.sessions-detail__attention` were hidden again in compact mode (proven
-  // by fault injection — see the PR thread for the red/green transcript).
+  // by — see the PR thread for the red/green transcript).
   // The real regression guard for "is it actually visible on screen" is the
   // Playwright check in the PR's visual-evidence run
   // (getComputedStyle(...).display + a non-zero bounding box at a genuinely
   // short viewport), not this test. This one only pins that React keeps
   // rendering the node into the tree across the compact transition — i.e.
   // no future JS-level conditional (`viewportIsCompact && attentionItem &&
-  // ...`) silently stops mounting it. Keep both: this test would NOT catch
+  //.`) silently stops mounting it. Keep both: this test would NOT catch
   // the CSS regression the reviewer fault-injected; only the Playwright
   // check does.
   test('DOM PRESENCE ONLY (not visibility): the attention answer field stays mounted once the viewport goes compact (keyboard-open)', async () => {
@@ -1997,9 +1997,9 @@ describe('SessionsView', () => {
     });
   });
 
-  // Review MEDIUM: the server explicitly allows a lifecycle item and a
+  // the server explicitly allows a lifecycle item and a
   // Flow-gate item to coexist for one session (gate items "never shadow
-  // anything else"); a single .find() only ever surfaced the first-sorted
+  // anything else"); a single.find only ever surfaced the first-sorted
   // one.
   test('renders every attention item that matches this session, not just the first-sorted one', () => {
     attentionItems = [
@@ -2039,7 +2039,7 @@ describe('SessionsView', () => {
     ).toBeTruthy();
   });
 
-  // Review MEDIUM: guarded on !isTerminal like Stop task and the live
+  // guarded on !isTerminal like Stop task and the live
   // indicator — a session that crashes mid-request must not leave
   // Approve/Decline clickable against a dead session.
   test('hides the live in-turn request Approve/Decline once the session is terminal', () => {
@@ -2061,11 +2061,11 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-request')).toBeNull();
   });
 
-  // station#1462: the list groups by project attribution, so an unattributable
+  // archive#1462: the list groups by project attribution, so an unattributable
   // attached session used to be indistinguishable from one with no project at
   // all. It must say which projects it is caught between.
-  // station#3027 moved the project off the list HEADING onto a per-row pill.
-  // The #1462 guarantee is unchanged and is asserted on the pill: an ambiguous
+  // archive#3027 moved the project off the list HEADING onto a per-row pill.
+  // The archive#1462 guarantee is unchanged and is asserted on the pill: an ambiguous
   // attribution names its candidates rather than picking one or collapsing to
   // "Unassigned" — and it is deliberately not a filter control, because one
   // click could not say which candidate the user meant.
@@ -2088,7 +2088,7 @@ describe('SessionsView', () => {
     expect(screen.queryByText('Unassigned')).toBeNull();
   });
 
-  // station#1463: a delegated task whose project was joined across machines by
+  // archive#1463: a delegated task whose project was joined across machines by
   // name alone must not render as a settled project binding.
   test('marks a delegated session whose cross-machine project slug join is unverified', () => {
     sessions[0] = {
@@ -2708,7 +2708,7 @@ describe('SessionsView', () => {
     expect(within(detail).queryByText('Project workflows')).toBeNull();
   });
   /*
-   * station#189 S4. The defect these guard is a MERGE: one figure covering
+   * archive#189. The defect these guard is a MERGE: one figure covering
    * the auto-attached station-delivery run and the Builder run at once. So
    * each test asserts the two rows are separately present and separately
    * legible.
@@ -2747,7 +2747,7 @@ describe('SessionsView', () => {
     expect(within(detail).getByText('Builder run')).toBeTruthy();
     expect(within(detail).getByText('kontourai-station-1388')).toBeTruthy();
     expect(within(detail).getByText(/Matched on run correlation/)).toBeTruthy();
-    // station#3139: same assertion, glossary wording — docs/glossary.md
+    // archive#3139: same assertion, glossary wording — docs/glossary.md
     // retires "runtime" as a user-facing word in favour of "engine".
     expect(
       within(detail).getByText(/Engine session identity present/),
@@ -2848,7 +2848,7 @@ describe('SessionsView', () => {
   });
 
   /*
-   * station#1249 review — both branches below shipped with ZERO coverage and
+   * archive#1249 — both branches below shipped with ZERO coverage and
    * each was probe-confirmed as a real regression before these landed.
    */
 
@@ -2985,13 +2985,13 @@ describe('SessionsView', () => {
   });
 
   /**
-   * station#1781 AC4 — the session-detail pending-request card.
+   * archive#1781 — the session-detail pending-request card.
    *
    * `MutableSessionDetail` renders Approve/Deny for a live `request.opened`.
-   * Since station#1791 retired the boot-time cancellation write, a session
+   * Since archive#1791 retired the boot-time cancellation write, a session
    * whose provider adapter is gone keeps that request open forever, so the
    * card offered two buttons that dispatch into a guaranteed server rejection
-   * — and `hideGenericCompose` suppressed the composer BECAUSE that card was
+   * and `hideGenericCompose` suppressed the composer BECAUSE that card was
    * assumed to own the response affordance.
    */
   describe('SessionsView unanswerable request card', () => {
@@ -3060,7 +3060,7 @@ describe('SessionsView', () => {
       );
       // The mutation dispatches on a microtask, so a bare synchronous
       // assertion here has no power — it passes with the button ENABLED.
-      // Found by fault injection (re-enabling the buttons left this test
+      // Found by (re-enabling the buttons left this test
       // green); flushing first is what binds it to the guard.
       await act(async () => {
         await Promise.resolve();
@@ -3126,7 +3126,7 @@ describe('SessionsView', () => {
   });
 
   /**
-   * station#3139. The owner opened this page and read
+   * archive#3139. The owner opened this page and read
    * `external:claude:5dfa…` as a row label, on an unsorted, untimed list whose
    * search could only match the hash it was printing. Every assertion here is
    * about what the LIST renders — the detail pane already got these right.
@@ -3179,7 +3179,7 @@ describe('SessionsView', () => {
       });
     }
 
-    // Delta-review D2: a run group followed by a flat session in the SAME
+    // a run group followed by a flat session in the SAME
     // lane must not re-emit the lane heading. Members carry the lane section
     // now; a member with an undefined section reset the layout's neighbor
     // comparison and the following flat row duplicated 'Active now · N'.
@@ -3295,8 +3295,8 @@ describe('SessionsView', () => {
     });
 
     /**
-     * station#3027 replaced the project heading with a state lane (the owner's
-     * call: "by state yes"). The #3139 invariant this test was written for is
+     * archive#3027 replaced the project heading with a state lane (the owner's
+     * call: "by state yes"). The archive#3139 invariant this test was written for is
      * NOT about projects — it is that a heading is emitted exactly once rather
      * than run-length-encoded over an unsorted list, and that rows are
      * newest-first inside their group. Both are re-asserted here against the
@@ -3400,7 +3400,7 @@ describe('SessionsView', () => {
     });
 
     /**
-     * station#3227 A1. The row's meta line used to print
+     * archive#3227 A1. The row's meta line used to print
      * `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state,
      * with none of the fold's overrides — while the section heading above it
      * came from the fold. So a row under "Recently finished" said *Running*.
@@ -3425,7 +3425,7 @@ describe('SessionsView', () => {
       };
 
       sessions = [
-        // A1 shape 1 (#1069): attached, never ran a turn.
+        // A1 shape 1 (archive#1069): attached, never ran a turn.
         attachedSession({
           threadId: 'idle-running',
           displayTitle: 'Attached but idle',
@@ -3446,7 +3446,7 @@ describe('SessionsView', () => {
           pendingReview: true,
           updatedAt: new Date(Date.now() - 40_000).toISOString(),
         }),
-        // A1 shape 3 (#1296): the board closed a session mid-run.
+        // A1 shape 3 (archive#1296): the board closed a session mid-run.
         attachedSession({
           threadId: 'closed-while-running',
           displayTitle: 'Closed mid-run',
@@ -3457,7 +3457,7 @@ describe('SessionsView', () => {
           hasActiveTurn: true,
           updatedAt: new Date(Date.now() - 50_000).toISOString(),
         }),
-        // A1 shape 4 (#1783): nothing can answer it.
+        // A1 shape 4 (archive#1783): nothing can answer it.
         attachedSession({
           threadId: 'stranded',
           displayTitle: 'Stranded request',
@@ -3578,7 +3578,7 @@ describe('SessionsView', () => {
       expect(
         footer?.querySelector('[data-testid="delegated-task-coordinator"]'),
       ).toBeTruthy();
-      // ...and its actions still work from there.
+      //.and its actions still work from there.
       fireEvent.click(
         within(screen.getByTestId('delegated-task-coordinator')).getByRole(
           'button',
@@ -3790,7 +3790,7 @@ describe('SessionsView', () => {
       expect(icons).toHaveLength(2);
       // Claude Code resolves to its brand mark...
       expect(icons[0].className).toContain('brand-icon--claude');
-      // ...and an id this build has no product name for renders AgentIcon's
+      //.and an id this build has no product name for renders AgentIcon's
       // own initials fallback rather than a guessed glyph for some engine.
       expect(icons[1].className).not.toContain('brand-icon--');
       expect(icons[1].querySelector('.brand-icon__initials')?.textContent).toBe(
@@ -3844,7 +3844,7 @@ describe('SessionsView', () => {
   });
 
   /**
-   * station#4052 slice 3: a session row that has ENDED is one activation from
+   * archive#4052: a session row that has ENDED is one activation from
    * the evidence behind its outcome. The control rides the existing
    * `/activity?session=<id>` deep-link path plus the one-shot
    * `focus=evidence` route intent the session detail honors exactly once.
@@ -4002,7 +4002,7 @@ describe('SessionsView', () => {
       expect(document.activeElement).not.toBe(region);
     });
 
-    // Review H1: the once-only record lives in the detail (a ref that dies
+    // the once-only record lives in the detail (a ref that dies
     // at unmount) while the token lives in the parent — deselect-then-
     // reselect used to remount the detail against the STALE token and
     // scroll-steal a plain click. The parent now clears the reveal on every

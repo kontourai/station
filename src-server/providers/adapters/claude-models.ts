@@ -1,5 +1,5 @@
 /**
- * Claude Code's well-known model aliases (station#977). These are the
+ * Claude Code's well-known model aliases (archive#977). These are the
  * canonical short ids the Claude Agent SDK accepts directly — `originalId`
  * matches `id` because there is no separate wire-format id to translate to,
  * unlike the live catalog's dated model strings.

@@ -31,7 +31,7 @@ export type BedrockAuthMode = 'chain' | 'profile' | 'api-key';
  * A connection whose auth settings cannot produce a request at all.
  *
  * Named so a catch site can tell it apart from an AWS answer without matching
- * on message text (#3654): it is a settings fault the operator can fix, and
+ * on message text (archive#3654): it is a settings fault the operator can fix, and
  * reporting it as "could not reach AWS" would be a claim about the network
  * that nothing observed.
  */

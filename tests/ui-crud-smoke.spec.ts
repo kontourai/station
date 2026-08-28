@@ -25,7 +25,7 @@ function slugify(value: string): string {
  * `#ae-engine` select. This journey wants Station's own engine, which is the
  * "Chat with a model" starting point — an UNCONDITIONAL step, not an optional
  * one: the previous helper's `if (visible)` guards are what let this journey
- * drift a whole redesign behind the product while staying green (station#3743).
+ * drift a whole redesign behind the product while staying green (archive#3743).
  */
 async function chooseStationEngine(page: import('@playwright/test').Page) {
   await page
@@ -171,7 +171,7 @@ test.describe('UI CRUD Smoke', () => {
     await page.locator('#ae-name').fill(agentName);
     // §3 put the editor on one scrolling page: no Basic/Prompt tabs, and the
     // system prompt is required for a Station-engine agent — Create stays
-    // disabled until it is authored (station#3741).
+    // disabled until it is authored (archive#3741).
     await page.locator('#ae-prompt').fill('You are a helpful smoke test.');
     const createButton = page.getByRole('button', { name: 'Create Agent' });
     await expect(createButton).toBeEnabled({ timeout: 15_000 });

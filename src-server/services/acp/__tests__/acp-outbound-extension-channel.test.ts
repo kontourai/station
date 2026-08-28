@@ -32,7 +32,7 @@ import {
  *
  * The point of this module is the gate, so the tests execute the gate's
  * behaviour, not merely the happy path. The two assertions that matter most —
- * that an undeclared call makes NO wire call, and that the #1815 rename flips
+ * that an undeclared call makes NO wire call, and that the archive#1815 rename flips
  * the outcome — are kept unambiguous below.
  *
  * The wire-level half (that an `answered` outcome corresponds to a real
@@ -206,7 +206,7 @@ describe('AcpOutboundExtensionChannel.call — the declared-list gate', () => {
     expect(target.extMethod).not.toHaveBeenCalled();
   });
 
-  // ── The #1815 fault injection ──────────────────────────────────────────
+  // ── The archive#1815 fault injection ──────────────────────────────────────────
   //
   // Renaming a declared method in the handshake (_kiro/foo -> _kiro.dev/foo)
   // must FLIP the outcome: a call that was answered becomes not-declared, and

@@ -6,7 +6,7 @@
  * an id-only dismissal, made durable, means the banner never comes back.
  *
  * The store is a module singleton that reads storage once at import, so every
- * "after a reload" case here is a real fresh import (`vi.resetModules()`),
+ * "after a reload" case here is a real fresh import (`vi.resetModules`),
  * not a method call that pretends to be one.
  */
 

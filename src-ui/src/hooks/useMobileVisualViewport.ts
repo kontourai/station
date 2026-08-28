@@ -82,7 +82,7 @@ export function useMobileVisualViewport() {
  * publishes it on itself and rides above the keyboard; the agent editor's
  * sticky Save bar is a SIBLING, offsets itself by the dock's height, and had no
  * way to read the inset the dock had just moved by, so with an input focused
- * the dock rose and the bar stayed behind the keyboard (sol review, MEDIUM).
+ * the dock rose and the bar stayed behind the keyboard.
  *
  * Published once on the document element, from the same `readMobileVisualViewport`
  * reader, so any fixed surface can consume it without owning a subscription.

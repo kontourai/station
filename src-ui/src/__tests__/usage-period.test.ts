@@ -8,8 +8,8 @@ import {
 } from '../components/usage-stats/period';
 
 /**
- * station#3093: the period window must agree with how `byDate` keys are
- * written — UTC calendar dates via `toISOString().split('T')[0]` — and a
+ * archive#3093: the period window must agree with how `byDate` keys are
+ * written — UTC calendar dates via `toISOString.split('T')[0]` — and a
  * period of N days must cover exactly N distinct UTC dates ending today,
  * both bounds inclusive (the server filters `date >= from && date <= to`).
  */
@@ -52,7 +52,7 @@ describe('periodRange', () => {
   });
 
   test('keys match the byDate writer shape', () => {
-    // usage-aggregator-state.ts writes keys as toISOString().split('T')[0].
+    // usage-aggregator-state.ts writes keys as toISOString.split('T')[0].
     expect(utcDateKey(new Date('2026-08-18T23:30:00Z'))).toBe(
       new Date('2026-08-18T23:30:00Z').toISOString().split('T')[0],
     );
@@ -77,7 +77,7 @@ describe('buildTrendDays', () => {
       '2026-08-16',
       '2026-08-17',
     );
-    // Absent row: no recorded activity — station#3201's rule for days.
+    // Absent row: no recorded activity — archive#3201's rule for days.
     expect(days[0]).toEqual({
       date: '2026-08-16',
       recorded: false,
@@ -126,7 +126,7 @@ describe('trendMetric', () => {
 });
 
 /**
- * station#3266 documents that engine (orchestration) sessions contribute
+ * archive#3266 documents that engine (orchestration) sessions contribute
  * lifetime totals but deliberately no per-day rows. The period view must say
  * so whenever such sessions exist — and must NOT gain a permanent caveat
  * when they don't.

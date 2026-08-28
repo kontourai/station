@@ -5,12 +5,12 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-// station#4525 review HIGH-1: `useProjects()`'s `isConfirmedLoaded` is the
+// archive#4525: `useProjects`'s `isConfirmedLoaded` is the
 // ONE place this derivation lives — every consumer (useDockShellChrome's
 // deletion-cleanup effect, and any future one) reads it rather than
 // re-deriving `isLoading`/`isSuccess`/`isError` algebra per call site. This
 // file is what actually proves the derivation formula itself is correct;
-// every other test in the suite mocks `useProjects()` wholesale and so
+// every other test in the suite mocks `useProjects` wholesale and so
 // cannot catch a regression INSIDE this function.
 let projectsQueryState: {
   data: unknown;
@@ -39,7 +39,7 @@ describe('useProjects().isConfirmedLoaded (station#4525 review HIGH-1)', () => {
     expect(result.current.isConfirmedLoaded).toBe(false);
   });
 
-  // The exact HIGH-1 discriminating case: `isLoading: false` (settled) but
+  // The exact discriminating case: `isLoading: false` (settled) but
   // via an ERROR, not a success — `data` is folded to `[]`, identical to a
   // genuine empty/confirmed list. A guard reading only `!isLoading` cannot
   // tell these apart; `isConfirmedLoaded` must.
@@ -59,7 +59,7 @@ describe('useProjects().isConfirmedLoaded (station#4525 review HIGH-1)', () => {
     ).toBe(false);
   });
 
-  // Delta review LOW-B: placeholderData forces status to "success" while the
+  // placeholderData forces status to "success" while the
   // real fetch is still pending — placeholder contents must never read as a
   // confirmed load. Latent today (no caller opts into keepPreviousData on the
   // projects query); this pins the derivation against a future opt-in.

@@ -705,7 +705,7 @@
   cursor: pointer;
 }
 
-/* ═══ Home role section (station#3122 stage 3) ═══ */
+/* ═══ Home role section (archive#3122) ═══ */
 .plugins__home-role {
   display: flex;
   flex-direction: column;
@@ -1223,7 +1223,7 @@
     min-width: 44px;
   }
 
-  /* station#3783: `.editor-btn`'s touch floor is the primitive's
+  /* archive#3783: `.editor-btn`'s touch floor is the primitive's
      (components/editor-controls.css), not this page's. */
 
   .plugins__install-btn,

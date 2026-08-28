@@ -39,7 +39,7 @@ type ErrorReason =
   | 'identity-mismatch'
   | 'host-mismatch'
   | 'project-mismatch'
-  // station#1133 R5: typed managed-launch diagnostics, distinct from the
+  // archive#1133 R5: typed managed-launch diagnostics, distinct from the
   // worker-probe reasons above (which describe an existing remote worker,
   // not the bootstrap that starts one).
   | 'launch-node-not-found'
@@ -47,7 +47,7 @@ type ErrorReason =
   | 'launch-project-unavailable'
   | 'launch-port-in-use'
   | 'launch-readiness-timeout'
-  // station#1133 live-verification/security-review additions: a launch
+  // archive#1133 live-verification/security-review additions: a launch
   // that would trigger station's own build (never attempted — a build is
   // not a launch) and a launch that lost a real port race against another
   // live Station instance on the host.
@@ -68,7 +68,7 @@ export type SshEnvironmentState =
     }
   | { phase: 'agent'; reason: 'unavailable' | 'rejected' }
   | { phase: 'verifying' }
-  // station#1133 R3: a distinct, additive phase — the tunnel is up but
+  // archive#1133 R3: a distinct, additive phase — the tunnel is up but
   // nothing answered yet, so the managed-launch bootstrap is running before
   // the (re-)probe. Attach-mode profiles never enter this phase.
   | { phase: 'launching' }
@@ -79,7 +79,7 @@ export type SshEnvironmentState =
       sha: string;
       bootId: string;
       connectedAt: string;
-      // station#1133 R1/R4: only set for a `launchMode: 'managed'` profile —
+      // archive#1133 R1/R4: only set for a `launchMode: 'managed'` profile —
       // 'external' when an already-running Station was found (attached
       // directly, or via the bootstrap's own external-detection) and never
       // started or stopped by Station; 'managed' when this connect started
@@ -110,7 +110,7 @@ interface SshEnvironmentServiceDependencies {
   adapter?: OpenSshEnvironmentAdapter;
   store?: SshEnvironmentProfileStore;
   discoverHosts?: typeof discoverOpenSshHosts;
-  // station#1144: injectable so `add()`'s known-alias gate is testable
+  // archive#1144: injectable so `add()`'s known-alias gate is testable
   // without touching the real machine's ~/.ssh/config.
   counter?: MetricsCounter;
   duration?: MetricsHistogram;
@@ -387,7 +387,7 @@ export class SshEnvironmentService {
           profile.launchMode !== 'managed' ||
           classifyWorkerFailure(probeError) !== 'station-unavailable'
         ) {
-          // station#1133 R3: the launch bootstrap only ever runs for this
+          // archive#1133 R3: the launch bootstrap only ever runs for this
           // exact trigger — every other probe failure (identity mismatch,
           // incompatible worker, unreachable project, ...) is unaffected
           // and, for `attach` profiles, this branch never runs at all

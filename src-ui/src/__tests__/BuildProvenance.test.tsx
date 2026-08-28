@@ -40,7 +40,7 @@ describe('BuildProvenance', () => {
     ).toBeTruthy();
   });
 
-  // station#1085: one missing field used to hide all four rows. Asserted on
+  // archive#1085: one missing field used to hide all four rows. Asserted on
   // the row LABELS, not the values: a row rendered with an undefined value
   // produces an empty <dd>, which no value-based assertion can see.
   const ROWS = {

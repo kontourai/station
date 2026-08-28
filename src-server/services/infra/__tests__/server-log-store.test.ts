@@ -172,7 +172,7 @@ describe('createServerLogStore — retention', () => {
   });
 
   it('never removes the active day even when it alone exceeds maxBytes — proven by BYTES surviving, not just presence', () => {
-    // station#1895 review round 2, verifier-c: asserting the file merely
+    // archive#1895 review round 2, verifier-c: asserting the file merely
     // exists/contains the new line cannot distinguish "protected and
     // appended to" from "deleted, then recreated containing only the new
     // write" — both leave a same-named file containing 'more today'. This

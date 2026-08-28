@@ -343,7 +343,7 @@ test('provider-managed project ignores a stale unsupported project model even wh
   const dialog = page.getByRole('dialog', { name: 'New Chat' });
   await expect(dialog).not.toContainText('Model not reported');
   await expect(dialog).not.toContainText('Runtime chooses model');
-  // #3721 rebuilt the picker row down to name + readiness
+  // archive#3721 rebuilt the picker row down to name + readiness
   // (`components/modals/NewChatModal.tsx:869-950`): there is no pre-chat model
   // trigger any more, and model choice belongs to the session composer, which
   // is where the rest of this test goes. Asserted as an absence so the row
@@ -453,7 +453,7 @@ test('new chat lists persisted engine defaults and keeps selected and hovered te
   await expect(modal.getByText('Bedrock')).toHaveCount(0);
   const selected = modal.locator('.new-chat-modal__agent--selected');
   await expect(selected).toContainText('Codex');
-  // #3721 deleted the row description, and neither of the two remaining
+  // archive#3721 deleted the row description, and neither of the two remaining
   // trailing elements is a replacement rung: the readiness badge
   // (`@kontourai/ui` `.tone-*`) and the engine chip
   // (`components/badges/EngineChip.css:26-36`) each paint their own opaque
@@ -654,7 +654,7 @@ test('new chat selected and hovered rows meet contrast in light and dark themes'
     await expect(station).toHaveClass(/new-chat-modal__agent--selected/);
     await expect(hovered).not.toHaveClass(/new-chat-modal__agent--selected/);
     expect(await station.evaluate((row) => row.matches(':hover'))).toBe(false);
-    // #3721 deleted the row description; the row NAME is the only text whose
+    // archive#3721 deleted the row description; the row NAME is the only text whose
     // colour follows the selected/hover surface. The readiness badge and the
     // engine chip each paint their own opaque background, so their ratio is
     // fixed by a token pair and cannot regress with row state.
@@ -788,7 +788,7 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
       getComputedStyle(document.querySelector('.responsive-surface-overlay')!)
         .zIndex,
     ),
-    // BannerHost chrome is an overlay at --layer-notice (station#3308); the
+    // BannerHost chrome is an overlay at --layer-notice (archive#3308); the
     // dialog overlay's layer must still exceed it.
     reconnectNotice:
       Number(
@@ -797,7 +797,7 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   }));
   expect(layerOrder.dialog).toBeGreaterThan(layerOrder.reconnectNotice);
   // The overlay never reflows the app: presenting a banner must leave
-  // `.main-content` exactly where it was (station#3308 contract, replacing
+  // `.main-content` exactly where it was (archive#3308 contract, replacing
   // the old in-flow assertion).
   const mainContentAfter = await page
     .locator('.main-content')

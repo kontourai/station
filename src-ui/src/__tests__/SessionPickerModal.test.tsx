@@ -78,12 +78,12 @@ describe('SessionPickerModal', () => {
     });
   });
 
-  // station#771 regression: this used to render the SAME "No conversations
+  // archive#771 regression: this used to render the SAME "No conversations
   // found" a genuinely-empty inventory shows, with no indication the read
   // had failed — `AutoSelectModal` has no error prop of its own, so the
   // fix distinguishes the two facts in the empty-message text itself.
   //
-  // station#771 fix round (review MEDIUM): the first-pass copy said "Try
+  // archive#771: the first-pass copy said "Try
   // again." with no button behind it — a fabricated affordance. The modal
   // is conditionally mounted by its parent (`{showSessionPicker && (...)}`),
   // so closing and reopening it genuinely remounts the query; the copy now

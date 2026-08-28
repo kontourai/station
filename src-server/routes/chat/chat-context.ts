@@ -18,7 +18,7 @@ interface RatingLike {
 }
 
 /**
- * station#2649: returns the composed context AND, when a feedback block was
+ * archive#2649: returns the composed context AND, when a feedback block was
  * actually appended, the receipt facts describing THAT block — one
  * derivation, so the context-injection record cannot claim a feedback block
  * this function did not compose (or miss one it did).
@@ -64,7 +64,7 @@ export function injectConversationFeedbackContext(
 }
 
 /**
- * What a composition step actually did to the model input (station#2649).
+ * What a composition step actually did to the model input (archive#2649).
  *
  * `applied` is the AUTHORITY for the per-turn context receipt, and it is
  * deliberately not the same question as "was there context to apply". Both
@@ -75,7 +75,7 @@ export function injectConversationFeedbackContext(
  * a text part only `if (content)`. Recording composition INTENT there would
  * state that the model read project rules and behavior guidelines it was
  * never sent: the receipt must describe the effect, so it is built from this
- * flag. The drop itself is station#2743.
+ * flag. The drop itself is archive#2743.
  *
  * The part whose absence causes that drop is resolved by `userTextPart`,
  * imported from `chat-context-injection.ts` so the appliers here and the
@@ -88,7 +88,7 @@ export interface AppliedChatContext {
 }
 
 /**
- * station#2652 chapter 2: append the `[USER PROFILE]` block for the two
+ * archive#2652 chapter 2: append the `[USER PROFILE]` block for the two
  * first-run questions, composed onto `ragContext` exactly like the behaviour
  * guidelines and workflow steering above it.
  *
@@ -121,7 +121,7 @@ export function injectUserProfileContext(
 }
 
 /**
- * #685: compose the UI's out-of-band ambient context (timezone, geolocation)
+ * archive#685: compose the UI's out-of-band ambient context (timezone, geolocation)
  * into the model-facing input only. The persisted user turn keeps the typed
  * `input` — callers must keep passing the original `input` to the
  * persistence seams (`ensureChatConversation`, `finalizeChatRequest`).

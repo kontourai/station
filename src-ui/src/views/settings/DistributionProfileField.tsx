@@ -1,5 +1,5 @@
 /**
- * station#settings-revamp slice 3: custom composite editor for
+ * archive#settings-revamp: custom composite editor for
  * `distributionProfile`. Renders a 2-option select when the value is the
  * string 'standard'/'minimal' (or absent -> default 'standard'); a
  * read-only note when it's a custom `DistributionProfile` object (composite

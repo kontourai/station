@@ -21,7 +21,7 @@ export function createPluginRoutes(
   logger: Logger,
   eventBus?: EventBus,
   runtime?: {
-    /** station#3677: the distinct-origin consent surface (host approvals). */
+    /** archive#3677: the distinct-origin consent surface (host approvals). */
     consentChannel?: ConsentChannelService;
     applyConfigurationMutation: AgentConfigurationMutationRunner;
     refreshKitObservability?: () => void;

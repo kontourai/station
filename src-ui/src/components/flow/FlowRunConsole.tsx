@@ -41,7 +41,7 @@ import './flow-events.css';
 import './FlowRunConsole.css';
 
 // ─── FlowRunConsole ───────────────────────────────────────────────────────────
-// Project-wide gated-run visibility (roadmap S2): every Flow run in the
+// Project-wide gated-run visibility (roadmap): every Flow run in the
 // project workspace, with per-run gate outcomes, open expectations,
 // exceptions, evidence manifest, route-back state, and report paths. Data is
 // Flow's own console projection (`projectFlowRunFromFiles`) served by the
@@ -51,7 +51,7 @@ import './FlowRunConsole.css';
 // project layout can include it as a tab:
 //   { "component": { "kind": "builtin-component", "name": "flow-run-console" } }
 //
-// Styled on the Console Kit contract (S2 item 4): `.panel` section chrome,
+// Styled on the Console Kit contract: `.panel` section chrome,
 // `Badge` + tone classes for run statuses, `Metric` for the evidence-manifest
 // status counts, `Empty` for empty states, `--k-*` tokens throughout. Gate
 // cards keep the shared `.flow-gate-card--*` verdict mapping from
@@ -389,7 +389,7 @@ function RunDetail({
 
   if (isLoading) {
     // A run projection can legitimately sit loading for a while (gate/verify
-    // work in flight). The indeterminate sweep (station#2651) is the "working,
+    // work in flight). The indeterminate sweep (archive#2651) is the "working,
     // not stalled" signal on top of the canonical Skeleton primitives.
     return (
       <div
@@ -425,7 +425,7 @@ function RunDetailBody({
 }) {
   // The report path used to be copied silently — a swallowed `.catch` behind an
   // optional chain that could not even run on the origin with no clipboard
-  // (station#3341). The path stays on screen either way; the button now says
+  // (archive#3341). The path stays on screen either way; the button now says
   // which happened.
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
     'idle',
@@ -633,7 +633,7 @@ function RunDetailBody({
 export interface FlowRunConsoleProps {
   /**
    * Overrides `navigation.selectedProject` — the deterministic
-   * `/projects/:slug/flow-console` route (station#612) passes this
+   * `/projects/:slug/flow-console` route (archive#612) passes this
    * explicitly so the console works outside a project layout tab.
    */
   projectSlug?: string;

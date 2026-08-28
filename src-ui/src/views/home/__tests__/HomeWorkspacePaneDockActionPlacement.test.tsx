@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * 2026-08-26 audit F6: `WorkspacePaneDockAction` used to render as a bare
+ * `WorkspacePaneDockAction` used to render as a bare
  * sibling directly above `HomeSurface`'s intro header, colliding with the
  * `Your work` eyebrow at every width — Activity's equivalent joins its
  * page-header action cell instead (`ActivityWorkspacePane.tsx`). Home has no

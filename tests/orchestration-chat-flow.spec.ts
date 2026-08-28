@@ -73,7 +73,7 @@ test.describe('Orchestration Chat Flow', () => {
     // `ChatDockBody.tsx:751-770` mounts the transcript list — and with it the
     // streaming shell and every tool row — only once the projected transcript
     // already HAS a message, rendering a "No messages yet" filler otherwise
-    // (#2467 gated the heavy list on content). A live `turn.started` does not
+    // (archive#2467 gated the heavy list on content). A live `turn.started` does not
     // append one: `hooks/orchestration/turnHandlers.ts:51-100` opens the turn
     // and ignores `event.prompt`. So the durable window has to carry one
     // settled prior turn, or every locator below has nothing to resolve
@@ -394,11 +394,11 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(approvalQueue).toBeHidden();
 
     /**
-     * station#1259, in a real browser. Approving the last pending request is
+     * archive#1259, in a real browser. Approving the last pending request is
      * the popover's own primary action, and it unmounts the queue element with
      * the trigger inside it — the surface destroying the control it owes focus
      * back to. Nothing restored on this path before, so focus landed on
-     * `<body>`, station#1126's outcome, on the most ordinary approval there is.
+     * `<body>`, archive#1126's outcome, on the most ordinary approval there is.
      *
      * This has to be asserted here rather than in vitest: jsdom reports
      * `.focus()` on an element that cannot take focus as successful, so the
@@ -454,7 +454,7 @@ test.describe('Orchestration Chat Flow', () => {
     });
     // Completion clears the live activity label AND the collapsed progress
     // line — a settled row repeating its last progress message would read as
-    // ongoing activity (station#2652 redesign). The final message is
+    // ongoing activity (archive#2652 redesign). The final message is
     // retained in the row's expanded detail, asserted after the turn
     // settles below.
     await expect(page.locator('.streaming-progress__label')).toBeHidden();
@@ -487,7 +487,7 @@ test.describe('Orchestration Chat Flow', () => {
         .getByRole('log', { name: 'Conversation transcript' })
         .getByText('Repo looks healthy.'),
     ).toBeVisible();
-    // station#2652 redesign: the settled activity is a quiet inline row (no
+    // archive#2652 redesign: the settled activity is a quiet inline row (no
     // "Show N work activities" gate) labelled by its command. Expanding it
     // reveals the exact tool name and the final progress message as the
     // historical record.

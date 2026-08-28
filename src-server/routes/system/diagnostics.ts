@@ -27,7 +27,7 @@ export function createDiagnosticsRoutes(
     }
   });
 
-  // station#1896 logging slice 2: the self-read path over the durable
+  // archive#1896 logging slice 2: the self-read path over the durable
   // NDJSON store slice 1 (`server-log-store.ts`) writes. `level` here is a
   // MINIMUM severity floor, not an exact match — see `ServerLogReader`'s
   // own docblock for the tail-query and redaction-on-egress contract.

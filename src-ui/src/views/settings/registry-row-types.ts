@@ -1,5 +1,5 @@
 /**
- * station#settings-revamp slice 3: shared prop shape for both the generic
+ * archive#settings-revamp: shared prop shape for both the generic
  * per-kind row renderer (`registry-row.tsx`) and every custom/composite row
  * component it delegates to (`ApprovalGuardianEditor`, `DistributionProfileField`,
  * `BuiltinEngineRow`). Loosely typed (`unknown` value) deliberately — each

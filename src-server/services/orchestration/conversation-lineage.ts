@@ -66,7 +66,7 @@ export class ConversationContextBoundaryNotFoundError extends Error {
 }
 
 /**
- * Conversation lineage, handoff, and history (epic #4024 slice 5, #4155):
+ * Conversation lineage, handoff, and history (epic archive#4024, archive#4155):
  * the C11 cluster from the seam map — zero owned service fields (verified:
  * its only writes are durable event-store writes that move with the code,
  * plus transitive map writes through the real service methods the deps
@@ -688,7 +688,7 @@ export class ConversationLineage {
 
   /**
    * Shared event-store seam for immutable cross-conversation provenance.
-   * station#1399 fix round 2, B3: this is a generic pass-through of
+   * archive#1399 fix round 2, B3: this is a generic pass-through of
    * whatever `CanonicalRuntimeEvent` its caller constructs (today, a
    * fork-marker event, never `tool.completed`) — routed through the safe
    * sanitizer anyway so the writer-inventory ratchet needs no
@@ -750,7 +750,7 @@ export class ConversationLineage {
   }
 
   /**
-   * S2 of #1302 (conversation-surface consolidation): global counterpart to
+   * S2 of archive#1302 (conversation-surface consolidation): global counterpart to
    * `listSessionConversations` above — folds every agent's session-backed
    * conversations, not just one, for the new `GET /api/conversations`
    * inventory endpoint. Reuses `readSessionConversation` for its ACL check,
@@ -800,7 +800,7 @@ export class ConversationLineage {
           updatedAt: conversation.updatedAt,
           messageCount: conversation.messageCount,
           mutable: false,
-          // Carried, never re-derived (station#1778). `ProjectSidebar` folds
+          // Carried, never re-derived (archive#1778). `ProjectSidebar` folds
           // this item's lifecycle fields into an attention badge; without the
           // decoration it would be the sixteenth consumer reading a raw state
           // that is permanently wrong for a dead session.

@@ -8,7 +8,7 @@ import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
 /**
  * The chip's picker is a `ComposerModeSheet` (a `ResponsiveDialogSurface`) now
  * rather than a native `<select>`, so these specs drive the trigger button and
- * the sheet's `radio` rows. The #727 invariants they exist to pin are unchanged:
+ * the sheet's `radio` rows. The archive#727 invariants they exist to pin are unchanged:
  * effective-mode resolution, the pending-apply state, and — above all — that
  * escalating to full access takes a second explicit confirmation and that
  * backing out never applies it.
@@ -400,8 +400,8 @@ describe('ApprovalModeChip', () => {
     const autoDescription =
       'Agent asks at its own discretion; file writes sandboxed to the workspace.';
     expect(screen.getByText(autoDescription)).toBeTruthy();
-    // `option()` now resolves the native `<input type="radio">` itself (real
-    // radio semantics, station#996) — a leaf element with no text-node
+    // `option` now resolves the native `<input type="radio">` itself (real
+    // radio semantics, archive#996) — a leaf element with no text-node
     // children of its own; the visible label/description text lives in
     // sibling `<span>`s inside the same `<label>` row. `.closest('label')`
     // is the equivalent "same option row" scope the original `.textContent`
@@ -428,7 +428,7 @@ describe('ApprovalModeChip', () => {
 
   test('narrowing the visible chip does not narrow what it discloses', async () => {
     // The policy half is hidden below 480px because the two labels together
-    // overflowed the composer row on a phone (station#3151). That is only
+    // overflowed the composer row on a phone (archive#3151). That is only
     // defensible while the full pairing survives in the accessible name and
     // the tooltip — approvals are a security-relevant readout, and a user
     // deciding whether to let an engine run unattended has to be able to
@@ -477,7 +477,7 @@ describe('ApprovalModeChip', () => {
   });
 
   /**
-   * #1010 item 3. `config.approvalMode` is a generic connection-config bag
+   * archive#1010. `config.approvalMode` is a generic connection-config bag
    * field with no server-side gate (nothing restricts it to the two adapters
    * that read it), so a no-knob connection carrying one used to make the inert
    * chip announce a governing posture — "Ask every time — default" — that the
@@ -531,7 +531,7 @@ describe('ApprovalModeChip', () => {
   });
 
   /**
-   * #1010 item 2. The pill is ~150px of a 390px composer; the descriptive
+   * archive#1010. The pill is ~150px of a 390px composer; the descriptive
    * label clipped its own caret at that width. The short form goes in the
    * pill, the full label stays on the accessible name.
    */
@@ -576,7 +576,7 @@ describe('ApprovalModeChip', () => {
 
   // WCAG 2.5.3 Label in Name: a speech-input user says what they see, so the
   // visible pill text has to appear in the accessible name. Shortening the pill
-  // (#1010 item 2) broke this for the pending state — visible "Full access ·
+  // (archive#1010) broke this for the pending state — visible "Full access ·
   // pending" was not a substring of "Never ask (full access) — pending next
   // turn" — and no assertion noticed, because every test pinned one string or
   // the other rather than their relationship.

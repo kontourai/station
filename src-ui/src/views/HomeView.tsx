@@ -42,7 +42,7 @@ const HomeRolePane = lazy(() =>
  * Home's host.
  *
  * Owns the shared model and mounts whichever renderer the Workspace Pane
- * selector admits for this build's fixed Home descriptor (station#3122 stage
+ * selector admits for this build's fixed Home descriptor (archive#3122 stage
  * 2). That descriptor's primary renderer is the built-in component. The
  * built-in renders because `selectClientWorkspacePaneRenderer` selected it,
  * not because this file directly mounts a surface.
@@ -66,7 +66,7 @@ const HomeRolePane = lazy(() =>
  * there is still deliberately no fallback when selection refuses: rendering
  * Home anyway would make the selection above decorative.
  *
- * station#3122's six-variant experiment concluded before this: the owner ran
+ * archive#3122's six-variant experiment concluded before this: the owner ran
  * them and picked, so the variant registry, selector store, switcher and
  * variant error boundary are gone and `HomeSurface` absorbed the two blocks
  * the winner contributed. That registry was a rival seam with no provenance,
@@ -106,14 +106,14 @@ export function HomeView({
 
   // While Home's canonical occurrence occupies the ambient dock, this route
   // renders the away state instead of a second live copy of the pane
-  // (station#4090 M5; M2 disclosed the co-mount this replaces). The
+  // (archive#4090; disclosed the co-mount this replaces). The
   // derivation is the host's own published occupant state through
   // `isAmbientDockOccupant` — never a route-local flag — so choosing another
   // dock occupant clears this state without any route-side bookkeeping.
   const dock = useWorkspacePaneDockAction();
   const paneAway = isAmbientDockOccupant(dock, WORKSPACE_HOME_PANE_INSTANCE);
 
-  // The un-removable floor (station#3122 stage 3): built once, used by both
+  // The un-removable floor (archive#3122): built once, used by both
   // branches below, so the granted path can only ever ADD a Pane above it —
   // there is no code path where a grant makes the built-in unreachable.
   const builtinHome = paneAway ? (
@@ -134,7 +134,7 @@ export function HomeView({
     />
   );
 
-  // The Home role (stage 3). Absent, unresolved, or unreadable — the floor
+  // The Home role. Absent, unresolved, or unreadable — the floor
   // states — this render is the stage-2 one. Granted, `HomeRolePane` owns
   // mounting the granted Pane, its recovery boundary, and every fall back
   // to the floor. Lapsed, the floor renders with the server-derived reason.

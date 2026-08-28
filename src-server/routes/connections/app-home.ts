@@ -1,5 +1,5 @@
 /**
- * App-home profile status + explicit import (#896,
+ * App-home profile status + explicit import (archive#896,
  * `docs/design/agent-engine-unification.md` §6.1's overlay model, channel
  * 2). Wave 1 supported `claude-runtime` only; wave 2 adds `codex-runtime`
  * to the same table (`APP_HOME_ENGINES`) — any other connection id 404s.
@@ -71,7 +71,7 @@ interface AppHomeEngine {
 }
 
 /**
- * #896 wave 2: the two-entry engine table replacing wave 1's
+ * archive#896 wave 2: the two-entry engine table replacing wave 1's
  * claude-runtime-only guard. The claude entry preserves wave 1's behavior
  * byte-for-byte; the codex entry is new this wave (Step 4's import
  * allowlist, Step 3's `auth.json` auth detection).
@@ -128,7 +128,7 @@ function importFailureMessage(reason: string | undefined): string {
 }
 
 /**
- * #896 wave 2: DELETE-while-enabled guard copy — verbatim, this is the
+ * archive#896 wave 2: DELETE-while-enabled guard copy — verbatim, this is the
  * spec (Accepted gap, Ambiguity F: the saved-config 409 proxy does not
  * close the window where a session already live under the profile keeps
  * running after a clear; documented in docs/design/connections-onboarding.md
@@ -500,7 +500,7 @@ export function createAppHomeRoutes(deps?: {
   });
 
   /**
-   * station#3552: this engine's accounts and how much of each account's quota
+   * archive#3552: this engine's accounts and how much of each account's quota
    * the provider says is spent.
    *
    * One entry per credential Station can actually reach: the connection's own
@@ -510,7 +510,7 @@ export function createAppHomeRoutes(deps?: {
    * `unknown` with a reason rather than a zeroed meter.
    */
   /**
-   * station#3549: what to run to sign this profile in, and whether it already
+   * archive#3549: what to run to sign this profile in, and whether it already
    * is.
    *
    * The command is RETURNED, never spawned. The engine's login is interactive

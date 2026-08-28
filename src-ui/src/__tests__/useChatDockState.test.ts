@@ -24,7 +24,7 @@ const defaultOptions = {
  * singleton whose one-time prior-key import runs at first import (mirrors
  * `active-chats-store.test.ts`'s pattern for its own singleton store) — so
  * a scenario that depends on that migration (or on a clean store per test)
- * re-imports the hook fresh after `vi.resetModules()`.
+ * re-imports the hook fresh after `vi.resetModules`.
  */
 async function freshUseChatDockState(): Promise<typeof UseChatDockStateFn> {
   vi.resetModules();
@@ -240,7 +240,7 @@ describe('useChatDockState', () => {
       expect(result.current.chatFontSize).toBe(defaultOptions.defaultFontSize);
 
       act(() => {
-        // Simulates importEnvelope()/merge() — a write this hook instance
+        // Simulates importEnvelope/merge — a write this hook instance
         // never triggered itself.
         deviceSettingsStore.set('chatShowReasoning', false);
         deviceSettingsStore.set('chatShowToolDetails', false);

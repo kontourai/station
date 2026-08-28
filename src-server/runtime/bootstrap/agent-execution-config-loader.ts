@@ -1,5 +1,5 @@
 /**
- * station#3549: how the production runtime composes the seam that tells
+ * archive#3549: how the production runtime composes the seam that tells
  * orchestration which credential profile (account) an agent runs on.
  *
  * Extracted from `runtime-initialize.ts` so it can be tested for BEHAVIOUR.

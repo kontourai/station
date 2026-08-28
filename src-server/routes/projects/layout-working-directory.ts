@@ -1,5 +1,5 @@
 /**
- * station#1497 — a coding layout's working directory is DERIVED from its owning
+ * archive#1497 — a coding layout's working directory is DERIVED from its owning
  * project, never a persisted second copy.
  *
  * Design doc: `docs/design/portable-project-identity.md` §2.2 ("the coding
@@ -16,7 +16,7 @@
  *    correct its own layouts. Ignoring the persisted value is therefore the
  *    compat path for every install that upgrades: no rewrite, no migration
  *    script, and the stale bytes are inert the moment this ships.
- *    (Migration decision (a) in station#1497.)
+ *    (Migration decision (a) in archive#1497.)
  * 2. **The key is removed on write, not merely ignored.** Read-side derivation
  *    alone would leave dead bytes on disk that a future reader could
  *    mistake for authority, and a GET→PUT round trip would re-plant the derived
@@ -45,7 +45,7 @@ const WORKING_DIRECTORY_KEY = 'workingDirectory';
 
 /**
  * The config key naming WHICH of the project's repos a coding layout is about
- * (station#1503 slice 5, `docs/design/portable-project-identity.md` §10:
+ * (archive#1503, `docs/design/portable-project-identity.md` §10:
  * "layouts reference repos by id").
  */
 const REPO_ID_KEY = 'repoId';
@@ -63,11 +63,11 @@ export function isCodingLayout(layout: LayoutWorkingDirectoryShape): boolean {
 
 /**
  * WHICH repo this coding layout is about, or `undefined` for the ordinary
- * single-repo case (station#1503 slice 5).
+ * single-repo case (archive#1503).
  *
  * This is a REFERENCE, not a copy: it names a manifest resource id, and the
  * directory is still derived on every read — which is the whole point of
- * station#1497 and is why this key is safe to persist where
+ * archive#1497 and is why this key is safe to persist where
  * `workingDirectory` is not. A resource id is a portable fact about the
  * project; a path is a machine-local one that drifts the moment a checkout
  * moves.
@@ -87,13 +87,13 @@ export function codingLayoutRepoId(
   // multi-repo project is a DIFFERENT repo's checkout.
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  // RECORDED, not overlooked (station#1503 review, L8): this trims for
+  // RECORDED, not overlooked (archive#1503 review, L8): this trims for
   // RESOLUTION and does not rewrite what is stored, so a layout persisted with
   // `" api "` keeps those bytes and resolves `"api"`. That asymmetry is
   // deliberate and it is the same one every read-derivation in this module
   // has: a read path does not write. Normalizing on read and persisting the
   // normalized form would make a GET→PUT round trip silently rewrite an
-  // operator's record — station#1497's defect, in the field this slice added.
+  // operator's record — archive#1497's defect, in the field this slice added.
   // The stored bytes are inert; nothing but this function reads the key.
   return trimmed.length > 0 ? trimmed : undefined;
 }

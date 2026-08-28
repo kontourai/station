@@ -1,5 +1,5 @@
 /**
- * Ambient chat context composition (#685).
+ * Ambient chat context composition (archive#685).
  *
  * The UI sends ambient, model-facing context (timezone, geolocation, …)
  * out-of-band via an optional `ambientContext` field instead of splicing it

@@ -179,7 +179,7 @@ export function PluginManagementView({
         )}
       </SplitPaneLayout>
 
-      {/* station#3815: only a TRUSTED withdrawal asks. Removing any grant
+      {/* archive#3815: only a TRUSTED withdrawal asks. Removing any grant
           is safe — it narrows what a plugin may do — but a trusted one is
           expensive to restore (the separate host review page), and that
           asymmetry is what the prompt is about. It says so, rather than

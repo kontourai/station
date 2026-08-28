@@ -1,5 +1,5 @@
 /**
- * station#3115: a turn that fails after its trace is minted still emits an
+ * archive#3115: a turn that fails after its trace is minted still emits an
  * agent-complete span, and that span used to carry the initial `''` because
  * the finally-block's copy of the trace id was bound only once the stream was
  * built. The insights rollup excludes `''` from both of its chat-count

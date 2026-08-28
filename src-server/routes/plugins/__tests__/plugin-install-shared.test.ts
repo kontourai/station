@@ -118,7 +118,7 @@ function writePlugin(
 
 /**
  * The operator's pre-install decision, assembled the way the client
- * assembles it (station#4288): stage the source, read what the server would
+ * assembles it (archive#4288): stage the source, read what the server would
  * derive from that staged copy, throw the staging away, answer. Nothing here
  * is a shortcut around the gate — a stale or invented value refuses exactly
  * as it would from the browser.
@@ -312,7 +312,7 @@ describe('readRegistryPluginAvailability', () => {
 });
 
 /**
- * station#4300. The reserved-identity refusal moved OUT of the frame bridge's
+ * archive#4300. The reserved-identity refusal moved OUT of the frame bridge's
  * authorization matcher (deleted) and INTO install. The unit corpus for the
  * list and the assertion lives in
  * `src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts`;
@@ -407,7 +407,7 @@ describe('installPluginFromSource', () => {
   });
 
   /**
-   * station#4288's most dangerous failure mode is self-inflicted: if ANY step
+   * archive#4288's most dangerous failure mode is self-inflicted: if ANY step
    * of the install writes into the plugin tree after the digest is recorded,
    * every fresh install reads as `changed` on its very next load and loses
    * its permissions for no reason. This pins the ordering end-to-end through
@@ -441,7 +441,7 @@ describe('installPluginFromSource', () => {
   });
 
   /**
-   * station#4288, review HIGH 2. `installPluginFromSource` is a first-class
+   * archive#4288, review HIGH 2. `installPluginFromSource` is a first-class
    * install-OVER-EXISTING path — it backs up, it has `hadExistingPlugin`, and
    * `assertRegistryInstallTargetAvailable` deliberately permits reinstalling
    * over the same registry item, which is how a registry plugin gets a new
@@ -521,7 +521,7 @@ describe('installPluginFromSource', () => {
   });
 
   /**
-   * station#4288, delta review. `withdrawn: []` on a first install used to be
+   * archive#4288, delta review. `withdrawn: []` on a first install used to be
    * a hardcoded constant, and the reachable case where a first install DOES
    * withdraw is this one: a grants entry survives its plugin directory (a
    * hand-deleted tree, or an uninstall that failed after `rmSync` but before
@@ -551,7 +551,7 @@ describe('installPluginFromSource', () => {
   });
 
   /**
-   * station#4288, delta review MEDIUM 1. A failed install-over rolls the tree
+   * archive#4288, delta review MEDIUM 1. A failed install-over rolls the tree
    * back to the reviewed bytes and restores the grants entry that was
    * recorded against them — but the memoized digest at that moment is the
    * REPLACED tree's, refreshed by `rebindGrantsAfterContentChange` and again
@@ -615,7 +615,7 @@ describe('installPluginFromSource', () => {
   });
 
   /**
-   * station#4288, review HIGH 3. The install path deletes `<plugins>/<name>`
+   * archive#4288, review HIGH 3. The install path deletes `<plugins>/<name>`
    * and copies a new tree in — the same class of mutation as update and
    * uninstall — so it has to hold the same per-plugin lock they do. Otherwise
    * a consent decision can revalidate the digest, have the tree replaced under
@@ -1123,10 +1123,9 @@ describe('installPluginFromSource', () => {
         registryId: 'escape-plugin',
         registryKey: 'test-registry',
       }),
-      // station#4307 moved this rejection EARLIER: `manifest.name` is now
-      // validated as a canonical plugin id when the manifest is parsed, so a
-      // traversal name never reaches `assertPluginNameSegment`'s
-      // "Invalid plugin name". The property under test — refused, and no
+      // `manifest.name` is validated as a canonical plugin id when the
+      // manifest is parsed, so a traversal name never reaches
+      // `assertPluginNameSegment`'s "Invalid plugin name". The property under test — refused, and no
       // directory created outside the install root — is unchanged.
     ).rejects.toThrow(/is not a canonical plugin id/);
 
@@ -1899,7 +1898,7 @@ describe('installPluginFromSource', () => {
 
 describe('plugin durable-state backup/restore (#1835 review finding 2)', () => {
   /**
-   * station#4288: a grant is bound to the plugin's installed bytes, so every
+   * archive#4288: a grant is bound to the plugin's installed bytes, so every
    * fixture that records consent needs a real tree — exactly as production
    * does, where each grant surface checks `plugin.json` first.
    */
@@ -1919,7 +1918,7 @@ describe('plugin durable-state backup/restore (#1835 review finding 2)', () => {
     // Distinct permissions on purpose: a restore that wrote the target's
     // snapshot under the wrong key would leave `other` holding the victim's
     // grants, and identical grant sets everywhere could not see that
-    // (station#4307 review — `storage.read` was retired here in #4301 and the
+    // (archive#4307 review — `storage.read` was retired here in archive#4301 and the
     // replacement flattened all three plugins to the same permission).
     await grantPermissions(home, 'victim', ['ui.confirm']);
     await grantPermissions(home, 'other', ['navigation.dock']);
@@ -2186,7 +2185,7 @@ describe('plugin durable-state backup/restore (#1835 review finding 2)', () => {
 });
 
 /**
- * station#4309 follow-up, defect 1.
+ * archive#4309 follow-up, defect 1.
  *
  * The refusal is raised four frames below the caller — `withPluginContentLock`
  * → `buildDependencyIfNeeded` → `installPluginDependency`'s result → this
@@ -2258,7 +2257,7 @@ describe('a refused plugin content lock survives installPluginFromSource', () =>
         // at the top of `installPluginFromSource` and present by the time the
         // rollback runs. A rollback that deletes "everything that appeared
         // since" deletes THIS — a tree it did not create, with no lock held,
-        // while its owner is still working (station#4309 follow-up review,
+        // while its owner is still working (archive#4309 follow-up review,
         // HIGH 1).
         seedInstalledDependency(pluginsDir, 'sibling-dep');
         siblingLanded();
@@ -2306,7 +2305,7 @@ describe('a refused plugin content lock survives installPluginFromSource', () =>
 });
 
 /**
- * station#4309 follow-up review, HIGH 1. What an install rolls back is what it
+ * archive#4309 follow-up review, HIGH 1. What an install rolls back is what it
  * created, by identity — not what appeared in `<plugins>` while it ran.
  */
 describe('installPluginFromSource rolls back only the dependency trees it created', () => {
@@ -2484,7 +2483,7 @@ describe('removeDependencyTreesCreatedByThisInstall lock timeout', () => {
 });
 
 /**
- * station#4288 — consent is a gate, not a notification.
+ * archive#4288 — consent is a gate, not a notification.
  *
  * Consent used to be requested from the install mutation's `onSuccess`: the
  * plugin was on disk, its agents were written, its integrations were copied
@@ -2745,7 +2744,7 @@ describe('plugin install consent gate (station#4288)', () => {
       }),
     ).toEqual(UNTOUCHED);
     // Not merely removed afterwards: the dependency's build never ran, so it
-    // was never fetched (station#4288 — the rollback is thorough enough that
+    // was never fetched (archive#4288 — the rollback is thorough enough that
     // the footprint alone cannot tell the two apart).
     probes.expectNothingStarted();
   });
@@ -2921,7 +2920,7 @@ describe('plugin install consent gate (station#4288)', () => {
   });
 
   /**
-   * station#4288, review HIGH 1 — the case the first version of this gate
+   * archive#4288, review HIGH 1 — the case the first version of this gate
    * installed with no decision at all.
    *
    * This plugin declares NO permissions, so `requiredPermissionsForManifest`
@@ -2982,7 +2981,7 @@ describe('plugin install consent gate (station#4288)', () => {
   });
 
   /**
-   * station#4288, review MEDIUM 1. The gate can only check the dependency ids
+   * archive#4288, review MEDIUM 1. The gate can only check the dependency ids
    * the PARENT's staged manifest declares. `installPluginDependency` then
    * recurses into each dependency's own manifest — fetched from its own
    * source at install time, long after the decision was taken.
@@ -3064,7 +3063,7 @@ describe('plugin install consent gate (station#4288)', () => {
   });
 
   /**
-   * station#4288, review MEDIUM 2. Staging used to be
+   * archive#4288, review MEDIUM 2. Staging used to be
    * `<plugins>/.preview-<source basename>` — derived from the basename, so
    * every fetch of a source with that basename shared one directory, and
    * `fetchPluginSource` starts by `rmSync`-ing whatever is there.

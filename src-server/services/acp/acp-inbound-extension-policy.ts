@@ -42,7 +42,7 @@
  * Note what this request is *not*: it is not necessarily an AWS credential.
  * The upstream reporter is on IAM Identity Center, so theirs is AWS-issued;
  * a Google-signed-in machine is not. The `HTTP 400 "profileArn is required"`
- * the #1684 probe saw after answering with a decoy proves only that the
+ * the archive#1684 probe saw after answering with a decoy proves only that the
  * value was **transmitted** to a remote service as a bearer — which is the
  * part that matters here.
  *
@@ -90,7 +90,7 @@
  * already places into the environment of built-in `station-control` MCP
  * servers. Also in reach: model-connection credentials held by
  * `ConnectionService`, and the per-session station-control bearer that
- * #1684 will ride over ACP's HTTP transport. An external agent process is a
+ * archive#1684 will ride over ACP's HTTP transport. An external agent process is a
  * less-trusted principal; handing any of those to it in response to a
  * self-described "auth" request would be a full privilege transfer prompted
  * by the untrusted side. Hence: the handler for that shape cannot be
@@ -151,7 +151,7 @@
  * the ones asserting the log, the warning, and the registry behaviour.
  *
  * See `docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md`
- * (Layer 1) for the surrounding design, and station#1820 for the outbound
+ * (Layer 1) for the surrounding design, and archive#1820 for the outbound
  * half, which this module deliberately does not implement.
  */
 import { RequestError } from '@agentclientprotocol/sdk';

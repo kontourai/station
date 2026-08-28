@@ -40,7 +40,7 @@ export interface HomeWorkLanes {
 
 /**
  * Derives the three Home lanes (active / snoozed / settled) plus a
- * position-stable order for the active lane (AC1).
+ * position-stable order for the active lane.
  *
  * `identityAliasRef`, `terminalSinceRef`, `orderRef`, and `wokeAtRef` are
  * mutated during render rather than via `setState`. That is safe here
@@ -68,7 +68,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
     // Lazy ref init (React-sanctioned: safe to read/assign `ref.current`
     // during render for a one-time initializer). Seeded from
     // `terminal-since-store.ts` so a reload doesn't re-anchor the linger
-    // clock for items that were already terminal (AC3 fix, review finding).
+    // clock for items that were already terminal.
     terminalSinceRef.current = new Map(
       Object.entries(
         readTerminalSince(
@@ -81,7 +81,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   const orderRef = useRef<string[]>([]);
   const wokeAtRef = useRef(new Map<string, number>());
   const prevSnoozedIdsRef = useRef(new Set<string>());
-  /** Ids an explicit `wake()` call is about to remove from the snoozed lane.
+  /** Ids an explicit `wake` call is about to remove from the snoozed lane.
    * The render-time diff below cannot otherwise tell that transition apart
    * from a natural TTL lapse (both just look like "left the snoozed set"),
    * and an explicit wake should dismiss silently rather than show a pill. */
@@ -93,7 +93,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   }, []);
 
   // Persist terminal-since after every render so a reload can seed the
-  // ref above from real anchors instead of re-anchoring to "now" (AC3).
+  // ref above from real anchors instead of re-anchoring to "now".
   useEffect(() => {
     writeTerminalSince(Object.fromEntries(terminalSinceRef.current ?? []));
   });
@@ -106,7 +106,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   // Resolve each item's stable identity BEFORE anything else keys off it —
   // `laneItems[i].id` may differ from `items[i].id` in a future render even
   // for "the same" row (conversationId promotion, task correlation forming);
-  // `.stableId` is what stays constant (review finding, AC1 fix).
+  // `.stableId` is what stays constant.
   const laneItems = withStableIds(items, identityAliasRef.current);
   const presentIds = new Set(laneItems.map((item) => item.id));
 
@@ -139,7 +139,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
 
   // "Woke from snooze" pill: any id that was in the snoozed lane last time
   // this hook ran and is not this time (natural lapse or an explicit
-  // `wake()`) gets a pill for WOKE_PILL_WINDOW_MS.
+  // `wake`) gets a pill for WOKE_PILL_WINDOW_MS.
   const currentSnoozedIds = new Set(partition.snoozed.map((item) => item.id));
   for (const id of prevSnoozedIdsRef.current) {
     if (!currentSnoozedIds.has(id) && presentIds.has(id)) {

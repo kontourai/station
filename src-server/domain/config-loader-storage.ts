@@ -94,7 +94,7 @@ export function markIntegrationEnabledExplicit(def: ToolDef): void {
   ];
 }
 
-/** Whether an integration definition file exists on disk (station#3063). */
+/** Whether an integration definition file exists on disk (archive#3063). */
 export function integrationConfigExists(
   projectHomeDir: string,
   id: string,

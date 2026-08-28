@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 5 — the consumer-verified probe.
+ * archive#1398 — the consumer-verified probe.
  *
  * The assertions that carry weight here are the ones about what a probe does
  * NOT earn: the peer-attested cap must still bind an unverified claim, an

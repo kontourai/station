@@ -30,7 +30,7 @@ export const STATION_ARTIFACT_ROOTS = {
  * Generated-artifact roots that predate the `.kontourai/` consolidation and
  * are still read for back-compat.
  *
- * `.flow/runs` is deliberately ABSENT (#290): Flow 3 writes generated run
+ * `.flow/runs` is deliberately ABSENT (archive#290): Flow 3 writes generated run
  * state to `.kontourai/flow/runs` and nothing else, and the issue forbids a
  * legacy fallback, dual read, or dual write for it. A run present only under
  * `.flow/runs` must not be discovered. `.flow` itself is still Flow's own
@@ -77,7 +77,7 @@ export function consoleArtifactRoot(cwd: string): string {
 
 /**
  * Station's own spelling of the runs root. Since {@link flowRunDir} began
- * delegating to Flow (#290) nothing in production calls this — it is kept
+ * delegating to Flow (archive#290) nothing in production calls this — it is kept
  * deliberately, as the thing the location-contract test cross-checks against
  * Flow's published `flowRuntimeRoot()`. That comparison is what would catch
  * Flow moving its runtime root; a helper that merely forwarded to Flow could
@@ -91,7 +91,7 @@ export function flowRunsRoot(cwd: string): string {
 /**
  * The one location a Flow run's generated state lives. This DELEGATES to
  * Flow's published `runDir()` rather than re-deriving the layout locally
- * (#290): re-joining `.kontourai/flow/runs/<runId>` here would be a mirror of
+ * (archive#290): re-joining `.kontourai/flow/runs/<runId>` here would be a mirror of
  * an upstream contract with nothing tying the two together, so a change to
  * Flow's runtime root would silently leave Station computing a directory Flow
  * no longer writes — discovery would return nothing rather than fail.
@@ -113,7 +113,7 @@ export function flowRunsRoot(cwd: string): string {
  * would not be a type error — it fails loudly instead, because an absolute
  * `cwd` in the run-id position trips `assertSafeRunId`.
  *
- * There is no legacy counterpart and no resolver: #290 forbids a dual read.
+ * There is no legacy counterpart and no resolver: archive#290 forbids a dual read.
  */
 export function flowRunDir(cwd: string, runId: string): string {
   return runDir(runId, cwd);
@@ -175,7 +175,7 @@ export interface WorkflowSidecarTaskPaths {
   writeHandoffFile: string;
   /**
    * `trust.bundle` — @kontourai/flow-agents' session evidence store (issue
-   * #753). Read-only from Station's side: Station never writes trust.bundle
+   * archive#753). Read-only from Station's side: Station never writes trust.bundle
    * (that stays the sidecar CLI's job), so there is deliberately no
    * `writeTrustBundleFile` counterpart to `writeStateFile`/`writeHandoffFile`.
    */

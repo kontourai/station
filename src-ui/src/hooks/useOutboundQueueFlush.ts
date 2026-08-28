@@ -1,5 +1,5 @@
 /**
- * station#1224 (offline slice 2) — flush trigger.
+ * archive#1224 (offline) — flush trigger.
  *
  * Mounted exactly once (in `App.tsx`, alongside the sibling
  * `useQueryCacheReconnectSync` this mirrors) so only one drain pass ever

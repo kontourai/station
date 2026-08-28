@@ -19,7 +19,7 @@ import {
 import { dismissSetupLauncher } from './helpers/orchestration';
 
 /**
- * The #4518 journey: the merge-gating suite never actually sent a real chat
+ * The archive#4518 journey: the merge-gating suite never actually sent a real chat
  * message from a paired device. This proves the whole round trip — pair a
  * real device (the same public handshake `device-pairing-mobile.spec.ts`
  * proves: access-request -> operator confirm -> exchange -> a real
@@ -28,21 +28,20 @@ import { dismissSetupLauncher } from './helpers/orchestration';
  * `POST /api/orchestration/chat`, and observes a streamed reply from a real
  * local HTTP model server (`tests/helpers/ollama-fixture.ts`).
  *
- * The load-bearing assertion is the one #4518 broke: the paired context's
+ * The load-bearing assertion is the one archive#4518 broke: the paired context's
  * principal must resolve.
  *
- * Fix round (review MED-5, correcting this docblock's own prior claim): the
- * raw `PrincipalUnresolvedError` text ("Unable to resolve a principal…")
- * never reaches this UI by design — `chatErrorTranslation.ts`'s own MED-1
- * fix round (station#4518) deliberately replaced it with a CANNED,
+ * The raw `PrincipalUnresolvedError` text ("Unable to resolve a principal…")
+ * never reaches this UI by design — `chatErrorTranslation.ts`
+ * deliberately replaced it with a CANNED,
  * human-facing message ("This Station couldn't verify who's asking" /
  * "isn't authorized to chat on this Station yet…") specifically so the raw
- * engineering string could never leak as a headline. Fault-injecting the
- * #4518 fix confirmed this live: only the canned copy rendered, never the
- * raw pattern, so a race against the raw pattern alone silently fell back to
+ * engineering string can never leak as a headline. Only the canned copy
+ * renders, never the
+ * raw pattern, so a race against the raw pattern alone silently falls back to
  * a 60s timeout instead of naming the cause. `PRINCIPAL_UNRESOLVED_PATTERN`
  * is kept as a defense-in-depth negative (the raw string leaking would
- * itself be a regression of that MED-1 fix), and
+ * itself be a regression of that translation decision), and
  * `PRINCIPAL_UNRESOLVED_CANNED_COPY_PATTERN` is the one that actually
  * appears and drives the race below.
  */
@@ -52,8 +51,8 @@ const FIXTURE_MODEL = 'station-paired-device-chat:latest';
 const FIXTURE_REPLY = 'Paired device chat fixture answered the composer.';
 const PRINCIPAL_UNRESOLVED_PATTERN = /Unable to resolve a principal/i;
 // `chatErrorTranslation.ts`'s actual rendered copy for PRINCIPAL_UNRESOLVED_CODE
-// (station#4518 MED-1) — see the file docblock above for why this, not the
-// raw pattern above, is what a fault-injected regression actually shows.
+// (archive#4518) — see the file docblock above for why this, not the
+// raw pattern above, is what an injected regression actually shows.
 const PRINCIPAL_UNRESOLVED_CANNED_COPY_PATTERN =
   /isn't authorized to chat on this Station yet/i;
 
@@ -267,10 +266,10 @@ test.describe('Paired-device chat round trip', () => {
       await expect(composer).toBeVisible({ timeout: 20_000 });
       await composer.fill('Confirm the paired-device round trip.');
       await peer.getByRole('button', { name: 'Send' }).click();
-      // Fix round (review MED-5): a bare 60s poll on `chatRequests.length`
-      // reads a reintroduced #4529/#4518 regression as a generic dispatch
+      // A bare 60s poll on `chatRequests.length`
+      // reads a reintroduced archive#4529/#4518 regression as a generic dispatch
       // timeout with no indication of why. Race the dispatch against the
-      // principal-refusal copy actually appearing, so a fault-injected
+      // principal-refusal copy actually appearing, so such a
       // regression fails fast with the named cause instead of a 60s
       // timeout.
       const principalRefused = peer

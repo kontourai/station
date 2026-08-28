@@ -53,7 +53,7 @@ interface ChatInputAreaProps {
    * The active chat session's stable identity (thread id) — used only to
    * key the approval-mode chip so its local confirm state resets on a
    * session switch instead of leaking onto the newly active session
-   * (#727 review round 3, item 2). Not otherwise read by this component.
+   * (archive#727 3). Not otherwise read by this component.
    */
   sessionId?: string;
   // Input state
@@ -65,13 +65,13 @@ interface ChatInputAreaProps {
   isSending: boolean;
   /**
    * A turn is outstanding — see `isTurnInFlight` (active-chats-state.ts) for
-   * the derivation. Renamed from `hasAbortController` in the UX audit T1 fix:
+   * the derivation. Renamed from `hasAbortController` in the fix:
    * the old name WAS the defect, because holding a browser abort controller
    * stopped being true seconds into a turn that ran for minutes.
    */
   turnInFlight: boolean;
   /**
-   * UX audit T1: a Stop request is in flight. The control stays visible (the
+   * a Stop request is in flight. The control stays visible (the
    * turn is still the thing on screen) but is disabled and labelled with what
    * is actually happening, so a second press cannot dispatch a second cancel.
    */
@@ -79,7 +79,7 @@ interface ChatInputAreaProps {
   modelSupportsAttachments: boolean;
   fileAttachmentsSupported?: boolean;
   /**
-   * Why images can't be attached here (station#3344) — the engine's own
+   * Why images can't be attached here (archive#3344) — the engine's own
    * `imageInput` reason or the selected model's. Shown at paste time so the
    * refusal names something actionable instead of a generic line.
    */
@@ -102,7 +102,7 @@ interface ChatInputAreaProps {
   modelQuery: string | null;
   agentConnectionId?: string;
   modelRuntimeOptions?: Record<string, unknown>;
-  // Approval mode (#727) — External-agent sessions only
+  // Approval mode (archive#727) — External-agent sessions only
   executionMode?: ExecutionMode;
   approvalModeConnectionDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
@@ -237,7 +237,7 @@ export function ChatInputArea({
   onStartNewChat,
 }: ChatInputAreaProps) {
   const isComposing = useRef(false);
-  // Anchors the model picker popover to its trigger on desktop (#999).
+  // Anchors the model picker popover to its trigger on desktop (archive#999).
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const visualViewport = useMobileVisualViewport();
   const isOverride = currentModelSource === 'session override';
@@ -245,7 +245,7 @@ export function ChatInputArea({
   const effectiveModelInfo = availableModels.find(
     (model) => model.id === effectiveModelId,
   );
-  // #1012: an alias/default entry hides which model the engine actually runs
+  // archive#1012: an alias/default entry hides which model the engine actually runs
   // ("Default (recommended)" told the owner nothing while an outdated host
   // silently ran an old model). When the engine reports a resolution, the
   // pill shows the concrete model; the alias identity stays in the accessible
@@ -292,7 +292,7 @@ export function ChatInputArea({
         ? 'Type a message...'
         : 'Type a message... (Enter to send, Shift+Enter for new line)';
 
-  // station#2807: the draft's size against the same limit every server
+  // archive#2807: the draft's size against the same limit every server
   // turn-starting schema derives from (chatSchema AND the orchestration
   // seam this composer actually posts to). A courtesy check only — the
   // server is the authority — but it lets the composer say exactly how
@@ -319,7 +319,7 @@ export function ChatInputArea({
 
   // A producer that unmounts while focused never fires blur; without this
   // the context stays true globally and every {not:'composerFocused'}
-  // shortcut stays dead (sol review finding).
+  // shortcut stays dead.
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
   return (
@@ -416,7 +416,7 @@ export function ChatInputArea({
           aria-haspopup="dialog"
           aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
           aria-label={modelAccessibleLabel}
-          // station#3969: "this binding" was our word for the agent and
+          // archive#3969: "this binding" was our word for the agent and
           // engine behind this chat. The fallback states the fact without
           // inventing a cause — `modelSelectionReason` is where a specific
           // one belongs.
@@ -460,7 +460,7 @@ export function ChatInputArea({
             // Structural reset (not blur-dependent) for the chip's local
             // confirm state when the active session changes — this
             // subtree persists across session switches with no natural
-            // remount otherwise (#727 review round 3, item 2).
+            // remount otherwise (archive#727 3).
             key={sessionId}
             engineConnectionId={agentConnectionId}
             toolPolicyDelivery={toolPolicyDelivery}

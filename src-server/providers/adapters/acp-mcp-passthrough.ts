@@ -6,7 +6,7 @@
  * Pure(ish) mapping from an ACP connection's opted-in tool-server ids
  * (`ACPConnectionConfig.provideToolServers`) to the ACP SDK's stdio
  * `McpServer` entries passed into `session/new`. `session/load` — resuming
- * an existing ACP session — is now wired too (#895 wave B, via
+ * an existing ACP session — is now wired too (archive#895 wave B, via
  * `AcpAdapter.startReservedSession`), reusing this same resolver so a
  * resumed session gets the identical passthrough tool servers a fresh one
  * would. Kept side-effect-light and
@@ -19,7 +19,7 @@
  * stdio-only, deliberately and still: an authored http/sse tool server is
  * skipped `unsupported-transport`, exactly as before.
  *
- * station#1684 adds ONE http entry, and it is not authored passthrough: the
+ * archive#1684 adds ONE http entry, and it is not authored passthrough: the
  * canonical BUILT-IN `station-control` server, delivered on its own reviewed
  * mechanism (`builtinStationControlDelivery: 'http-header-token'` on the
  * `acp` matrix cell). It is not a relaxation of the rule above — it is a
@@ -74,7 +74,7 @@ export type AcpToolServerSkipReason =
   | 'unsupported-transport'
   | 'requires-env-secrets'
   | 'binary-not-found'
-  /** station#1684: the built-in station-control server was asked for, but
+  /** archive#1684: the built-in station-control server was asked for, but
    * the connected engine's live handshake gave this session no usable
    * `mcpCapabilities.http`, so no credential was minted. The `detail` is
    * supplied by the caller — only the adapter knows whether the engine
@@ -82,7 +82,7 @@ export type AcpToolServerSkipReason =
    * and collapsing those two into one string would report a fact Station
    * does not have. */
   | 'engine-capability-absent'
-  /** station#1684: the built-in station-control server was asked for and no
+  /** archive#1684: the built-in station-control server was asked for and no
    * credential was supplied, with nothing said about the engine — see
    * `STATION_CONTROL_UNEXPLAINED_SKIP`. Distinct from the reason above
    * precisely so a caller that never consulted the engine cannot emit a
@@ -106,7 +106,7 @@ export interface ResolveAcpPassthroughMcpServersInput {
   /** Injectable for tests; defaults to `node:fs`'s `existsSync`. */
   commandExists?: (absolutePath: string) => boolean;
   /**
-   * station#1684: the already-minted header-channel credential for the
+   * archive#1684: the already-minted header-channel credential for the
    * canonical built-in station-control server — the bare endpoint URL
    * (`buildStationControlMcpHeaderUrl`, no token in it) plus the token that
    * will ride `Authorization: Bearer`. Per session, and bounded to the
@@ -155,7 +155,7 @@ export interface ResolveAcpPassthroughMcpServersResult {
   servers: McpServer[];
   skipped: AcpToolServerSkip[];
   /**
-   * station#1684 (review fix): did THIS call actually push the `type: 'http'`
+   * archive#1684 (review fix): did THIS call actually push the `type: 'http'`
    * built-in station-control entry?
    *
    * Stated by the producer rather than inferred by the caller, because the
@@ -195,7 +195,7 @@ function resolveAbsoluteCommand(
  * Resolve the explicit-opt-in tool-server ids for one ACP connection into ACP
  * `McpServer` entries — stdio for every authored server, plus the single
  * `type: 'http'` entry for the built-in station-control server when the
- * caller supplied its credential (station#1684). Never throws: an unresolvable id is recorded in
+ * caller supplied its credential (archive#1684). Never throws: an unresolvable id is recorded in
  * `skipped` with a reason, never silently dropped from observability. Empty
  * or absent `toolServerIds` short-circuits to `{ servers: [], skipped: [] }`
  * without invoking `resolveToolServer` — the off-by-default case must stay
@@ -241,7 +241,7 @@ export async function resolveAcpPassthroughMcpServers(
       continue;
     }
 
-    // station#1684: the ONE http entry, and the only branch that may reach
+    // archive#1684: the ONE http entry, and the only branch that may reach
     // a server declaring `env` — see this module's header comment for why
     // that is not an env exemption. Placed above the env gate deliberately:
     // the built-in server's persisted `STATION_API_BASE`/`STATION_PORT` is

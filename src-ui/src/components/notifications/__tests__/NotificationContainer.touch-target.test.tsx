@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3513. Same gap `BannerHost.touch-target.test.tsx` (station#3453)
+ * archive#3513. Same gap `BannerHost.touch-target.test.tsx` (archive#3453)
  * closed, found again in this component: `index.css`'s global mobile
  * touch-target net is a DESCENDANT selector
- * (`:is([class*="__actions"], [class*="__footer"], [class*="__toolbar"], ...)
+ * (`:is([class*="__actions"], [class*="__footer"], [class*="__toolbar"],...)
  * > :is(button, a, .button, [role="button"])`), so it only reaches a control
  * that is a CHILD of one of those named wrappers. Three controls in this
  * component sit outside its reach:
@@ -19,8 +19,8 @@
  *   44px override, but it used to live at `@media (max-width: 640px)`, a
  *   *different* breakpoint from the shell's `@media (max-width: 768px)`, so a
  *   viewport between 641px and 768px (and 915x412, the exact landscape-phone
- *   geometry station#3453 measured) got the un-overridden 32x32 declaration.
- * - `.toast-card__link` (fix round finding) sits inside
+ *   geometry archive#3453 measured) got the un-overridden 32x32 declaration.
+ * - `.toast-card__link` ( finding) sits inside
  *   `.toast-card__conversation`, not `.toast-card__actions`, so the net
  *   cannot reach it either — and it had no override anywhere at all, at any
  *   viewport, the same as `.notification-container__dismiss-all`. It renders
@@ -46,7 +46,7 @@
  * The approval queue is deliberately NOT in this fixture, for two different
  * reasons that do not both apply to both of its parts:
  * `.notification-approval-queue__trigger` renders whenever
- * `approvals.length > 0` — nothing gates it closed — but station#3513 is
+ * `approvals.length > 0` — nothing gates it closed — but archive#3513 is
  * scoped to the transient-toast controls named above, and the trigger
  * already clears the floor (measured independently at 180.08x44 — NOT
  * verified by this file, since it never renders here). Its PANEL's controls
@@ -170,7 +170,7 @@ function renderFixtureMarkup(): string {
  * (the same attribute a coarse-pointer tap on the collapsed stack sets,
  * `NotificationContainer.tsx`'s `expandStackOnCoarseTap`) matches the state
  * the cards are actually interactive in, so their measured size is the real
- * touch target rather than an artifact of the collapsed peek's `scale()`.
+ * touch target rather than an artifact of the collapsed peek's `scale`.
  */
 function expandToastStack(markup: string): string {
   return markup.replace(
@@ -195,27 +195,27 @@ function buildFixtureHtml(): string {
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 /**
- * station#4177 INTERIM quarantine — WSL2 fleet-runner host class ONLY. With
- * #4170's provisioning live, this file's real-Chromium assertions executed on
+ * archive#4177 INTERIM quarantine — WSL2 fleet-runner host class ONLY. With
+ * archive#4170's provisioning live, this file's real-Chromium assertions executed on
  * the runner's Chromium for the first time ever and failed there while green
  * on macOS Chromium — the same never-green-baseline shape as the
  * verification-coordinator family (WSL2 Chromium rendering metrics; evidence
- * on station#4177). On a WSL host the real-Chromium cases skip and the
- * sentinel below names the skip with the #4177 reason; the missing-Chromium
+ * on archive#4177). On a WSL host the real-Chromium cases skip and the
+ * sentinel below names the skip with the archive#4177 reason; the missing-Chromium
  * fail-loud sentinel keeps its behavior on ALL hosts. The open fix is WSL
  * compatibility, not this skip.
  */
 const wslQuarantinedHost = isWslHost();
 
 /**
- * Three viewports, each proving a different half of station#3513:
+ * Three viewports, each proving a different half of archive#3513:
  * - 390x844: an ordinary portrait phone, well under every breakpoint in play
- *   — `.notification-container__dismiss-all` has no breakpoint that helps it
+ * `.notification-container__dismiss-all` has no breakpoint that helps it
  *   at all, so this alone is enough to catch that defect.
  * - 700x900 coarse: inside the 641-768px gap between the shell's 768px net
  *   and `.toast-card__dismiss`'s old 640px override — the case that made the
  *   two controls different defects, not the same one.
- * - 915x412 coarse: the exact landscape-phone geometry station#3453 measured
+ * - 915x412 coarse: the exact landscape-phone geometry archive#3453 measured
  *   for the same class of defect.
  */
 const VIEWPORTS = [

@@ -206,7 +206,7 @@ test.describe('Skill commands', () => {
       0,
     );
 
-    // station#3737 landed the rule as ONE derivation shared by the HTTP
+    // archive#3737 landed the rule as ONE derivation shared by the HTTP
     // schema and this field, so the refusal now happens at the field: Save
     // sends nothing, and the 400 this test used to wait for is unreachable
     // from here. The claim is unchanged — the person is told what they broke.

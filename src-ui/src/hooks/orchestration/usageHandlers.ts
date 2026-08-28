@@ -4,7 +4,7 @@ import type { OrchestrationEvent } from './types';
 
 /**
  * Mirrors a `token-usage.updated` event onto the chat's `liveUsage` field
- * (station#1299 item 3b). This is intentionally the last-event-wins
+ * (archive#1299 item 3b). This is intentionally the last-event-wins
  * behavior, not a running sum — see `ChatLiveUsage`'s docblock
  * (`active-chats-state.ts`) for why reconciling Claude Code's per-turn
  * deltas against Codex's cumulative running totals client-side isn't

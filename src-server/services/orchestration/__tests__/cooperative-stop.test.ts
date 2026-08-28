@@ -7,7 +7,7 @@ import {
 } from '../cooperative-stop.js';
 
 /**
- * Unit pins for the C4 extraction (epic #4024 slice 10, #4204) — the three
+ * Unit pins for the C4 extraction (epic archive#4024, archive#4204) — the three
  * contracts the service suite proved it CANNOT see (each ran green under
  * injection at the service level):
  *
@@ -47,7 +47,7 @@ function makeDeps(overrides: Partial<CooperativeStopDeps> = {}) {
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     }),
-    // station#3493 residual 3: the durable-row reader the status
+    // archive#3493 residual 3: the durable-row reader the status
     // preservation consults; `undefined` models a store-less installation.
     persistedSession: () => undefined,
     upsertLoadedSession: vi.fn(),

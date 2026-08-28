@@ -1,5 +1,5 @@
 /**
- * AC4 — the New Chat picker, the Agents list, and Home's "Start direct chat"
+ * the New Chat picker, the Agents list, and Home's "Start direct chat"
  * card must not disagree about whether an Agent can run.
  *
  * They used to. Home named `flatList[0]` with no readiness question asked at
@@ -77,7 +77,7 @@ const CONNECTION_DOWN: AgentData = {
 
 /**
  * No engine binding — which is not "unbound", it is Station's own engine
- * (station#3662, `docs/design/agent-engine-unification.md` §7.1). The server
+ * (archive#3662, `docs/design/agent-engine-unification.md` §7.1). The server
  * makes no complaint about it, so it runs.
  */
 const STATION_ENGINE: AgentData = {
@@ -144,7 +144,7 @@ describe('agentRunnability', () => {
   });
 
   test('the picker offers the Station Agent on a home with NO engine connections', () => {
-    // The live #3662 repro, as a fixture: a fresh home with a Ready model
+    // The live archive#3662 repro, as a fixture: a fresh home with a Ready model
     // connection and no engine CLI on PATH. Every engine-connection list is
     // empty; the only Agent is the seeded Station one; the picker showed
     // "Nothing to chat with yet" while /api/system/status called the home

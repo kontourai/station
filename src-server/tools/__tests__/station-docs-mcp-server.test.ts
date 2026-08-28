@@ -12,7 +12,7 @@ import {
 } from '../station-docs-mcp-server.js';
 
 /**
- * station#1547. Two things are being proven here, and they are different:
+ * archive#1547. Two things are being proven here, and they are different:
  *
  *  1. the docs server serves the shipped content correctly, and
  *  2. the properties that let it be delivered with no security exemption —

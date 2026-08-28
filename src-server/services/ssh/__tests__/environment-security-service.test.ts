@@ -609,7 +609,7 @@ describe('EnvironmentSecurityService', () => {
     expect(statSync(lockPath).size).toBe(0);
   });
 
-  // station#1887: the /api/pairing family stays operator-only, with exactly
+  // archive#1887: the /api/pairing family stays operator-only, with exactly
   // one narrow exception. These are the security boundary — the deny cases
   // matter more than the allow case.
   test('a promoted device reaches only the three pending-request leaves, and nothing else under /api/pairing', async () => {
@@ -636,7 +636,7 @@ describe('EnvironmentSecurityService', () => {
     });
     const cred = exchanged.credential;
 
-    // Before promotion the whole family is refused, exactly as before #1887.
+    // Before promotion the whole family is refused, exactly as before archive#1887.
     expect(
       service.authorizeCredential(cred, {
         method: 'GET',

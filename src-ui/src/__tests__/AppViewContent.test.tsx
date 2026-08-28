@@ -125,7 +125,7 @@ vi.mock('../views/ScheduleView', () => ({
 vi.mock('../views/ConsoleBoardView', () => ({
   ConsoleBoardView: () => <div>ConsoleBoard</div>,
 }));
-// M3: the activity route mounts the standalone placement of the Activity
+// the activity route mounts the standalone placement of the Activity
 // Workspace Pane, which owns mounting the sessions surface.
 vi.mock('../views/ActivityView', () => ({
   ActivityView: ({ sessionId }: { sessionId?: string }) => (
@@ -189,7 +189,7 @@ describe('AppViewContent — R3 un-stacking', () => {
     expect(container.querySelector('.page-frame__header')).not.toBeNull();
     unmount();
 
-    // `home` is the recorded exception: its own H1 is a prompt, so the shell
+    // `home` is the recorded exception: its own is a prompt, so the shell
     // must not put a page header above it.
     const home = render(
       <AppViewContent {...baseProps} currentView={{ type: 'home' }} />,

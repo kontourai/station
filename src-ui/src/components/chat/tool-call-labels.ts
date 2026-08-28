@@ -3,7 +3,7 @@
  * verb taxonomy and derive a verb-first, human label for ONE call — "Read
  * app.tsx", "Ran npm run build:ui", "Searched anchor contract".
  *
- * Split out of `tool-call-groups.ts` (station#2652 redesign) because the
+ * Split out of `tool-call-groups.ts` (archive#2652 redesign) because the
  * collapsed activity ROW is eager — every settled and streaming tool call
  * renders one — while the multi-call batch summary machinery
  * (`summarizeCalls`, the plural-noun phrasing) stays inside the lazily
@@ -113,7 +113,7 @@ function firstLine(value: string): string {
 /** A concise, human target for one call — "app.tsx" for a Read, a truncated
  * command for a Bash/shell_exec call. Falls back to the change list on
  * patch-style edits that carry no top-level path. A raw STRING argument (an
- * ACP engine's unstringified pass-through — see station#3559) is shown as
+ * ACP engine's unstringified pass-through — see archive#3559) is shown as
  * its truncated first line rather than dropped, so a shell command stays
  * visible in the collapsed row on that path too. */
 export function extractTarget(

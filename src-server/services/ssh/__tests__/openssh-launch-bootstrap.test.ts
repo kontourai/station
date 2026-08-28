@@ -363,7 +363,7 @@ function createRig(): LocalRig {
       chmodSync(path, 0o755);
     },
     markBuilt() {
-      // station#1133 live-verification finding: a managed launch must
+      // archive#1133 live-verification finding: a managed launch must
       // never trigger station's own build. The bootstrap checks for a
       // build under SOME instance name (mirroring lifecycle.ts's
       // isInstalled/resolveBuildPaths, which namespace build directories
@@ -375,7 +375,7 @@ function createRig(): LocalRig {
     markBuiltAs(instanceId: string) {
       // The portable/release install layout: a real deployment (e.g. a
       // systemd-managed dogfood host) is very often built under a NAMED
-      // instance, not 'default' — station#1133 live verification found the
+      // instance, not 'default' — archive#1133 live verification found the
       // pre-flight check refusing this exact, fully-built, runnable layout.
       mkdirSync(join(projectDir, `dist-server-${instanceId}`), {
         recursive: true,
@@ -574,7 +574,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
       expect(result.remotePort).not.toBe(targetPort);
     }, 20_000);
 
-    // station#1133 live-verification finding: build directories are
+    // archive#1133 live-verification finding: build directories are
     // instance-scoped, and a real portable/release deployment's already-built
     // instance is frequently a NAMED one (e.g. a systemd-managed dogfood
     // host), not the bare 'default' a source checkout typically has. Both
@@ -598,7 +598,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
       expect(result.serverKind).toBe('managed');
     }, 20_000);
 
-    // station#1133 live-verification finding (BLOCKER, round 3): an earlier
+    // archive#1133 live-verification finding (BLOCKER, round 3): an earlier
     // revision discovered an already-built operator instance and ran
     // `station start` directly UNDER THAT DISCOVERED NAME — starting/adopting
     // the host's systemd-managed dogfood instance out from under its own
@@ -925,7 +925,7 @@ describe.skipIf(!HAS_NATIVE_POSIX_SH)(
       });
     }, 20_000);
 
-    // station#1133 live security review: an earlier version of this bootstrap
+    // archive#1133 live security review: an earlier version of this bootstrap
     // passed remoteProjectPath as one of several separate trailing ssh
     // command arguments; ssh space-joins those into ONE string handed to the
     // remote login shell via $SHELL -c, so any shell metacharacter in the

@@ -207,7 +207,7 @@ export class NotificationService {
           (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
         );
         if (existing) {
-          // station#1912: a dismissal is a real, terminal user decision.
+          // archive#1912: a dismissal is a real, terminal user decision.
           if (existing.status === 'dismissed' || existing.actionLease) {
             return {
               result: {
@@ -217,7 +217,7 @@ export class NotificationService {
               },
             };
           }
-          // station#3442 round 2 (HIGH-2): a dedupe-update used to leave
+          // archive#3442 round 2 (HIGH-2): a dedupe-update used to leave
           // `category` untouched while freely rewriting `title`/`priority` —
           // so a turn that later fails after an earlier "done" schedule (or
           // vice versa) ended up with a title/category that contradicted
@@ -271,7 +271,7 @@ export class NotificationService {
         }
       }
 
-      // station#1100 AC2: a caller-supplied ttl always wins; otherwise default
+      // archive#1100 AC2: a caller-supplied ttl always wins; otherwise default
       // to the per-outcome TTL for categories this ranking knows about.
       const outcome = classifyNotificationCategory(opts.category);
       const defaultTtl = outcome ? NOTIFICATION_TTL_MS[outcome] : undefined;
@@ -839,7 +839,7 @@ export class NotificationService {
   }
 
   /**
-   * #2259: revision was added after durable notification documents already
+   * archive#2259: revision was added after durable notification documents already
    * existed. The one supported legacy shape is an otherwise-valid whole
    * document whose records all lack both revision and action leases. Holding
    * the same mutation lock as normal transitions, and doing this at the one
@@ -942,7 +942,7 @@ export class NotificationService {
 
   /**
    * Public (not just interval-driven) so a caller/test can trigger exactly
-   * one poll cycle deterministically — see station#1912's dismissed-provider
+   * one poll cycle deterministically — see archive#1912's dismissed-provider
    * regression test — rather than awaiting an unobservable fire-and-forget
    * call inside `start()`.
    */

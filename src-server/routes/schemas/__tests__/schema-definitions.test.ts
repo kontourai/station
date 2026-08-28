@@ -619,7 +619,7 @@ describe('schema definitions barrel', () => {
       expect(() => chatSchema.parse({ input: messages })).not.toThrow();
     });
 
-    // station#2807 H1: a parts-only sizer measured the AI SDK ModelMessage
+    // archive#2807 H1: a parts-only sizer measured the AI SDK ModelMessage
     // shape (text in `content`) as ZERO, so a 500k-char prompt passed the
     // bound unmeasured. This enumerates EVERY shape `Agent.streamText`
     // accepts (`string | UIMessage[] | ModelMessage[]`) and asserts each is
@@ -798,12 +798,12 @@ describe('schema definitions barrel', () => {
     });
   });
 
-  // station#2807 M1: the invoke routes' turn-starting text fields derive
+  // archive#2807 M1: the invoke routes' turn-starting text fields derive
   // from the same declared maximum as chatSchema — these pins fail if any
   // of them stops deriving (a hardcoded literal diverges the moment the
   // constant moves).
   describe('tool-part text is bounded on its own budget (station#2830)', () => {
-    // The #2807 guard summed a part's `text` only, so a tool call's `input`
+    // The archive#2807 guard summed a part's `text` only, so a tool call's `input`
     // or a tool result's `output` was a RECOGNIZED shape that measured zero
     // and rode ~110x the declared limit to the provider. Fail-closed does
     // not catch it — the shape is known — so these cases pin the separate
@@ -899,7 +899,7 @@ describe('schema definitions barrel', () => {
   });
 
   describe('scheduler job prompts derive from the shared limit (station#2829)', () => {
-    // #2829's second acceptance criterion: the bound must be covered by the
+    // archive#2829's second acceptance criterion: the bound must be covered by the
     // derivation pin, not merely present. Deleting `.max(CHAT_INPUT_MAX_CHARS)`
     // from `jobPrompt` previously reddened nothing.
     const over = 'x'.repeat(CHAT_INPUT_MAX_CHARS + 1);

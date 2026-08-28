@@ -9,7 +9,7 @@ import { useEffect } from 'react';
 import { pluginRegistry } from '../../core/PluginRegistry';
 
 /**
- * The Home role's client seam (station#3122 stage 3).
+ * The Home role's client seam (archive#3122).
  *
  * There is deliberately NO browser-side store and NO client-side grant
  * writer here. The grant record lives server-side — a

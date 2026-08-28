@@ -32,7 +32,7 @@ const BANNER_CSS = resolve(
 /**
  * The MOTION PRIMITIVE. The reduced-motion decision is made once, here, for
  * the whole app; `BannerHost.css` no longer restates it for its own selectors
- * (UX audit closing lane, DRY rule). The contract these tests assert is
+ *The contract these tests assert is
  * therefore spread across two files, and reading only one of them would let
  * either half be deleted with a green suite.
  */
@@ -262,7 +262,7 @@ describe('BannerHost per-banner collapse', () => {
     presentBlocking({ dismissible: false });
     render(<BannerHost />);
 
-    // station#3432 kept this band out of the stack cap; that is about leaving
+    // archive#3432 kept this band out of the stack cap; that is about leaving
     // the DOM, and says nothing about collapsing in place.
     expect(screen.queryByRole('button', { name: 'Dismiss notice' })).toBeNull();
     expect(
@@ -286,7 +286,7 @@ describe('BannerHost per-banner collapse', () => {
     expect(screen.getByRole('button', { name: 'Pair again' })).toBeTruthy();
     // Only the recoverable part goes: the detail disclosure is not rendered
     // (a focusable control inside a clipped box is reachable and invisible).
-    // station#4470b: the toggle's label is the constant "Details" now (was
+    // archive#4470b: the toggle's label is the constant "Details" now (was
     // "More"/"Less").
     expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand notice' })).toBeTruthy();
@@ -332,7 +332,7 @@ describe('BannerHost per-banner collapse', () => {
     // Superseded by a different occurrence, which arrives expanded...
     presentBlocking({ occurrence: 'host-moved' });
     expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
-    // ...and the first condition recurring is a new thing to read, not a
+    //.and the first condition recurring is a new thing to read, not a
     // resumption of the showing the user collapsed. Same posture as
     // dismissal, whose suppression key is released the same way.
     presentBlocking({ occurrence: 'pairing-required' });
@@ -386,7 +386,7 @@ describe('BannerHost collapse animation contract', () => {
     expect(item).toMatch(/--banner-collapsed-height:\s*(?!0px)\d+px/);
 
     // The tween itself. Anchored on the separator before it: unanchored, this
-    // pattern also matches `min-height var(--motion-base) ...` two rules down,
+    // pattern also matches `min-height var(--motion-base)...` two rules down,
     // and an injection that deleted the height tween outright still read as
     // present. A regex that matches a different property is not a test.
     const tween = /[\s,]height var\(--motion-base\) var\(--ease-standard\)/;

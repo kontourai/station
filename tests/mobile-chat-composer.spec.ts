@@ -566,7 +566,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   });
   expect(liveOrder.every((position) => position >= 0)).toBe(true);
   expect(liveOrder).toEqual([...liveOrder].sort((a, b) => a - b));
-  // station#2652 redesign: settled work renders inline as quiet rows in
+  // archive#2652 redesign: settled work renders inline as quiet rows in
   // reading order — there is no "Show N work activities" gate. The
   // awaiting-approval call surfaces its approval buttons without any
   // expansion step, and a failed call discloses "Failed" collapsed.
@@ -857,7 +857,7 @@ async function openNewChat(page: Page) {
     await expect(tabBarNew).toBeVisible({ timeout: 15_000 });
     return;
   }
-  // #3309: New chat is a pinned header icon on mobile now, not an overflow
+  // archive#3309: New chat is a pinned header icon on mobile now, not an overflow
   // menuitem. Like the desktop branch above, assert the affordance exists and
   // leave opening the modal to the caller's deterministic
   // `station:open-new-chat` dispatch — clicking would take the one-click
@@ -1030,7 +1030,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
   expect(JSON.stringify(dispatched[0])).not.toContain('c3RhZ2UgbWU=');
 });
 
-// station#3344. The whole paste path against the STATION engine — the one an
+// archive#3344. The whole paste path against the STATION engine — the one an
 // unbound Station agent uses, and the one whose composer used to refuse every
 // image because no signal it read said yes. Three claims, each of which failed
 // before the fix or would fail if the transport regressed: the paste attaches,
@@ -1129,7 +1129,7 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
 /**
  * The two-chat + delegated-row fixture the mobile task switcher is exercised
  * against. Shared by the switch-and-restore journey below and the Escape
- * dismissal regression beside it (station#3771), so two tests about one sheet
+ * dismissal regression beside it (archive#3771), so two tests about one sheet
  * cannot drift into describing two different products.
  */
 async function seedMobileTaskSwitcher(page: Page) {
@@ -1167,7 +1167,7 @@ async function seedMobileTaskSwitcher(page: Page) {
     },
   ]);
 
-  // station#3300 (`contexts/active-chats-state.ts:626-640`) deliberately drops a
+  // archive#3300 (`contexts/active-chats-state.ts:626-640`) deliberately drops a
   // persisted 'running'/'awaiting-approval' on rehydrate — never resurrect a
   // LIVE status claim from storage — so the seeds above cannot put a lifecycle
   // chip on a row. The read-model is the live channel those chips derive from
@@ -1246,7 +1246,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   const menu = page.getByRole('dialog', { name: 'Switch task' });
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
-  // Shared inbox rows (#3312): the row button's accessible name is
+  // Shared inbox rows (archive#3312): the row button's accessible name is
   // "{title}, {project}" and the lifecycle renders as the shared chip text
   // ("Active"/"Attention needed"), so state discrimination filters on the
   // chip content rather than the old raw-text accessible name.
@@ -1276,7 +1276,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await textarea.fill('return to this draft');
 
   // The sheet's own dismiss control. The Escape path is the same claim through
-  // a different affordance and has its own test below (station#3771), so this
+  // a different affordance and has its own test below (archive#3771), so this
   // journey keeps exercising the button.
   await switcher.click();
   await menu.getByRole('button', { name: 'Close task switcher' }).click();
@@ -1534,7 +1534,7 @@ test('completed-answer Task and rating controls are real 44x44 touch targets', a
  * Escape dismisses the sheet and does nothing else — including after a row
  * selection has rewritten the URL underneath it.
  *
- * Durable cover for station#3771, which reported that Escape here navigates the
+ * Durable cover for archive#3771, which reported that Escape here navigates the
  * app back a history entry, landing on Home with the chat dock unmounted. It
  * does not, on this tree or on the merge base. The A/B it was filed from —
  * `keyboard.press('Escape')` in place of a click on `Close task switcher`, in
@@ -1662,11 +1662,11 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
   await expect(dialog).toBeHidden();
 
   /**
-   * station#1259. `onClose` restored focus; the *success* path did not, so
+   * archive#1259. `onClose` restored focus; the *success* path did not, so
    * completing a delegation — the thing the launcher exists to do — left focus
    * on `<body>` while `onClose` (cancel) was fine. Browser-level because that
-   * is the only place a failed `.focus()` is observable: jsdom would report the
-   * pre-fix call as successful.
+   * is the only place a failed `.focus()` is observable: jsdom reports such a
+   * failed call as successful.
    */
   await expect
     .poll(() =>
@@ -1685,14 +1685,14 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
 });
 
 /**
- * kontourai/station#3309 review SF-2. The worst case for the one-bar header is
+ * archive#3309 (SF-2). The worst case for the one-bar header is
  * the MAXIMIZED chat at 320px: maximizing hides the app toolbar, so this bar
  * additionally carries the drawer toggle. Every existing containment test ran
  * un-maximized, so none of them could see it.
  *
  * The scope clear is no longer part of this arithmetic — it moved into the ⋯
  * sheet (pinned in ChatDockMobileHeader.test.tsx), so it costs the bar nothing.
- * #3297's always-rendered connection indicator took its slot instead, which is
+ * archive#3297's always-rendered connection indicator took its slot instead, which is
  * why the count did not improve.
  *
  * Seven 44px slots need 308px before gaps against ~304 available, and the 44px
@@ -1751,7 +1751,7 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
     // for height, and separately below for having survived at all.
     //
     // Matched by prefix: the control's accessible name now carries the agent
-    // it is currently showing ("Switch task — <agent>", station#3309), because
+    // it is currently showing ("Switch task — <agent>", archive#3309), because
     // everything visible inside it is aria-hidden and this label is a phone
     // screen reader's only agent attribution. The chat TITLE is deliberately
     // not in the name — it is arbitrary text, and a chat called "New chat"
@@ -1781,11 +1781,11 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
   // asserts only that it did not collapse entirely, so a future change that
   // does erase it is caught here.
   //
-  // Measured on the TEXT, not the button (station#3309 review MED-1). This
-  // used to read the "Switch task" button's own box, which has horizontal
-  // padding and therefore CANNOT reach zero — it stayed comfortably positive
-  // while both strings inside it were squeezed to 0px, so the promise in the
-  // paragraph above was one the assertion could not keep. The agent name and
+  // Measured on the TEXT, not the button (archive#3309): the
+  // "Switch task" button's own box has horizontal
+  // padding and therefore CANNOT reach zero — it stays comfortably positive
+  // while both strings inside it are squeezed to 0px, so the promise in the
+  // paragraph above would be one the assertion could not keep. The agent name and
   // the chat title are the two things this bar exists to say; each gets its
   // own floor.
   const identityText = header.locator(
@@ -1815,11 +1815,11 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
 });
 
 /**
- * station#3309 review HIGH-1. The 320px spec above cannot see this: at exactly
+ * archive#3309 (HIGH-1). The 320px spec above cannot see this: at exactly
  * 361px the `max-width: 360px` rule hands the dock toggle BACK to the
  * maximized bar, so the width that relieves the squeeze is also the width that
  * adds an eighth control. The identity block pays for it, and it is the block
- * carrying the agent name and the chat title — the two facts #3309 exists to
+ * carrying the agent name and the chat title — the two facts archive#3309 exists to
  * surface. With the avatar also arriving at 361px, both strings measured 0px
  * across 361/375/390 while every containment assertion stayed green, because
  * nothing was measuring the text.
@@ -1828,15 +1828,15 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
  * allowed to drop the picture here; it is not allowed to drop the words.
  *
  * 431 and 481 are the two widths where something comes BACK — the avatar at
- * 431, the project label at 481. Re-measuring the whole range after fixing
- * HIGH-1 found the identical collision at 431, where both used to return at
+ * 431, the project label at 481. Measuring the whole range finds the
+ * identical collision at 431, where both used to return at
  * once and left 10.72px. Every width at which this bar gains an element gets a
  * case here, because that is the shape the defect takes.
  *
  * Know what each assertion can and cannot see. The text floors have real power
  * at 361/375/390 — with the avatar gate removed those measure 0.00px — but NOT
  * at 431, where the broken CSS still left 10.72px and a `> 0` floor passes.
- * The binary avatar/label invariant below is what guards that second fix; 481
+ * The binary avatar/label invariant below is what guards that second case; 481
  * is a boundary case only (the label showed there before and after).
  */
 for (const width of [361, 375, 390, 431, 481]) {
@@ -1966,7 +1966,7 @@ for (const viewport of [
     await expect(moreActions).toBeVisible();
     const activity = page.getByRole('button', { name: /^Activity/ });
     await expect(activity).toBeVisible();
-    // #3309 review SF-2: New chat and the dock toggle are pinned bar controls
+    // archive#3309 (SF-2): New chat and the dock toggle are pinned bar controls
     // now, and neither was measured — the loop could not see the bar overflow
     // they contribute to.
     // Scoped to the bar: the session itself is titled "New chat", so an
@@ -2443,7 +2443,7 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockChatShell(page);
   await openComposer(page);
-  // #1064 removed the "Chat Dock" label — the dock is the only thing this
+  // archive#1064 removed the "Chat Dock" label — the dock is the only thing this
   // chrome can belong to, and the row now carries the active chat's project
   // context instead. Assert the row still identifies the surface (its toggle
   // shortcut) rather than re-pinning a label that was deliberately dropped.
@@ -2461,7 +2461,7 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await expect(desktopActions).toHaveCount(2);
   await expect(desktopActions.nth(0)).toContainText('Open');
   await expect(desktopActions.nth(1)).toContainText('New');
-  // #1048 retired the overlay bottom dock: the dock is always inline in the
+  // archive#1048 retired the overlay bottom dock: the dock is always inline in the
   // content column, spanning from the sidebar's right edge to the viewport
   // edge (previously it overlaid the full 1280px viewport width).
   const sidebar = await page
@@ -2498,7 +2498,7 @@ test('preserves desktop dock geometry', async ({ page }) => {
   expect(Math.round(maximized?.y ?? -1)).toBe(
     Math.round(toolbar.y + toolbar.height),
   );
-  // #1055: the maximized dock spans the full content column (from the
+  // archive#1055: the maximized dock spans the full content column (from the
   // sidebar's right edge to the viewport edge), same geometry invariant as
   // the pre-maximize inline dock above — not a shrink-to-fit right-anchored
   // box.
@@ -2549,7 +2549,7 @@ test('right-dock composer spans the dock width (#1006)', async ({ page }) => {
   await expect(chatDock).toHaveClass(/chat-dock--right/);
   const textarea = page.locator('.chat-dock .chat-input textarea');
   await expect(textarea).toBeVisible({ timeout: 15_000 });
-  // #1006: a stale pre-#972 row override laid the composer's children out in
+  // archive#1006: a stale pre-archive#972 row override laid the composer's children out in
   // a wrapping row, shrinking the message box to a fraction of the dock. The
   // textarea must span the dock's inner width (padding tolerance).
   const dockBox = (await chatDock.boundingBox())!;
@@ -2558,7 +2558,7 @@ test('right-dock composer spans the dock width (#1006)', async ({ page }) => {
 });
 
 /**
- * #992: two mobile sheets shipped with a fully transparent panel — settled,
+ * archive#992: two mobile sheets shipped with a fully transparent panel — settled,
  * `opacity: 1`, `background-color: rgba(0, 0, 0, 0)` — so their content floated
  * over whatever was behind them. Nothing caught it: the responsive-surface
  * ratchet checks geometry and contract adoption, and jsdom does not run the
@@ -2731,7 +2731,7 @@ for (const theme of ['dark', 'light'] as const) {
 }
 
 /**
- * #992, the model-picker half — its own test because the picker is only
+ * archive#992, the model-picker half — its own test because the picker is only
  * reachable on an engine that declares session model selection.
  *
  * The shared loop opens on the default `claude` fixture connection, whose
@@ -2741,7 +2741,7 @@ for (const theme of ['dark', 'light'] as const) {
  * `UNKNOWN_EXTERNAL_ENGINE_MATRIX`, whose `modelSelection` is `unsupported` —
  * `ChatInputArea.tsx:373-380` then renders the trigger DISABLED with "This
  * engine does not support model selection for a chat session." The Station
- * engine is the binding this file already proves the picker on (the #2266
+ * engine is the binding this file already proves the picker on (the archive#2266
  * filter-rail test above), so the picker case moves onto it rather than being
  * dropped. The trigger is asserted ENABLED first: a disabled trigger is a
  * failure here, never a skip.
@@ -3010,7 +3010,7 @@ test('every mobile dock header control is part of the drag surface (#1052)', asy
   for (let i = 0; i < total; i++) {
     const control = controls.nth(i);
     const name = (await control.getAttribute('aria-label')) ?? `control ${i}`;
-    // One deliberate exception (#1052 follow-up): the visible dock toggle is
+    // One deliberate exception (archive#1052 follow-up): the visible dock toggle is
     // the gesture-FREE path, so it opts out of the drag surface instead of
     // into it. Anything else must be passthrough.
     if ((await control.getAttribute('data-no-dock-drag')) !== null) {

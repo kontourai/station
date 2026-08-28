@@ -59,7 +59,7 @@ import {
  * "Locked, ask again" and "these bytes are damaged" are different facts and
  * deserve different errors.
  *
- * Before station#3220 both arrived as `SchedulerStorageUnavailableError`,
+ * Before archive#3220 both arrived as `SchedulerStorageUnavailableError`,
  * which the routes map to 503 — an answer that tells an operator to retry a
  * store that retrying cannot fix, and tells the UI the scheduler is merely
  * busy. A corrupt ledger now raises the error that names the damage and the
@@ -711,7 +711,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     const { job } = initialReceipt;
     const done = this.trackJob(initialReceipt.id);
     let receipt = initialReceipt;
-    // station#1897 logging slice 3: bound ONCE per execution attempt, so
+    // archive#1897 logging slice 3: bound ONCE per execution attempt, so
     // this run's own start/success/failure log lines all carry the SAME
     // `jobName`/`jobRunId` a `read_logs?q=<id>` query can key off — there
     // was no Logger-seam logging anywhere on this path before (only the
@@ -1259,7 +1259,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       if (outcome.kind !== 'unavailable') return outcome;
       // A damaged store will not become readable by asking again, and this
       // loop would otherwise hammer it every 250ms until `stop()`. Give up
-      // the same way the stopping path does (station#3220).
+      // the same way the stopping path does (archive#3220).
       //
       // The cost, stated plainly: this run's provenance DEGRADES. It was
       // proved-not-invoked — an exact fact the adapter reported — and giving

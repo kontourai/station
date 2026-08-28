@@ -4,7 +4,7 @@ export interface RuntimeAuthRouteCase {
   path: string;
   kind: 'public' | 'protected';
   /**
-   * Whether `requiredPairingScope` (station#1098) recognizes this exact
+   * Whether `requiredPairingScope` (archive#1098) recognizes this exact
    * path — i.e. whether it has an entry in `pairing-route-scopes.ts`'s
    * table. Every real route family here is `true`; the one deliberately
    * fictional "unknown future route" case is `false` on purpose, so it

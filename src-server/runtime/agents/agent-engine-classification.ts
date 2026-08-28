@@ -10,7 +10,7 @@ import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engi
  *
  * Mirrors `resolveEngineCapabilityMatrix` (`engine-capability-matrix.ts`,
  * already the shared classifier for the editor's tab/profile derivation;
- * station#1003 Phase B — replaces the retired
+ * archive#1003 Phase B — replaces the retired
  * `resolveAgentTypeFromRuntimeConnection`) rather than re-deriving the
  * managed-runtime-id/engine rules here. Classifying from `agentConnectionId`
  * alone (no live connection lookup) is sufficient: the resolver's own
@@ -18,7 +18,7 @@ import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engi
  * station engine, which is exactly "external" for this purpose — callers
  * don't need to know WHICH external engine, only that it isn't Station's own.
  *
- * Shared (station#977) between cold boot (`runtime-agent-registry.ts`) and
+ * Shared (archive#977) between cold boot (`runtime-agent-registry.ts`) and
  * the reload lifecycle (`runtime-agent-lifecycle.ts`) so both skip building
  * a Station-engine VoltAgent instance for the same records — the reload
  * path previously lacked this skip, which surfaced as an incorrectly
@@ -39,10 +39,10 @@ export function isExternalEngineBoundAgent(metadata: {
  * (`runtime-agent-registry.ts`) and the reload lifecycle
  * (`runtime-agent-lifecycle.ts`) actually ask.
  *
- * Two disjoint reasons, and naming them separately matters (station#3662):
+ * Two disjoint reasons, and naming them separately matters (archive#3662):
  *
  *  - it is bound to an EXTERNAL engine, so there is no Station-engine model to
- *    build (`isExternalEngineBoundAgent`, station#954/#977);
+ *    build (`isExternalEngineBoundAgent`, archive#954/#977);
  *  - it IS the reserved Station identity, whose single instance is built by
  *    `bootstrapRuntimeDefaultAgent` under the internal runtime key `default`
  *    (see `enriched-agents.ts`'s `isActive`, which reads the same pair as one

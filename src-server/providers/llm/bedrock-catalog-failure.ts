@@ -1,5 +1,5 @@
 /**
- * What an AWS Bedrock catalogue failure actually was (#3654).
+ * What an AWS Bedrock catalogue failure actually was (archive#3654).
  *
  * Every other model provider hands `listModelCatalog` failures to
  * `classifyCatalogFailure`, which reads an HTTP status off the error. AWS SDK

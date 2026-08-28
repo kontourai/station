@@ -201,7 +201,7 @@ export function WorkspacePaneHostTree({
    *
    * The id used to be the second step, so every pane without a bespoke label
    * printed its raw `pane:builtin:…` identifier at people while its descriptor
-   * carried a readable name the whole time (station#3971). The id survives as
+   * carried a readable name the whole time (archive#3971). The id survives as
    * the last resort for a pane this build has no declaration for at all —
    * showing something identifying beats showing nothing.
    */
@@ -221,7 +221,7 @@ export function WorkspacePaneHostTree({
   // prompt, which the repo already has one answer for — and the bespoke
   // version carried a class with no CSS rule anywhere, so it rendered with
   // no dialog surface at all and its destructive button was visually
-  // identical to Cancel (station#3157). ConfirmModal brings the focus trap,
+  // identical to Cancel (archive#3157). ConfirmModal brings the focus trap,
   // Escape handling, and the `danger` variant that marks the destructive
   // choice, none of which the hand-rolled markup had.
   const closeDialog = (

@@ -3,7 +3,7 @@ import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.j
 import { composeAgentExecutionConfigLoader } from '../agent-execution-config-loader.js';
 
 /**
- * station#3549. This composition was got wrong twice in opposite directions
+ * archive#3549. This composition was got wrong twice in opposite directions
  * while it was an inline closure in `runtime-initialize.ts` that nothing could
  * exercise. The previous attempt at coverage asserted on the file's SOURCE
  * TEXT, which an independent reviewer correctly called a smell: it passed

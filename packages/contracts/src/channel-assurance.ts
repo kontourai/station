@@ -1,15 +1,15 @@
 /**
- * station#1484 slice 1 — how much a channel record's authorship is worth,
+ * How much a channel record's authorship is worth,
  * **derived** and never stored (`docs/design/conversation-state.md` §2.3,
- * §3.5, §8.2; the #1484 decisions comment, "the signing substrate").
+ * §3.5, §8.2).
  *
  * ## Why this module exists at all, and what it deliberately does not do
  *
- * The decision recorded on #1484 is that signing is **graded, not binary**:
+ * Signing is **graded, not binary**:
  * single-Station surfaces ship honestly on digest chains plus a head anchor,
  * and the first channel with a second member is the hard line where real
- * signatures become a prerequisite (slices 3+). Slice 1 therefore ships the
- * record *shapes* with the signing carriage already defined and **builds no
+ * signatures become a prerequisite. This module ships the record *shapes*
+ * with the signing carriage already defined and **builds no
  * envelope, no key material, and no verifier**. Everything below is either a
  * shape or a total function over a shape.
  *
@@ -24,7 +24,7 @@
  *
  * So `L0` / `L1` / `L2` are the spec's names, used verbatim
  * ({@link AssuranceLevel}), and there is **no `assuranceLevel` field on any
- * record in this arc**. A producer cannot assert its own assurance; a reader
+ * record here**. A producer cannot assert its own assurance; a reader
  * computes it with {@link deriveChannelRecordAssurance}. That asymmetry is
  * the entire point: a stored level is a claim the producer controls, and the
  * threat model here (§1.4 correction 2) is precisely a producer you cannot
@@ -53,7 +53,7 @@
  * nothing would say which is which.
  *
  * {@link ChannelSignedRecord} is the carriage: `{ record, dsseEnvelope? }`.
- * The record's canonical bytes are exactly what a slice-3 signer signs and
+ * The record's canonical bytes are exactly what a signer signs and
  * exactly what a digest covers — one byte-string, no ambiguity — and no
  * record type changes shape when signing arrives. Recorded as a finding
  * against the design doc rather than absorbed.
@@ -70,7 +70,7 @@
  * not check' must never render as 'it verified'").
  *
  * So {@link deriveChannelRecordAssurance} returns either a **level** or a
- * **named gap**, and in slice 1 — where no verifier exists — a carriage that
+ * **named gap**, and where no verifier exists a carriage that
  * holds an envelope derives a gap. That is the honest answer, and it is
  * why this file can ship before the signing substrate does.
  *
@@ -78,7 +78,7 @@
  *
  * `@kontourai/surface` re-exports `DsseEnvelope`, `Signer`, `buildPaeBytes`,
  * `toDsseEnvelope`, and `parseDssePayload` from its `interop/in-toto`
- * module, and slices 3+ MUST use those functions rather than hand-rolling
+ * module, and any signer MUST use those functions rather than hand-rolling
  * PAE encoding (surface's own `signing/sigstore.ts` header records what
  * double-PAE encoding cost the last time someone layered it themselves).
  *
@@ -93,7 +93,7 @@
  * release — as the thing that fixes it.
  * `__tests__/channel-dsse-surface-parity.test.ts` proves the two stay
  * mutually assignable and key-for-key identical, so a drift is a red test
- * rather than a discovery in slice 3.
+ * rather than a later discovery.
  */
 
 /**
@@ -126,8 +126,8 @@ export interface DsseEnvelopeShape {
 
 /**
  * A record plus the envelope carried **alongside** it (see the module
- * header). Slice 1 never populates `dsseEnvelope`; slices 3+ populate it and
- * **no record type changes shape**.
+ * header). Until the signing substrate lands nothing populates
+ * `dsseEnvelope`; when one does, **no record type changes shape**.
  *
  * `record` keeps its own canonical form, so the bytes a signer signs, the
  * bytes a digest covers, and the bytes a reader validates are one thing.
@@ -150,8 +150,8 @@ export type ChannelAssuranceGapCode =
   | 'envelope-malformed'
   /**
    * A well-formed envelope is present and no verifier was supplied. The
-   * slice-1 answer for any signed record, and the reason this module can
-   * ship before the signing substrate.
+   * honest answer for any signed record without a verifier, and the reason
+   * this module can ship before the signing substrate.
    */
   | 'verification-unavailable'
   /** A verifier was supplied and rejected the envelope. */
@@ -203,7 +203,8 @@ export type ChannelEnvelopeVerification =
   | { verified: false; reason: string };
 
 /**
- * Injected in slices 3+. Slice 1 defines the seam and supplies no
+ * Injected by the signing substrate. This module defines the seam and
+ * supplies no
  * implementation; there is deliberately no default verifier, because a
  * default here would be a verifier nobody chose.
  */
@@ -268,7 +269,7 @@ export function isDsseEnvelopeShape(
  *
  * @param carriage A {@link ChannelSignedRecord}. Non-objects are a named gap,
  *                 not a crash and not an L0.
- * @param verifier Supplied from slice 3 onward. Absent, a signed carriage
+ * @param verifier Supplied when a verifier exists. Absent, a signed carriage
  *                 derives `verification-unavailable` rather than a level.
  */
 export function deriveChannelRecordAssurance(
@@ -285,7 +286,7 @@ export function deriveChannelRecordAssurance(
 
   // Spec `assurance.md`: absence of a DSSE envelope IS L0, and requires no
   // annotation. This is the only branch that returns a level without a
-  // verifier, and it is the only branch slice 1 ever reaches.
+  // verifier.
   if (carriage.dsseEnvelope === undefined) {
     return { kind: 'level', level: 'L0' };
   }
@@ -372,13 +373,12 @@ export function assuranceSatisfies(
   // Belt-and-braces, and knowingly so: `ASSURANCE_LEVEL_ORDER[required]` is
   // already `undefined` for any unrecognised value and `n >= undefined` is
   // `false`, so removing this line changes no behaviour today — it is a
-  // DECLARED NEGATIVE CONTROL in the fault-injection sweep rather than an
+  // DECLARED NEGATIVE CONTROL (verified inert) rather than an
   // unproven guard. It stays because that fail-closed property is currently
   // emergent from NaN-comparison semantics rather than stated, and the
   // sibling `durabilitySatisfies` used `indexOf` (which returns `-1`, and
-  // `n >= -1` is TRUE) and was genuinely fail-open until the slice-1 review
-  // caught it. This line is what stops that refactor reintroducing the bug
-  // here silently.
+  // `n >= -1` is TRUE) and was genuinely fail-open. This line is what stops
+  // a refactor reintroducing that bug here silently.
   if (!isAssuranceLevel(required)) return false;
   return (
     ASSURANCE_LEVEL_ORDER[outcome.level] >= ASSURANCE_LEVEL_ORDER[required]

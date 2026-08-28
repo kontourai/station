@@ -14,7 +14,7 @@ interface MonitoringLogStreamProps {
   filteredEvents: any[];
   isLoading: boolean;
   /**
-   * station#3658: the historical read's failure, when it had one. `null` and
+   * archive#3658: the historical read's failure, when it had one. `null` and
    * "the read came back with nothing" are different facts and get different
    * states — the empty state below is a claim about this Station's activity
    * and must not be drawn over a request that never succeeded.
@@ -89,7 +89,7 @@ export function MonitoringLogStream({
         // delivered still render below it — an unreadable history does not
         // make the events in hand disappear.
         //
-        // Review LOW-5: "Unable to load events" overstated it for exactly
+        // "Unable to load events" overstated it for exactly
         // that reason — the live stream can be healthy and rendering events
         // directly beneath the message. What failed is the HISTORY read, and
         // that is the fact the server computed.

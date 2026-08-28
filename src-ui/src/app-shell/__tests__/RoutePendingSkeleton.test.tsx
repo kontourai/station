@@ -103,7 +103,7 @@ const baseProps = {
  * that subtree committed and hides it with an inline `display: none`. A plain
  * `textContent` (or Testing Library's `getByText`) therefore finds the
  * departing page's copy whether or not it is on screen, which is the one thing
- * #3660 is about. This walk skips what React hid, so an assertion against it
+ * archive#3660 is about. This walk skips what React hid, so an assertion against it
  * is an assertion about the screen.
  */
 function visibleText(root: HTMLElement): string {
@@ -444,7 +444,7 @@ describe('the body while a route chunk is in flight (#3660)', () => {
       <AppViewContent {...baseProps} currentView={{ type: 'review-queue' }} />,
     );
 
-    // The header already names the arriving route (that is #3659, and it is
+    // The header already names the arriving route (that is archive#3659, and it is
     // the half that made the body's disagreement visible).
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
       'Review',
@@ -455,7 +455,7 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     expect(container.textContent).toContain('Installed plugins list');
     expect(visibleText(container)).not.toContain('Installed plugins list');
 
-    // ...and what replaced it holds the shape Review will arrive in: a list
+    //.and what replaced it holds the shape Review will arrive in: a list
     // rail beside a detail pane, not a generic full-width row list.
     const placeholder = container.querySelector('.route-pending--split-pane');
     expect(placeholder).not.toBeNull();
@@ -487,7 +487,7 @@ describe('the body while a route chunk is in flight (#3660)', () => {
   test('warm: a chunk already in memory swaps with no placeholder at all', async () => {
     // Warm the SAME lazy component this file's cold case uses, here rather
     // than by inheriting the cold test's leftovers — React caches a resolved
-    // `lazy()` for the life of the module, so this really is the warm path,
+    // `lazy` for the life of the module, so this really is the warm path,
     // and the test still is one when run on its own.
     const warmUp = render(
       <AppViewContent {...baseProps} currentView={{ type: 'review-queue' }} />,
@@ -556,7 +556,7 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     // `startTransition` React does the opposite: it keeps the departing content
     // revealed and shows no fallback at all. Both halves are asserted, so a
     // future change that wraps navigation in a transition reddens here with the
-    // reason rather than silently restoring the #3660 symptom.
+    // reason rather than silently restoring the archive#3660 symptom.
     const { container, rerender } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
     );

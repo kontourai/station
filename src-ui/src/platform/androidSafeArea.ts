@@ -1,10 +1,10 @@
 /**
  * Android's WebView reports `env(safe-area-inset-*)` as 0 for the status and
  * navigation bars even when the activity draws edge-to-edge, so the app
- * renders under the system bars (station#2617). MainActivity exposes the real
+ * renders under the system bars (archive#2617). MainActivity exposes the real
  * WindowInsets through a `StationAndroidInsets` JavascriptInterface and fires
  * `station-android-insets` whenever they change; this module projects them
- * onto the `--safe-*` custom properties that index.css derives from `env()`
+ * onto the `--safe-*` custom properties that index.css derives from `env`
  * everywhere the platform actually populates it (iOS, desktop PWA).
  */
 

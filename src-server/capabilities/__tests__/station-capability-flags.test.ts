@@ -100,7 +100,7 @@ describe('fleetInference is protocol support, never participation (station#1398 
     }
   });
 
-  // station#1887: the token and its enforcement land in this slice; the
+  // archive#1887: the token and its enforcement land in this slice; the
   // OPERATOR SURFACES (CLI verb, host route, device-list toggle) do not.
   // Until an operator can actually promote a device, advertising the
   // capability would be a false claim in the direction that matters — a

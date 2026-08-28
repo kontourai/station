@@ -2,14 +2,14 @@ import { MS_PER_DAY } from '@kontourai/station-contracts/time';
 import type { EngineUsageCoverage } from './UsageSummaryCards';
 
 /**
- * Period scoping for the usage panel (station#3093), built on the ONE range
+ * Period scoping for the usage panel (archive#3093), built on the ONE range
  * derivation that already exists: the server's `?from=&to=` filter over
  * `byDate` plus its `rangeSummary` (routes/operations/analytics.ts). These
  * helpers only compute the window keys and lay the fetched rows out for
  * rendering — they never sum a range themselves.
  *
  * All date keys are UTC calendar dates, because that is how `byDate` keys are
- * written (`new Date(timestamp).toISOString().split('T')[0]` in
+ * written (`new Date(timestamp).toISOString.split('T')[0]` in
  * usage-aggregator-state.ts). "Today" therefore means today in UTC, matching
  * the stored rows exactly rather than inventing a second calendar the store
  * cannot answer for.
@@ -53,7 +53,7 @@ export function periodRange(
 /**
  * One chart column. `recorded: false` means the store has NO row for this
  * date — "no recorded activity", which is not the same claim as a measured
- * zero (station#3201's rule applied to days). Renderers may draw both as a
+ * zero (archive#3201's rule applied to days). Renderers may draw both as a
  * baseline tick, but must never label an absent day with a $0.00 that nobody
  * measured.
  */
@@ -108,8 +108,8 @@ export function trendMetric(days: TrendDay[]): 'cost' | 'messages' {
 
 /**
  * The one sentence that keeps a period sum from reading as a complete one
- * (the `describeCostCoverage` pattern from station#3245, applied to the date
- * dimension). After station#3266, engine (orchestration) sessions contribute
+ * (the `describeCostCoverage` pattern from archive#3245, applied to the date
+ * dimension). After archive#3266, engine (orchestration) sessions contribute
  * lifetime totals but deliberately NO `byDate` rows — a whole-session
  * aggregate has no per-day resolution — so every figure derived from daily
  * history undercounts whenever engine traffic exists.

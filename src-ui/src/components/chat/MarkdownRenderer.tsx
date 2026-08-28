@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { markdownCodeComponents } from './HighlightedCodeBlock';
 
 function MarkdownRendererComponent(options: Options) {
-  // station#3354 — code blocks highlight by default: the code component
+  // archive#3354 — code blocks highlight by default: the code component
   // lives here in the async renderer chunk, so eager callers never need to
   // import it (keeping the worker-backed highlight machinery out of the
   // entry bundle).

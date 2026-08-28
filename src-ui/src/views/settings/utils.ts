@@ -13,7 +13,7 @@ import type { AppConfig } from '../../types';
 import { matchingSettingsRows } from './settings-search';
 
 /**
- * station#settings-revamp slice 3: the hardcoded SECTION_TERMS keyword map
+ * archive#settings-revamp: the hardcoded SECTION_TERMS keyword map
  * that used to back `isSettingsSectionVisible` is retired in favor of
  * `settings-search.ts`'s registry-driven index (APP_SETTINGS_REGISTRY +
  * DEVICE_SETTINGS_REGISTRY labels/descriptions) — see that module. A small
@@ -75,7 +75,7 @@ export function isSettingsSectionVisible(
  * used for both the export payload's `station` field and a parsed import
  * file's returned `serverConfig`, so a file can never carry (out) a raw
  * config spread or an internal, never-persisted field
- * (`mcpUiFrameOrigin`/`managedChatOrchestration` — station#980/#1194 — are
+ * (`mcpUiFrameOrigin`/`managedChatOrchestration` — archive#980/archive#1194 — are
  * never in the registry, so they are never picked here either way).
  */
 function sanitizeStationConfig(raw: unknown): Partial<AppConfig> {
@@ -92,11 +92,11 @@ function sanitizeStationConfig(raw: unknown): Partial<AppConfig> {
 }
 
 /**
- * #1359's own shared root key (`station.device-settings`) — converged in
+ * archive#1359's own shared root key (`station.device-settings`) — converged in
  * slice 3 onto the registry-driven envelope's `shortcutOverrides`/
  * `modelPickerPreferences` entries (see `device-settings.ts`'s
  * `priorRead`). An OLD export file (from the coexistence window between
- * #1359 and this slice) can still carry this root's raw JSON string, either
+ * archive#1359 and this slice) can still carry this root's raw JSON string, either
  * as the v2 payload's `sharedDeviceRoot` field or nested inside an earlier
  * file's `_localStorage` map — both are migrated through this helper rather
  * than written back verbatim, so the shared root itself never resurfaces in
@@ -117,7 +117,7 @@ export interface SettingsExportPayloadV2 {
   version: 2;
   /** Registry-driven S1/S2 config (`APP_SETTINGS_REGISTRY` keys only). */
   station: Partial<AppConfig>;
-  /** The full device-settings envelope (station#settings-revamp slices 2-3) — now the sole owner of every device-scope field, including the #1359-era shortcut/model-picker preferences. */
+  /** The full device-settings envelope (archive#settings-revamp slices 2-3) — now the sole owner of every device-scope field, including the archive#1359-era shortcut/model-picker preferences. */
   device: DeviceSettingsEnvelope;
 }
 
@@ -138,8 +138,8 @@ export function buildSettingsExportPayload(
  * definitions (`shortcutOverrides`/`modelPickerPreferences`): those share
  * `SHARED_PRIOR_DEVICE_SETTINGS_KEY` and are migrated via
  * `migrateSharedDeviceRoot` instead of this per-key raw-string path. Also
- * excludes definitions with no `priorStorageKey` at all (station#settings-
- * revamp slice 4: a setting that was never persisted pre-unification) —
+ * excludes definitions with no `priorStorageKey` at all (archive#settings-
+ * revamp: a setting that was never persisted pre-unification) —
  * there is no prior raw string for those to map from.
  */
 const PRIOR_KEY_TO_DEFINITION = new Map(
@@ -152,8 +152,8 @@ export interface ParsedSettingsImport {
   serverConfig: Partial<AppConfig>;
   /**
    * Registered device-setting keys present in the file whose value failed
-   * descriptor validation and were dropped rather than imported (station#
-   * settings-revamp slice2 review finding 2). Empty when nothing was
+   * descriptor validation and were dropped rather than imported (archive#
+   * settings-revamp). Empty when nothing was
    * dropped (including every non-v2 / no-`device`-field file, which never
    * calls `importEnvelope` at all).
    */
@@ -186,10 +186,10 @@ export async function parseImportedSettingsFile(
         record.device,
       ));
     }
-    // An OLD export (from the #1359/slice-2 coexistence window) can still
+    // An OLD export (from the archive#1359/slice-2 coexistence window) can still
     // carry the shared root verbatim in `sharedDeviceRoot` — migrate its
     // fields onto the envelope's own entries instead of writing the raw
-    // root back to localStorage (station#settings-revamp slice 3 #1359
+    // root back to localStorage (archive#settings-revamp slice 3 archive#1359
     // convergence: the envelope is now the sole home for those fields).
     const priorPartial = migrateSharedDeviceRoot(
       (record as { sharedDeviceRoot?: unknown }).sharedDeviceRoot,
@@ -217,7 +217,7 @@ export async function parseImportedSettingsFile(
       _localStorage as Record<string, unknown>,
     )) {
       if (typeof raw !== 'string') continue;
-      // A prior export from a #1359-era build can carry the shared
+      // A prior export from a archive#1359-era build can carry the shared
       // `station.device-settings` root inside `_localStorage` — migrate its
       // fields into the same partial being assembled below rather than
       // writing the raw root back to localStorage.

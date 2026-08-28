@@ -37,7 +37,7 @@ const knownDescriptorCount = KNOWN_WORKSPACE_PANE_DECLARATIONS.length;
  * factory) rather than contributing a descriptor alone. Chat and Work Board
  * are fixed Project panes in this set, so deriving their count keeps the next
  * such move from reddening this case for a reason it has nothing to do with
- * (station#2221).
+ * (archive#2221).
  */
 const knownInstanceFactoryCount = KNOWN_WORKSPACE_PANE_DECLARATIONS.filter(
   (declaration) => typeof declaration.createInstance === 'function',
@@ -606,7 +606,7 @@ describe('current Workspace Pane catalog adapter', () => {
       'project-a',
     );
     expect(snapshot.descriptors).toContainEqual(descriptor);
-    // station#3543: the declaration receives one server-issued occurrence
+    // archive#3543: the declaration receives one server-issued occurrence
     // whose binding is the distribution service's on-disk contribution
     // snapshot — the fact the renderer trust check evaluates.
     const instances = snapshot.instances.filter(
@@ -944,7 +944,7 @@ describe('current Workspace Pane catalog adapter', () => {
     expect(snapshot.instances).toHaveLength(1 + knownInstanceFactoryCount);
     // The subject is the hashed-scope instance this case authors, selected by
     // IDENTITY: built-in instances share the array, so a positional pick
-    // silently retargets the assertion (station#2221).
+    // silently retargets the assertion (archive#2221).
     const scoped = snapshot.instances.find((instance) =>
       /^instance:scope-h1-/.test(instance.instanceId),
     );
@@ -1060,9 +1060,9 @@ describe('a layout this project does not offer contributes no Pane (station#3778
       { offersLayout: () => true },
     );
 
-    // #3778's property, restated against a layout this build renders: an
+    // archive#3778's property, restated against a layout this build renders: an
     // offer-everything predicate removes nothing. It used to be stated with
-    // the Board, which station#3798 established is not a Pane at all — see
+    // the Board, which archive#3798 established is not a Pane at all — see
     // the test below.
     expect(
       snapshot.descriptors.some((descriptor) =>
@@ -1084,7 +1084,7 @@ describe('a layout this project does not offer contributes no Pane (station#3778
     // Pane renderer inventory and never will be. Advertising it made the
     // client explain a missing renderer as "Temporarily unavailable" — a
     // transient sentence, with a Retry that cannot help, for a permanent
-    // structural fact. Omission is the same shape #3778 chose above.
+    // structural fact. Omission is the same shape archive#3778 chose above.
     expect(boardPaneIds(snapshot)).toEqual({
       descriptors: [],
       availability: [],

@@ -65,7 +65,7 @@ export function useChatDockActions({
   const focusSession = useCallback(
     (sessionId: string, revealDock = true) => {
       setActiveSessionId(sessionId);
-      // station#3782: the chat's durable identity, never `null` — focusing a
+      // archive#3782: the chat's durable identity, never `null` — focusing a
       // chat that has not been promoted to a conversation yet must still leave
       // `?chat=` pointing at something the dock can resolve (its session id,
       // which `useChatDockActiveChatSync` matches on).
@@ -180,7 +180,7 @@ export function useChatDockActions({
       options: OpenConversationOptions = {},
     ) => {
       if (options.signal?.aborted) return false;
-      // #801 review: report whether the conversation could actually be
+      // archive#801: report whether the conversation could actually be
       // opened. Its owning agent can legitimately no longer exist — deleting
       // an agent leaves its conversations on disk — and a silent no-op here
       // strands the caller's `activeChat` pointing at a chat that will never
@@ -207,7 +207,7 @@ export function useChatDockActions({
       // conversation. On an engine that cannot take a per-turn override that
       // is an error for someone else's choice; on one that can, it silently
       // switches the model mid-conversation and the per-turn provenance
-      // faithfully records a switch the user never made (station#3165).
+      // faithfully records a switch the user never made (archive#3165).
       //
       // Unset is honest: resolveTurnModel treats a missing model as
       // engine-selected and sends no override at all.
@@ -253,7 +253,7 @@ export function useChatDockActions({
         options.conversationUpdatedAt,
         options.hydrateMessages,
       );
-      // station#1312 review: `null` means the conversation's messages
+      // archive#1312: `null` means the conversation's messages
       // failed to fetch (agent exists, but the fetch 404'd/errored) —
       // `useOpenConversation` already tore the just-created tab back down.
       // Report failure the same way a missing agent does, rather than

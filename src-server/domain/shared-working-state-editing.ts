@@ -22,7 +22,7 @@ export const MAX_SHARED_EDIT_TEXT_BYTES = 256 * 1024;
 export const SHARED_WORKING_STATE_EDIT_BATCH_DIGEST_VERSION = 1 as const;
 
 /**
- * One transport batch identity.  This intentionally follows #2889 effect
+ * One transport batch identity.  This intentionally follows archive#2889 effect
  * identity: display and correlation attribution are observational, while
  * operation order and the exact scope are effectful.
  */

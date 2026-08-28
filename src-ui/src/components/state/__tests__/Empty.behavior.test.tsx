@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4463 slice 2: `Empty` is the canonical empty-state primitive every
+ * archive#4463: `Empty` is the canonical empty-state primitive every
  * split-pane detail pane and hand-rolled "Nothing selected" box is being
  * migrated onto. This pins the behavioral contract Station's consumers rely
  * on — icon/title/description/action slots, and the two a11y properties the
@@ -85,7 +85,7 @@ describe('Empty', () => {
     expect(document.activeElement).toBe(action);
 
     // Nothing in Empty owns a keydown/keyup handler, so natural Tab
-    // traversal is never preventDefault()'d — a real trap would report
+    // traversal is never preventDefault'd — a real trap would report
     // defaultPrevented: true here.
     const forward = fireEvent.keyDown(action, { key: 'Tab' });
     expect(forward).toBe(true);

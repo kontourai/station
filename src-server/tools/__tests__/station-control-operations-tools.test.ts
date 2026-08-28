@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * #167 Wave 3: characterization tests for `station-control-operations-tools.ts`'s
+ * archive#167 Wave 3: characterization tests for `station-control-operations-tools.ts`'s
  * audited operations (`list_jobs`, `add_job`, `run_job`, `list_projects`,
  * `get_project`, `list_project_layouts`, `get_usage`, `get_achievements`),
  * written *before* the migration to `@kontourai/station-sdk/client` and run
@@ -1251,7 +1251,7 @@ describe('station-control operations tools (characterization)', () => {
     });
   });
 
-  // station#1136: environment MANAGEMENT verbs. These characterize the
+  // archive#1136: environment MANAGEMENT verbs. These characterize the
   // straightforward request-forwarding shape at the HTTP boundary, the same
   // way every other tool in this file is pinned; the deeper round-trip
   // (AC1), non-blocking-connect (AC2), and no-duplicated-logic (AC3)

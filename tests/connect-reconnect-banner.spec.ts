@@ -84,7 +84,7 @@ async function installTransport(
   // the e2e suite hammering the same one live instance, an occasional slow
   // or dropped first response pushed the retry backoff past this test's
   // fixed assertion timeouts — the actual "passes isolated, fails in
-  // parallel" cause (#985), not a leaked-state race. The status this gate
+  // parallel" cause (archive#985), not a leaked-state race. The status this gate
   // needs is always "ready" for every scenario this file drives (the
   // backend really is up throughout; only the compatibility probe below
   // simulates unreachability), so mock it the same way every other e2e spec
@@ -137,7 +137,7 @@ test.describe('compatibility-aware reconnect', () => {
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     const banner = page.getByRole('alert');
     await expect(banner).toContainText("Can't reach Dev Server");
-    // station#3297: the banner is one line now, and the caveats live behind
+    // archive#3297: the banner is one line now, and the caveats live behind
     // its disclosure. They are still reachable, and still say the same thing
     // — the change is that a phone no longer wears the whole paragraph.
     await expect(banner).not.toContainText('will not be queued');
@@ -162,10 +162,10 @@ test.describe('compatibility-aware reconnect', () => {
     await expect(banner).toBeHidden();
     await expect(
       page
-        // station#3311 made the connection control self-describing: its
+        // archive#3311 made the connection control self-describing: its
         // accessible name now carries the state and the connection identity
         // ("Manage Stations — Connected · <name>"), so this matches by prefix.
-        // The bare string is still the control’s `title` (station#3297).
+        // The bare string is still the control’s `title` (archive#3297).
         .getByRole('button', { name: /^Manage Stations/ })
         .getByLabel('connected'),
     ).toBeVisible();
@@ -262,8 +262,8 @@ test.describe('compatibility-aware reconnect', () => {
       expect(mainContentBox).not.toBeNull();
 
       const toolbarBottom = toolbarBox!.y + toolbarBox!.height;
-      // station#3308 contract: the banner is an overlay. It must start below
-      // the toolbar's interactive controls (#2343) — and the content must NOT
+      // archive#3308 contract: the banner is an overlay. It must start below
+      // the toolbar's interactive controls (archive#2343) — and the content must NOT
       // have been pushed down to make room for it: `.main-content` still
       // starts at the toolbar's bottom edge, with the banner hovering above
       // it.
@@ -334,7 +334,7 @@ test.describe('compatibility-aware reconnect', () => {
   }
 
   /**
-   * station#3308 fix round: the overlay is a sibling of `.chat-dock` in the
+   * archive#3308: the overlay is a sibling of `.chat-dock` in the
    * same stacking context, and the dock owns the higher named layer — so a
    * banner spanning the whole shell put its own controls underneath an active
    * workspace surface. A blocking pairing/credential banner that cannot be
@@ -342,8 +342,8 @@ test.describe('compatibility-aware reconnect', () => {
    *
    * Every dock MODE is covered, not just the side docks: a bottom dock takes
    * the row under the content instead of a column beside it, so it needs a
-   * block-size bound rather than a left/right inset — a different mechanism,
-   * and the first fix round only shipped the inset one. The fixture is two
+   * block-size bound rather than a left/right inset — a different mechanism
+   * than the inset one. The fixture is two
    * REAL banners (the offline notice plus a real update notice) with the stack
    * expanded, because that is the shape whose lower half reaches the dock.
    */
@@ -514,8 +514,8 @@ test.describe('compatibility-aware reconnect', () => {
   }) => {
     // Mobile chat fullscreen hides the toolbar, so the overlay's top collapses
     // to the safe-area inset and the banner newly paints over the fullscreen
-    // chat's own header. The reviewer's belief that this is acceptable rested
-    // on the pointer-events reasoning; this measures it: every banner control
+    // chat's own header. The pointer-events reasoning says this is acceptable;
+    // this measures it: every banner control
     // must own its pixels and take a trial click over the maximized dock.
     await page.setViewportSize({ width: 390, height: 844 });
     const state = {
@@ -589,7 +589,7 @@ test.describe('compatibility-aware reconnect', () => {
   test('leaves the blocking error after a new connection succeeds on mobile', async ({
     page,
   }) => {
-    // station#3766: `.app-toolbar__actions` has one owner for its flex
+    // archive#3766: `.app-toolbar__actions` has one owner for its flex
     // behaviour now (`components/chat/chat.css`), so a news-carrying
     // connection chip can no longer shrink the action cluster into nothing at
     // 390 — `More actions`, the only mobile route to Connections, stays
@@ -656,7 +656,7 @@ test.describe('compatibility-aware reconnect', () => {
     );
     await expect(banner).toContainText("Can't reach Dev Server");
 
-    // station#3766: "the banner never covers the toolbar" as a MEASUREMENT,
+    // archive#3766: "the banner never covers the toolbar" as a MEASUREMENT,
     // not a comment. Every toolbar action control's own centre must hit-test
     // to itself. The regression this replaces satisfied every other check —
     // all four controls were in the accessibility tree, reported visible,

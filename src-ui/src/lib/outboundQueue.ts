@@ -271,7 +271,7 @@ export type UndeliverableSendCause =
   | 'browser-reports-offline';
 
 /**
- * station#3686: this used to be `isOffline`, returning one boolean, and the
+ * archive#3686: this used to be `isOffline`, returning one boolean, and the
  * composer printed "Offline — sends on reconnect" for every case. The name
  * asserted a device network state; the derivation was "a fetch threw". A user
  * watching the app work in another tab was told they were offline.

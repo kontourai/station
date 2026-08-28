@@ -30,20 +30,20 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: () => {},
 }));
 
-// station#4525: the project-deletion cleanup effect reads `useProjects()`
+// archive#4525: the project-deletion cleanup effect reads `useProjects`
 // directly. Mocked (matching this file's existing `useNavigation` mock
 // pattern) rather than wrapped in a real QueryClientProvider — this is a
 // hook-unit test, not an integration test, and the mock lets each test
 // control the pending/error/confirmed-loaded distinction precisely.
 //
-// Three independent knobs, mirroring the real `useProjects()` shape
+// Three independent knobs, mirroring the real `useProjects` shape
 // (`ProjectsContext.tsx`) exactly: `isLoading` and `isConfirmedLoaded` are
 // NOT simply each other's negation — the pending shape has both false-ish
 // in different ways than the error shape does, and `useDockShellChrome`
 // only ever reads `isConfirmedLoaded`. Defaulting it to `true` keeps every
 // test that isn't specifically about the pending/error distinction reading
-// as "steady state after a real, successful load" (station#4525 review
-// HIGH-1's fix: `isConfirmedLoaded` requires POSITIVE evidence — a
+// as "steady state after a real, successful load" (archive#4525
+// fix: `isConfirmedLoaded` requires POSITIVE evidence — a
 // successful, error-free load with real data — never merely `!isLoading`,
 // which the pre-fix guard used and which is ALSO true on error).
 let projectsForDockShellChrome: { slug: string }[] = [];
@@ -228,7 +228,7 @@ describe('useDockShellChrome', () => {
     });
   });
 
-  // station#4525 Phase 2: the dock's project binding is owned here, not by
+  // archive#4525 Phase 2: the dock's project binding is owned here, not by
   // the occupant that reads it — these pin persistence, the deletion-cleanup
   // contract, and (critically) that nothing here clears the binding on its
   // own initiative.
@@ -318,7 +318,7 @@ describe('useDockShellChrome', () => {
       expect(result.current.activeProjectSlug).toBe('alpha');
     });
 
-    // station#4525 review HIGH-1: the pre-fix guard was `!isLoading`, which
+    // archive#4525: the pre-fix guard was `!isLoading`, which
     // is ALSO true the moment the query settles into an ERROR —
     // `ProjectsContext` folds the error shape's missing `data` to the same
     // `[]` a confirmed-empty list produces, so `!isLoading && []` could not
@@ -366,7 +366,7 @@ describe('useDockShellChrome', () => {
       rerender();
       // This local, non-ambient instance still reads the shared persisted
       // value live; it just isn't the one reconciling it against deletion
-      // (station#4460's single-writer pattern, extended to this cleanup).
+      // (archive#4460's single-writer pattern, extended to this cleanup).
       expect(result.current.activeProjectSlug).toBe('alpha');
     });
 

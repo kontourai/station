@@ -218,7 +218,7 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
   const message = selfUpdating
     ? 'Updating — Station is rebuilding from source and will restart when complete.'
     : restarting
-      ? // station#1903 review finding 3: the backend response no longer
+      ? // archive#1903 review finding 3: the backend response no longer
         // claims the update succeeded before a healthy new server is
         // observed — this local copy must not either. `restarting` only
         // means the restart was initiated; only the detached server watchdog's
@@ -237,7 +237,7 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
   // The apply button needs a workable apply path: git pull for a source
   // checkout, or the verified-checkout self-update for a bundle. Plain
   // 'reinstall' bundles get guidance instead of a button that would 409
-  // (station#1624).
+  // (archive#1624).
   const canApply =
     status?.updateAvailable && status.applyMethod !== 'reinstall';
   const isSelfUpdate = status?.applyMethod === 'self-update';

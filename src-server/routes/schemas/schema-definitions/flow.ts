@@ -19,7 +19,7 @@ export const flowRunStartSchema = z.object({
 
 /**
  * `trustArtifact`, `claimType`, `claimStatus`, and `claimSubject` are gone
- * (#290): they addressed Flow's pre-1.3 claim-record evidence model, and Flow
+ * (archive#290): they addressed Flow's pre-1.3 claim-record evidence model, and Flow
  * has ignored them ever since. Accepting them made the API look like it
  * supported a claim shape it silently discarded.
  */

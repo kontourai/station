@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3658 delta2 review, MEDIUM-2 and MEDIUM-3 — the two view-side
+ * archive#3658, and — the two view-side
  * consequences of placing events by timestamp instead of prepending them.
  */
 

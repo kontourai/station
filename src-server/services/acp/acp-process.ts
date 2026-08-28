@@ -30,7 +30,7 @@ import {
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 
 /**
- * station#3441 MEDIUM-2: the identity probe `survivesCleanup()` and
+ * archive#3441 MEDIUM-2: the identity probe `survivesCleanup()` and
  * `forceGroupKill()`'s confirm-before-release wait use. Async, not the
  * `ProcessIdentityProbe` sync shape `process-utils.ts` exports for the
  * startup sweep — that path runs once at boot; this one runs on the server's
@@ -62,7 +62,7 @@ export interface ACPProcessOptions {
   terminateProcess?: (proc: ChildProcess) => Promise<void>;
   resolveCommand?: (command: string) => Promise<string | null>;
   /**
-   * station#3441 test seam: override the identity probe `survivesCleanup()`
+   * archive#3441 test seam: override the identity probe `survivesCleanup()`
    * and `forceGroupKill()`'s confirm wait use to decide whether the pid it
    * holds is still the process it spawned. Defaults to the real
    * {@link probeExactProcessIdentityAsync} -- the same three-state result
@@ -75,7 +75,7 @@ export interface ACPProcessOptions {
 }
 
 /**
- * station#3441 HIGH-1: how long `forceGroupKill()` polls for its SIGKILL to
+ * archive#3441 HIGH-1: how long `forceGroupKill()` polls for its SIGKILL to
  * actually take effect before giving up on releasing the owned-process
  * registry record. Matches `terminateProcessTree`'s own `killConfirmMs`
  * default (process-utils.ts) so this escalation's confirm window is not
@@ -84,7 +84,7 @@ export interface ACPProcessOptions {
 const FORCE_GROUP_KILL_CONFIRM_MS = 1_000;
 
 /**
- * station#3441 MEDIUM-3: a cheap, uninstrumented liveness read -- the SAME
+ * archive#3441 MEDIUM-3: a cheap, uninstrumented liveness read -- the SAME
  * `kill(pid, 0)` primitive {@link probeExactProcessIdentityAsync} runs
  * INTERNALLY before it ever shells out to `ps` for a birth fingerprint (its
  * `aliveState`, not exported). EPERM is treated as "alive" throughout this
@@ -104,7 +104,7 @@ function quickLivenessGone(pid: number): boolean {
 export interface InitializeResult {
   protocolVersion: number;
   agentInfo?: { name: string; version?: string };
-  // #895 wave B: the SDK's full AgentCapabilities shape (loadSession,
+  // archive#895 wave B: the SDK's full AgentCapabilities shape (loadSession,
   // promptCapabilities, mcpCapabilities, sessionCapabilities, …) — was a
   // locally-typed subset (loadSession/promptCapabilities only); switched to
   // the SDK type so probe evidence (acp-probe.ts) can cache the whole
@@ -113,7 +113,7 @@ export interface InitializeResult {
 }
 
 /**
- * station#1089: a `spawn()` failure — the overwhelmingly common cause being a
+ * archive#1089: a `spawn()` failure — the overwhelmingly common cause being a
  * working directory that does not exist — arrives as an asynchronous `'error'`
  * event on the ChildProcess. Nothing listened for it, so it became an
  * `uncaughtException` and took the WHOLE SERVER DOWN. Measured on `origin/main`
@@ -125,10 +125,10 @@ export interface InitializeResult {
  * (acp-probe.ts) and the chat path (providers/adapters/acp-adapter.ts).
  *
  * Node's own message names the COMMAND and never the cwd, which is exactly the
- * misdirection #1087 called out: the binary is present and executable, and the
+ * misdirection archive#1087 called out: the binary is present and executable, and the
  * directory is the thing that is missing. Name the directory.
  *
- * This is the ACP half of #791's fail-closed rule for the other engines
+ * This is the ACP half of archive#791's fail-closed rule for the other engines
  * (`orchestration-service.ts`'s `existsSync(cwd)` throw): refuse loudly, naming
  * the path, instead of landing the agent somewhere the user did not ask for —
  * or, here, instead of killing the server.
@@ -167,7 +167,7 @@ export class ACPProcess extends EventEmitter {
   private spawnedPid: number | null = null;
   /**
    * The birth fingerprint of `spawnedPid`, recorded in the same breath as the
-   * pid itself and never cleared. See survivesCleanup() (station#3441): this
+   * pid itself and never cleared. See survivesCleanup() (archive#3441): this
    * is what lets a recycled pid be told apart from the process actually
    * spawned here, instead of a bare `kill(pid, 0)` treating anything alive
    * (or unsignalable) at that pid as "surviving".
@@ -207,7 +207,7 @@ export class ACPProcess extends EventEmitter {
    * without ever asking. It reads `spawnedPid`, recorded at spawn and never
    * cleared, so the probe below reaches the real process.
    *
-   * station#3441: a bare `kill(pid, 0)` answers "is SOME process alive at
+   * archive#3441: a bare `kill(pid, 0)` answers "is SOME process alive at
    * this pid", not "is it the process I spawned" -- and `EPERM ⇒ surviving`
    * meant a pid recycled by an unrelated (unsignalable) process was retained
    * forever, re-destroyed every cycle, on identity Station never actually
@@ -225,7 +225,7 @@ export class ACPProcess extends EventEmitter {
    *     to compare against ⇒ surviving. Identity cannot be ruled out, so
    *     this retains rather than guesses -- the same "a missed reclaim is
    *     acceptable; a wrong reap is not" rule `ownerIsGone` follows, and it
-   *     is no longer unbounded: `ACPProbe`'s retry cap (station#3441) is
+   *     is no longer unbounded: `ACPProbe`'s retry cap (archive#3441) is
    *     what stops this case from being retained forever.
    *
    * POSIX semantics throughout (the alive check, and `lookupProcessBirth
@@ -237,7 +237,7 @@ export class ACPProcess extends EventEmitter {
    * the same disclosed limit `forceGroupKill` carries -- this is disclosure,
    * not an implementation Station cannot verify.
    *
-   * station#3441 MEDIUM-2: async, not a bare boolean return. `probeIdentity`
+   * archive#3441 MEDIUM-2: async, not a bare boolean return. `probeIdentity`
    * defaults to `probeExactProcessIdentityAsync`, whose birth-fingerprint half
    * runs through the callback-`execFile` probe instead of `execFileSync`, so
    * this no longer blocks the server's event loop for the ~5-20ms a `ps`
@@ -251,7 +251,7 @@ export class ACPProcess extends EventEmitter {
     try {
       probe = await this.probeIdentity(pid);
     } catch {
-      // station#3441 LOW-3: an identity probe that cannot answer must never
+      // archive#3441 LOW-3: an identity probe that cannot answer must never
       // be read as "gone" -- the same fail-safe the 'unavailable' state
       // below already encodes for a probe that answered but could not read a
       // fingerprint. Without this, a rejecting `probeIdentity` (never the
@@ -283,13 +283,13 @@ export class ACPProcess extends EventEmitter {
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
     if (!bin) throw new Error(`${this.opts.command} not found on PATH`);
 
-    // station#977: layer the login-shell-resolved PATH onto the spawned
+    // archive#977: layer the login-shell-resolved PATH onto the spawned
     // process's own env too, not just Station's own binary lookup above --
     // otherwise a service-launched Station can resolve the binary but the
     // engine subprocess itself still cannot find nix/mise/homebrew-managed
     // tools it shells out to internally.
     const env = await augmentedSpawnEnv();
-    // station#1863: spawn through the owned-process primitive so the child is
+    // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
     // registry. `detached: true` is preserved deliberately — a group kill reaps
     // the grandchild (`kiro-cli` re-execs `kiro-cli-chat`) through it — but the
@@ -304,13 +304,13 @@ export class ACPProcess extends EventEmitter {
     });
     this.proc = proc;
     // Kept independently of `proc`, which destroy() nulls: this is the only
-    // thing left to ask the kernel about afterwards (station#3422).
+    // thing left to ask the kernel about afterwards (archive#3422).
     this.spawnedPid = proc.pid ?? null;
     this.releaseOwnedChild = release;
 
     proc.on('exit', (code) => this.handleProcessExit(proc, code));
 
-    // station#1089: see describeSpawnFailure. Two listeners, both required:
+    // archive#1089: see describeSpawnFailure. Two listeners, both required:
     //  - `spawnFailed` converts the async `'error'` event into a rejection the
     //    `initialize()` race below can surface to the caller, so a bad working
     //    directory fails THIS connection instead of the process.
@@ -337,20 +337,20 @@ export class ACPProcess extends EventEmitter {
     proc.stdin?.on('error', () => undefined);
     proc.stdout?.on('error', () => undefined);
 
-    // station#3441: resolved from the SAME pid recorded above -- `spawnedPid`
+    // archive#3441: resolved from the SAME pid recorded above -- `spawnedPid`
     // is never reassigned after this point (see its own comment), so a
     // concurrent caller observing `spawnedBirth` still null just sees the
     // safe fallback (survivesCleanup()'s "no birth to compare against ->
-    // retain"), never a wrong pid's birth. station#3441 MEDIUM-2: the async
+    // retain"), never a wrong pid's birth. archive#3441 MEDIUM-2: the async
     // twin, not `execFileSync`'s `ps` shellout blocking the caller's event
     // loop for it -- `start()` is already awaited by every caller.
     //
-    // station#3441 LOW-4: deliberately AFTER every safety listener above, not
+    // archive#3441 LOW-4: deliberately AFTER every safety listener above, not
     // before. This is an `await`, and every listener above it used to sit on
     // the far side of that await -- a child that spawned with a pid (so
     // `spawnedPid` is set) and then exited or errored during this lookup's
     // ~6ms window would have missed `handleProcessExit` entirely, or become
-    // an `uncaughtException` for a window #1089 exists to close.
+    // an `uncaughtException` for a window archive#1089 exists to close.
     this.spawnedBirth = this.spawnedPid
       ? await lookupProcessBirthFingerprintAsync(this.spawnedPid)
       : null;
@@ -490,7 +490,7 @@ export class ACPProcess extends EventEmitter {
   }
 
   /**
-   * station#1863: unconditional escalation. Deliver a group SIGKILL to the
+   * archive#1863: unconditional escalation. Deliver a group SIGKILL to the
    * child's process group regardless of destroy()'s state, used when a probe
    * deadline fires BEFORE the graceful SIGTERM → 1s → SIGKILL escalation can
    * complete. The negative pid signals the whole group, reaping a re-execed
@@ -498,7 +498,7 @@ export class ACPProcess extends EventEmitter {
    * and says so, rather than reporting a no-op that reads like a successful
    * reap.
    *
-   * station#3463: the pid comes from `spawnedPid`, NOT from `this.proc`, for
+   * archive#3463: the pid comes from `spawnedPid`, NOT from `this.proc`, for
    * the same reason {@link survivesCleanup} reads it — `destroy()` nulls
    * `this.proc` on its own success path (see below), so reading the pid from
    * there made this escalation decline for exactly the population it exists
@@ -508,7 +508,7 @@ export class ACPProcess extends EventEmitter {
    * destroy has forgotten the handle. A group that has genuinely exited
    * answers ESRCH, which the catch below already reads as "already gone".
    *
-   * station#3441 HIGH-1: the registry record is released ONLY once the group
+   * archive#3441 HIGH-1: the registry record is released ONLY once the group
    * is CONFIRMED gone, never on signal delivery alone. `process.kill()`
    * returning without throwing means the OS accepted the SIGKILL, not that
    * the group has exited -- the previous version released unconditionally
@@ -534,7 +534,7 @@ export class ACPProcess extends EventEmitter {
    *     which is now an accurate description of what happens, not a claim
    *     nothing computes.
    *
-   * station#3441 MEDIUM-3: `waitUntilProcessGone` only ever reads
+   * archive#3441 MEDIUM-3: `waitUntilProcessGone` only ever reads
    * `probe.state === 'dead'`, never the birth-fingerprint identity `probe`
    * also carries -- so a bare `kill(pid, 0)` liveness read agrees with
    * `probeIdentity` on every real answer this call site uses (both derive
@@ -553,7 +553,7 @@ export class ACPProcess extends EventEmitter {
    * never report `'dead'` therefore still prevents confirmation forever, it
    * just no longer pays for a fingerprint lookup to prove it.
    *
-   * POSIX-only (station#1863 M1 disclosure): the negative-pid group signal is
+   * POSIX-only (archive#1863 M1 disclosure): the negative-pid group signal is
    * a POSIX mechanism. On Windows `process.kill(-pid, …)` does not target a
    * process group, so this escalation is silently inert there — a Windows
    * engine whose graceful destroy hung will NOT be reaped by this path. The
@@ -585,7 +585,7 @@ export class ACPProcess extends EventEmitter {
       // there to signal. Anything else (EPERM on a pid since recycled by
       // another user, and whatever a platform raises for a group signal it
       // cannot deliver) means the escalation did NOT happen, and swallowing it
-      // is how an engine survives its own reaping unnoticed (station#3422:
+      // is how an engine survives its own reaping unnoticed (archive#3422:
       // orphans accumulate under a live owner, which never sweeps its own).
       //
       // spawnOwnedChild spawns detached, so the child is always its own group
@@ -616,7 +616,7 @@ export class ACPProcess extends EventEmitter {
   }
 
   /**
-   * station#3441 LOW-1: release the owned-process registry record without
+   * archive#3441 LOW-1: release the owned-process registry record without
    * attempting any further destroy/kill of it. The caller must have ALREADY
    * independently confirmed the process is gone -- this does not itself
    * check anything, it only performs the same idempotent release `destroy()`
@@ -641,11 +641,11 @@ export class ACPProcess extends EventEmitter {
   }
 
   /**
-   * Poll for `pid` to be gone, or `timeoutMs` to elapse. station#3441 HIGH-1:
+   * Poll for `pid` to be gone, or `timeoutMs` to elapse. archive#3441 HIGH-1:
    * the only thing that may follow a `true` here is releasing the
    * owned-process registry record -- see `forceGroupKill()`.
    *
-   * station#3441 MEDIUM-3: gates the (test-injectable, `ps`-shelling-out by
+   * archive#3441 MEDIUM-3: gates the (test-injectable, `ps`-shelling-out by
    * default) `probeIdentity` confirmation behind a cheap `kill(pid, 0)`
    * liveness pre-check -- see `forceGroupKill()`'s own docblock for why that
    * pre-check answers identically to `probeIdentity`'s `'dead'` state on
@@ -667,7 +667,7 @@ export class ACPProcess extends EventEmitter {
   }
 
   /**
-   * station#3441 LOW-3: `probeIdentity` is not guaranteed non-throwing --
+   * archive#3441 LOW-3: `probeIdentity` is not guaranteed non-throwing --
    * the default {@link probeExactProcessIdentityAsync} never rejects, but a
    * test or future caller's injected probe can. A rejection here must never
    * be read as confirmation of death (the same fail-safe `survivesCleanup()`
@@ -691,7 +691,7 @@ export class ACPProcess extends EventEmitter {
     this.emit('exit', code);
   }
 
-  // station#977: resolve through the shared PATH-scanning helper (which
+  // archive#977: resolve through the shared PATH-scanning helper (which
   // searches process.env.PATH first, then the users login-shell PATH and
   // well-known install dirs) instead of shelling out to which/where -- a
   // service-launched Station's minimal PATH previously made this report a

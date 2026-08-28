@@ -58,8 +58,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // `SectionNav` forwards this ref to its own `<nav>` element (station#4463
-  // slice 2 review LOW — no wrapper `<div>` needed, so this flex child's
+  // `SectionNav` forwards this ref to its own `<nav>` element (archive#4463
+  // review — no wrapper `<div>` needed, so this flex child's
   // `flex-shrink: 0` (`.project-settings__section-nav` in the CSS) lands on
   // the real scrolling strip, not an inert wrapper one level out).
   const sectionNavRef = useRef<HTMLElement | null>(null);
@@ -399,7 +399,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           actions. Mounted HERE and nowhere else: `ProjectPage.tsx` stays
           byte-unchanged so the first-run journey `tests/first-run-live.spec.ts`
           pins is provably untouched without an e2e run this slice cannot make.
-        */}
+*/}
         <ResourcesSection slug={slug} />
 
         {/* Knowledge */}

@@ -62,7 +62,7 @@ export interface SessionEventReadsDeps {
 }
 
 /**
- * Event paging & stream replay (epic #4024 slice 5, #4155): the C9 cluster
+ * Event paging & stream replay (epic archive#4024, archive#4155): the C9 cluster
  * from the seam map — owns no fields; reads the session read model, turn
  * progress, and tenant hydration only through deps closures over the live
  * service members. The service keeps flat same-named forwarders with the
@@ -72,7 +72,7 @@ export class SessionEventReads {
   constructor(private readonly deps: SessionEventReadsDeps) {}
 
   /**
-   * station#1284 (HIGH 2): what the PERSISTED log says about one request —
+   * archive#1284 (HIGH 2): what the PERSISTED log says about one request —
    * the read side of converge-on-read. Replayed from the thread's event
    * store rows through the one shared derivation (`open-requests.ts`), never
    * from a stored status flag and never from having witnessed a live
@@ -233,7 +233,7 @@ export class SessionEventReads {
       events: window.events.map((event) => ({
         sequence: event.sequence,
         event: event.payload,
-        // station#3386: the read's own budget report. Dropping it here is
+        // archive#3386: the read's own budget report. Dropping it here is
         // what made the elision silent — the client receives identity fields
         // and no way to tell a withheld payload from an absent one.
         ...(event.elided ? { elided: event.elided } : {}),
@@ -433,7 +433,7 @@ export class SessionEventReads {
 
   /**
    * Current global-sequence head of the orchestration event stream
-   * (station#1092) — what a fresh `orchestration:snapshot` frame advertises
+   * (archive#1092) — what a fresh `orchestration:snapshot` frame advertises
    * as its resume cursor, and the reference point a reconnecting client's
    * `Last-Event-ID` cursor is compared against to decide replay vs snapshot.
    */
@@ -443,7 +443,7 @@ export class SessionEventReads {
 
   /**
    * The global-sequence cursor already assigned to a persisted event, keyed
-   * by its canonical `eventId` (station#1092). Used to set the SSE `id:` on
+   * by its canonical `eventId` (archive#1092). Used to set the SSE `id:` on
    * a live-forwarded frame — the event is already durably persisted by the
    * time an `EventBus` subscriber runs.
    */
@@ -453,9 +453,9 @@ export class SessionEventReads {
 
   /**
    * Ordered replay of events after a reconnecting client's global-sequence
-   * cursor, optionally scoped to one thread (station#1092 resume path).
+   * cursor, optionally scoped to one thread (archive#1092 resume path).
    *
-   * station#1197: the raw store query has no ownership predicate (it's a
+   * archive#1197: the raw store query has no ownership predicate (it's a
    * plain `global_sequence > ? [AND thread_id = ?]` scan), so this is the
    * single chokepoint for both `/events` replay branches (thread-scoped and
    * global) to apply the SAME per-event authorization gate the live path

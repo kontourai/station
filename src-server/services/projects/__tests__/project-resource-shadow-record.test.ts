@@ -1,5 +1,5 @@
 /**
- * station#1686 — the shadow counter's local read path.
+ * archive#1686 — the shadow counter's local read path.
  *
  * The defect these tests exist for is not "a counter was missing a feature".
  * It is that `station.project_resource.shadow_comparisons` has been

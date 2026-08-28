@@ -1,5 +1,5 @@
 /**
- * composeWebPushPayload — station#1100: builds the Web Push payload (title,
+ * composeWebPushPayload — archive#1100: builds the Web Push payload (title,
  * body, deep-link url) and the Web Push protocol TTL (seconds, RFC 8030)
  * from one or more pushable notifications, following the attention-ranked,
  * outcome-first design:

@@ -1,6 +1,6 @@
 /**
  * Consent-gating tests for `resolveAndExecuteStationBoardIntent` (roadmap
- * #586, part of epic #580, S6) — the acceptance bar: "consent-gated execute
+ * archive#586, part of epic archive#580, S6) — the acceptance bar: "consent-gated execute
  * called exactly once with consent === true, never on truthy".
  */
 import type { HostIntentBinding } from '@kontourai/console-core';

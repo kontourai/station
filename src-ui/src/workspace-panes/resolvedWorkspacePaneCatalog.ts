@@ -184,7 +184,7 @@ export function resolveWorkspacePaneCatalogPresentation(
       // descriptor is POSITIVELY plugin-hosted. "Not in the builtin registry"
       // is not that claim — mcp-tool-ui and standard-data renderers are also
       // absent from it, and enabling extensions repairs none of them (sol
-      // delta review of #2640).
+      // of archive#2640).
       ...(rendererGate && descriptor.renderer.kind === 'plugin-component'
         ? { rendererGate }
         : {}),

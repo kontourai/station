@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3, §3.4 "Both sides record" — the SERVING Station's own
+ * archive#1398, §3.4 "Both sides record" — the SERVING Station's own
  * account of what it served.
  *
  * A consumer-authored record of a producer's behavior is a claim, not

@@ -1,6 +1,6 @@
 /**
  * station-docs content — the SHIPPED, STATIC prose the `station-docs` MCP
- * server serves (station#1547).
+ * server serves (archive#1547).
  *
  * This module is a plain TypeScript data module on purpose. It has no
  * imports, reads no files, and makes no network calls, so "the docs are

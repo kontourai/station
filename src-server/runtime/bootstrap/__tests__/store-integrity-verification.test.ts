@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
  * The counter is mocked so its ATTRIBUTES are observable. `source` is what
- * lets station#3219 ask "how much of the corruption we saw did the schedule
+ * lets archive#3219 ask "how much of the corruption we saw did the schedule
  * find, versus an ordinary query?" — and a dimension nothing asserts is a
  * dimension that quietly stops being set.
  */
@@ -30,7 +30,7 @@ import {
 } from '../store-integrity-verification.js';
 
 /**
- * station#3218. What this file has to hold is narrower than "the probe
+ * archive#3218. What this file has to hold is narrower than "the probe
  * works": the probe's own verdicts are proven against real corrupt bytes at
  * the process boundary in `src-server/tools/__tests__/`. Here the question is
  * what the RUNTIME does with a verdict — and the expensive mistake is acting
@@ -97,7 +97,7 @@ describe('scheduled store integrity verification', () => {
       expect(existsSync(corruptionMarkerPath(databasePath))).toBe(true),
     );
     const marker = readCorruptionMarker(databasePath);
-    // The same fields the reactive path (station#3215) records, so both
+    // The same fields the reactive path (archive#3215) records, so both
     // detection paths converge on one consumer rather than one that has to
     // know which half wrote the file.
     expect(marker?.errcode).toBe(11);

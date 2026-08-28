@@ -1,21 +1,21 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1424 review round 3 (NEW-1), refined round 4: the streaming row
+ * archive#1424: the streaming row
  * and the persisted row it becomes must render the SAME attribution
  * fields — no transition delta, no chip that appears while streaming and
  * then vanishes (or vice versa) the instant the turn settles.
  *
  * This pins EQUALITY between the two renders rather than an absolute
- * "engine chip never renders" claim (station#1424 review round 4): a
- * correct future #1410 turn-envelope implementation is expected to make an
+ * "engine chip never renders" claim (archive#1424 4): a
+ * correct future archive#1410 turn-envelope implementation is expected to make an
  * engine chip appear on BOTH rows at once, and an absolute-absence
  * assertion on either render would misread that as a regression — the same
  * reasoning `MessageBubble.temporalDrift.test.tsx` already documents for
  * its own `queryByText('Station')` pin. The one absolute assertion kept
  * here targets the CURRENT defect class specifically (no engine identity
  * read from the agent's CURRENT live binding — i.e. no live-derived
- * "Station" text — on either row), which #1410 landing does not retire:
+ * "Station" text — on either row), which archive#1410 landing does not retire:
  * it introduces a NEW turn-scoped source, not a live-derivation shortcut.
  */
 
@@ -148,7 +148,7 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
 
     // Engine-chip PRESENCE STATE — not a hardcoded absence — must match
     // between streaming and persisted. Today both are false; a correct
-    // future #1410 implementation making both true (a real, turn-scoped
+    // future archive#1410 implementation making both true (a real, turn-scoped
     // engine identity on both rows at once) still passes this assertion,
     // exactly the point of comparing state rather than asserting "never".
     const streamingHasEngineChip = Boolean(
@@ -160,10 +160,10 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
     expect(streamingHasEngineChip).toBe(persistedHasEngineChip);
 
     // One absolute assertion, pinning the CURRENT defect class specifically
-    // (M1's temporal-drift bug): neither row's engine identity is ever read
+    // ( temporal-drift bug): neither row's engine identity is ever read
     // from the agent's CURRENT live binding — `agentEngineDescriptor` would
     // resolve "Station" for `dev-agent` if either render read that live
-    // source. #1410 landing introduces a new turn-scoped authority; it does
+    // source. archive#1410 landing introduces a new turn-scoped authority; it does
     // not resurrect the live-derivation shortcut this pins against.
     expect(within(streaming).queryByText('Station')).toBeNull();
     expect(within(persisted).queryByText('Station')).toBeNull();

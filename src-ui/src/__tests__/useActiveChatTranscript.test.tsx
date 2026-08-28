@@ -261,7 +261,7 @@ describe('useActiveChatTranscript', () => {
   });
 
   test('carries an attachment reference through to the rendered part (#3385)', async () => {
-    // The exact shape a byte-budgeted window returns after station#3374: the
+    // The exact shape a byte-budgeted window returns after archive#3374: the
     // attachment's identity plus a content reference, and no bytes. If the
     // reference is dropped anywhere along this mapping, the chip can never
     // become a picture again and nothing else in the suite notices.
@@ -1101,7 +1101,7 @@ describe('useActiveChatTranscript', () => {
   });
 });
 
-// UX audit V3 review (HIGH): the live failure card is an ordinary
+// the live failure card is an ordinary
 // `role: 'user'` row with no clientId, so the bounded projection dropped it —
 // and the streaming shell it was written beside is suppressed by the same
 // `status: 'error'` update. A session killed mid-turn therefore rendered its
@@ -1152,7 +1152,7 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
     ).toBe(true);
   });
 
-  // UX audit V3 review round 3 (MEDIUM): dedupe was global text matching, so a
+  // dedupe was global text matching, so a
   // second turn failing the same way had its card suppressed by the FIRST
   // turn's projected row. Turn identity is what decides.
   test('keeps a second turn failure the projection renders only for the first turn', async () => {

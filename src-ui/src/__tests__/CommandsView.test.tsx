@@ -63,7 +63,7 @@ vi.mock('../hooks/useSlashCommands', () => ({
         source: 'skill',
         availability: { available: true },
       },
-      // Review M1: a server-disabled clash loser renders as its own row,
+      // a server-disabled clash loser renders as its own row,
       // keyed apart from the winner it shares a word with.
       {
         cmd: '/review-release',
@@ -103,7 +103,7 @@ describe('CommandsView', () => {
     expect(setDockState).toHaveBeenCalledWith(true);
   });
 
-  // Review M1: a clash loser the server disabled is a ROW, not an absence —
+  // a clash loser the server disabled is a ROW, not an absence —
   // its diagnostic is the reason it is unavailable, rendered by the same
   // unavailable status the capability-gated rows use.
   test('renders a disabled command skill with its server diagnostic', () => {

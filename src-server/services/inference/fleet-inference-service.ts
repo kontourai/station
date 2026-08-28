@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 2 — the serving half of fleet inference
+ * archive#1398 — the serving half of fleet inference
  * (`docs/design/inference-fleet.md` §3.2 Option A, §11 slice 2).
  *
  * Station B serves an authenticated completion against a connection its
@@ -658,7 +658,7 @@ export class FleetInferenceService {
       }
       if (chunk.type === 'finish') {
         finishReason = chunk.finishReason ?? null;
-        // station#4197: `LLMStreamChunk.usage` fields are individually
+        // archive#4197: `LLMStreamChunk.usage` fields are individually
         // optional (absence is a real state — the producer never invents
         // zeros), while `FleetInferenceUsage` requires BOTH figures. A
         // partial report therefore stays `null` on the wire — "the

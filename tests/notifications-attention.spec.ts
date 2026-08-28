@@ -189,9 +189,9 @@ test.describe('Notifications: attention queue and activity log', () => {
 
     // ORDER MATTERS, and it is the emptied attention region that has to come
     // first: an "activity is unchanged" assertion evaluated straight after the
-    // click passes on the DOM the mutation has not reached yet — proven by
-    // fault injection, where a bulk action that also cleared activity slipped
-    // past exactly that assertion and was caught one assertion later. Waiting
+    // click passes on the DOM the mutation has not reached yet — a bulk
+    // action that also cleared activity would slip
+    // past exactly that assertion and be caught one assertion later. Waiting
     // for region 1 to empty is what proves the mutation landed; only then does
     // "activity is still there" mean anything.
 
@@ -227,7 +227,7 @@ test.describe('Notifications: attention queue and activity log', () => {
   });
 
   /**
-   * station#3779, corrected against the server.
+   * archive#3779, corrected against the server.
    *
    * The issue reported that a row's own Dismiss DELETES the notification while
    * the bulk action merely acknowledges. It does not: `DELETE
@@ -339,7 +339,7 @@ test.describe('Notifications at 390x844', () => {
     expect(bulkBox, 'the bulk action has no layout box at 390').toBeTruthy();
     expect(bulkBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 
-    // station#3779: the row's own dismissal is a tap target of its own,
+    // archive#3779: the row's own dismissal is a tap target of its own,
     // distinct from the bulk one above.
     const rowAction = activityRegion(page)
       .locator('.notification-card')

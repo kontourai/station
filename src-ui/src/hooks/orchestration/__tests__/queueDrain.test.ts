@@ -122,7 +122,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     });
   });
 
-  // station#1293 review (SHOULD-FIX-3): buildOutgoingUserMessage mints a
+  // archive#1293: buildOutgoingUserMessage mints a
   // clientId for the optimistic bubble this drain appends, but the failure
   // path used to discard it and only re-queue the TEXT — the failed
   // optimistic message stayed in `messages` forever, so a later successful
@@ -159,7 +159,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     ).toHaveLength(1);
   });
 
-  // station#3027 review L3: a permanent 400-class refusal (e.g. the
+  // archive#3027: a permanent 400-class refusal (e.g. the
   // authored-spec alias rejection) used to be requeued at the head on every
   // failure — an infinite refusal loop the user could never escape.
   test('a definitive 4xx rejection drops the entry instead of requeueing and surfaces the failure', async () => {
@@ -174,7 +174,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     await vi.advanceTimersByTimeAsync(100);
 
     const afterFailure = activeChatsStore.getSnapshot()[threadId];
-    // #3706 review (BLOCKING 3): a permanent queue refusal is not an error
+    // archive#3706: a permanent queue refusal is not an error
     // state of the CHAT — the conversation is settled and the refusal is
     // carried by the unsent record. 'error' here made Home/inbox label the
     // chat "Failed" for a follow-up the agent never saw.
@@ -192,8 +192,8 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(afterFailure.ephemeralMessages?.[0]?.content).toContain(
       'refused message',
     );
-    // …and station#3706 makes it durable: ephemeral notices never survive a
-    // reload (station#1292), so the drop also writes an unsent record — the
+    // …and archive#3706 makes it durable: ephemeral notices never survive a
+    // reload (archive#1292), so the drop also writes an unsent record — the
     // one copy that persists until the user dismisses it.
     expect(afterFailure.unsentMessages).toEqual([
       expect.objectContaining({
@@ -243,10 +243,10 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(notice).toContain('Your message: test');
     // The internal lifecycle sentence must not reach the user.
     expect(notice).not.toMatch(/terminal/i);
-    // station#3706: the durable record survives where the notice cannot, and
+    // archive#3706: the durable record survives where the notice cannot, and
     // its reason is the user-language attribution, not the raw server prose.
     // Verbatim: a regex on /already ended/ also matched the RAW server prose
-    // this record must not carry (#3706 review, verification gaps).
+    // this record must not carry (archive#3706, verification gaps).
     expect(afterFailure.unsentMessages?.[0]?.reason).toBe(
       'This chat had already ended when Station tried to send it.',
     );
@@ -300,7 +300,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       'second refused',
     ]);
     // Identity is `id`, not `at`: two drops in the same millisecond must
-    // remain individually dismissable (#3706 review MEDIUM).
+    // remain individually dismissable (archive#3706).
     expect(records?.[0]?.id).not.toBe(records?.[1]?.id);
   });
 
@@ -351,9 +351,9 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     );
   });
 
-  // UX audit T3: the retained text used to be the only thing kept — the reason
+  // the retained text used to be the only thing kept — the reason
   // lived solely in an ephemeral notice, which is deliberately never persisted
-  // (station#1292), so a reload left a queued follow-up with no explanation.
+  // (archive#1292), so a reload left a queued follow-up with no explanation.
   test('records the refusal on the chat so it survives with the retained message', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['keep this follow-up'],
@@ -378,7 +378,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     });
   });
 
-  // UX audit T3 review (MEDIUM): Retry after an unbound-workspace refusal used
+  // Retry after an unbound-workspace refusal used
   // to resubmit the chat's unchanged projectSlug, which supplies the same
   // project workspace and reproduces the identical refusal — a button that
   // deterministically repeats a failure.
@@ -400,7 +400,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     const sent = sendExecutionMessageMock.mock.calls.at(-1)?.[0];
     expect(sent.target.workspace).toBeUndefined();
     expect(sent.target.environment).toEqual({ kind: 'current' });
-    // ...and the user is told the follow-up did not go into the project.
+    //.and the user is told the follow-up did not go into the project.
     const notices = (
       activeChatsStore.getSnapshot()[threadId].ephemeralMessages ?? []
     ).map((message) => message.content);
@@ -451,7 +451,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
   // The chat route's catch-all collapses server-declared-retryable refusals
   // into 400 with the error's code in the body — the drop discriminator must
   // consult the code, or load shedding / adoption races (which clear on
-  // retry) would permanently discard queued messages (#3027 fix-round H1).
+  // retry) would permanently discard queued messages (archive#3027 fix-round).
   for (const retryableCode of [
     'resource_posture_critical',
     'adoption_continuation_in_progress',

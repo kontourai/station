@@ -76,7 +76,7 @@ class SchemaValidator {
    */
   /**
    * `slug` is what lets the authored-prompt rule answer for the reserved
-   * `station` identity (station#3662) — see `requiresAuthoredAgentPrompt`.
+   * `station` identity (archive#3662) — see `requiresAuthoredAgentPrompt`.
    * Optional so the shape-only callers that have no slug are unchanged.
    */
   validateAgentSpec(data: unknown, slug?: string): asserts data is AgentSpec {

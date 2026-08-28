@@ -433,11 +433,11 @@ describe('onboardingGateUtils', () => {
     });
   });
 
-  // station#1193 (epic #1191, slice A): "chat ready" is engine-agnostic — the
+  // archive#1193: "chat ready" is engine-agnostic — the
   // UI mirrors whatever the backend's `recommendation.code`/`ready` already
   // decided (system-status-routes.ts's `resolveExternalEngineReadiness`),
   // rather than re-deriving readiness from `clis`/provider names itself. This
-  // block pins that mirroring for every case station#1193 requires: ACP
+  // block pins that mirroring for every case archive#1193 requires: ACP
   // connected, a ready+authed native engine (Claude Code, Codex), a Station
   // model connection alone, and the negative case (CLI present but not
   // authenticated) staying NOT hidden.
@@ -555,7 +555,7 @@ describe('onboardingGateUtils', () => {
     });
   });
 
-  // station#chat-dock-maximize-readiness: while prerequisite discovery is
+  // archive#chat-dock-maximize-readiness: while prerequisite discovery is
   // `pending`, the status route serves an all-false placeholder snapshot that
   // reads as 'unconfigured'. The onboarding conclusion must be withheld until
   // discovery settles, so a genuinely ready Claude/Codex/ACP/Ollama path can

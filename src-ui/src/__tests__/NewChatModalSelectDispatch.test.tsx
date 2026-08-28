@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3013 — selecting an agent must never be a silent no-op.
+ * archive#3013 — selecting an agent must never be a silent no-op.
  *
  * Confirmed live: a click in the agent picker produced no chat, no error, and
  * no network request. `handleSelect` dispatched only for `isGlobal` or a
@@ -38,7 +38,7 @@ const UNAVAILABLE_AGENT: AgentData = {
   unavailableFix: { kind: 'unknown' },
 } as AgentData;
 
-// station#3027: an engine-default alias row carrying the machine-readable
+// archive#3027: an engine-default alias row carrying the machine-readable
 // enable signal.
 const ENABLEABLE_ALIAS: AgentData = {
   slug: 'codex',
@@ -64,7 +64,7 @@ const selectionModelState = {
     | { slug: string; name: string; workingDirectory?: string }
     | undefined,
   agents: [AGENT] as AgentData[],
-  // Enable's FIND scope (#3027 M2). `null` mirrors the default: the scoped
+  // Enable's FIND scope (archive#3027). `null` mirrors the default: the scoped
   // set equals the rendered agents.
   scopedAgents: null as AgentData[] | null,
   agentConnections: [] as unknown[],
@@ -262,7 +262,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
   });
 
   test('non-global context with an unresolved project must not be silent', () => {
-    // The live #3013 state: context names a project the projects list cannot
+    // The live archive#3013 state: context names a project the projects list cannot
     // resolve. Dispatching would target a workspace the server cannot
     // resolve either — so no dispatch — but the user must be TOLD, not
     // ignored.
@@ -277,7 +277,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
 
   test('Enter on an unavailable agent speaks instead of silently returning', () => {
     // The keyboard path reaches handleSelect with no availability filter; the
-    // pointer path cannot (the row button is disabled). Review finding 1.
+    // pointer path cannot (the row button is disabled). Review.
     selectionModelState.agents = [UNAVAILABLE_AGENT];
     const onSelect = renderModal();
     fireEvent.keyDown(screen.getByPlaceholderText(/search/i), {
@@ -486,8 +486,8 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     expect(onSelect.mock.calls[0][0].slug).toBe('codex-agent');
   });
 
-  // station#3027(c). The owner's report: "text in new chat modal is way way
-  // too long .. and doesn't really indicate an issue to me". Each engine
+  // archive#3027(c). The owner's report: "text in new chat modal is way way
+  // too long.. and doesn't really indicate an issue to me". Each engine
   // default without an authored Agent printed the whole server sentence
   // inline; five engines made the picker a wall of amber prose that read as
   // an explanation rather than a state.
@@ -633,7 +633,7 @@ describe('shouldRouteScopedChatProject (#3013 routing seam)', () => {
   });
 
   test('a missing layout slug must NOT claim the route', () => {
-    // The live #3013 defect: claiming true here made every caller return on
+    // The live archive#3013 defect: claiming true here made every caller return on
     // a navigation that never happened — no chat, no modal close, no error.
     expect(
       shouldRouteScopedChatProject({ ...base, layoutSlug: undefined }),

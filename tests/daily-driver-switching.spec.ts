@@ -23,7 +23,7 @@ import {
 } from './helpers/orchestration';
 
 /**
- * Mid-conversation switching journeys (station#3307, mechanism map from the
+ * Mid-conversation switching journeys (archive#3307, mechanism map from the
  * issue's "what the mechanism should assert" section):
  *
  * 1. In-place model switch: the composer's model picker sets a per-turn

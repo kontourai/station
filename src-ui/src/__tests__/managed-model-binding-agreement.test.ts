@@ -5,10 +5,10 @@ import { resolveStationModelBinding } from '../views/agent-editor/agentsViewUtil
 /**
  * The runtime and the agent editor, asked the same question from ONE fixture.
  *
- * station#3743's fix expressed the binding rule a second time in the editor,
+ * archive#3743's fix expressed the binding rule a second time in the editor,
  * and the copy drifted on the case that decides whether an agent can run at
  * all: the editor chose "the sole READY candidate" where the runtime counts
- * every ENABLED one and calls two of them ambiguous (sol review, HIGH). One
+ * every ENABLED one and calls two of them ambiguous. One
  * ready connection beside one enabled-but-degraded connection, no app default,
  * made Create pressable and persisted no explicit binding — for an agent the
  * runtime then refused to run.

@@ -2,13 +2,13 @@ import type { AgentData } from '../../contexts/AgentsContext';
 
 /**
  * The one-click Enable affordance for an engine-default alias row
- * (station#3027). Keyed strictly on the server's machine-readable `enable`
+ * (archive#3027). Keyed strictly on the server's machine-readable `enable`
  * signal — never on parsing `unavailableReason`, which is explanatory text,
  * not an authorization to claim a particular repair will work (the same rule
  * `resolveNewChatAgentRemedy` follows).
  *
  * It lives in its own module, re-exported by `new-chat-modal-utils.ts`, for
- * the same reason `lastChosenModel.ts` does: station#3136 made it a read on an
+ * the same reason `lastChosenModel.ts` does: archive#3136 made it a read on an
  * EAGER surface (the chat dock's unavailable-agent banner) as well as the
  * modal's. Importing this two-line predicate through `new-chat-modal-utils`
  * pulls that module's selection-policy and execution/model-resolution graph

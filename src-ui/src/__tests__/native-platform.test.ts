@@ -25,7 +25,7 @@ import {
  * makes this fixture a second copy of the capability vocabulary — and when
  * #1655 added `local-browser-preview` it went stale silently, turning two
  * assertions about a VALID report into assertions that ran against an invalid
- * one and reddening `main` for every branch (station#1667).
+ * one and reddening `main` for every branch (archive#1667).
  *
  * Keying it by `NativeCapabilityId` makes the next addition a `npm run
  * typecheck` failure at the fixture instead of a runtime surprise in the gate:

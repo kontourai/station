@@ -289,7 +289,7 @@ export function PluginDetailPanel({
           </div>
         ) : null}
 
-        {/* station#3815: what this plugin HOLDS, not only what it still
+        {/* archive#3815: what this plugin HOLDS, not only what it still
             wants. The old control here surfaced the pending ask alone, so a
             permission disappeared from the product the moment it was
             granted. */}

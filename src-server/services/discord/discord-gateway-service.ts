@@ -328,7 +328,7 @@ export class DiscordGatewayService {
       return;
     }
 
-    // This is intentionally a refusal, not #2805's device-local queue. A
+    // This is intentionally a refusal, not archive#2805's device-local queue. A
     // Discord turn needs fresh remote identity/capability resolution at its
     // own ingress boundary; carrying it through an offline-device queue would
     // blur that decision and permit unbounded channel backlog.

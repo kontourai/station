@@ -13,7 +13,7 @@ const LEGACY_PATH_CASES = [
   ['/sessions/?session=x&extra=y', '/activity?session=x&extra=y'],
   ['/sessions?session=x&anything=y', '/activity?session=x&anything=y'],
   ['/developer/config', '/settings?view=station-config'],
-  // station#3313: Feature Previews retired into a Settings section.
+  // archive#3313: Feature Previews retired into a Settings section.
   ['/feature-previews', '/settings?view=feature-previews'],
   ['/developer/storage', '/connections/knowledge'],
   ['/developer/mcp', '/connections/tools'],
@@ -380,7 +380,7 @@ describe('app-shell routing', () => {
       type: 'not-found',
       path: '/this-route-does-not-exist',
     });
-    // station#settings-revamp slice 5: the dead `/providers` alias
+    // archive#settings-revamp: the dead `/providers` alias
     // (never emitted by getPathForView, only defensively consumed) is
     // removed — the bare path is a genuine 404 now, same as any other
     // unmatched route. The canonical `/connections/providers` and
@@ -547,7 +547,7 @@ describe('app-shell routing', () => {
     expect(
       getPathForView({ type: 'activity', sessionId: 'thread/alpha' }),
     ).toBe('/activity?session=thread%2Falpha');
-    // station#4052 slice 3: the one-shot evidence focus intent rides the
+    // archive#4052: the one-shot evidence focus intent rides the
     // session deep link. It only means anything alongside a session, and any
     // other `focus` value is ignored rather than carried.
     expect(

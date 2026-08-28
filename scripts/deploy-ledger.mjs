@@ -156,7 +156,7 @@ export function assertValidEntry(entry) {
  * same SHA is a re-record, not a second ship — REGARDLESS of the artifact
  * list. Artifact lists are conditional (nightly's workflow-artifact entry
  * depends on a step outcome), so keying on them let a re-run with fewer
- * artifacts double-record the same ship (review MED-5). */
+ * artifacts double-record the same ship. */
 export function entryIdentityKey(entry) {
   return [entry.channel, entry.sha, entry.version].join('|');
 }
@@ -191,7 +191,7 @@ export function previousShipSha(entries, channel, sha) {
  * leader of a same-sha batch (a multi-package publish writes one entry per
  * package, all at the build SHA). Only the leader carries the changelog
  * slice; companions reference it instead of repeating the same N-commit
- * slice once per package (review MED-3).
+ * slice once per package.
  */
 export function sameShaBatchLeader(entries, channel, sha) {
   const leader = entries.find(
@@ -453,7 +453,7 @@ export function main(argv) {
 // realpathSync both sides: an unresolved argv[1] under a symlinked workspace
 // makes this compare false, the script imports as a module, and it exits 0
 // having recorded nothing — the exact silent-unrecorded-ship gap this
-// feature exists to close (delta review LOW-A).
+// feature exists to close.
 if (
   process.argv[1] &&
   realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)

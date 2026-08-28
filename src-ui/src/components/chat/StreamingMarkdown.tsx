@@ -27,7 +27,7 @@ function PlainPre({ code }: { code: string }) {
 }
 
 /**
- * station#3354 — markdown for text that is still growing.
+ * archive#3354 — markdown for text that is still growing.
  *
  * The unclosed trailing code fence (if any) is split out BEFORE rendering and
  * rendered as a plain <pre>: react-markdown cannot tell an unterminated fence

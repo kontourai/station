@@ -1,5 +1,5 @@
 /**
- * Fixture copy for the unpaired first-run sample (station#2652 / #1772).
+ * Fixture copy for the unpaired first-run sample (archive#2652 / #1772).
  *
  * This is a labeled sample so the receipts tour has something true to point
  * at when no Station host is paired. It is not a live run, and it must not

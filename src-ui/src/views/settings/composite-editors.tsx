@@ -1,5 +1,5 @@
 /**
- * station#settings-revamp slice 3 (docs/design/settings-architecture.md §4
+ * archive#settings-revamp (docs/design/settings-architecture.md §4
  * "composite editors like the guardian config opt out with a custom
  * component"). Composite-kind registry fields NEVER get the generic
  * per-kind row renderer (`registry-row.tsx`) — each is either registered
@@ -42,7 +42,7 @@ export const COMPOSITE_EDITORS: Readonly<
  * Settings UI this slice:
  * - `agentConnections`: per-agent connection override dictionary — belongs
  *   with the entity it configures (docs/design/settings-architecture.md's
- *   S4 "Entity" scope rule), not the global Station scope section.
+ * "Entity" scope rule), not the global Station scope section.
  * - `templateVariables`: already has a working bespoke editor in
  *   `AgentDefaultsSection.tsx` (not routed through the generic registry-row
  *   path at all) — deferred here only for this completeness classification,
@@ -55,23 +55,23 @@ export const COMPOSITE_EDITORS: Readonly<
  * - `userProfile`: already has its purpose-built first-run editor in
  *   `AboutYouStep.tsx`; exposing a generic composite editor here would bypass
  *   its role/comfort vocabulary and reach disclosure.
- * - `fleetContribution` (station#1398 slice 1): the opt-in ships ahead of
+ * - `fleetContribution` (archive#1398): the opt-in ships ahead of
  *   any surface that can present it honestly. Its per-connection toggle
  *   belongs next to the model connections it names — global Station scope
  *   is the wrong home for a per-entity allowlist (same rule as
  *   `agentConnections`) — and the degraded states it produces are rendered
- *   by slice 4, which owns "the §4.5 diagnostic codes rendered wherever
+ * by, which owns "the §4.5 diagnostic codes rendered wherever
  *   fleet models appear". A generic composite JSON editor here would let an
  *   operator name a connection with no feedback about whether it is
  *   actually being offered.
- * - `contribution` (station#1500 slice 2.5): the scoped contribution contract
- *   ships with NO consumer at all — slice 6 owns the authenticated projection
- *   route, and slice 2.5's acceptance criteria exclude a UI on purpose. A
+ * - `contribution` (archive#1500.5): the scoped contribution contract
+ * ships with NO consumer at all — owns the authenticated projection
+ * route, and.5's acceptance criteria exclude a UI on purpose. A
  *   generic composite JSON editor here would be worse than nothing twice over:
  *   it would let an operator offer a repo, an agent, or a billable model
  *   connection to a project with no feedback about whether anything is being
  *   offered (`fleetContribution`'s reason, one axis wider), and it would do so
- *   for a per-space allowlist whose home is the space — §4.6 is explicit that
+ * for a per-space allowlist whose home is the space — §4.6 is explicit that
  *   the contribution question is asked "at the moment you first join or create
  *   a shared space", never as a global settings row. This entry DECLARES the
  *   absence rather than leaving the key unclassified, which is what this gate

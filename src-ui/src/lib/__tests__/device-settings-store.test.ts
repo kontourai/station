@@ -11,7 +11,7 @@ const ENVELOPE_KEY = 'station-device-settings-v1';
  * The store is a module-level singleton (mirrors `onboarding-setup-store.ts`)
  * whose one-time prior-setting migration runs in its constructor — so getting a
  * "fresh" instance per scenario means seeding real jsdom `localStorage`
- * before re-importing the module after `vi.resetModules()`, the same
+ * before re-importing the module after `vi.resetModules`, the same
  * pattern `active-chats-store.test.ts` uses for its own module-singleton
  * store (there via an injectable storage; here the store has none, so the
  * real global is seeded directly instead).
@@ -201,7 +201,7 @@ describe('device-settings-store', () => {
   });
 
   describe('v1 -> v2 backfill migration for already-upgraded devices (slice 3 review finding 1)', () => {
-    // The real bug: slice 2 (already live on main before slice 3) writes an
+    // The real bug: (already live on main before) writes an
     // empty v1 envelope on EVERY device's first boot, so a device that
     // upgrades straight to this slice already has a v1 envelope present —
     // `migrateFromPriorStorage` (which only runs when the envelope key is
@@ -308,7 +308,7 @@ describe('device-settings-store', () => {
     });
   });
 
-  // station#settings-revamp slice 4 review NOTE: `Number('')` and
+  // archive#settings-revamp NOTE: `Number('')` and
   // `Number('   ')` both coerce to `0`, not `NaN` — an unguarded number-kind
   // `parsePriorValue` would silently resolve an empty/whitespace prior raw
   // value to `0` instead of the setting's real default. Currently dead code
@@ -413,8 +413,8 @@ describe('device-settings-store', () => {
   });
 
   test('envelope version ladder scaffold: an already-current envelope passes through unchanged', async () => {
-    // CURRENT_ENVELOPE_VERSION is 2 (station#settings-revamp slice 3 review
-    // finding 1) — seed a v2 envelope directly to test the "already current,
+    // CURRENT_ENVELOPE_VERSION is 2 (archive#settings-revamp
+    //) — seed a v2 envelope directly to test the "already current,
     // no ladder step runs" case; v1-envelope upgrade behavior is covered by
     // the dedicated "v1 -> v2 backfill migration" describe block above.
     localStorage.setItem(
@@ -599,8 +599,8 @@ describe('device-settings-store', () => {
       const { deviceSettingsStore, DeviceSettingsImportVersionError } =
         await freshStore();
 
-      // CURRENT_ENVELOPE_VERSION is 2 (station#settings-revamp slice 3
-      // review finding 1) — version 3 is the one genuinely newer than this
+      // CURRENT_ENVELOPE_VERSION is 2 (archive#settings-revamp
+      //) — version 3 is the one genuinely newer than this
       // app understands.
       expect(() =>
         deviceSettingsStore.importEnvelope({
@@ -861,7 +861,7 @@ describe('device-settings-store', () => {
       expect(deviceSettingsStore.get('chatFontSize')).toBeNull();
     });
 
-    // station#settings-revamp slice 4 review finding 2: the number case
+    // archive#settings-revamp: the number case
     // ignored `descriptor.min`/`max`/`integer` entirely — an imported
     // `chatFontSize: 5000` (or `-12`, or `3.7` against `integer: true`)
     // landed unclamped into a real inline `fontSize` style (ChatSettingsPanel's

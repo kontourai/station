@@ -99,7 +99,7 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
         // The controller was already terminal.
       }
     };
-    // station#1818 R2: `code` is the stable machine contract
+    // archive#1818: `code` is the stable machine contract
     // (`classifyNativeTransportRefusal` reads it), while `detail` is
     // human/log text only. `fail` builds the SAME kind of `Error` shape for
     // both the channel's out-of-band codes ('cancelled', 'transport',
@@ -108,7 +108,7 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     // one shape, so `classifyNativeTransportRefusal` never has to guess
     // which path produced the `Error` it is given.
     //
-    // station#1818 review round 1 (LOW): `code` is `string | undefined`,
+    // archive#1818: `code` is `string | undefined`,
     // not defaulted to the raw message text, on purpose. A command not yet
     // converted to `NativeCommandError` rejects with a bare, uncoded
     // string — passing THAT string through as `.code` would let arbitrary
@@ -201,7 +201,7 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
         },
         channel,
       }).catch((error) => {
-        // station#1818 R2: this used to be `fail(String(error))`, which
+        // archive#1818: this used to be `fail(String(error))`, which
         // stringified a `NativeCommandError` rejection object to
         // `"[object Object]"` and discarded its `code` either way — the
         // exact reason `credential_missing` /

@@ -50,11 +50,11 @@ describe('Provider System', () => {
 
     it('warns when a manifest cannot be read, because the plugin silently disappears', () => {
       // This skip makes a plugin vanish -- its providers stop loading, with no
-      // user-facing signal anywhere. station#4307 widened what gets rejected
+      // user-facing signal anywhere. archive#4307 widened what gets rejected
       // here (`manifest.name` is now held to `isCanonicalPluginId` plus the
       // reserved-key check), so a plugin installed under a name that was legal
       // before and is not now disappears on upgrade. At debug level nobody
-      // ever learned why (station#4322).
+      // ever learned why (archive#4322).
       const pluginsDir = join(tempDir, 'plugins');
       const pluginDir = join(pluginsDir, 'broken-plugin');
       mkdirSync(pluginDir, { recursive: true });

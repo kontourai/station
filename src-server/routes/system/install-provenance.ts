@@ -68,7 +68,7 @@ export interface NightlySourceStamp {
    * Absolute path of the checkout this install was built from, when the
    * installer wrote one. Never trusted alone: self-update eligibility
    * re-verifies the path exists AND its git origin matches `repository` at
-   * request time (station#1624).
+   * request time (archive#1624).
    */
   sourceCheckout: string | null;
 }
@@ -149,7 +149,7 @@ export function readNightlySourceStamp(
  * Classify what kind of install this server is running from: a git source
  * checkout, a stamped desktop bundle, or an install with no provenance at all.
  * The old behavior — `resolveGitInfo` throwing "Not a git repository" straight
- * into the update UI — is what this replaces (station#1624).
+ * into the update UI — is what this replaces (archive#1624).
  */
 export function resolveInstallProvenance(
   moduleDir: string,
@@ -268,7 +268,7 @@ export type SelfUpdateEligibility =
 
 /**
  * Whether this desktop bundle may self-update by running its source
- * checkout's own installer (station#1624 git-based updates). The stamp's
+ * checkout's own installer (archive#1624 git-based updates). The stamp's
  * `sourceCheckout` is a hint, never an authorization: the path must exist
  * NOW, be a git checkout whose origin normalizes to the stamp's repository,
  * and contain the installer script.

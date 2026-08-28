@@ -7,7 +7,7 @@ const INVALID_PATH = /javascript:|data:|vbscript:/i;
 
 export interface UICommandRouteDeps {
   /**
-   * station#3567 fix round FIX 1: `UI_NAVIGATE` reaches a client only through
+   * archive#3567 fix round FIX 1: `UI_NAVIGATE` reaches a client only through
    * `/events`' `canRelayUiNavigateEvent`, which delivers in personal mode and
    * denies in hosted multi-tenant mode (the payload carries no destination
    * identity to route it to one tenant). This route must not report success
@@ -15,7 +15,7 @@ export interface UICommandRouteDeps {
    * personal-vs-hosted question and refuses up front when the answer is
    * "hosted", rather than emitting an event nobody will ever receive.
    *
-   * station#3567 second fix round FIX 1: REQUIRED, not optional. An
+   * archive#3567 second fix round FIX 1: REQUIRED, not optional. An
    * optional, defaulted safety decision is exactly the bug class this PR
    * exists to close — an unwired predicate previously read as "personal"
    * (`deps.isHostedDeployment?.() === true` is `false` when the field is
@@ -64,7 +64,7 @@ export function createUICommandRoutes(
         );
       }
       if (deps.isHostedDeployment()) {
-        // station#3567 second fix round FIX 3: 403, not 409 — what forbids
+        // archive#3567 second fix round FIX 3: 403, not 409 — what forbids
         // this is the deployment's own configuration, not a resource state
         // the client could resolve and retry (409's contract). No retry can
         // ever succeed here. Same shape and status as

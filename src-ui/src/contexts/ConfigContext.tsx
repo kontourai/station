@@ -11,8 +11,8 @@ type ConfigData = AppConfig & {
   defaultMaxSteps?: number;
 };
 
-// #198: `apiBase` was previously defaulted here too, but it had zero real
-// consumers (the actual resolved API base is `useApiBase()` /
+// archive#198: `apiBase` was previously defaulted here too, but it had zero real
+// consumers (the actual resolved API base is `useApiBase` /
 // `ApiBaseContext.tsx`, which implements the real same-origin-default
 // priority chain) — removed as dead code rather than fixed, since fixing it
 // would still leave it unused.
@@ -27,7 +27,7 @@ export interface ConfigSnapshot {
   /**
    * The config READ failed.
    *
-   * Review M2: this hook logged the error and returned `config: null`, which
+   * this hook logged the error and returned `config: null`, which
    * is also what an in-flight read looks like — so `SettingsView`'s
    * `if (!configData)` skeleton was permanent whenever the initial read
    * failed. A page that cannot say "this failed" says "still loading" forever.
@@ -91,7 +91,7 @@ export function useConfigActions() {
     onError: (error) => log.api('Failed to update config:', error),
   });
   // A transition, not a setting: `PUT /config/app` refuses `firstRun` outright
-  // (review M1), and this is the only way to record one.
+  //and this is the only way to record one.
   const firstRunMutation = useRecordFirstRunDecisionMutation({
     onError: (error) => log.api('Failed to record first-run decision:', error),
   });

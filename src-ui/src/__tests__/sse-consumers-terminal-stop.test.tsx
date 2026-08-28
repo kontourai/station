@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1094 (closing the SSE half of PR #1107's hot-loop-on-401 fix):
+ * archive#1094 (closing the SSE half of 's hot-loop-on-401 fix):
  * table-driven proof that every one of the five browser SSE consumers listed
  * in `authenticated-stream-inventory.test.ts`'s `PROTECTED_STREAM_CONSUMERS`
  * stops hammering its endpoint after a 401 — none of them override the
@@ -125,7 +125,7 @@ async function expectNoHammeringAfter401(
     await vi.advanceTimersByTimeAsync(120_000);
   });
   expect(matchingAttempts().length).toBe(1);
-  // station#3378 review: the `Accept` filter above cannot see a REST hot-loop
+  // archive#3378: the `Accept` filter above cannot see a REST hot-loop
   // BY CONSTRUCTION — it excludes every non-stream request a consumer makes,
   // which is exactly where a history-window poll would live. A consumer that
   // stopped hammering its stream while hammering an endpoint beside it would
@@ -193,7 +193,7 @@ const CASES: ConsumerCase[] = [
       _setApiBase(apiBase);
       renderHook(() => useMonitoring(), { wrapper: queryWrapper });
     },
-    // station#3436: the REST stats poll beside the SSE stream now derives
+    // archive#3436: the REST stats poll beside the SSE stream now derives
     // its own terminal stop from the same `isTerminalConnectionStatus`
     // vocabulary (`resolveMonitoringStatsRefetchInterval`), so this case no
     // longer needs a widened budget — the default (the capability re-probe's
@@ -202,7 +202,7 @@ const CASES: ConsumerCase[] = [
 ];
 
 /**
- * station#1848: the transient counterpart of the 401 case above. A 503 (or any
+ * archive#1848: the transient counterpart of the 401 case above. A 503 (or any
  * network failure) is correctly retried forever — the defect was the SHAPE of
  * that retry. Three of these five consumers configured
  * `maxRetryDelayMs === retryDelayMs`, which is not a backoff ladder but a
@@ -253,7 +253,7 @@ async function expectBoundedRetriesWhileFailing(
  * because its reconnect is governed by a different mechanism.
  *
  * Precisely: its `onError` does NOT close the stream — it calls
- * `negotiateWindow()`, which re-probes the session-event-window capability and
+ * `negotiateWindow`, which re-probes the session-event-window capability and
  * closes the stream only when that probe comes back not-capable, scheduling
  * recovery at `SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS` (30s) /
  * `SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS` (60s). So which mechanism bounds
@@ -279,7 +279,7 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     async ({ streamPathSubstring, origin, mount }) => {
       // A distinct origin per describe: `ensureOrchestrationEventStream` holds
       // a module-level single-flight map keyed by `apiBase`, so reusing the
-      // #1094 origin here would make whichever block runs second a no-op.
+      // archive#1094 origin here would make whichever block runs second a no-op.
       const laddered = origin.replace('https://', 'https://backoff-');
       box.apiBase = laddered;
       await expectBoundedRetriesWhileFailing(streamPathSubstring, () =>
@@ -405,10 +405,10 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     // The variant the other fixture cannot express: the capability probe
     // SUCCEEDS. This assertion is the inverse of the one it replaced.
     //
-    // It used to pin a defect (station#3378): with the probe healthy,
+    // It used to pin a defect (archive#3378): with the probe healthy,
     // `onOpen` (which fires even for a 503 response) starts hydration, the
     // bounded history window fetch also fails, and `recoverPersistedEvents`'s
-    // catch called `authenticatedStream.close()` — so the consumer STOPPED at
+    // catch called `authenticatedStream.close` — so the consumer STOPPED at
     // two attempts, and no timer, wake or reconnect ever brought the session's
     // live feed back. Bounded, but by a teardown, not by backoff, and a blip
     // in ONE endpoint was enough to trigger it.
@@ -470,12 +470,12 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
   it('useSessionEventStream stops the history ladder on a 401 whose body is not JSON', async () => {
     vi.useFakeTimers();
     const origin = 'https://backoff-session-nonjson-401.example.test';
-    // station#3378 review (HIGH). `unwrapOrchestrationResponse` reached its
-    // `StationHttpError` throw only after `response.json()` SUCCEEDED, so a
+    // archive#3378. `unwrapOrchestrationResponse` reached its
+    // `StationHttpError` throw only after `response.json` SUCCEEDED, so a
     // 401 with a non-JSON body — what a reverse proxy, tunnel or access
     // gateway in front of Station returns — surfaced as a bare `Error` and
     // classified transient. The history ladder then polled an endpoint that
-    // can never clear, forever: the station#1094 hot-loop class, reintroduced
+    // can never clear, forever: the archive#1094 hot-loop class, reintroduced
     // on a REST endpoint by the very fix that stopped the permanent freeze.
     //
     // The capability probe answers healthy so the window fetch actually runs;

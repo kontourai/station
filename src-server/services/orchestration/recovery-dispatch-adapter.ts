@@ -18,7 +18,7 @@ export interface RecoveryDispatchReplay {
   /**
    * Dispatchable attachments, not the persisted shape: a replay hands these
    * straight back to a provider, so every one must still have its bytes
-   * (station#3374). The coordinator refuses to replay a turn whose attachment
+   * (archive#3374). The coordinator refuses to replay a turn whose attachment
    * bytes it cannot resolve rather than re-running it with less than the user
    * sent.
    */

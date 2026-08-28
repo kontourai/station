@@ -2,7 +2,7 @@ import type { ProjectConfig } from '../../contexts/ProjectsContext';
 import type { ProjectForm } from './types';
 
 /**
- * §3.3 (station#1004, unification slice 7): the project availability filter
+ * §3.3 (archive#1004, unification): the project availability filter
  * selects among GLOBAL agents only — a project-owned agent is implicitly
  * available in its own project and never subject to this opt-in filter
  * (agent-engine-unification.md §3.3).

@@ -63,11 +63,11 @@ export class AttentionProjectionService {
 
   /**
    * Bound the cost of resolving the thread's currently-open `request.opened`
-   * events (station#1185) — `readSession` replays session events, same
+   * events (archive#1185) — `readSession` replays session events, same
    * rationale as `flowRunCache` above. Caches every still-open request on
    * the thread (keyed by `requestId`), not just the latest one, because both
    * `projectLifecycle` (wants the latest) and `projectApproval` (wants one
-   * specific request, matched by id — station#1185 fix round, Ask #4
+   * specific request, matched by id — archive#1185 fix round, Ask #4
    * convergence) read from the same underlying event replay.
    */
   private readonly openRequestsCache = new Map<
@@ -92,7 +92,7 @@ export class AttentionProjectionService {
       'has' | 'canRead'
     >,
     /**
-     * station#1914: durable per-item acknowledgement for a `kind` that is
+     * archive#1914: durable per-item acknowledgement for a `kind` that is
      * derived on every read and therefore has no stored record a
      * `DELETE /notifications/:id` could ever reach — see
      * `SessionFailedAttentionItem`'s doc for why `session-failed` needs this
@@ -138,7 +138,7 @@ export class AttentionProjectionService {
   async list(authority?: SessionReadAuthority): Promise<AttentionProjection> {
     const readAuthority = authority ?? this.defaultReadAuthority();
     attentionProjectionLoads.add(1);
-    // Fetched once up front (station#1284) so the past-resuming filter below
+    // Fetched once up front (archive#1284) so the past-resuming filter below
     // can check an orchestration-kind approval notification's backing
     // session without a second listSessionReadModel() round-trip.
     const sessions =
@@ -229,7 +229,7 @@ export class AttentionProjectionService {
       : [...approvals, ...lifecycle, ...gateItems];
     const items = decorated.sort(compareAttentionItems);
     // Acked items stay IN `items` (history, never deleted) but drop out of
-    // the actionable count — the whole point of station#1914's
+    // the actionable count — the whole point of archive#1914's
     // acknowledge-not-dismiss design for a kind with nothing to delete.
     const pendingCount = items.filter((item) => !item.acknowledgedAt).length;
     attentionProjectionResults.record(items.length);
@@ -259,7 +259,7 @@ export class AttentionProjectionService {
 
   /**
    * Persist an acknowledgement of the CURRENT version of attention item
-   * `itemId` (station#1914) — re-derives `list()` to find the item's own
+   * `itemId` (archive#1914) — re-derives `list()` to find the item's own
    * `updatedAt` rather than trusting a client-supplied timestamp, so an ack
    * can never be minted for a version that was never actually projected.
    * Returns `false` when acknowledgement is unavailable (no store injected)
@@ -289,7 +289,7 @@ export class AttentionProjectionService {
    * bounded and its bindings are cached for FLOW_RUN_CACHE_TTL_MS across
    * reads). "Stopped" is the contract-derived
    * `isSessionLifecycleStateStopped` — completed/failed/canceled, the states
-   * whose only way out is a restart. station#1548: this used to be a third
+   * whose only way out is a restart. archive#1548: this used to be a third
    * hand-written `TERMINAL_LIFECYCLE_STATES` copy in this file, with the
    * same membership but no relationship to the contract that defines it.
    */
@@ -374,7 +374,7 @@ export class AttentionProjectionService {
    * request-less session already gets) instead of rejecting the whole
    * batched `Promise.all` in `list()` and blanking every other item —
    * approvals and gate items included, not just this session's own item
-   * (station#1185 fix round, review finding).
+   * (archive#1185 fix round, review finding).
    */
   private async getCachedOpenRequests(
     threadId: string,
@@ -413,7 +413,7 @@ export class AttentionProjectionService {
   /**
    * The thread's latest still-open `request.opened` event, if any — the
    * evidence a needs_input/review_pending item should be projected from
-   * instead of the coarser lifecycle flag (station#1185). `null` when the
+   * instead of the coarser lifecycle flag (archive#1185). `null` when the
    * session has no resolvable open request (a genuine `needs_input`/
    * `review_pending` state can arise from other transitions, e.g.
    * `session.state-changed`, with no backing request at all — see
@@ -430,15 +430,15 @@ export class AttentionProjectionService {
   /**
    * A `needs_input`/`review_pending` lifecycle item, projected from the
    * session's open `request.opened` event when one is resolvable
-   * (station#1185) rather than the bare lifecycle flag — see module doc.
-   * station#3227 B1: a `blocked` session projects the same waiting-on-you
+   * (archive#1185) rather than the bare lifecycle flag — see module doc.
+   * archive#3227 B1: a `blocked` session projects the same waiting-on-you
    * `needs_input` kind (with its `blockedReason` as the fallback body), and
    * a session the board closed (`status: 'closed'`) projects nothing —
    * both adjudications now come from the shared
    * `sessionAttentionDisposition` fold the client's canonical label uses.
    *
-   * station#1548: a `failed` session with no more specific request behind it
-   * now projects a `session-failed` item. #1296's own test asserted in a
+   * archive#1548: a `failed` session with no more specific request behind it
+   * now projects a `session-failed` item. archive#1296's own test asserted in a
    * comment that this surfacing already existed ("the UI still shows
    * attention via `lifecycleState === 'failed'` itself"); it did not, and
    * that unchecked premise is what made zeroing `pendingReview` on a failed
@@ -449,15 +449,15 @@ export class AttentionProjectionService {
     session: OrchestrationSessionSummary,
     authority: SessionReadAuthority,
   ): Promise<AttentionItem | null> {
-    // station#1284 originally added a second terminal guard here, and after
-    // the #1548 merge it was deliberately not re-applied: a HAND-WRITTEN
-    // consumer-side terminality copy is the drift #1548's AC2 exists to
+    // archive#1284 originally added a second terminal guard here, and after
+    // the archive#1548 merge it was deliberately not re-applied: a HAND-WRITTEN
+    // consumer-side terminality copy is the drift archive#1548's AC2 exists to
     // prevent (its copy had counted `failed` as terminal and zeroed a
     // genuinely outstanding approval). The `finished` short-circuit below is
-    // NOT that copy's return (station#3227 B1): it is the SHARED
+    // NOT that copy's return (archive#3227 B1): it is the SHARED
     // `sessionAttentionDisposition` fold — the same derivation the client's
     // canonical fold already applied — whose ordering puts `failed` FIRST,
-    // so the exact state #1548's hand copy got wrong cannot reach the
+    // so the exact state archive#1548's hand copy got wrong cannot reach the
     // finished arm. What it adds over the producer-side zeroing is the
     // `status: 'closed'` case the producer cannot express: `status` is
     // transport state, independent of the event-fold, so a closed session
@@ -465,7 +465,7 @@ export class AttentionProjectionService {
     // projecting an item here while every client surface filed it under
     // Recently finished.
     //
-    // station#1745/#1779, THE `provider_absent` ARM, and it is not a second
+    // archive#1745/#1779, THE `provider_absent` ARM, and it is not a second
     // terminality decision: `needs_input` and `review_pending` are the two
     // kinds derived FROM AN OPEN REQUEST, and this READS the decoration the
     // summary already carries rather than asking a private service channel
@@ -476,10 +476,10 @@ export class AttentionProjectionService {
     // the SESSION, not a claim about an outstanding request, and the old
     // pass preserved it too (the resting-state guard existed for that case).
     //
-    // station#1914 ADDS ONE MORE GATE, in the SAME shape as the
+    // archive#1914 ADDS ONE MORE GATE, in the SAME shape as the
     // `provider_absent` arm above (a condition inside this method's kind
     // selection, not a second terminality pass): a session whose engine BINDING is
-    // `dead` (station#1827/#1904 — the SDK/adapter gave a structured,
+    // `dead` (archive#1827/#1904 — the SDK/adapter gave a structured,
     // terminal answer about this exact `--resume`d binding) has nothing left
     // to act on either, for the same reason `provider_absent` sessions do
     // not project `needs_input`/`review_pending` — no retry, no config
@@ -497,7 +497,7 @@ export class AttentionProjectionService {
     // A session-failed item that is NOT hopeless (binding still `error`, or
     // simply `idle`/`closed` short of dead) but that the user has already
     // SEEN and cannot usefully act on further is the other half of the
-    // station#1914 fix, and it is deliberately NOT a suppression: see
+    // archive#1914 fix, and it is deliberately NOT a suppression: see
     // `decorateAcknowledgement` below, which drops an ACKNOWLEDGED item out
     // of `pendingCount` without ever un-projecting it here.
     //
@@ -516,15 +516,15 @@ export class AttentionProjectionService {
     // pinned by its own test rather than left to inference.
     //
     // THE ORIGINAL DELIBERATE `answerable`-KEYED SUPPRESSION IN THE SYSTEM,
-    // now joined by the station#1914 `status !== 'dead'` gate below — both
+    // now joined by the archive#1914 `status !== 'dead'` gate below — both
     // on the same principle: every other
     // consumer annotates; the bell badge is a count of ACTIONABLE items, and
     // it subtracts INTO the notification popover (which renders
     // notifications minus attention-projected), where the row is annotated
     // rather than lost. Making that popover render the reason is
-    // station#1780.
+    // archive#1780.
     //
-    // station#3227 B1: WHETHER this session needs the user is no longer
+    // archive#3227 B1: WHETHER this session needs the user is no longer
     // decided by a ternary private to this method. The ordered
     // failed → finished → awaiting → active adjudication is
     // `sessionAttentionDisposition` (`@kontourai/station-contracts/
@@ -546,7 +546,7 @@ export class AttentionProjectionService {
 
     let via: SessionAwaitingVia;
     if (disposition.state === 'failed') {
-      // station#1548's request-outranks-failure exception, preserved: a
+      // archive#1548's request-outranks-failure exception, preserved: a
       // retryable failure with a still-open approval projects the more
       // specific `review_pending` item — the request is still genuinely
       // outstanding, and the item says what to DO where the client's label
@@ -563,7 +563,7 @@ export class AttentionProjectionService {
       via = disposition.via;
     }
 
-    // A `blocked` session projects the waiting-on-you kind (station#3227
+    // A `blocked` session projects the waiting-on-you kind (archive#3227
     // B1). `needs_input` rather than a new parallel kind: the vocabulary's
     // waiting kinds are derived from what the user must DO (answer a
     // request, decide a review), and a blocked session asks for exactly the
@@ -605,8 +605,8 @@ export class AttentionProjectionService {
    * The live approval-request notification's own backing `request.opened`
    * event, when resolvable — converges the live-approval card's
    * presentation onto the same evidenced `presentOpenRequest` logic the
-   * needs_input/review_pending lifecycle path uses, per issue #1185 Ask #4
-   * ("the two paths should converge on one presentation") — station#1185
+   * needs_input/review_pending lifecycle path uses, per issue archive#1185 Ask #4
+   * ("the two paths should converge on one presentation") — archive#1185
    * fix round.
    *
    * Only `requestKind: 'orchestration'` notifications (built in
@@ -636,7 +636,7 @@ export class AttentionProjectionService {
    * metadata attached at all. When a live orchestration request is
    * resolvable behind it, its title/body converge onto the same detailed,
    * evidence-based `presentOpenRequest` copy the lifecycle path uses
-   * (station#1185 fix round); otherwise this falls back to the
+   * (archive#1185 fix round); otherwise this falls back to the
    * notification's own title/body exactly as before.
    */
   private async projectApproval(
@@ -706,7 +706,7 @@ export class AttentionProjectionService {
   }
 
   /**
-   * station#1284 (AC3) / station#1745: an orchestration-kind approval
+   * archive#1284 (AC3) / archive#1745: an orchestration-kind approval
    * notification whose backing session has nothing left that could answer
    * the request. `isApprovalLive` above covers the registry-kind case only —
    * it says so explicitly, because "session presence" is not per-request
@@ -714,7 +714,7 @@ export class AttentionProjectionService {
    * ended without a drained `request.resolved` leaves its notification
    * behind with nothing in the normal event path to ever clear it.
    *
-   * station#1745 moved the whole cancellation here. This used to cover only
+   * archive#1745 moved the whole cancellation here. This used to cover only
    * the `past_resume` half; the `provider_absent` half was covered by a
    * boot-time pass that WROTE a synthetic `request.resolved`, with a
    * `providerRegistrationSettled` barrier in front of it because that write
@@ -769,7 +769,7 @@ function latestOpenRequestFromMap(
  * rather than implying it exists.
  *
  * Keyed by the awaiting `via`, not the projected item kind — a blocked
- * session projects kind `needs_input` (station#3227 B1) but must say it is
+ * session projects kind `needs_input` (archive#3227 B1) but must say it is
  * blocked, with the recorded `blockedReason` as the cause when one exists
  * (the same field `buildSessionFailedItem` reads; absence stays absence,
  * never an invented cause).
@@ -801,7 +801,7 @@ function fallbackLifecyclePresentation(
 
 /**
  * The evidenced title/body for a `needs_input`/`review_pending` item (and,
- * since the station#1185 fix round, a live `approval` item — see
+ * since the archive#1185 fix round, a live `approval` item — see
  * `AttentionProjectionService.resolveApprovalOpenRequest`), built from the
  * request's own `requestType` — the signal that actually distinguishes "a
  * tool call is waiting" from "the agent asked a question" — rather than the
@@ -895,7 +895,7 @@ function presentAskRequest(
 const MAX_DESCRIPTION_LENGTH = 400;
 /**
  * Bound on a session's own `displayTitle` when it becomes an attention row's
- * headline (station#3203). `displayTitle` is already server-normalized and
+ * headline (archive#3203). `displayTitle` is already server-normalized and
  * bounded upstream; this is a display bound for a one-line row, not a
  * sanitation claim about the field.
  */
@@ -921,7 +921,7 @@ const TOOL_ARGS_PAYLOAD_FIELDS = [
 
 /**
  * A bounded, secret-safe summary of a `request.opened` payload's tool
- * name/args (station#1185, deliver #3) — never the raw arg values, which
+ * name/args (archive#1185, deliver #3) — never the raw arg values, which
  * may be large or carry secrets. Argument values are reduced to a shape
  * summary (field names only, each individually bounded — see
  * `MAX_ARG_KEY_LENGTH` — then hard-truncated as a whole); string/number/
@@ -1051,7 +1051,7 @@ function projectGateOutcome(
 }
 
 /**
- * station#3203: everything a `session-failed` row needs to say WHAT failed,
+ * archive#3203: everything a `session-failed` row needs to say WHAT failed,
  * WHY, and WHICH session it was. Pure and exported so the payload has direct
  * coverage without standing up the whole projection — every field is read off
  * the summary this projection already holds, and a field the summary did not
@@ -1061,12 +1061,12 @@ function projectGateOutcome(
  * `'Session failed'`, which `attentionKindLabel` already renders as the row's
  * eyebrow — so the reported tray showed those three words twice per row and
  * three failures from three sessions were indistinguishable. It falls back to
- * `'Untitled session'`, never a thread id (station#3139).
+ * `'Untitled session'`, never a thread id (archive#3139).
  *
  * The fallback deliberately does NOT re-derive `sessionTitle`'s engine-named
  * branch ("Claude Code session") from src-ui/src/utils/sessionDisplay.ts: that
  * precedence, and the provider→label table under it, live UI-side, and a
- * server-side copy is the drift #3139 was. The engine reaches the row as the
+ * server-side copy is the drift archive#3139 was. The engine reaches the row as the
  * raw `engine` id instead and the UI labels it with its own table, so there is
  * one table, not two.
  *
@@ -1101,7 +1101,7 @@ export function buildSessionFailedItem(
 }
 
 /**
- * station#3203: a failed session's "Open session" must land on the one
+ * archive#3203: a failed session's "Open session" must land on the one
  * sub-view that renders the failure. `sessionOpenHref`'s project branch opens
  * the CHAT DOCK (`?chat=…&dock=open`), and the dock has no failure surface at
  * all — `failureText` is derived in `useMutableSessionDetailState` and
@@ -1122,7 +1122,7 @@ function failedSessionOpenHref(session: OrchestrationSessionSummary): string {
 function sessionOpenHref(session: OrchestrationSessionSummary): string {
   const projectSlug = session.delegation?.projectSlug ?? session.projectSlug;
   if (projectSlug) {
-    // station#1284 (AC4): `dock=open` so the deep link actually opens the
+    // archive#1284 (AC4): `dock=open` so the deep link actually opens the
     // chat dock instead of landing on the project layout with the dock
     // still closed (navigation-store.ts's `isDockOpen` reads this param).
     // `/activity?session=<id>` below is not a dock target and stays plain.

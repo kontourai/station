@@ -3,11 +3,11 @@ import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * Epic station#4142 (M2): a route is a PLACEMENT of a pane, not a second
+ * Epic archive#4142: a route is a PLACEMENT of a pane, not a second
  * identity. `/` renders Home through the pane path — `HomeWorkspacePane`
  * with the canonical occurrence — and the ambient dock renders the SAME
  * pane. That leaves `HomeSurface` with exactly one mounter reachable from
- * the shell. A second mounter is how the pre-M2 split re-forms: a route
+ * the shell. A second mounter is how the pre- split re-forms: a route
  * body that renders the surface directly bypasses the occurrence, the
  * canonical-instance check, and the dock action, and the two copies then
  * drift (`docs/design/pane-or-shell.md`).
@@ -39,7 +39,7 @@ function* sourceFiles(dir: string): Generator<string> {
 
 /**
  * A VALUE import of the `HomeSurface` binding from the HomeSurface module.
- * `import type { ... }` and `type HomeViewModel` specifiers are erased at
+ * `import type {... }` and `type HomeViewModel` specifiers are erased at
  * build time and cannot mount anything, so they are not counted; a mixed
  * import that carries the value binding (`{ HomeSurface, type X }`) is.
  */

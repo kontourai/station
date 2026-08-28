@@ -12,7 +12,7 @@ const UNDO_WINDOW_MS = 4000;
 
 /**
  * How many rows each section of the popover has room for. This is a display
- * budget, not a fact about the data — station#3222: the moment it bites, the
+ * budget, not a fact about the data — archive#3222: the moment it bites, the
  * heading has to say so, because the number the reader arrived from is the
  * bell badge and the badge counts the whole pending set.
  */
@@ -63,7 +63,7 @@ export function NotificationHistory({
     isLoading: attentionLoading,
     refetch: refetchAttention,
   } = useAttentionQuery(apiBase);
-  // Review H1. "All caught up" is the most definitive empty state in the app —
+  // "All caught up" is the most definitive empty state in the app —
   // a reassurance — and BOTH reads settle with no data when they fail, so a
   // failed read told the user there was nothing waiting on them. The failure
   // outranks the reassurance.
@@ -72,7 +72,7 @@ export function NotificationHistory({
    * "All caught up" is a claim about the data, so it may only render once the
    * data it describes has actually arrived. This panel used to be mounted for
    * the app's whole lifetime, which kept both queries warm and hid the gap;
-   * now that it mounts on first open (station#2751) the first paint genuinely
+   * now that it mounts on first open (archive#2751) the first paint genuinely
    * has nothing yet, and an unguarded empty state would assert an inbox is
    * clear while it is still being fetched — and again after a cache eviction.
    */
@@ -96,7 +96,7 @@ export function NotificationHistory({
     // Intentionally mount-scoped: this is an unmount flush, not a subscription.
   }, []);
   const actionMutation = useNotificationActionMutation();
-  // station#1780: the row the attention projection correctly dropped lands
+  // archive#1780: the row the attention projection correctly dropped lands
   // in "Recent activity" below. It is annotated here, never filtered again.
   const answerabilityFor = useNotificationAnswerability();
   const recentNotifications = useMemo(() => {
@@ -110,7 +110,7 @@ export function NotificationHistory({
       .slice(0, SECTION_ROW_LIMIT);
   }, [attention?.items, notifications]);
   /**
-   * station#3222 / station#3227 A5. `AttentionProjection.items` keeps
+   * archive#3222 / archive#3227 A5. `AttentionProjection.items` keeps
    * acknowledged items on purpose — acknowledgement is history, not deletion
    * (`attention-projection.ts:225-228`) — while `pendingCount`, the number the
    * bell badge above this popover renders, counts only the unacknowledged ones

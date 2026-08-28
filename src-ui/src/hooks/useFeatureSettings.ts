@@ -1,7 +1,7 @@
 /**
  * useFeatureSettings — thin hook wrapper over the `featureSettings` device
  * setting (device-settings-store.ts). Kept as its own hook (rather than
- * inlining `useDeviceSettings().featureSettings` at every call site) so its
+ * inlining `useDeviceSettings.featureSettings` at every call site) so its
  * existing consumers (App.tsx, ChatDockBody.tsx, VoiceFeaturesSection.tsx)
  * see no shape change from the pre-unification per-feature localStorage
  * version this replaces.

@@ -53,14 +53,14 @@ interface ChatMessageListProps {
   renderOverride?: (msg: ChatMessage, idx: number) => React.ReactNode | null;
   emptyState?: React.ReactNode;
   /**
-   * station#1301 slice 1: when provided, the background-tasks banner below
+   * archive#1301: when provided, the background-tasks banner below
    * becomes a real tap target opening the Background tasks sheet instead of
    * a passive status line. Omitted call sites (e.g. a test render with no
    * dock chrome around it) keep the original inert banner.
    */
   onOpenBackgroundTasks?: () => void;
   /**
-   * "via <Station>" row attribution (station#2585) — threaded from a call
+   * "via <Station>" row attribution (archive#2585) — threaded from a call
    * site that resolves the active saved Station.
    * Omitted call sites (including existing tests) simply render no owner
    * chip on message rows.
@@ -71,7 +71,7 @@ interface ChatMessageListProps {
   /**
    * The host renders its own Summarize entry point (a gear opening
    * `ChatSettingsPanel`), so `SessionSummaryCard` may demote its inline button
-   * (#3310). Defaults to false: a host that does not claim one keeps the
+   * (archive#3310). Defaults to false: a host that does not claim one keeps the
    * button rather than silently losing the affordance.
    */
   hasSettingsEntryPoint?: boolean;
@@ -181,7 +181,7 @@ function ChatMessageListComponent({
   );
 
   const messages = activeSession.messages || EMPTY_MESSAGES;
-  // station#3300: the turn fold, not the session flags — a settled turn must
+  // archive#3300: the turn fold, not the session flags — a settled turn must
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
   // derivation for THIS row specifically.
@@ -434,14 +434,14 @@ function ChatMessageListComponent({
     [agent],
   );
 
-  // station#1424 review fix (S3, then round 3 NEW-1): the streaming row's
+  // archive#1424 fix (then): the streaming row's
   // identity/owner attribution is resolved from the CURRENT live agent
   // binding — honest while this turn is actually executing. The engine chip
   // is deliberately NOT threaded here: it briefly asserted an engine
   // identity while streaming and then retracted it the instant the row
   // converted to a persisted `MessageBubble`. No surface may assert an
   // engine identity it's going to take back.
-  // station#1434 made the persisted row's chip real (it reads the turn's own
+  // archive#1434 made the persisted row's chip real (it reads the turn's own
   // provenance envelope), and this row still shows none — deliberately. The
   // envelope is assembled from the turn's TERMINAL event, so while the turn
   // is still streaming there is no per-turn record to read; the only source
@@ -449,7 +449,7 @@ function ChatMessageListComponent({
   // resulting transition is additive (nothing claimed, then a fact once it
   // is observed), never a retraction — pinned by
   // `MessageAttribution.streamingParity.test.tsx`.
-  // station#1424 review fix (round 3 NEW-6): falls back to the session's own
+  // archive#1424: falls back to the session's own
   // threaded `agentName` (never blank) when `agents.find` misses — e.g. the
   // agent was deleted after this session started — so the row still reads
   // as attributable instead of silently dropping the identity text.
@@ -574,7 +574,7 @@ function ChatMessageListComponent({
             {!isStreaming &&
               (activeSession.backgroundTasks?.length ?? 0) > 0 &&
               (onOpenBackgroundTasks ? (
-                // station#1301 slice 1 (review LOW fix): a `<button>` cannot
+                // archive#1301: a `<button>` cannot
                 // also carry `role="status"` (an interactive element and a
                 // live region are mutually exclusive ARIA roles) — a visually
                 // hidden sibling carries the exact live-region semantics the

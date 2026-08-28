@@ -1,5 +1,5 @@
 /**
- * station#1497 — a coding layout's working directory is derived from its owning
+ * archive#1497 — a coding layout's working directory is derived from its owning
  * project, never persisted into the layout's own config.
  *
  * These tests deliberately exercise TRANSITIONS rather than snapshots. The
@@ -563,7 +563,7 @@ describe('an unreadable project record fails the request rather than degrading',
   });
 });
 
-// ── station#1503 slice 5 — layouts reference repos by id ───────────────────
+// ── archive#1503 — layouts reference repos by id ───────────────────
 
 describe('codingLayoutRepoId (pure)', () => {
   test('reads a non-empty string repoId from a CODING layout only', () => {

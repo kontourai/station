@@ -62,7 +62,7 @@ export function createWorkspacePanePreviewRoutes(
       try {
         // EXPAND: the preview service realpaths this. Raw, every file in the
         // pane rendered "unreadable" and every download 404'd — silently, and
-        // indistinguishably from a genuinely unreadable file (station#3155).
+        // indistinguishably from a genuinely unreadable file (archive#3155).
         const configured = (await projectService.getProject(slug))
           .workingDirectory;
         workingDirectory = configured
@@ -117,7 +117,7 @@ export function createWorkspacePanePreviewRoutes(
       try {
         // EXPAND: the preview service realpaths this. Raw, every file in the
         // pane rendered "unreadable" and every download 404'd — silently, and
-        // indistinguishably from a genuinely unreadable file (station#3155).
+        // indistinguishably from a genuinely unreadable file (archive#3155).
         const configured = (await projectService.getProject(slug))
           .workingDirectory;
         workingDirectory = configured

@@ -220,7 +220,7 @@ describe('settings catalog completeness', () => {
     expect(rendered).toHaveLength(expected.length);
   }
 
-  // Review M2. `useConfigSnapshot` logged the config query's error and
+  // `useConfigSnapshot` logged the config query's error and
   // returned `config: null` — the same shape an in-flight read has — so the
   // `if (!configData)` branch below drew the loading skeleton FOREVER on a
   // failed initial read. A page that cannot say "this failed" says "still
@@ -262,7 +262,7 @@ describe('settings catalog completeness', () => {
     const rendered = await renderedCatalogIds();
     const expected = visibleCatalogIds({ isMobile: false });
     expectExactCatalog(rendered, expected);
-    // 37 at the merge base; +2 from station#3313 (feature-previews,
+    // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
     // sidebar-sections. Counted from the merged catalog, not added up.
     expect(SETTINGS_CATALOG).toHaveLength(40);
@@ -608,7 +608,7 @@ describe('settings catalog completeness', () => {
     ).toBe('201');
   });
 
-  // station#3313 review: nothing pinned that `?view=` resolves at all. The
+  // archive#3313: nothing pinned that `?view=` resolves at all. The
   // test below passes `view=system` but asserts only the `highlight`
   // behaviour, so making `?view=` a no-op left 161 tests green — and this
   // branch retires the standalone /feature-previews route in favour of a

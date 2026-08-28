@@ -112,7 +112,7 @@ export function CoreUpdateLaunchCheck({
     if (!isMobile) return;
     // A build with no update feed has not failed a check — it was built
     // without an update channel, which is correct for a dev/debug build.
-    // Reporting that state as build identity is #2211; it is not an alert.
+    // Reporting that state as build identity is archive#2211; it is not an alert.
     if (!feedUrl || !providerOrigin || !installedVersion) return;
     let feed: URL;
     let trustedOrigin: string;

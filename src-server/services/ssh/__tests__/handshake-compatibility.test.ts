@@ -152,7 +152,7 @@ describe('public handshake capability flags (station#1095)', () => {
     }
   });
 
-  // station#1398 §5.2 rule 1: whatever the fleet arc eventually advertises
+  // archive#1398 §5.2 rule 1: whatever the fleet arc eventually advertises
   // here is a static protocol fact only. It must never become "this machine
   // has a GPU worth asking about" — the handshake is public and
   // unauthenticated, so anything in this body is readable by any LAN or

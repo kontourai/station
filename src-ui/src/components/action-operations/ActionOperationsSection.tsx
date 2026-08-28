@@ -157,12 +157,12 @@ export function ActionOperationsSection() {
   // one-off string. Row-shaped, to mirror the operation rows this pane shows
   // once the read resolves. Scoped to the genuine initial load only
   // (`isLoading` — no data has ever been read, no error has been recorded)
-  // — see the review finding below for why the error branch does NOT get
+  // see the below for why the error branch does NOT get
   // the same treatment.
   if (isLoading) {
     return <SkeletonList count={2} label="Connecting to operation status" />;
   }
-  // station#4474 review round: this used to branch again on `isFetching` and
+  // archive#4474: this used to branch again on `isFetching` and
   // show a SECOND SkeletonList ("Reconnecting…") while an error persists
   // with no cached data. `useActionOperationsQuery` retries on a 5s
   // `refetchInterval`, so `isFetching` flips true/false indefinitely while
@@ -171,7 +171,7 @@ export function ActionOperationsSection() {
   // a cycle (measured with a real Chromium page at 390px). An automatic
   // background retry is not news (the same "auto-retry doesn't banner"
   // stance ConnectionBannerSource already takes for transient reachability,
-  // station#3297) — so both arms of "error, no data" now render the SAME
+  // archive#3297) — so both arms of "error, no data" now render the SAME
   // static line regardless of `isFetching`, which is what makes the
   // in-flight state invisible to this pane's own layout instead of merely
   // quieter.

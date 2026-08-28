@@ -22,7 +22,7 @@
   }
 }
 
-/* Per-server MCP-UI render permission toggle (S2). */
+/* Per-server MCP-UI render permission toggle. */
 .editor-toggle-field {
   display: flex;
   align-items: center;
@@ -43,7 +43,7 @@
   opacity: 0.6;
 }
 
-/* ── Integration list icon: glyph + connectivity badge (issue #691) ── */
+/* ── Integration list icon: glyph + connectivity badge (issue archive#691) ── */
 .integration-list-icon {
   position: relative;
   display: inline-flex;

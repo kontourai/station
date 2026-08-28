@@ -58,7 +58,7 @@
   color: var(--k-text-faint);
 }
 
-/* Held-previous-selection state (station#3092): the chips/claims below
+/* Held-previous-selection state (archive#3092): the chips/claims below
    still belong to the OUTGOING project or bundle while the new one loads.
    Dim the body so it reads as provisional, and surface the notice
    unconditionally — dimming alone is not enough for a screen-reader user. */

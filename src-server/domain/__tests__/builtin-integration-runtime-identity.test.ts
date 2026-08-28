@@ -1,12 +1,12 @@
 /**
- * station#3063 — cross-process reload ping-pong.
+ * archive#3063 — cross-process reload ping-pong.
  *
  * Two servers sharing one `~/.station` home (desktop app + launchd service)
  * used to rewrite `integrations/station-control/integration.json` (and
  * station-docs) on every `reloadAgents()`, each baking in its OWN dist path
  * and port. `integrations/` is a watched config root, so each write fired
  * the other process's watcher → reload → rewrite, ~1/s forever, and the
- * #1588 byte-identical save skip could never converge because the two
+ * archive#1588 byte-identical save skip could never converge because the two
  * writers' bytes legitimately disagreed.
  *
  * These tests pin the structural fix at the ConfigLoader seam, against real
@@ -163,7 +163,7 @@ describe('builtin integration runtime identity (station#3063)', () => {
 
     const docs = await loaderA.loadIntegration('station-docs');
     expect(isBuiltinStationDocs('station-docs', docs)).toBe(true);
-    // station#1547: the loaded docs shape stays env-free.
+    // archive#1547: the loaded docs shape stays env-free.
     expect(docs.env).toBeUndefined();
   });
 

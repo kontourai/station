@@ -555,7 +555,7 @@ describe('withPluginContentLock bookkeeping (station#4288, delta review)', () =>
 });
 
 /**
- * station#4309 follow-up, defect 1. The refusal has to be RECOGNISABLE after
+ * archive#4309 follow-up, defect 1. The refusal has to be RECOGNISABLE after
  * every layer above it has rewrapped it, and it has to name plugins rather
  * than lock keys — a route re-deriving names from the key format is the
  * second reader of an encoding it does not own.
@@ -597,7 +597,7 @@ describe('recognising a refused content lock after it has been rewrapped', () =>
     // install failed AND undoing it failed" — primary first, by construction.
     // A depth-first walk pops the LAST entry, so it answers for the rollback
     // and a request gets a status code derived from the wrong failure
-    // (station#4309 follow-up review, LOW).
+    // (archive#4309 follow-up review, LOW).
     const primary = new PluginContentLockCycleError([
       '/home/plugins/app',
       '/home/plugins/shared-lib',

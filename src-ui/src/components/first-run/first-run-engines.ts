@@ -1,6 +1,6 @@
 /**
  * first-run-engines — every decision the "Which agents do you use?" chapter
- * makes, as pure functions (station#3027).
+ * makes, as pure functions (archive#3027).
  *
  * WHAT THE LISTING IS DERIVED FROM. `GET /api/system/status`'s
  * `externalEngines[]` projection, never the sibling `clis` map. `clis` is a
@@ -180,7 +180,7 @@ function toOption(
     state: 'undetected',
     defaultChecked: false,
     selectable: false,
-    // #3843 T2: "this machine" is the HOST's machine. On a paired device that
+    // archive#3843: "this machine" is the HOST's machine. On a paired device that
     // sentence is a claim about the wrong computer, so the note names the
     // host and says where the CLI would have to be installed. It still claims
     // nothing about installation state — see `notReadyNote`'s restraint.
@@ -194,8 +194,8 @@ function toOption(
  * inside each group.
  *
  * The FIND runs over the GLOBAL-context scope, never the raw catalog — the
- * same rule `NewChatModal.handleEnable` applies for the same reason (#3027
- * M2), stated once in `selectGlobalContextAgents`. First run has no project
+ * same rule `NewChatModal.handleEnable` applies for the same reason
+ * (archive#3027), stated once in `selectGlobalContextAgents`. First run has no project
  * context, so a project-OWNED Agent is out of scope here: counting one would
  * render "Already set up as X" for an Agent this context cannot reach, while
  * the global picker still offers Enable for that very engine.
@@ -277,15 +277,15 @@ export function buildFirstRunEnableBatch(
 }
 
 /**
- * The engines a batch was ASKED for and cannot even ATTEMPT (review HIGH:
- * the empty-plan shortcut).
+ * The engines a batch was ASKED for and cannot even ATTEMPT (the
+ * empty-plan shortcut).
  *
  * `buildFirstRunEnableBatch` plans from the CURRENT catalog, so a requested
  * engine that has left it — dropped from `externalEngines`, flipped to
  * `blocked` by a flapping probe, or found to have no addressable connection —
  * simply produces no plan entry. The batch then had NOTHING to run and called
  * the "everything the user asked for exists" exit, which walks on to the
- * questions and records `completed`. On a retry that is the exact H1 defect
+ * questions and records `completed`. On a retry that is the exact defect
  * again by another door: the engine that failed is the one most likely to
  * have gone away, and losing it silently is how a run completes over work it
  * never did.
@@ -396,7 +396,7 @@ export function firstRunEnableOutcomeMessage(
 }
 
 /**
- * The engines a confirm tried to enable and could NOT (review H1).
+ * The engines a confirm tried to enable and could NOT.
  *
  * The distinction this carries is the whole point: `created`, `existing` and
  * `warned` all mean the Agent is materialised — a warned create is a 2xx save

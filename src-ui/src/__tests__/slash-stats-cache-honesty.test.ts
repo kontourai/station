@@ -12,7 +12,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 /**
  * The /stats slash command renders the SAME ConversationStatsResponse the
  * stats modal renders, under the same section heading — so it must apply the
- * same cache-honesty rules (station#4196): summed and "(uncached)" figures
+ * same cache-honesty rules (archive#4196): summed and "(uncached)" figures
  * only when the provider's declared inclusivity backs them, cache rows only
  * when reported, dashes (never invented zeros) for absent figures.
  */
@@ -39,7 +39,7 @@ describe('/stats cache-honest totals (station#4196)', () => {
   }
 
   test('the 212x fixture renders the backed cache-inclusive figures for a disjoint provider', async () => {
-    // 3-turn cold-cache claude session from the station#4048 audit probe:
+    // 3-turn cold-cache claude session from the archive#4048 audit probe:
     // input 30/45/60, cache_creation 9000/400/700, cache_read 0/9000/9400.
     const html = await renderStatsHtml({
       measurement: { source: 'engine-events', provider: 'claude' },

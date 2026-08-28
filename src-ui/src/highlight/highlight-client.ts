@@ -1,7 +1,7 @@
 /**
- * station#3354 — async client for chat syntax highlighting.
+ * archive#3354 — async client for chat syntax highlighting.
  *
- * This module is loaded ONLY via dynamic `import()` from
+ * This module is loaded ONLY via dynamic `import` from
  * `components/chat/HighlightedCodeBlock.tsx`, so the worker bootstrap and
  * everything Shiki-related stay out of the entry bundle (same posture as
  * DiffPanel's `?worker` import, which lives in its own lazy chunk).
@@ -53,7 +53,7 @@ import { initShiki } from '../contexts/SyntaxHighlighterContext';
 import { escapeHtml, HighlightCache, highlightCacheKey, THEME } from './shared';
 
 /**
- * station#3354 — main-thread fallback used when `Worker` is unavailable
+ * archive#3354 — main-thread fallback used when `Worker` is unavailable
  * (jsdom/SSR) or worker bootstrap fails. Awaits the shared Shiki singleton,
  * then tokenizes with the same language resolution and escaped-HTML fallback
  * the context's own highlighter uses. Lives HERE (the async chunk), not in
@@ -344,7 +344,7 @@ async function createClient(): Promise<HighlightFn> {
     );
   } catch {
     // Worker bootstrap failed synchronously (e.g. hostile embedding context)
-    // — degrade to the main-thread highlighter rather than shipping
+    // degrade to the main-thread highlighter rather than shipping
     // unhighlighted code.
     return (code, lang) => highlightOnMainThread(code, lang);
   }

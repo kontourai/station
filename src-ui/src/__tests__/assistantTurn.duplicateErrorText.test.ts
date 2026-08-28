@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1294: one failed turn used to be able to render the SAME failure
+ * archive#1294: one failed turn used to be able to render the SAME failure
  * text twice — once via the `[SYSTEM_EVENT] [CHAT_ERROR]` marker
  * `handleRuntimeErrorEvent` appends to `chat.messages`, and again as a
  * normally-invisible assistant bubble if a later `turn.completed` for the
@@ -83,7 +83,7 @@ describe('finalizeAssistantTurn (station#1294)', () => {
     });
   });
 
-  // station#1294 review (HIGH-2): `content` only ever joins text/reasoning
+  // archive#1294: `content` only ever joins text/reasoning
   // parts, so a turn that made a tool call but narrated no text before
   // erroring also reduces `content` to exactly `chat.error` — the guard must
   // not discard the whole message (and its tool-invocation record) in that
@@ -127,7 +127,7 @@ describe('finalizeAssistantTurn (station#1294)', () => {
         state: 'result',
       },
     ]);
-    // ...but the duplicated error text does not render a second time.
+    //.but the duplicated error text does not render a second time.
     expect(committed?.content).toBe('');
     expect(committed?.contentParts?.some((part) => part.type === 'text')).toBe(
       false,

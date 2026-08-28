@@ -44,7 +44,7 @@ export function groupDelegatedSessionRuns(
     const childProject = child.delegation?.projectSlug ?? child.projectSlug;
     const candidateProject =
       candidate.delegation?.projectSlug ?? candidate.projectSlug;
-    // Delta-review D1: absence is NOT corroboration — undefined === undefined
+    // absence is NOT corroboration — undefined === undefined
     // must never join two scope-less legacy summaries. At least one scope
     // dimension has to be POSITIVELY present (and equal) on both sides.
     const corroborated =

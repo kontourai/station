@@ -7,7 +7,7 @@ import { lifecycleLabelText } from './lifecycle-priority';
 
 /**
  * WHAT STATE A SESSION IS IN, and the word a surface prints for it — one
- * derivation, one owner (station#3227 A1).
+ * derivation, one owner (archive#3227 A1).
  *
  * ITS OWN MODULE, not `sessionDisplay.ts`, for a measured reason. The fold
  * feeds `home-view-model.ts`, which is EAGER — it is in the entry chunk — so
@@ -17,7 +17,7 @@ import { lifecycleLabelText } from './lifecycle-priority';
  * ceiling for four functions that need none of it. This module depends on
  * `lifecycle-priority` (already eager) and the dependency-free
  * `@kontourai/station-contracts/session-attention` leaf (the shared
- * failed/finished/awaiting adjudication — station#3227 B1; a deep import of
+ * failed/finished/awaiting adjudication — archive#3227; a deep import of
  * one small module, not the contracts barrel). `sessionDisplay.ts`
  * remains the home of the other shared session derivations and is where the
  * rendering surfaces already import from; they import `sessionStatusWord`
@@ -27,7 +27,7 @@ import { lifecycleLabelText } from './lifecycle-priority';
 /**
  * Human copy for a session's RAW `lifecycleState`, and nothing more.
  *
- * NOT THE ROW'S STATUS WORD — `sessionStatusWord` is (station#3227 A1).
+ * NOT THE ROW'S STATUS WORD — `sessionStatusWord` is (archive#3227 A1).
  * `lifecycleState` is one input to what a session's state actually is: a
  * `running` session with no turn in flight is not running, a `running`
  * session the board has closed has finished, and a `running` session with a
@@ -98,7 +98,7 @@ export type SessionStateLabel =
 /**
  * WHAT STATE A SESSION IS IN — the one derivation, and the only one.
  *
- * Moved here from `home-view-model.ts` (station#3227 A1). It was private to
+ * Moved here from `home-view-model.ts` (archive#3227 A1). It was private to
  * that file while feeding the Home lanes, the Sessions list's lanes
  * (`partitionSessionLanes`), the project badge and the project page — so
  * every surface that renders a session's state as its own WORD reached for
@@ -111,13 +111,13 @@ export type SessionStateLabel =
  *
  * | shape | `lifecycleState` says | this says |
  * |---|---|---|
- * | `running`, `hasActiveTurn: false` | Running | **Ready** (#1069) |
+ * | `running`, `hasActiveTurn: false` | Running | **Ready** (archive#1069) |
  * | `pendingReview`, `running` | Running | **Needs attention** |
- * | `status: 'closed'`, `running` | Running | **Completed** (#1296) |
- * | `needs_input`, `answerable: false` | Waiting on you | **Unanswerable** (#1783) |
+ * | `status: 'closed'`, `running` | Running | **Completed** (archive#1296) |
+ * | `needs_input`, `answerable: false` | Waiting on you | **Unanswerable** (archive#1783) |
  */
 /**
- * station#4052 slice 2 review F2: the ONE applicability gate for the
+ * archive#4052: the ONE applicability gate for the
  * watchdog observation. A summary can carry stale `turnProgress` after the
  * turn ends; only an active turn's observation is a live fact. Both the
  * member rows and the run board consume THIS — a second inline gate is how
@@ -138,14 +138,14 @@ export function orchestrationLifecycleLabel(
   // claiming success for an interrupted session.
   if (session.lifecycleState === 'canceled') return 'Stopped';
   // The ordered failed → finished → awaiting → active adjudication is the
-  // SHARED fold (station#3227 B1): `sessionAttentionDisposition` in
+  // SHARED fold (archive#3227): `sessionAttentionDisposition` in
   // `@kontourai/station-contracts/session-attention`, the same derivation the
   // server's attention projection counts the bell from. Its docblock carries
-  // the rationale each arm used to carry here (#1296's failed-outranks-closed,
+  // the rationale each arm used to carry here (archive#1296's failed-outranks-closed,
   // the stale-sticky-flag guard, the awaiting-state list). What stays HERE is
   // exactly what the two surfaces deliberately render differently:
   //
-  // - `answerability` (station#1783, ADR 0012 residual, narrowed after
+  // - `answerability` (archive#1783, ADR 0012 residual, narrowed after
   //   review): consulted only INSIDE the awaiting arm — the field answers a
   //   question about an OPEN REQUEST, and a detached `completed` session
   //   takes the `past_resume` arm, so an ungated check would relabel the
@@ -157,7 +157,7 @@ export function orchestrationLifecycleLabel(
   //   same shape (the bell counts actionable items only) — a documented
   //   rendering difference, not drift.
   //
-  // - `hasActiveTurn` (#1069): "Running" is a claim that work is in flight,
+  // - `hasActiveTurn` (archive#1069): "Running" is a claim that work is in flight,
   //   so it is gated on the turn-level fold rather than on `lifecycleState`
   //   alone. `session.configured` — published when a runtime merely attaches,
   //   including for every session resumed at startup — moves lifecycleState
@@ -181,7 +181,7 @@ export function orchestrationLifecycleLabel(
 }
 
 /**
- * THE RULE THAT MAKES A ROW WORD SAFE (station#3227 A1).
+ * THE RULE THAT MAKES A ROW WORD SAFE (archive#3227 A1).
  *
  * A lane heading is coarser than a row word, and that refinement is worth
  * keeping: "Recently finished" does not say Completed from Failed, and
@@ -193,10 +193,10 @@ export function orchestrationLifecycleLabel(
  * only words a row is allowed to print instead of K.* Anything else is a
  * contradiction and the canonical word wins. The four historical divergences
  * are all rejected by absence, not by a special case:
- * - `Ready` does not permit "Running" (#1069);
+ * - `Ready` does not permit "Running" (archive#1069);
  * - `Needs attention` does not permit "Running";
- * - `Completed` does not permit "Running" (#1296);
- * - `Unanswerable` permits nothing at all (#1783) — a session nothing can
+ * - `Completed` does not permit "Running" (archive#1296);
+ * - `Unanswerable` permits nothing at all (archive#1783) — a session nothing can
  *   answer must never print "Waiting on you", and the canonical word is
  *   itself translated by `lifecycleLabelText`.
  *
@@ -228,7 +228,7 @@ const SESSION_STATE_REFINEMENTS: Record<
 
 /**
  * The word a session's row prints for its own state — the ONE function a
- * rendering surface calls (station#3227 A1).
+ * rendering surface calls (archive#3227 A1).
  *
  * Canonical state from `orchestrationLifecycleLabel`, refined by the raw
  * `lifecycleState`'s own word only where `SESSION_STATE_REFINEMENTS` allows
@@ -253,7 +253,7 @@ export function sessionStatusWord(
     return refined;
   }
   // `lifecycleLabelText`, not the bare label: `'Unanswerable'` is this
-  // system's term, not the user's, and station#1783 already translates it to
+  // system's term, not the user's, and archive#1783 already translates it to
   // "Can't answer here" everywhere else it is rendered as text.
   return lifecycleLabelText(canonical);
 }

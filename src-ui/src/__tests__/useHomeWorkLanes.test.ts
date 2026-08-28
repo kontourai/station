@@ -275,7 +275,7 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
     expect(result.current.active.map((i) => i.id)).toEqual(
       expect.arrayContaining(['conv-99', 'thread-other']),
     );
-    // ...but the stable id — and therefore the AC1 order — did not.
+    //.but the stable id — and therefore the order — did not.
     expect(result.current.active.map((i) => i.stableId)).toEqual(
       stableIdsBefore,
     );
@@ -359,7 +359,7 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
     expect(result.current.active.map((i) => i.id)).toEqual(
       expect.arrayContaining(['task-42', 'thread-other']),
     );
-    // ...but the stable id — and therefore the AC1 order — did not.
+    //.but the stable id — and therefore the order — did not.
     expect(result.current.active.map((i) => i.stableId)).toEqual(
       stableIdsBefore,
     );

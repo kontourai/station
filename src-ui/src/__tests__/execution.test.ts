@@ -36,7 +36,7 @@ describe('execution utils', () => {
   });
 
   /**
-   * station#3739: /connections/engines printed `muse-runtime` as an engine
+   * archive#3739: /connections/engines printed `muse-runtime` as an engine
    * name, and the built-in vector store as `lancedb`. Every type Station's own
    * adapter registry and connection factories ship has to have a name
    * somebody chose; anything left over falls through to the slug, and that is

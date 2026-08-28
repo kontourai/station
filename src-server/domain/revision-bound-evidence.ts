@@ -45,7 +45,7 @@ export interface FreezeRevisionInput {
 export interface CommittedRevision {
   readonly schemaVersion: typeof REVISION_EVIDENCE_SCHEMA_VERSION;
   readonly revisionId: EvidenceRevisionId;
-  /** #2889's convergence witness; this module does not reproduce it. */
+  /** archive#2889's convergence witness; this module does not reproduce it. */
   readonly sharedRevision: SharedWorkingStateRevisionId;
   readonly scope: WorkingStateScope;
   readonly text: string;
@@ -730,7 +730,7 @@ function settledRecord(
   )
     return { reason: 'malformed' };
   try {
-    // Raw caller data is only input to #2889 validation. The reconstructed
+    // Raw caller data is only input to archive#2889 validation. The reconstructed
     // snapshot below is the sole snapshot retained or hashed by this module.
     const restored = new SharedWorkingState({
       scope: sourceScope,
@@ -969,7 +969,7 @@ function canonicalDecisionCardinality(change: unknown): boolean {
 }
 
 /**
- * Deep Station module for immutable #2889 revision receipts. The canonical
+ * Deep Station module for immutable archive#2889 revision receipts. The canonical
  * ProposedChange service remains the sole owner of change lifecycle mutation.
  */
 export class RevisionEvidenceModule {

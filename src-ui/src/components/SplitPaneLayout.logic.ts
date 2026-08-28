@@ -82,13 +82,13 @@ export function isSplitPaneMobile(width: number): boolean {
 
 /**
  * The breadcrumb segments the list pane should actually render for `label`,
- * given the `title` printed immediately beneath it (station#2931).
+ * given the `title` printed immediately beneath it (archive#2931).
  *
  * `docs/design/shell-skeletons.md` §2.1: the shell names the collection ONCE.
  * A single-segment trail whose only segment restates the title is that name
  * printed twice, one line apart — the literal "double header" reported in
- * station#2931, reproduced in the shipped UI as `SESSIONS` above **Sessions**
- * and `REVIEW QUEUE` above **Review Queue**. It also carries no navigation: a
+ * archive#2931, reproduced in the shipped UI as `SESSIONS` above **Sessions**
+ * and ` QUEUE` above **Review Queue**. It also carries no navigation: a
  * one-crumb trail has no ancestor to return to.
  *
  * Deliberately narrow. A MULTI-segment trail is a real breadcrumb whose last
@@ -121,8 +121,8 @@ export function visibleBreadcrumbSegments(
 
 /**
  * The eyebrow segments a FRAMED page header should render for `label`, given
- * the `title` printed as the frame's own `<h1>` (station#4463 slice 1, the
- * 2026-08-26 shell audit).
+ * the `title` printed as the frame's own `<h1>` (archive#4463, the
+ *).
  *
  * The frame's `<h1>` already names the current page, so a trailing crumb that
  * restates it is dropped unconditionally — this is stricter than
@@ -134,7 +134,7 @@ export function visibleBreadcrumbSegments(
  * trail has one segment (a top-level route — `AGENTS` above **Agents** — which
  * drops to no eyebrow at all) or several (a subpage — `CONNECTIONS / ENGINES`
  * above **Engines** — which drops to just its parent, `Connections`, the
- * shape the shell audit decided a subpage's eyebrow should have).
+ * shape the decided a subpage's eyebrow should have).
  */
 export function framedBreadcrumbSegments(
   label: string,

@@ -12,7 +12,7 @@ import {
 } from '../home/home-view-model';
 
 /**
- * State lanes for the Sessions list (station#3027). The owner's decision was
+ * State lanes for the Sessions list (archive#3027). The owner's decision was
  * "by state yes" — the list stops being grouped by project (which read as a
  * filing cabinet) and groups by what each session wants from you.
  *
@@ -68,7 +68,7 @@ const NO_SNOOZE: ReadonlyMap<string, number> = new Map();
 // The fresh-load `terminalSince` proxy (seed from `item.updatedAt` — the max
 // of updatedAt/lastEventAt/createdAt that `buildSessionWorkItem` already
 // computes) moved to `home-lane-model.ts`'s `terminalSinceFromRecency` when
-// the mobile activity groups adopted the same pattern (station#3227 A6), so
+// the mobile activity groups adopted the same pattern (archive#3227 A6), so
 // the two store-less surfaces share one seeding rule instead of two copies.
 
 /**
@@ -151,7 +151,7 @@ export function partitionSessionLanes({
  * settled attribution, ALL named candidates for an ambiguous one, none when
  * nothing is known.
  *
- * Plural is the whole point (station#1462): a working directory configured as
+ * Plural is the whole point (archive#1462): a working directory configured as
  * two projects produces a session that genuinely belongs to neither
  * exclusively, and picking a winner here would be the label-without-a-
  * derivation defect. It appears under BOTH candidates' filters instead.

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// station#1424 review round 3 (item 5, "the unpinned owner hop"): unlike
+// archive#1424 ("the unpinned owner hop"): unlike
 // ACPChatPanel.viewport.test.tsx (which deliberately stubs out
 // ChatMessageList to isolate the viewport-boundary behavior it actually
 // tests), this file renders the REAL ChatMessageList/MessageBubble tree so
@@ -31,7 +31,7 @@ const connectionState = vi.hoisted(() => ({
 }));
 vi.mock('../build-info', () => ({
   // The dev fallback: a provenance chip must render NOTHING here, never a
-  // fabricated 'Station v0.0.0 · dev' (#2585 sol review P1).
+  // fabricated 'Station v0.0.0 · dev' (archive#2585 P1).
   verifiedBuildLabel: null,
 }));
 vi.mock('@kontourai/station-connect', () => ({

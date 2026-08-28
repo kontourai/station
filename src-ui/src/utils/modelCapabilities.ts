@@ -32,7 +32,7 @@ export type ModelProviderOption = {
  * `openai/gpt-5` — and splitting those on '-' produces
  * "Us.anthropic.claude Sonnet 4 5 20250929 V1:0", which is not a prettier name
  * but a fabricated one. For those the id itself is the most honest thing we
- * have, so it is returned unchanged (station#3391 review B-3).
+ * have, so it is returned unchanged (archive#3391).
  */
 export function prettifyModelId(modelId: string): string {
   const id = modelId.trim();
@@ -46,12 +46,12 @@ export function prettifyModelId(modelId: string): string {
     .join(' ');
   const label = oneM ? `${base} (1M)` : base;
   // 'claude-' prettifies to '' — a stripped prefix and nothing else. A blank
-  // Home card is worse than the raw id (station#3391 review B-2).
+  // Home card is worse than the raw id (archive#3391).
   return label.trim() || id;
 }
 
 /**
- * The one derivation of "what do we call this model id" (station#3391).
+ * The one derivation of "what do we call this model id" (archive#3391).
  *
  * Home rendered two answers for one session: the start card resolved the id
  * against the catalog and read "Selected Test Model" while the continue card
@@ -80,7 +80,7 @@ export function modelDisplayLabel(
 }
 
 /**
- * Human label for what an alias/default entry concretely resolves to (#1012):
+ * Human label for what an alias/default entry concretely resolves to (archive#1012):
  * prefer the catalog's own display name for the resolved id; otherwise
  * prettify the raw id ('claude-opus-5[1m]' → 'Opus 5 (1M)'). Undefined when
  * the entry is already concrete.

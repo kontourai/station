@@ -9,7 +9,7 @@ import {
 } from '../adapter-retirement.js';
 
 /**
- * Unit pins for the slice-12 extraction (epic #4024) — the contracts the
+ * Unit pins for the slice-12 extraction (epic archive#4024) — the contracts the
  * service suite proved it CANNOT discriminate. The service band covers this
  * cluster well for PRESENCE (does a retirement stop the adapter, does
  * shutdown aggregate failures) and not at all for the things that decide

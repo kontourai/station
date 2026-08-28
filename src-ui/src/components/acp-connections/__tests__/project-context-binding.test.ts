@@ -9,7 +9,7 @@ describe('coding panel Project context binding', () => {
   });
 
   test('does not overwrite a global conversation after persistence and project navigation', () => {
-    // Composition regression for station#3147: turn one ran globally; after
+    // Composition regression for archive#3147: turn one ran globally; after
     // rehydration the user opened a Project coding panel. The next turn must
     // retain the original global workspace rather than acquire this Project.
     expect(

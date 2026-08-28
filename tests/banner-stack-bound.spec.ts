@@ -1,7 +1,7 @@
 /**
  * E2E: the collapsed connectionBlocking band and the expanded banner stack
  * actually scroll, and the stack only ever takes pointer events when there is
- * genuinely something to scroll (station#3432, fix round 2).
+ * genuinely something to scroll (archive#3432).
  *
  * WHY THIS EXISTS AND NOT ONLY A CSS-TEXT ASSERTION. jsdom performs no
  * layout: `mobile-chrome-safety.test.ts` can only confirm that
@@ -13,8 +13,8 @@
  * ancestor made flex children SHRINK to fit it instead of overflowing it —
  * `overflow-y: auto` had nothing to scroll, and each card was silently
  * compressed with its content clipped by `.banner-host__item`'s own
- * `overflow: hidden`. Only a real browser can tell the two apart. Round 2
- * added a second, independent reason a real browser is required: whether the
+ * `overflow: hidden`. Only a real browser can tell the two apart. A
+ * second, independent reason a real browser is required: whether the
  * stack's `pointer-events: auto` opt-in is currently justified depends on a
  * live `scrollHeight`/`clientHeight` comparison that only exists once real
  * layout has run.
@@ -64,11 +64,11 @@ import { BannerHost } from './src-ui/src/components/notifications/BannerHost';
 import { bannerStore, BANNER_PRIORITY, BANNER_IDS } from './src-ui/src/contexts/banner-store';
 
 /**
- * The issue's own scenario (station#3432): a declined device's decline
+ * The originally reported scenario (archive#3432): a declined device's decline
  * ("Dev Server declined this device") and the active connection's own offline
  * notice both live in the connectionBlocking band at once. Real production
  * strings, not placeholders — from ConnectionBannerSource.tsx and the
- * OnboardingGate decline copy quoted in the issue.
+ * OnboardingGate decline copy quoted in the report.
  */
 function seedBandTwoBlocking() {
   bannerStore.present({
@@ -96,10 +96,10 @@ function seedBandTwoBlocking() {
 }
 
 /**
- * Four real connectionBlocking ids at once (station#3432 round 3, LOW-4;
- * corrected station#3432 review-fix round — the original fixture asserted
- * BANNER_IDS.credential alongside pairingFailure, a pair OnboardingGate
- * cannot present together, see below).
+ * Four real connectionBlocking ids at once (archive#3432) — a set that
+ * must be genuinely reachable: \`BANNER_IDS.credential\` cannot co-occur
+ * with \`pairingFailure\` (see below), so a fixture must not assert that
+ * pair.
  *
  * \`buildBannerStackView\` renders every live band member. FIVE distinct
  * producers can emit into this band, not four:
@@ -166,8 +166,7 @@ function seedBandFourBlocking() {
 }
 
 /**
- * One short, non-blocking banner: the common case (station#3432 round 2,
- * HIGH-1) — a bounded, connection-slot stack with a single card is nowhere
+ * One short, non-blocking banner: the common case (archive#3432) — a bounded, connection-slot stack with a single card is nowhere
  * near its 40vh cap, so it must never be scrollable and must never take
  * pointer events over the message/gap area.
  */
@@ -226,7 +225,7 @@ function seedExpandMany() {
 }
 
 /**
- * A single connectionBlocking card (station#3432 round 3, MEDIUM-1). Real
+ * A single connectionBlocking card (archive#3432). Real
  * growth then happens after mount, through \`window.__present\` below, once
  * the test has measured a real card's height and pinned the cap to an exact
  * multiple of it — that is what puts the box in the "already at the cap"
@@ -243,8 +242,8 @@ function seedGrowPinned() {
 
 /**
  * Eight identical connectionBlocking cards — comfortably overflowing the
- * desktop 40vh cap — for the shrink-back-to-non-scrollable case (station#3432
- * round 3, MEDIUM-2). \`window.__dismiss\` below removes them down to one, a
+ * desktop 40vh cap — for the shrink-back-to-non-scrollable case
+ * (archive#3432). \`window.__dismiss\` below removes them down to one, a
  * real resize that must clear \`--scrollable\` again.
  */
 function seedShrinkBack() {
@@ -291,15 +290,14 @@ host.id = 'host-root';
 stage.appendChild(host);
 createRoot(host).render(<BannerHost connectionSlot />);
 
-// Post-mount mutation hooks for station#3432 round 3's growth/shrink probes
-// (MEDIUM-1, MEDIUM-2): these route through the real bannerStore.present/
-// dismiss, not a second render path. That said, what the shrink-back test
-// below actually PROVES is narrower than "store vs DOM": an injection that
-// replaced __dismiss's body with a raw DOM element removal still passed,
-// because a genuine box shrink clears --scrollable regardless of what
-// shrank it — the class is keyed to measured layout, not to the removal
-// mechanism. Read the assertion as "a real shrink clears the class," not as
-// proof this harness can only shrink through the store.
+// Post-mount mutation hooks for the growth/shrink tests: these route
+// through the real bannerStore.present/dismiss, not a second render
+// path. That said, what the shrink-back test below actually PROVES is
+// narrower than "store vs DOM": a genuine box shrink clears --scrollable
+// regardless of what shrank it — the class is keyed to measured layout,
+// not to the removal mechanism. Read the assertion as "a real shrink
+// clears the class," not as proof this harness can only shrink through
+// the store.
 (window as unknown as { __present: typeof bannerStore.present }).__present = (
   item,
 ) => bannerStore.present(item);
@@ -334,8 +332,7 @@ test.beforeAll(async () => {
 
 /**
  * The real, live stylesheet's parsed rules, read through the CSSOM rather
- * than a second `node:fs` read of the same file — station#3432 round 2,
- * LOW-5. `page.addStyleTag({ path })` is what actually reads
+ * than a second `node:fs` read of the same file (archive#3432). `page.addStyleTag({ path })` is what actually reads
  * `BannerHost.css` from disk (Playwright-side, not this file), so this stays
  * a pure browser-local assertion: proof the injected stylesheet is real and
  * parsed, not a second copy of the file-reading risk `addStyleTag` already
@@ -403,7 +400,7 @@ async function mount(page: Page, scenario: Scenario) {
     // scenario. `--layer-notice`/`--layer-dock` match tokens.css's real
     // values — see the file docblock for why an undefined `--layer-notice`
     // would misrender the cap. A real `<meta name="viewport">` matches the
-    // app's own `src-ui/index.html:6` (station#3432 round 2, MEDIUM-1):
+    // app's own `src-ui/index.html:6` (archive#3432):
     // without it, Chromium's mobile emulation falls back to a ~980px desktop
     // layout viewport even with `isMobile: true`, so a "phone" test measured
     // desktop CSS the whole time and its overflow-dependent branch never ran.
@@ -426,7 +423,7 @@ async function mount(page: Page, scenario: Scenario) {
   }, scenario);
   await page.addScriptTag({ content: harnessScript });
   await expect(page.locator('.banner-host')).toBeVisible();
-  // station#3432 round 2, LOW-4: assert the actual subject exists before any
+  // archive#3432: assert the actual subject exists before any
   // caller reaches into it. Without this, a mount defect (e.g. the stack
   // never rendering) surfaced as `locator.evaluate: Test timeout of 30000ms
   // exceeded` from deep inside `stackMetrics`/`wheelScroll` rather than a
@@ -488,7 +485,7 @@ async function wheelScroll(page: Page, deltaY: number) {
  * not reserve or cover space its content doesn't occupy — a point there must
  * hit the app content underneath, not the host.
  *
- * station#3432 round 2, HIGH-2: deliberately NOT derived from
+ * archive#3432: deliberately NOT derived from
  * `pointBelowLastCard`'s content-anchored point. This one exists to prove the
  * box tracks its content; `expectStackTightlyWrapsContent` below is the
  * assertion that actually pins that relationship, because a point derived
@@ -496,8 +493,8 @@ async function wheelScroll(page: Page, deltaY: number) {
  * box, so a defect that grows the box (e.g. stray padding) grows the "safe"
  * point right along with it and the probe can never observe the one failure
  * mode it exists to guard — proven live: `padding-bottom: 320px` on the stack
- * produced a 496px box with 277px of empty, click-absorbing space below the
- * content, and the box-derived probe still landed on `underneath`, `3 passed`.
+ * produced a 496px box with 277px of empty, click-absorbing space below
+ * the content, and the box-derived probe still landed on `underneath`, `3 passed`.
  */
 async function pointBelowStack(
   page: Page,
@@ -543,8 +540,8 @@ async function stackAndLastCardRects(
 
 /**
  * A point strictly below the stack's own CONTENT — the last visible card's
- * bottom — rather than the stack's bounding box. station#3432 round 2,
- * HIGH-2: this is the probe that actually discriminates a stray-padding
+ * bottom — rather than the stack's bounding box. archive#3432: this is the
+ * probe that actually discriminates a stray-padding
  * defect, because it does not move when the box grows without the content
  * growing. Paired with `expectStackTightlyWrapsContent`, which asserts the
  * box SHOULD equal this point's origin; together they prove both that the
@@ -566,13 +563,13 @@ async function pointBelowLastCard(
 /**
  * `.banner-host__stack` has no padding of its own (only `gap` between
  * cards — see `BannerHost.css`), so its box must tightly wrap its own last
- * card, modulo sub-pixel layout rounding. station#3432 round 2, HIGH-2: this
+ * card, modulo sub-pixel layout rounding. archive#3432: this
  * is the direct guard against the class of defect `pointBelowStack` cannot
  * see (a stray `padding`/`min-height` that grows the box past its content) —
  * asserted here as an upper bound on the box itself, not only inferred from
  * where a click happens to land. The 1px tolerance is real sub-pixel layout
- * rounding, not a fudge for the defect this exists to catch: the injection
- * that motivated this assertion (`padding-bottom: 320px`) measured 277px of
+ * rounding, not a fudge for the defect this exists to catch: that defect
+ * (`padding-bottom: 320px` on the stack) measures 277px of
  * overhang, two orders of magnitude past this tolerance.
  */
 async function expectStackTightlyWrapsContent(page: Page) {
@@ -612,8 +609,8 @@ test.describe('the connectionBlocking band never collapses and always scrolls (s
       'stack must genuinely overflow its own bound for this to be a real test of scrolling',
     ).toBeGreaterThan(before.clientHeight);
 
-    // Both blocking banners are in the DOM at once — the band-collapse fix's
-    // own contract — and neither is clipped: querying each card's own
+    // Both blocking banners are in the DOM at once — the band-collapse
+    // contract — and neither is clipped: querying each card's own
     // scrollHeight vs clientHeight would show clipping if `.banner-host__item`
     // were still compressing content instead of the stack overflowing.
     const cards = page.locator('.banner-host__item');
@@ -636,7 +633,7 @@ test.describe('the connectionBlocking band never collapses and always scrolls (s
       0,
     );
 
-    // The second banner's own action button — the one the issue's scenario
+    // The second banner's own action button — the one the original report
     // named as unreachable — must be genuinely hit-testable at its own
     // center, not just present in the accessibility tree.
     const secondAction = cards.nth(1).getByRole('button', {
@@ -648,7 +645,7 @@ test.describe('the connectionBlocking band never collapses and always scrolls (s
     // Not asserting >= MIN_TOUCH_TARGET_PX here: the mobile breakpoint
     // deliberately sets `.banner-host__action { min-height: 42px }` (below
     // the 44px floor used elsewhere), a pre-existing, unrelated product
-    // choice this fix does not touch. The claim under test is reachability
+    // choice. The claim under test is reachability
     // (hit-testable at its own center), not target sizing.
     const owner = await page.evaluate(
       ([x, y]) => {
@@ -665,8 +662,8 @@ test.describe('the connectionBlocking band never collapses and always scrolls (s
     expect(owner).toContain('banner-host__action');
     await secondAction.click({ trial: true, timeout: 3_000 });
 
-    // The stack's box must not extend past its own content (station#3432
-    // round 2, HIGH-2), and a point just past the last card — not the box —
+    // The stack's box must not extend past its own content (archive#3432),
+    // and a point just past the last card — not the box —
     // must resolve to the app content beneath it, not to the host.
     await expectStackTightlyWrapsContent(page);
     const belowBox = await pointBelowStack(page, 412);
@@ -685,7 +682,7 @@ test.describe('the connectionBlocking band never collapses and always scrolls (s
     await page.setViewportSize({ width: 412, height: 915 });
     await mount(page, 'band-two-blocking');
     const metrics = await stackMetrics(page);
-    // station#3432 round 2, MEDIUM-1: with the real viewport meta in place,
+    // archive#3432: with the real viewport meta in place,
     // `window.innerHeight` is the real 915px (measured) — WITHOUT it,
     // Chromium's `isMobile: true` fallback reported innerHeight 2195, so
     // `max-height: 40vh` was actually computing against a viewport that does
@@ -777,11 +774,11 @@ test.describe('the stack only takes pointer events when it is genuinely scrollab
     );
     await expect(stackLocator(page)).toHaveCSS('pointer-events', 'none');
 
-    // The message area is deliberately not a control (station#3432 round 2,
-    // HIGH-1): probing its own center must reach the app underneath, not an
-    // invisible wrapper. This is the exact regression the reviewer's
-    // hit-test table caught: `.banner-host__stack` had `pointer-events: auto`
-    // unconditionally, so this probe resolved to
+    // The message area is deliberately not a control (archive#3432):
+    // probing its own center must reach the app underneath, not an
+    // invisible wrapper — the exact regression this guards is
+    // `.banner-host__stack` having `pointer-events: auto`
+    // unconditionally, which made this probe resolve to
     // `div.banner-host__stack` instead of `#underneath`.
     const message = page.locator('.banner-host__message').first();
     const box = await message.boundingBox();
@@ -819,8 +816,8 @@ test.describe('the stack only takes pointer events when it is genuinely scrollab
     await expect(dismiss).toBeVisible();
 
     // Sample every real animation frame across the whole ~200ms exit
-    // transition (`--motion-base`), not just before/after: the reviewer
-    // measured an 8px overhang at t+1ms and t+144ms (0 at t+170ms) where the
+    // transition (`--motion-base`), not just before/after: an 8px
+    // overhang was measured at t+1ms and t+144ms (0 at t+170ms) where the
     // item's exit TRANSFORM had visually moved its content while the
     // collapsing layout box had not yet caught up — a moment
     // `.banner-host__stack--scrollable` must never be true for a fixture
@@ -960,7 +957,7 @@ test.describe('the expanded stack scrolls internally (station#3432, pre-existing
     await expect(lastDismiss).toBeVisible();
     await lastDismiss.click({ trial: true, timeout: 3_000 });
 
-    // station#3432 round 2, HIGH-2: the stack must not extend past its own
+    // archive#3432: the stack must not extend past its own
     // last card even while expanded. Scroll to the true programmatic max
     // first (a script write here, not another real-wheel proof — that proof
     // already happened above) so the check is not confounded by how far the

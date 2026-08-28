@@ -221,7 +221,7 @@ describe('config-protection (checkToolCall, blocking pre-tool)', () => {
 });
 
 /**
- * station#3210. A blocking `reason` is rendered to the user by
+ * archive#3210. A blocking `reason` is rendered to the user by
  * `pre-tool-policy.ts`, which must say whether the words are Station's or an
  * external process's. That question is answered HERE, in the branch that
  * produced the string, because it is the only place the two are still

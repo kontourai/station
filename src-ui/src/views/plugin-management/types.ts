@@ -26,7 +26,7 @@ export interface Plugin {
     }>;
     /**
      * How the recorded grant relates to the code that is installed now
-     * (station#4288). Server-derived — the UI never computes it — and
+     * (archive#4288). Server-derived — the UI never computes it — and
      * optional only because an older server does not send it.
      */
     contentBinding?: 'none' | 'bound' | 'unverified' | 'changed';
@@ -56,7 +56,7 @@ export interface PreviewData {
   components: PreviewComponent[];
   conflicts: Array<{ type: string; id: string; existingSource?: string }>;
   /**
-   * SHA-256 of the staged source the preview inspected (station#4288).
+   * SHA-256 of the staged source the preview inspected (archive#4288).
    * Carried back into `POST /install` so the server can refuse — before it
    * writes anything — an install whose bytes are not the bytes that were
    * reviewed. Optional only because an older server does not send it; without

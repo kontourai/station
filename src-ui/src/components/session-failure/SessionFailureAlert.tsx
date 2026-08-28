@@ -5,7 +5,7 @@ import './SessionFailureAlert.css';
 /**
  * The one way Station says "this session failed".
  *
- * station#3213: this markup lived inside `SessionDetailErrors`, so the session
+ * archive#3213: this markup lived inside `SessionDetailErrors`, so the session
  * detail was the only surface that could render it — the chat dock showed
  * nothing at all on a cold arrival at a failed session. It is lifted here
  * rather than re-spelled in the dock: a second banner with the same words is
@@ -47,11 +47,11 @@ export function SessionFailureAlert({
   testId?: string;
 }) {
   if (!failureText) return null;
-  // The banner quotes the recorded cause VERBATIM (station#3213: one fold,
+  // The banner quotes the recorded cause VERBATIM (archive#3213: one fold,
   // one quote, two surfaces that cannot disagree) — with exactly one
   // rewrite: a cause whose entire content is a browser/parser internal
   // (`Failed to execute 'close' on 'ReadableStreamDefaultController'…`,
-  // station#3299) names a JS API, not anything the user can act on, and is
+  // archive#3299) names a JS API, not anything the user can act on, and is
   // replaced by the same product sentence the transcript's error card
   // prints for that shape. Causes carrying real diagnostic content (hosts,
   // paths, engine names) are never rewritten — see

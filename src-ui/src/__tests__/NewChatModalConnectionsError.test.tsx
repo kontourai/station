@@ -86,7 +86,7 @@ beforeAll(() => {
 });
 
 /**
- * station#771 regression. `NewChatModal`'s empty-list branch used to check
+ * archive#771 regression. `NewChatModal`'s empty-list branch used to check
  * only `runtimeLoading || modelsLoading` — a settled read failure fell
  * straight through to "Nothing to chat with yet", identical to a host with
  * genuinely no engines or model connections configured, with no error and no

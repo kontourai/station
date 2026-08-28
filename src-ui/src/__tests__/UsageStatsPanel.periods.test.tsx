@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { UsageStatsPanel } from '../components/usage-stats/UsageStatsPanel';
 
 /**
- * station#3093 period selector + trend, pinned against the panel's three
+ * archive#3093 period selector + trend, pinned against the panel's three
  * data-honesty rules:
  * 1. Period figures come only from the server's rangeSummary over daily
  *    history, never from lifetime fields — and carry the engine-session
@@ -15,7 +15,7 @@ import { UsageStatsPanel } from '../components/usage-stats/UsageStatsPanel';
  * 2. An absent day is "No activity recorded", never a fabricated $0.00.
  * 3. The lifetime sections do not change when the period changes, and say
  *    so — a control must not sit above numbers it does not filter
- *    (the station#3214/#3222 defect class).
+ *    (the archive#3214/#3222 defect class).
  */
 
 const sdkState = vi.hoisted(() => ({
@@ -214,7 +214,7 @@ describe('UsageStatsPanel period selector', () => {
     // Identical breakdown figures — the selector does not filter them...
     expect(lifetimeRow()).toBeTruthy();
     expect(screen.getByText('50 msgs · $2.00')).toBeTruthy();
-    // ...and the section now says so instead of silently sitting under the
+    //...and the section now says so instead of silently sitting under the
     // selector.
     expect(
       screen.getByRole('heading', { level: 4, name: 'All time' }),

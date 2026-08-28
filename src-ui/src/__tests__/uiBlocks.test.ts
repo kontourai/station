@@ -36,7 +36,7 @@ describe('ui block helpers', () => {
         tone: undefined,
         fields: undefined,
         id: undefined,
-        // no fields → decorative, no data claim (station#1399 slice 1).
+        // no fields → decorative, no data claim (archive#1399).
         attestationState: 'decorative',
       },
       {
@@ -65,8 +65,7 @@ describe('ui block helpers', () => {
     ]);
   });
 
-  // station#1399 fix round, H1 (independent review — BLOCKING, confirmed by
-  // triage): this test used to ENSHRINE the exact bug the review caught —
+  // archive#1399: this test used to ENSHRINE the exact bug the review caught —
   // it supplied a `derivedFrom` array and a completely fabricated
   // `provenanceDigest` ('a'.repeat(64), not a hash of anything) with no
   // `attestationState` claim at all, and asserted BOTH survived as
@@ -85,7 +84,7 @@ describe('ui block helpers', () => {
           derivedFrom: [{ kind: 'toolCallId', toolCallId: 'call_1' }],
           // A fabricated digest — not a real hash of anything, and no tool
           // output can independently prove it is. Mere presence must not
-          // mint 'attested' anymore (H1).
+          // mint 'attested' anymore.
           provenanceDigest: 'a'.repeat(64),
         },
       ],
@@ -95,7 +94,7 @@ describe('ui block helpers', () => {
     expect(block?.provenanceDigest).not.toBe('a'.repeat(64));
   });
 
-  // station#1399 fix round 2, B2 (independent review): this test does NOT
+  // archive#1399: this test does NOT
   // prove a forged tuple can't reach the UI — the reviewer's own probe
   // showed the opposite, that a WELL-SHAPED forged tuple (real derivedFrom
   // + fake digest + attestationState already 'attested', all mutually
@@ -143,7 +142,7 @@ describe('ui block helpers', () => {
     expect(block?.attestationState).toBe('unattested');
   });
 
-  // M6 (independent review) — the reverse override, observed at THIS layer.
+  //  — the reverse override, observed at THIS layer.
   // The full host-derived correction (self-declared decorative/unattested
   // on a genuinely valid data-bearing block gets corrected UP to 'attested')
   // is server-only — this module cannot independently verify a digest, so

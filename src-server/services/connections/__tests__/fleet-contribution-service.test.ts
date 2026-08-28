@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 1 — `ConnectionService#getFleetContributionManifest`
+ * archive#1398 — `ConnectionService#getFleetContributionManifest`
  * wiring (`docs/design/inference-fleet.md` §11 slice 1).
  *
  * The first test is the reversibility pin: a Station that has not opted in

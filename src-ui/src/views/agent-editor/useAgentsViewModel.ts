@@ -85,7 +85,7 @@ export function useAgentsViewModel({
 }: UseAgentsViewModelArgs) {
   const liveAgents = useAgents();
   /**
-   * station#3751: whether the readiness words on these rows describe the
+   * archive#3751: whether the readiness words on these rows describe the
    * runtime as it is NOW. `/api/agents` serves the last stable catalog while
    * the runtime is mid-reconciliation and says so (`catalogState`), which the
    * SDK used to drop.
@@ -124,7 +124,7 @@ export function useAgentsViewModel({
     new URLSearchParams(window.location.search).get('created') === '1';
   /**
    * §3.2's engine question when the ANSWER is not derivable from the binding
-   * — "an installed agent CLI" chosen with none named yet. `null` means
+   * "an installed agent CLI" chosen with none named yet. `null` means
    * "derive it", which is every persisted agent.
    */
   const [engineKindOverride, setEngineKindOverride] =
@@ -181,7 +181,7 @@ export function useAgentsViewModel({
   const exposesStationTools =
     selectedCatalogAgent?.engineId === 'station' ||
     !selectedCatalogAgent?.execution?.agentConnectionId;
-  // AC5: a create now returns as soon as its write is durable, so the first
+  // a create now returns as soon as its write is durable, so the first
   // tools read after one legitimately lands while the Agent is still
   // activating. The SDK retries that case (and only that case) inside a
   // bounded window; this exposes the two outcomes the pane has to tell apart —
@@ -228,7 +228,7 @@ export function useAgentsViewModel({
   const { data: knownProjects = [] } = useProjectsQuery() as {
     data?: Array<{ slug: string }>;
   };
-  // #3843 T2: the rail's one fixing verb names the machine an engine would be
+  // archive#3843: the rail's one fixing verb names the machine an engine would be
   // set up on. Read from the same status query the rest of the app uses.
   const devicePresentation = useDevicePresentation();
   const knownProjectSlugs = useMemo(
@@ -258,7 +258,7 @@ export function useAgentsViewModel({
   /*
    * DESIGN.md §2's empty state is about having no AGENTS, and this slot is the
    * detail pane with nothing selected. Rendering it unconditionally printed
-   * "No agents of your own yet" beside a rail listing four (caught live), so
+   * "No agents of your own yet" beside a rail listing four, so
    * it renders only when the claim is true; otherwise SplitPaneLayout's own
    * "Select an agent to edit" stands.
    */
@@ -316,7 +316,7 @@ export function useAgentsViewModel({
     setIsLocked(true);
   }, [loadedAgent, isCreating]);
 
-  // station#3662 review HIGH-2: CREATE ONLY. A new Agent's form is built
+  // archive#3662: CREATE ONLY. A new Agent's form is built
   // before the connections query resolves, so it legitimately picks up the
   // managed runtime once it does. Applying the same fill to a LOADED Agent
   // re-created the binding the heal had just removed — an absent binding on a
@@ -358,7 +358,7 @@ export function useAgentsViewModel({
    * Whether THIS engine delivers a system prompt of its own — the matrix
    * answer `validateAgentForm` needs. Hoisted out of `validate` because the
    * form has to say the field is required BEFORE the button is pressed
-   * (station#3741), and the button has to be gated on the same answer.
+   * (archive#3741), and the button has to be gated on the same answer.
    */
   const engineDeliversNativePrompt =
     resolveEngineCapabilityMatrix(
@@ -368,7 +368,7 @@ export function useAgentsViewModel({
       ),
     ).systemPrompt.state === 'native';
   /**
-   * ...and whether this particular agent must author one. The reserved
+   *.and whether this particular agent must author one. The reserved
    * `station` Agent runs on Station's own prompt, so the same predicate the
    * save applies is the one the asterisk reads.
    */
@@ -386,7 +386,7 @@ export function useAgentsViewModel({
     // more. Create is disabled until an engine is chosen and that engine is
     // Ready (`createEngineReady` below), with the fixing action shown inline
     // beside the unready engine — so the state this error described can no
-    // longer be reached by pressing the button. Since station#3741 the same
+    // longer be reached by pressing the button. Since archive#3741 the same
     // holds for the required fields: Create is disabled while any of them is
     // empty, so these messages are reachable only from Save on a loaded
     // agent, never as the answer to pressing Create.
@@ -448,7 +448,7 @@ export function useAgentsViewModel({
         // default option. This used to capture whichever connection was ready
         // AT THIS INSTANT, which wrote an empty id whenever the connections
         // query had not resolved yet and left Create permanently disabled
-        // beside a picker listing a Ready connection (station#3743).
+        // beside a picker listing a Ready connection (archive#3743).
         // `resolveStationModelBinding` reads the live list instead.
         modelConnectionId: '',
         runtimeOptions: {},
@@ -527,7 +527,7 @@ export function useAgentsViewModel({
         // Select the slug the SERVER assigned, not the one typed into the
         // form: the create response carries the persisted identity, and the
         // mutation has already invalidated the agents query — so the list
-        // gains the row and this selects it, with no reload (AC5).
+        // gains the row and this selects it, with no reload.
         const { data } = await createAgent(payload as any);
         const createdSlug = (data as { slug?: string })?.slug ?? form.slug;
         setSavedForm(savedSnapshot);
@@ -569,7 +569,7 @@ export function useAgentsViewModel({
   const selectedAgent = allAgents.find((agent) => agent.slug === selectedSlug);
   const isPlugin = !!selectedAgent?.plugin && !isCreating;
   const isAcp = selectedAgent?.engineConnectionType === 'acp';
-  // AC7 (station#3027 follow-up): `engineDefault` is NOT a lock any more.
+  // (archive#3027 follow-up): `engineDefault` is NOT a lock any more.
   // It used to be, and the result was a six-tab editor with every field
   // disabled, a Delete that did nothing, and a Save styled as an active
   // primary that could never save — for the only four agents a fresh install
@@ -594,7 +594,7 @@ export function useAgentsViewModel({
       isFetching,
       isCreating,
     });
-  // "Loading agent…" is BOUNDED (AC5). A detail read that never resolves used
+  // "Loading agent…" is BOUNDED. A detail read that never resolves used
   // to leave that line on screen forever with nothing to press; past the
   // shared degraded window it becomes the same load-failure state a real
   // error produces, which at least offers Retry and Back.
@@ -607,7 +607,7 @@ export function useAgentsViewModel({
   const error = actionError ?? visibleRefreshError;
   const editorId = isCreating ? '__new__' : (selectedSlug ?? null);
 
-  // AC4: one predicate, shared with the New Chat picker and Home's
+  // one predicate, shared with the New Chat picker and Home's
   // recommendation card. A row this pane calls Not set up is by construction
   // the same row the picker calls Not set up.
   // The runtime tried to activate this Agent and gave up, and said why. A
@@ -647,7 +647,7 @@ export function useAgentsViewModel({
 
   /**
    * §3.2's engine answer. Derived from the binding for every persisted agent
-   * — Station's own engine is an ABSENT binding, not a missing one — and
+   * Station's own engine is an ABSENT binding, not a missing one — and
    * taken from the explicit override only while creating, where "a CLI, not
    * yet named" is a state the binding cannot represent.
    */
@@ -681,16 +681,16 @@ export function useAgentsViewModel({
     // Station's own engine runs on a MODEL connection — that, not the
     // presence of a managed agent-runtime connection, is what decides whether
     // it can answer. The first cut asked for the latter and disabled Create
-    // on a home with a perfectly ready model connection (caught live). It is
+    // on a home with a perfectly ready model connection  It is
     // the same question §3.3's inline repair answers, and now literally the
     // same derivation: §3.3 renders `stationModelBinding.reason` when this is
     // false, so the gate and the explanation beside it cannot disagree
-    // (station#3743).
+    // (archive#3743).
     stationEngineSelectable: stationModelBinding.kind === 'resolved',
     namedCliEngineSelectable: isAgentConnectionSelectable(formBoundConnection),
   });
   /**
-   * station#3741: Create refused with "System prompt is required" for a field
+   * archive#3741: Create refused with "System prompt is required" for a field
    * the form never marked, on a section the person was not looking at. The
    * field says it is required now, and pressing Create is not how you find
    * out — the button is disabled while the form is incomplete, exactly as it
@@ -712,7 +712,7 @@ export function useAgentsViewModel({
 
   return {
     DiscardModal,
-    // M3 (delta review round 3): the UNFILTERED collection — `listItems` is
+    // the UNFILTERED collection — `listItems` is
     // already search-narrowed — so a stale/typed query never gets blamed
     // for an emptiness a genuinely-empty agent roster caused on its own.
     agentsCollectionEmpty: allAgents.length === 0,

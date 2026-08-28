@@ -64,14 +64,14 @@ export function LayoutView({
       localStorage.removeItem(LAST_PROJECT_LAYOUT_KEY);
     } catch {}
   }, [layoutMissing]);
-  // The real two-input rule (station#1004 review HIGH-2 closure residual)
+  // The real two-input rule (archive#1004 closure residual)
   // needs this project's `ProjectConfig.agents` opt-in filter, not just
   // ownership — cache-shared with any other mounted consumer of the same
   // `['projects', projectSlug]` query key (project settings, sidebar), so
   // this rarely costs a fresh request.
   //
   // `isSuccess` (not just `data` truthiness) drives the ready/unknown
-  // discriminant (station#1004 closure round 2, new HIGH): a project
+  // discriminant (archive#1004 closure, new): a project
   // legitimately without an `agents` filter still resolves `data` to an
   // object with `agents: undefined`, so gating on `data` alone can't tell
   // "no filter" apart from "haven't fetched yet" / "errored" — both read
@@ -89,7 +89,7 @@ export function LayoutView({
     [projectConfigReady, projectAgentFilterAgents],
   );
 
-  // §3.3 two-input rule at launch time (station#1004 review HIGH-2): every
+  // §3.3 two-input rule at launch time (archive#1004): every
   // prompt/action agent ref is annotated — never silently dropped — when
   // its `agent` isn't available in THIS project (owned by another project,
   // or global-but-excluded-by-the-project's-filter). `handleLaunchPrompt`
@@ -184,7 +184,7 @@ export function LayoutView({
 
   const handleLaunchPrompt = useCallback(
     async (prompt: any) => {
-      // Never a silent launch (station#1004 review HIGH-2): resolves only
+      // Never a silent launch (archive#1004): resolves only
       // to an agent actually available in THIS project — an agent owned by
       // a different project is refused here even if it was somehow still
       // clickable (e.g. a stale annotation, a plugin-rendered custom tab
@@ -256,7 +256,7 @@ export function LayoutView({
   );
 
   // 4-HOME-009. A layout that does not exist is a 404 the API already
-  // answered; it used to `navigate()` from inside render — a side effect React
+  // answered; it used to `navigate` from inside render — a side effect React
   // does not guarantee, which is why the whimsical loader rotated forever over
   // an answered request — and a silent redirect hid the broken deep link
   // anyway. Render the shared not-found state with a way back instead.

@@ -32,7 +32,7 @@ let diffQueryResult: {
 
 /**
  * Mutable stand-in for the SDK's `useDiffCommentsQuery` return value. Tests
- * that reproduce station#3159's comment paths mutate this between renders to
+ * that reproduce archive#3159's comment paths mutate this between renders to
  * simulate a query refetch pushing fresh comment data into DiffPanel, the
  * same way TanStack Query would after a cache invalidation.
  */
@@ -111,7 +111,7 @@ const SECOND_FILE_PATCH = `diff --git a/bar.ts b/bar.ts
 
 const MULTI_FILE_PATCH = `${SAMPLE_PATCH}${SECOND_FILE_PATCH}`;
 
-// station#3170 fixtures — real git diff shapes with zero hunks.
+// archive#3170 fixtures — real git diff shapes with zero hunks.
 const PURE_RENAME_PATCH = `diff --git a/old-name.ts b/new-name.ts
 similarity index 100%
 rename from old-name.ts
@@ -371,7 +371,7 @@ describe('DiffPanel change counts — hunkless files (station#3170)', () => {
     // foo.ts (has hunks) still shows its numeric stat...
     expect(screen.getAllByText('+1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('−1').length).toBeGreaterThan(0);
-    // ...while the hunkless rename in the same diff shows its kind, not 0/0.
+    //...while the hunkless rename in the same diff shows its kind, not 0/0.
     expect(screen.getByText('renamed')).toBeTruthy();
   });
 });
@@ -480,7 +480,7 @@ describe('DiffPanel collapse/expand (station#3104)', () => {
   });
 });
 
-// station#3159: @pierre/diffs' controlled CodeView withholds a per-item
+// archive#3159: @pierre/diffs' controlled CodeView withholds a per-item
 // update entirely (annotations, header content) when `item.version` is
 // unchanged (see CodeView.js's syncItemRecord, and the two further
 // version-keyed dedupe checks upstream of it — areSlotSnapshotsEqual and
@@ -609,7 +609,7 @@ describe('DiffPanel inline comments after first render (station#3159)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
 
     // The mutation's onSuccess fires synchronously in this mock (matching
-    // DiffPanel's real onSuccess: () => setComposer(null)) — the composer
+    // DiffPanel's real onSuccess:  => setComposer(null)) — the composer
     // must close even though the comments list hasn't "synced" yet.
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Reply' })).toBeTruthy(),

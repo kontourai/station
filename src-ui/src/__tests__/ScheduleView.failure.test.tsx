@@ -1,11 +1,11 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3252 — the Schedule view used to render one constant banner
+ * archive#3252 — the Schedule view used to render one constant banner
  * ("Could not connect to the scheduler service. Check that the server is
  * running.") for every failure of `/jobs` + `/status`, because it read only
  * `isError` and discarded the status and the body. A corrupt ledger answers
- * HTTP 500 with a body naming `station home restore` (station#3220), and the
+ * HTTP 500 with a body naming `station home restore` (archive#3220), and the
  * user was told to check a server that was answering fine.
  *
  * These tests assert the RENDERED TEXT for each case. Three of the four carry
@@ -13,7 +13,7 @@
  * the pre-fix hardcoded banner ALSO satisfied — it is a regression pin, not
  * proof. The others each additionally assert the connection advice is ABSENT,
  * which the pre-fix component cannot do: it printed that sentence
- * unconditionally (station#3252 review).
+ * unconditionally (archive#3252).
  *
  * The error fixtures are not hand-constructed. Each is produced by running the
  * REAL `listJobs` client against the exact response bytes
@@ -75,7 +75,7 @@ vi.mock('../hooks/useScheduler', () => ({
   useDeleteJob: () => ({ mutate: vi.fn() }),
   // Added when useScheduler gained it and the view adopted it. This
   // factory must name EVERY export the view reaches, so each new hook
-  // reds this suite until listed (station#4292). The partial-mock form
+  // reds this suite until listed (archive#4292). The partial-mock form
   // vitest suggests does not work here as-is: falling through to the
   // real hooks needs a QueryClientProvider around the render.
   useRestartJobMonitor: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
@@ -184,7 +184,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
   test('a 500 naming a repair command shows that command, not connection advice', async () => {
     // The exact body src-server/routes/operations/scheduler.ts writes when a
-    // corrupt ledger surfaces (station#3220).
+    // corrupt ledger surfaces (archive#3220).
     const error = await schedulerClientErrorFor(
       JSON.stringify({
         success: false,
@@ -397,7 +397,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     expect(
       screen.getByText(/That scheduled run isn’t available/i),
     ).toBeTruthy();
-    // The promise this message exists for: no substitution (station#3965).
+    // The promise this message exists for: no substitution (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -471,7 +471,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     // 500 with `{ error: { code: … } }` (runtime-http.ts:95, :340, :446), and
     // both scheduler reads are pairing-scope gated — so this is the shape a
     // paired device with a narrower scope actually receives. `error` is
-    // DECLARED string and computed by nobody (station#3252 review).
+    // DECLARED string and computed by nobody (archive#3252).
     const error = await schedulerClientErrorFor(
       JSON.stringify({ error: { code: 'insufficient_scope' } }),
       { status: 403, headers: { 'content-type': 'application/json' } },

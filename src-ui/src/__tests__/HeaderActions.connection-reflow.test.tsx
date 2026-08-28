@@ -22,7 +22,7 @@ import {
 } from '../../../tests/helpers/css-cascade-fixture';
 
 /**
- * station#4474 — reproduces (and pins the fix for) "the connection-status
+ * archive#4474 — reproduces (and pins the fix for) "the connection-status
  * component reflows content" as it applies to `HeaderActions`' toolbar
  * connection chip (`ConnectionStatusDot` + `.app-toolbar__conn-state`,
  * `@kontourai/station-connect`'s `ConnectionStatusDot`), the ONE instance of
@@ -47,7 +47,7 @@ import {
  * vs "Can't connect" vs "No Station" vs "Pair" — `HeaderActions.tsx`'s own
  * `connStateLabel`). `.app-toolbar__conn-name` (the identity chip, which
  * would otherwise be a second variable-width sibling) is hidden entirely
- * under the shell's mobile breakpoint (`index.css`, station#3766), so on a
+ * under the shell's mobile breakpoint (`index.css`, archive#3766), so on a
  * phone the STATE LABEL alone drives the connection chip's width — and every
  * other toolbar icon sitting after it in the same flex row
  * (`.app-toolbar__actions`) shifts horizontally when it changes.
@@ -87,8 +87,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
     recheck: vi.fn(),
   }),
   // No pending record in this environment's real localStorage, so this
-  // never needs to be mocked to reach `awaiting-approval` — station#4512
-  // review (M8) wires `reason === 'awaiting-approval'` into
+  // never needs to be mocked to reach `awaiting-approval` — archive#4512
+  // review wires `reason === 'awaiting-approval'` into
   // `connectionIndicatorState` directly, which `renderMarkupForState` below
   // reaches through `connectionReason` alone.
   useConnections: () => ({
@@ -135,8 +135,8 @@ vi.mock('../components/header/OverflowMenu', () => ({
 }));
 
 /**
- * Every label-bearing chip state, not just the original three — station#4512
- * review (M1) widened this after `needs-repair` and `awaiting-approval`
+ * Every label-bearing chip state, not just the original three — archive#4512
+ * review widened this after `needs-repair` and `awaiting-approval`
  * shipped two labels LONGER than any this guard previously reproduced
  * ("Needs re-pairing" ≈97px, "Awaiting approval" ≈102px vs "Can't connect"
  * ≈81px), and a straight revert of the reserved-width bump these two
@@ -290,8 +290,8 @@ describe.skipIf(!chromiumAvailable)(
       // the reported flips (connected → reconnecting → …) look like once
       // the phone genuinely has something to say twice in a row with
       // different wording. `needs-repair`/`awaiting-approval` are the two
-      // that station#4512 added, and the ones this guard did not reproduce
-      // before review (M1) widened it.
+      // that archive#4512 added, and the ones this guard did not reproduce
+      // before review widened it.
       const viewport = { width: 390, height: 200 };
       const states: ChipState[] = [
         'connecting',

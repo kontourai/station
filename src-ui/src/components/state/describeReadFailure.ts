@@ -1,7 +1,7 @@
 /**
  * The one sentence a failed READ is allowed to show the user.
  *
- * Review H1 found the same defect in three unrelated places — a query error
+ * Review found the same defect in three unrelated places — a query error
  * settling with no data, then being drawn as "No installed skills yet" / "Add
  * a provider to get started" / "No stats available". The fix is the same
  * everywhere (render `ErrorState` before the empty branch), so the copy

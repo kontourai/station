@@ -50,7 +50,7 @@ export function buildAgentsViewItems(
   },
   options?: {
     /**
-     * station#3751: false while `/api/agents` is serving the last stable
+     * archive#3751: false while `/api/agents` is serving the last stable
      * catalog (`catalogState: 'reconciling'`). Those rows are real — they are
      * this Station's agents — but their readiness was computed for a
      * configuration that may already be gone, so an agent bound to a MISSING
@@ -64,7 +64,7 @@ export function buildAgentsViewItems(
      * a wrong word; an absent rail is an absent product.
      */
     readinessKnown?: boolean;
-    /** Which machine is reading the rail (#3843 T2). */
+    /** Which machine is reading the rail (archive#3843). */
     devicePresentation?: DevicePresentation | undefined;
   },
 ) {

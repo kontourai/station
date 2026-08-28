@@ -1,7 +1,7 @@
 /**
- * Station#1398 slice 2 — the wire contract for the authenticated fleet
+ * The wire contract for the authenticated fleet
  * inference surface (`docs/design/inference-fleet.md` §3.2, §3.3, §10 OQ-1,
- * §10 OQ-8, §11 slice 2).
+ * §10 OQ-8, §11).
  *
  * This is Station's **first inference-serving surface** (§2.6: it has never
  * been one), and §3.2 requires it to be treated as a genuine new attack
@@ -136,8 +136,8 @@ export interface FleetInferenceMessage {
  * `POST /api/inference/completions`.
  *
  * `model` is the contributed model's manifest id — `FleetContributedModel.id`
- * in `fleet-contribution.ts`, described there as "the join key slice 2's
- * serve route addresses". It is matched exactly and only against the
+ * in `fleet-contribution.ts`, described there as "the join key the serve
+ * route addresses". It is matched exactly and only against the
  * contributed subset: a provider-native id, an alias, or the id of a model
  * this Station can launch but has not contributed all resolve to
  * `model-not-contributed`.
@@ -152,7 +152,7 @@ export interface FleetInferenceCompletionRequest {
    * Reserved (§10 OQ-8). v1 refuses `true` with `streaming-unsupported`
    * rather than silently buffering, because a consumer that asked for a
    * stream and received one buffered response has been told something untrue
-   * about the path it is routing over — and slice 3's receipt records
+   * about the path it is routing over — and the routing receipt records
    * "whether the path could stream" as a fact.
    */
   stream?: boolean;
@@ -214,7 +214,7 @@ export interface FleetInferenceCompletionResponse {
 
 /**
  * Every way this route says no. Closed and peer-facing: a consumer renders
- * the code, and slice 3's router keys admission on it, so it may not grow
+ * the code, and the routing admission keys on it, so it may not grow
  * silently any more than the manifest's diagnostic vocabulary may.
  */
 export type FleetInferenceRefusalCode =
@@ -290,7 +290,7 @@ export interface FleetInferenceRefusal {
 
 /**
  * The HTTP status each refusal is served with, declared once so the route and
- * any consumer agree. Deliberately never 404: §11 slice 2 requires a named
+ * any consumer agree. Deliberately never 404: §11 requires a named
  * refusal rather than a silent not-found, and a 404 on a model id is also the
  * enumeration oracle `model-not-contributed` exists to avoid.
  */

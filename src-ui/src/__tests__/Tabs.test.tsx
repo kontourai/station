@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * The shared TRUE-tab primitive (station#4463 slice 2). Covers the review's
+ * The shared TRUE-tab primitive (archive#4463). Covers the review's
  * fix-round contract: real `role="tablist"`/`role="tab"`/`aria-selected`,
  * generated `aria-controls`/id pairing for a host's `role="tabpanel"`,
  * automatic-vs-manual activation (WAI-ARIA APG), an optional count badge,
@@ -104,14 +104,14 @@ describe('Tabs', () => {
   });
 
   /**
-   * station#4463 slice 2 review HIGH-1 (fix round): `.page__tab` is
+   * archive#4463: `.page__tab` is
    * `display: inline-flex`, and flexbox trims a flex item's OWN leading
    * whitespace at the start of its line box — the count span's " 3" text
    * content visually rendered as "3" with no gap ("Models0") in a real
    * browser, while the accessible name (plain string concatenation below,
    * unaffected by CSS) correctly read "Models 3". jsdom does not model
    * flexbox whitespace trimming, so it cannot see that divergence directly
-   * — this pins the STRUCTURAL fix instead (the count span carries the
+   * this pins the STRUCTURAL fix instead (the count span carries the
    * class `page-layout.css`'s `.page__tab-count` rule targets for its
    * `margin-left` gap) and separately pins that the visible text and the
    * accessible name agree on the "Label N" content (WCAG 2.5.3
@@ -261,7 +261,7 @@ describe('Tabs', () => {
 
   describe('manual activation', () => {
     /**
-     * station#4463 slice 2 review HIGH-2: automatic activation on a
+     * archive#4463: automatic activation on a
      * route-changing host (Connections, Developer) was pushing one history
      * entry per arrow-key press. Manual activation's whole contract is
      * that arrow keys move focus ONLY — this is the fault-injectable proof

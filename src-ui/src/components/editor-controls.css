@@ -301,7 +301,7 @@
 }
 
 /*
- * station#3783: the 44px touch floor belongs to the PRIMITIVE.
+ * archive#3783: the 44px touch floor belongs to the PRIMITIVE.
  *
  * `.editor-btn` computes ~31-35px from its padding alone, and the floor lived
  * in `views/editor-layout.css` — a route stylesheet only the lazy editor views

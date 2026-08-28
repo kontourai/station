@@ -98,7 +98,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
   const app = new Hono();
 
   /**
-   * station#1398 slice 4 — the bounded fleet routing-receipt read
+   * archive#1398 — the bounded fleet routing-receipt read
    * (`docs/design/inference-fleet.md` §3.4, §11 slice 4). "An NDJSON file
    * under `~/.station` that no surface reads is not a receipt, it is a log."
    *
@@ -133,7 +133,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
   });
 
   /**
-   * station#1398 slice 3/4 (security review, M-2) — the SERVING side's own
+   * archive#1398/4 (security review, M-2) — the SERVING side's own
    * receipts, readable for the same reason the routing ones are: "a receipt
    * nobody can read is a log, not a receipt" is a rule about receipts, not
    * about consumer-side receipts. Without this the serve log was write-only
@@ -337,7 +337,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       // Accept BOTH an ISO string and epoch milliseconds: the docs promised
       // epoch-ms and `new Date("1785813308984")` is NaN, so every
       // `eventTime >= NaN` was false and the query silently returned nothing
-      // (station#3076 review). A time filter that reads as "no results" is
+      // (archive#3076 review). A time filter that reads as "no results" is
       // worse than one that errors.
       // A SUPPLIED bound that does not parse is an error, not a wider
       // window. The first version fell back to 0/now, so `start=abc` — or
@@ -366,7 +366,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
 
       const filteredEvents = await deps.queryEventsFromDisk(start, end, userId);
 
-      // Slicing lives HERE, not in a second reader (station#3076). The rows
+      // Slicing lives HERE, not in a second reader (archive#3076). The rows
       // behind the insights rollup are these rows, and this handler already
       // owns the two authorization layers they require: the per-user filter
       // inside queryEventsFromDisk and the tenant predicate in
@@ -556,7 +556,7 @@ function filterMonitoringEvents(
 }
 
 /**
- * station#3130: exported so `/api/insights` applies the SAME predicate instead
+ * archive#3130: exported so `/api/insights` applies the SAME predicate instead
  * of re-deriving one. The `/events` handler's own comment warns that a parallel
  * reader "would have to re-derive both, and an export that re-derives an
  * authorization check is an export that eventually gets one wrong" — insights

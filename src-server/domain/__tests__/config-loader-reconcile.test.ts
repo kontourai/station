@@ -1,5 +1,5 @@
 /**
- * The watcher arming gap (#952), and the bounded reconciliation that closes it.
+ * The watcher arming gap (archive#952), and the bounded reconciliation that closes it.
  *
  * `chokidar` emits `ready` when *its own* initial directory scan finishes, not
  * when the platform's notification stream goes live. A directory created in
@@ -118,7 +118,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await loader?.dispose();
-  // `dispose()` returns before the watcher close settles (#956). This suite
+  // `dispose()` returns before the watcher close settles (archive#956). This suite
   // removes the watched tree next, so it waits for the close it started.
   await loader?.whenWatcherClosed();
   loader = undefined;

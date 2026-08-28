@@ -18,8 +18,8 @@ export function useDegradedQueryState({
   timeoutMs?: number;
   /**
    * Bump on retry: a retry that hangs again must get a FRESH loading
-   * window before re-degrading, not stay degraded instantly (sol review
-   * of #2647, finding 1).
+   * window before re-degrading, not stay degraded instantly (
+   * of archive#2647).
    */
   resetKey?: unknown;
 }): DegradedQueryState {

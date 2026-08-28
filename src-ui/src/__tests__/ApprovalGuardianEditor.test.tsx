@@ -44,7 +44,7 @@ describe('ApprovalGuardianEditor', () => {
     });
   });
 
-  // station#1831: the instructions field holds a PROMPT. It must be sized for
+  // archive#1831: the instructions field holds a PROMPT. It must be sized for
   // one and offer a realistic starting point that ADDS a house rule to the
   // guardian's built-in prompt instead of restating its decision rules.
   test('instructions textarea is sized for a prompt and offers a house-rule starting point', () => {

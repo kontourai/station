@@ -45,7 +45,7 @@ describe('FlowRunAttachedMarker', () => {
   });
 
   /**
-   * station#189: the marker used to imply the session was being gated. A run
+   * archive#189: the marker used to imply the session was being gated. A run
    * whose first step declares no gate is attached and stuck, and the marker
    * has to say so where an operator reads it.
    */

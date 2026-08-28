@@ -276,7 +276,7 @@ async function decideThroughListener(
       origin: `http://${CONSENT_HOST}`,
       'sec-fetch-site': 'same-origin',
       'sec-fetch-mode': 'navigate',
-      // What a real approve click sends (station#3752 live trace); the
+      // What a real approve click sends (archive#3752 live trace); the
       // decide guard requires it so "top-level" is derived, not assumed.
       'sec-fetch-dest': 'document',
       'sec-fetch-user': '?1',
@@ -412,7 +412,7 @@ describe('the grant channel (station#3677 PR 2): distinct-origin consent only', 
     // Rider 3, per the projection contract's own consent-surface
     // requirement (workspace-home-role.ts): the list is framed as what the
     // BUILT-IN Home shows, and the granted code's access is stated plainly
-    // as unbounded — never the reverse. The #3720 review caught the first
+    // as unbounded — never the reverse. The archive#3720 review caught the first
     // cut presenting the fields as "readable by the pane".
     expect(html).toContain('what the built-in Home shows today');
     expect(html).toContain('this list is not a limit on it');

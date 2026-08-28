@@ -1,5 +1,5 @@
 /**
- * wireTurnCompletionNotifications — station#1225 (offline slice 3):
+ * wireTurnCompletionNotifications — archive#1225 (offline):
  * push-on-completion, the second half of "the differentiator". A turn that
  * completes or fails while its owning user is NOT actively connected to
  * `/api/orchestration/events` gets a Web Push notification ("Your agent
@@ -21,7 +21,7 @@
  * their single-user-compatible any-connected-user fallback inside that seam.
  *
  * Body is deliberately minimal (`Agent finished in session <threadId>`) —
- * never the turn's `outputText` — matching station#1225's guardrail against
+ * never the turn's `outputText` — matching archive#1225's guardrail against
  * a push notification leaking response content.
  *
  * The EventBus callback stays synchronous and delegates to NotificationService's
@@ -56,7 +56,7 @@ interface TurnCompletionOrchestrationService {
     threadId: string,
   ): OrchestrationStreamPresenceSubject | undefined;
   /**
-   * station#3525: optional so no existing caller/test needs new plumbing.
+   * archive#3525: optional so no existing caller/test needs new plumbing.
    * When present, returns true (and consumes the armed entry) exactly when
    * `InternalStopSuppression.arm` marked `turnId` as a
    * stop this process initiated as internal machinery (a credential-profile
@@ -77,7 +77,7 @@ interface TurnCompletionEventMessage {
 }
 
 /**
- * station#3525 fix round: the "resolve presence, decide, schedule" body
+ * archive#3525 fix round: the "resolve presence, decide, schedule" body
  * shared by `wireTurnCompletionNotifications` and
  * `wireInternalStopRedispatchFailureNotifications` — one push-delivery
  * decision, not two copies that could drift on title/category/dedupeTag.
@@ -143,7 +143,7 @@ export function resolveTurnCompletionOutcome(
 ): TurnOutcome | undefined {
   if (event.method === 'turn.completed') return 'done';
   if (event.method === 'turn.aborted') return 'failed';
-  // station#3442: `runtime.error` is the ONLY canonical event a genuine
+  // archive#3442: `runtime.error` is the ONLY canonical event a genuine
   // turn/stream failure publishes while a turnId is still known — see
   // bedrock-adapter.ts's and ollama-adapter.ts's `publishTurnFailure`, and
   // codex-adapter-notifications.ts's `'error'` notification case and its
@@ -152,21 +152,21 @@ export function resolveTurnCompletionOutcome(
   // none of these branches and scheduled NO push notification at all, the
   // exact case this file exists to cover.
   //
-  // station#3451 fix round D7: the paragraph this replaces claimed
+  // archive#3451 fix round D7: the paragraph this replaces claimed
   // `codex-adapter-transport.ts`'s `finalizeUnexpectedExit` (an app-server
   // process dying mid-turn) "publishes `session.exited`, never
   // `runtime.error`" and that "a codex app-server crash mid-turn still
   // produces no push after this fix." Both were true when written and are
-  // false now: station#3473 made `finalizeUnexpectedExit` (and
-  // `stopSession`, and the process `'error'` handler — station#3451 finding
+  // false now: archive#3473 made `finalizeUnexpectedExit` (and
+  // `stopSession`, and the process `'error'` handler — archive#3451 finding
   // D3) synthesize a turn-scoped `runtime.error` (retriable left unset)
   // before publishing `session.exited`, whenever an active turn is
   // unresolved. That synthesized event has no `retriable` flag, so
   // `isDeferredRetriableTurnError` below returns false and this function
   // returns 'failed' — a codex app-server crash mid-turn now DOES schedule
-  // the push. That is #3473's stated payoff.
+  // the push. That is archive#3473's stated payoff.
   if (event.method === 'runtime.error') {
-    // station#3442 round 2 (HIGH-1): codex's app-server `'error'`
+    // archive#3442 round 2 (HIGH-1): codex's app-server `'error'`
     // notification (codex-adapter-notifications.ts) is the ONE
     // `runtime.error` publish site this repo's own audit documents as not
     // proof the turn is over — see orchestration-session-state.ts's
@@ -178,13 +178,13 @@ export function resolveTurnCompletionOutcome(
     // than pushing an alarm that a subsequent success can never recall, is
     // the smallest fix that stays honest.
     //
-    // station#3451 fix round D7: the paragraph this replaces claimed a
+    // archive#3451 fix round D7: the paragraph this replaces claimed a
     // retry loop ending via Stop had no working path at all — that this
     // event's `activeTurnId` fold left `interruptUserTurnCooperatively`
     // early-returning without ever calling `adapter.interruptTurn`, and the
     // stall watchdog's `TERMINAL_METHODS` excluded `runtime.error` in a way
-    // that left its forced-stop hitting the same early return. station#3473
-    // (station#3451 findings B1/D1 and 4/H2) fixed both, for the FIRST turn
+    // that left its forced-stop hitting the same early return. archive#3473
+    // (archive#3451 findings B1/D1 and 4/H2) fixed both, for the FIRST turn
     // on a thread: `session-lifecycle-service.ts`'s
     // `interruptibleTurnIdForEvents` now keeps a codex deferred-retriable
     // turn interruptible instead of folding it away, so Stop reaches
@@ -222,7 +222,7 @@ export function resolveTurnCompletionOutcome(
     // carries `provider: 'acp'` (acp-adapter.ts:438), not `PROVIDER_CODEX`,
     // so it fails safe here (it still notifies) — the false-alarm class this
     // arm exists to suppress returns, unnoticed, for that path.
-    // station#3451: was a hand-copied inline condition
+    // archive#3451: was a hand-copied inline condition
     // (`event.provider === PROVIDER_CODEX && event.retriable === true`) —
     // now the shared predicate `session-lifecycle-service.ts` and three
     // other consumers already use, so this file cannot independently drift
@@ -238,7 +238,7 @@ export function resolveTurnCompletionOutcome(
 }
 
 /**
- * station#3581 review MEDIUM 2: `nextTurnIdentityAnchor` retains a thread's
+ * archive#3581 review MEDIUM 2: `nextTurnIdentityAnchor` retains a thread's
  * anchor for the SESSION'S LIFE now (it clears only on a fresh
  * `turn.started`, never on an accepted terminal) — so without eviction,
  * `wireTurnCompletionNotifications`'s in-memory map below would grow one
@@ -275,7 +275,7 @@ const TURN_IDENTITY_ANCHOR_EVICTION_MS = 24 * 60 * 60_000;
 const SETTLED_STOP_NOTIFICATION_RETENTION_MS = 60_000;
 
 /**
- * station#3581 review round 3 LOW 1: `nextTurnIdentityAnchor` can only ever
+ * archive#3581 review round 3 LOW 1: `nextTurnIdentityAnchor` can only ever
  * produce a DIFFERENT value on `turn.started` (see its doc) — every other
  * canonical method, including an accepted terminal, is a pass-through
  * no-op. So computing it (or touching the eviction timer) for every event
@@ -305,7 +305,7 @@ export function wireTurnCompletionNotifications(
   notificationService: NotificationService,
   logger: TurnCompletionLogger,
 ): () => void {
-  // station#3573: a third, independent turn-identity fold, scoped to the
+  // archive#3573: a third, independent turn-identity fold, scoped to the
   // life of this one wiring (fresh per call) — deliberately NOT a call into
   // `OrchestrationService`. This listener observes the SAME event stream
   // `deriveLifecycleTransition`/`deriveAgentRunStatus` fold (every published
@@ -385,7 +385,7 @@ export function wireTurnCompletionNotifications(
             return;
           }
 
-          // station#3573: read BEFORE the outcome/early-return checks below
+          // archive#3573: read BEFORE the outcome/early-return checks below
           // so a `turn.started` for a second turn on this thread is never
           // missed by the guard further down — the anchor must be current
           // for every relevant event, not only the ones this listener acts
@@ -398,7 +398,7 @@ export function wireTurnCompletionNotifications(
             // `nextTurnIdentityAnchor` can only return `undefined` here when
             // `previousAnchor` was ALREADY `undefined` (no turn has ever
             // started for this thread) — once a turn has started, the anchor
-            // is retained for the session's life (station#3581 MEDIUM 3), so
+            // is retained for the session's life (archive#3581 MEDIUM 3), so
             // there is no "clear the map entry" case left to handle; only
             // "set" is reachable.
             const nextAnchor = nextTurnIdentityAnchor(previousAnchor, event);
@@ -411,10 +411,10 @@ export function wireTurnCompletionNotifications(
           let outcome = resolveTurnCompletionOutcome(event);
           if (!outcome || !event.turnId) return;
 
-          // station#3573: a stale `turn.completed`/`turn.aborted` naming a
+          // archive#3573: a stale `turn.completed`/`turn.aborted` naming a
           // turn the session has already moved past (codex's own protocol
           // timing — see codex-adapter-notifications.ts's `'turn/completed'`
-          // case, #3572) must not fire a "turn done"/"needs attention" push
+          // case, archive#3572) must not fire a "turn done"/"needs attention" push
           // while a LATER turn on the same thread is still running. Checked
           // against the anchor as of BEFORE this event (`previousAnchor`),
           // mirroring `deriveLifecycleTransition`/`deriveAgentRunStatus`'s own
@@ -443,7 +443,7 @@ export function wireTurnCompletionNotifications(
             outcome = 'stopped';
           }
 
-          // station#3525: a stop this process initiated as internal machinery
+          // archive#3525: a stop this process initiated as internal machinery
           // (not a user action, not an unattended mid-turn death) armed this
           // exact turn id for exactly one suppressed push. See
           // `InternalStopSuppression`'s `internalStopTurnIds` doc for why this is
@@ -493,7 +493,7 @@ export function wireTurnCompletionNotifications(
     },
   );
 
-  // station#3581 review round 3 LOW 2: unwiring this listener must also
+  // archive#3581 review round 3 LOW 2: unwiring this listener must also
   // clear every pending eviction timer, not just the EventBus subscription.
   // Each `.unref()`d timer cannot hold the process open by itself, but it
   // retains a closure over BOTH maps for up to 24h after the listener that
@@ -513,7 +513,7 @@ export function wireTurnCompletionNotifications(
 }
 
 /**
- * station#3525 fix round FIX 1: the corrective half of internal-stop
+ * archive#3525 fix round FIX 1: the corrective half of internal-stop
  * suppression. `wireTurnCompletionNotifications`'s suppression check
  * (`consumeInternalStopSuppression`) reliably WINS its race against a
  * caller's later failure — proven live: the adapter's orphaned

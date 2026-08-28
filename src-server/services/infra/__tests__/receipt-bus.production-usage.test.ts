@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#1101 AC3 static guard: production source must never call the
+ * archive#1101 AC3 static guard: production source must never call the
  * receipt bus's test-only subscribe surface. Complements the runtime
  * `assertTestEnvironment()` guard in `receipt-bus.ts` (which fails fast at
  * call time) with a build-time check that fails the ordinary unit-test

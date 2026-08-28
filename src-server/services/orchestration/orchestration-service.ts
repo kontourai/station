@@ -287,7 +287,7 @@ function telemetryEngine(
 }
 
 /**
- * station#978 review r1 (HIGH fix): the shape of `dispatch`/
+ * archive#978 review r1 (HIGH fix): the shape of `dispatch`/
  * `dispatchWithReceipt`'s internal-only third parameter. See the
  * `dispatchWithReceipt` docblock for why this can never reach the service
  * from an HTTP route.
@@ -303,7 +303,7 @@ interface OrchestrationDispatchInternalOptions {
   credentialProfileApplication?: boolean;
   /**
    * How this command's `metadata.taskSlug` attach may treat the sidecar
-   * (station#189 S4). `read-only-join` marks a session Station is starting
+   * (archive#189 S4). `read-only-join` marks a session Station is starting
    * against a Builder run someone ELSE is driving, so the attach reads and
    * binds but never writes `state.json`.
    *
@@ -316,7 +316,7 @@ interface OrchestrationDispatchInternalOptions {
   /** Server-owned execution policy; never accepted from an HTTP command. */
   reviewIsolation?: ProviderSessionStartInput['reviewIsolation'];
   /**
-   * station#2821 hardening L3: see the matching field on
+   * archive#2821 hardening L3: see the matching field on
    * `SessionCommandInternalOptions`. Threaded here only so
    * `startSessionInternal` can forward it structurally.
    */
@@ -340,7 +340,7 @@ function chatStartGateReason(error: unknown): string {
 
 /**
  * Station-vs-external collapse of an adapter's engine identity
- * (docs/design/agent-engine-unification.md §4.1; station#1003 Phase B —
+ * (docs/design/agent-engine-unification.md §4.1; archive#1003 Phase B —
  * replaces the `executionClass` read) for telemetry/projection sites that
  * only need the binary distinction (plus 'unknown' for an unresolvable
  * adapter), not the full engine id. `acp` is not derived through here —
@@ -390,7 +390,7 @@ export class OrchestrationCommandDispatchError extends Error {
       // A refusal-to-act (not a failed action) is retryable: the host's
       // posture can clear, and an in-flight start settles. Any code whose
       // error message tells the user to retry belongs in this set —
-      // station#3493 delta review caught 'session_start_in_flight' saying
+      // archive#3493 delta review caught 'session_start_in_flight' saying
       // "retry" while this line still classified it non-retryable.
       this.retryable =
         code === 'resource_posture_critical' ||
@@ -409,12 +409,12 @@ export class SessionReattachConflictError extends Error {
 }
 
 /**
- * station#3493 fix round HIGH: a Stop that lands while this process is
+ * archive#3493 fix round HIGH: a Stop that lands while this process is
  * still starting the session's engine waits for that start, but only up to
  * the adapter-stop deadline — a wedged `adapter.startSession` must not turn
  * a Stop press into a forever-hang. On expiry the command refuses with this
  * typed error rather than falling through to the dormant write, which would
- * report success around a live start (the original #3493 lie).
+ * report success around a live start (the original archive#3493 lie).
  */
 export class SessionStopWhileStartingError extends Error {
   readonly code = 'session_start_in_flight';
@@ -460,7 +460,7 @@ export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
 /**
  * The FileMemory seam and its occupancy helper moved to
  * `interrupted-turn-recovery.ts` with the consumer that is their only
- * caller (epic #4024 slice 13). Re-exported because
+ * caller (epic archive#4024). Re-exported because
  * `OrchestrationServiceOptions.memoryAdapters` still declares the type and
  * `runtime/bootstrap/runtime-initialize.ts` imports it from here.
  */
@@ -524,7 +524,7 @@ interface OrchestrationServiceOptions {
     > | null>;
   };
   /**
-   * station#1501 slice 3a: non-authoritative observer of `resolveStartSessionCwd`'s
+   * archive#1501: non-authoritative observer of `resolveStartSessionCwd`'s
    * project resolution. Optional and unwired in tests; when omitted, the seam
    * runs byte-for-byte as before. Implementations MUST NOT throw and MUST NOT
    * block — see `project-resource-shadow.ts` decision 1.
@@ -555,7 +555,7 @@ interface OrchestrationServiceOptions {
    */
   workflowSidecarService?: WorkflowSidecarService;
   /**
-   * #895 wave A: resolve `startSession` input into a `ResolvedAgentDefinition`
+   * archive#895 wave A: resolve `startSession` input into a `ResolvedAgentDefinition`
    * (`input.agent`) before dispatch, for sessions started as a real on-disk
    * agent. Optional — omitted in installations/tests that don't wire it, in
    * which case `startSession` input reaches the adapter exactly as before.
@@ -568,7 +568,7 @@ interface OrchestrationServiceOptions {
     agentSlug: string,
   ) => Promise<{ name: string; icon?: string } | undefined>;
   /**
-   * station#2959: load an on-disk agent's `AgentExecutionConfig` so
+   * archive#2959: load an on-disk agent's `AgentExecutionConfig` so
    * `resolveSessionAgentForStart` can resolve its declared
    * `turnStallWindowMs` override (`resolveTurnStallWindowMs`,
    * `@kontourai/station-contracts/turn-stall-window`). Independent of
@@ -583,7 +583,7 @@ interface OrchestrationServiceOptions {
     agentSlug: string,
   ) => Promise<AgentExecutionConfig | undefined>;
   /**
-   * station#4080 slice 1: per-agent FileMemory stores, keyed by agent slug —
+   * archive#4080: per-agent FileMemory stores, keyed by agent slug —
    * the SAME map `runtime-initialize.ts` composes for the `/chat` route.
    *
    * The interrupted-turn consumer (`InterruptedTurnRecovery.consume`)
@@ -622,7 +622,7 @@ interface OrchestrationServiceOptions {
     debug(message: string, meta?: Record<string, unknown>): void;
     warn(message: string, meta?: Record<string, unknown>): void;
     /**
-     * Optional (station#1897 logging slice 3): binds a session-scoped
+     * Optional (archive#1897 logging slice 3): binds a session-scoped
      * child logger — see `sessionLogger()` below — so a session's own
      * lifecycle warns/debug lines and a later
      * `read_logs?q=<conversationId>` query correlate on the SAME field
@@ -649,7 +649,7 @@ export type OrchestrationTurnAdmission = (input: {
 }) => { allowed: true } | { allowed: false; reason: string };
 
 /**
- * #685 choke point: compose ambient, model-facing context into the turn's
+ * archive#685 choke point: compose ambient, model-facing context into the turn's
  * model input while keeping the typed text available as `displayInput` for
  * transcript-facing events (`turn.started` prompt). Adapters never see the
  * `ambientContext` field itself.
@@ -703,12 +703,12 @@ function isWithinDirectory(root: string, candidate: string): boolean {
 }
 
 /**
- * #686/#791/#1011: decide the working directory an engine session launches
+ * archive#686/#791/#1011: decide the working directory an engine session launches
  * in. This is the ONE place a session's `cwd` is settled, and every provider
  * reaches its adapter through it, so a fix here covers Claude, Codex,
  * ACP-connected CLIs, and Station's own agent relay alike.
  *
- * #1011 was a family of fail-open branches: whenever this returned the input
+ * archive#1011 was a family of fail-open branches: whenever this returned the input
  * unchanged, the adapter spawned the engine with no `cwd` at all and the
  * process simply inherited the SERVER's working directory — `$HOME` in the
  * desktop app. A chat the UI shows as bound to a project then read and wrote
@@ -732,16 +732,16 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * - A project WITHOUT a `workingDirectory` is deliberately NOT an error.
  *   Such a project is an organizational/knowledge scope, not a directory
  *   binding — Station seeds exactly one (`default`) — so a chat in it is a
- *   global chat and must keep behaving like one. Since #1042 that means an
- *   explicit `$HOME`, not an inherited server directory; #1023 extends the
+ *   global chat and must keep behaving like one. Since archive#1042 that means an
+ *   explicit `$HOME`, not an inherited server directory; archive#1023 extends the
  *   same terminus to the ACP adapter, which was the last engine family whose
  *   chain still ended at `process.cwd()`.
  * - A caller-supplied `cwd` still wins over the project directory (a session
  *   may legitimately be bound to a worktree or subdirectory), but only while
  *   it stays inside the project it claims to be bound to.
- * - A resolved directory that does not exist fails closed (#791).
+ * - A resolved directory that does not exist fails closed (archive#791).
  *
- * station#1501 slice 3a: `observeShadow` is a NON-AUTHORITATIVE observer of
+ * archive#1501: `observeShadow` is a NON-AUTHORITATIVE observer of
  * this function's project resolution. Every branch below behaves exactly as
  * it did before — the shadow is dispatched and discarded, never awaited and
  * never consulted. See `project-resource-shadow.ts` for why the migration is
@@ -796,17 +796,17 @@ function resolveStartSessionCwd(
 
   const cwd = suppliedCwd ?? projectCwd;
   if (!cwd) {
-    // #1023: never inherit the server process's cwd — on a desktop install
+    // archive#1023: never inherit the server process's cwd — on a desktop install
     // that happened to be $HOME, but from a dev checkout or a service it is
     // the install root, and the UI promises "~ (defaults to home)" for a
     // directory-less project. Make the promise true everywhere. The seeded
     // `default` project (no workingDirectory) and unbound chats both land
-    // here; the resolver's product-side follow-ups in #1023 still apply.
+    // here; the resolver's product-side follow-ups in archive#1023 still apply.
     //
     // ACP is still excluded here, for the same reason as before: its adapter
     // carries a connection-level fallback (`config.cwd`) that only the
     // adapter can see, and defaulting unconditionally here would permanently
-    // shadow it. Since #1403, the adapter ends that chain in a private,
+    // shadow it. Since archive#1403, the adapter ends that chain in a private,
     // Station-managed workspace and fails closed if it cannot prepare one;
     // it records that final outcome on this instrument.
     const home = input.provider === 'acp' ? undefined : safeHomeDirectory();
@@ -817,7 +817,7 @@ function resolveStartSessionCwd(
         outcome: 'defaulted_home',
         reason: projectSlug ? 'project_without_directory' : 'unbound_chat',
       });
-      // station#1174: this cwd is a default, not a real project/user
+      // archive#1174: this cwd is a default, not a real project/user
       // binding — see cwdDefaulted's doc comment on ProviderSessionStartInput.
       return { ...input, cwd: home, cwdDefaulted: true };
     }
@@ -830,7 +830,7 @@ function resolveStartSessionCwd(
           ? 'acp_connection_default'
           : 'home_unavailable',
     });
-    // station#1174: still no real project/user cwd, even though this
+    // archive#1174: still no real project/user cwd, even though this
     // degenerate-host/ACP branch leaves `cwd` itself untouched.
     return { ...input, cwdDefaulted: true };
   }
@@ -852,7 +852,7 @@ function resolveStartSessionCwd(
   }
 
   // Fail closed on a stale or deleted directory rather than handing it to the
-  // adapter (#791). Dropping the cwd instead would be worse than an error: the
+  // adapter (archive#791). Dropping the cwd instead would be worse than an error: the
   // adapter would spawn in whatever the server's cwd happens to be — usually
   // the install root — so an agent asked to work on a project would quietly
   // read and write somewhere else entirely. Failing here names the project and
@@ -909,7 +909,7 @@ export class OrchestrationService {
     AbortController
   >();
   /**
-   * Adapter retirement + the bounded-await helpers (epic #4024 slice 12).
+   * Adapter retirement + the bounded-await helpers (epic archive#4024).
    * Owns its two maps; every write is internal. The dead
    * `adapterRetirements` Set that used to sit here was deleted in the same
    * slice — three references file-wide (declare, one add, one delete) and
@@ -917,15 +917,15 @@ export class OrchestrationService {
    * shutdown drains: that is `adapterRetirementByAdapter`, the raw
    * operation, which shutdown re-wraps in its own deadline.
    */
-  /** Turn-provenance envelopes (epic #4024, C2 sub-cut). */
+  /** Turn-provenance envelopes (epic archive#4024, C2 sub-cut). */
   private readonly turnProvenance: TurnProvenanceSidecar;
   private readonly adapterRetirement: AdapterRetirement;
-  /** Boot-time interrupted-turn recovery (epic #4024 slice 13). */
+  /** Boot-time interrupted-turn recovery (epic archive#4024). */
   private readonly interruptedTurns: InterruptedTurnRecovery;
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
   /**
-   * Turn progress + turn-stall observation (epic #4024 slice 1, #4116):
+   * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
    * owns the stall watchdog, per-thread windows, and the process-local
    * progress markers. Constructed in the ctor — its deps object captures two
    * `options.*` values EAGERLY (the ctor parameter is not in scope in a
@@ -935,24 +935,24 @@ export class OrchestrationService {
    * it).
    */
   private readonly turnProgress: TurnProgressTracker;
-  /** Transcript read/search/usage projections (epic #4024 slice 4, #4144). */
+  /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
-  /** Event paging & stream replay (epic #4024 slice 5, #4155). */
+  /** Event paging & stream replay (epic archive#4024, archive#4155). */
   private readonly sessionEventReads: SessionEventReads;
-  /** Tenancy & owner authorization (epic #4024 slice 6, #4166). */
+  /** Tenancy & owner authorization (epic archive#4024, archive#4166). */
   private readonly sessionAuthz: SessionAuthorization;
-  /** Model launch plan & selector validation (epic #4024 slice 8, #4179). */
+  /** Model launch plan & selector validation (epic archive#4024, archive#4179). */
   private readonly modelLaunch: ModelLaunchPlanning;
-  /** Credential-profile recovery, execution half (epic #4024 slice 7, #4174). */
+  /** Credential-profile recovery, execution half (epic archive#4024, archive#4174). */
   private readonly credentialProfileRecovery: CredentialProfileRecovery;
-  /** Connection smoke (epic #4024 slice 9, #4195). */
+  /** Connection smoke (epic archive#4024, archive#4195). */
   private readonly connectionSmoke: ConnectionSmoke;
-  /** Cooperative stop & deferred interrupt (epic #4024 slice 10, #4204). */
+  /** Cooperative stop & deferred interrupt (epic archive#4024, archive#4204). */
   private readonly cooperativeStop: CooperativeStop;
   private readonly threadProviders = new Map<string, ProviderKind>();
   private readonly clientOriginTurns = new ClientOriginTurnPropagation();
   /**
-   * station#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): `sendTurn`'s
+   * archive#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): `sendTurn`'s
    * begin/settle around `clientOriginTurns` runs INSIDE
    * `sessionExecutionCoordinator.runTurnStart`, which already serializes
    * distinct turn STARTS per thread — but `runTurnStart`'s claim/
@@ -991,15 +991,15 @@ export class OrchestrationService {
   private readonly sessionConnectionIds = new Map<string, string>();
   private readonly quarantinedThreads = new Set<string>();
   /**
-   * Internal-stop push suppression (epic #4024 slice 4, #4144): the C5
-   * cluster's Set and its station#3525 rationale moved verbatim to
+   * Internal-stop push suppression (epic archive#4024, archive#4144): the C5
+   * cluster's Set and its archive#3525 rationale moved verbatim to
    * internal-stop-suppression.ts. Constructed in the ctor; the public
    * `consumeInternalStopSuppression` forwarder keeps the external surface.
    */
   private readonly internalStops: InternalStopSuppression;
   private readonly startingSessionThreads = new Set<string>();
   /**
-   * station#3476: in-flight lazy materialisations, keyed by thread. Two
+   * archive#3476: in-flight lazy materialisations, keyed by thread. Two
    * concurrent first turns on the same restored session would otherwise each
    * call `adapter.startSession`, spawning two engines for one conversation —
    * a small copy of the leak this change removes. Every materialising caller
@@ -1011,7 +1011,7 @@ export class OrchestrationService {
     string,
     Promise<ProviderAdapterShape | undefined>
   >();
-  /** Flow run / policy hooks / workflow sidecar (epic #4024 slice 11, #4218). */
+  /** Flow run / policy hooks / workflow sidecar (epic archive#4024, archive#4218). */
   private readonly flowPolicy: FlowPolicySidecar;
   private readonly recoveryCoordinator?: SessionRecoveryCoordinator;
   private readonly credentialRecovery?: CredentialRecoveryModule;
@@ -1041,7 +1041,7 @@ export class OrchestrationService {
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
   private started = false;
   /**
-   * station#1745: whether this process's startup attachment pass has FINISHED
+   * archive#1745: whether this process's startup attachment pass has FINISHED
    * — not whether it succeeded.
    *
    * Deliberately not "whether `recoverSessions()` completed": it is set in a
@@ -1693,7 +1693,7 @@ export class OrchestrationService {
         // Both upstream steps do unguarded durable reads
         // (`adoptionLedger.reservations()`, `readSessions()`), so this chain can
         // reject. On `main` that only produced an unhandled rejection; since
-        // station#1779 it would ALSO leave `sessionAttachmentSettled` false
+        // archive#1779 it would ALSO leave `sessionAttachmentSettled` false
         // for the process lifetime — a permanent fail-open — and skip
         // `recoveryCoordinator.reconcile()` entirely. Caught and logged so
         // the `finally` below always runs.
@@ -1703,7 +1703,7 @@ export class OrchestrationService {
         );
       })
       .finally(() => {
-        // station#1745: `sessionAdapters` now reflects every thread this
+        // archive#1745: `sessionAdapters` now reflects every thread this
         // process actually re-attached (or failed to), which is the ONE
         // input `projectRequestAnswerability` cannot honestly guess at
         // before this point. Until it is set, that projection answers
@@ -1726,7 +1726,7 @@ export class OrchestrationService {
         // reached before it threw, and it is strictly smaller than a permanent
         // fail-open, which is the only other option.
         //
-        // station#1284's startup orphan-reconciliation pass used to run
+        // archive#1284's startup orphan-reconciliation pass used to run
         // here, behind a `providerRegistrationSettled` barrier, and it is
         // gone: the barrier existed only because the pass WROTE an
         // irreversible cancellation, and there is nothing irreversible left
@@ -1748,7 +1748,7 @@ export class OrchestrationService {
             { error: error instanceof Error ? error.message : String(error) },
           );
         }
-        // station#4080 slice 1: after recovered sessions are tracked, so a
+        // archive#4080: after recovered sessions are tracked, so a
         // thread's provider/owner can resolve the same way any other
         // post-recovery read of it does. Fire-and-forget, like the
         // recovery-intent reconciliation just above — a failure here must
@@ -1764,7 +1764,7 @@ export class OrchestrationService {
   }
 
   /**
-   * The process-local half of the answerability decoration (station#1778):
+   * The process-local half of the answerability decoration (archive#1778):
    * what THIS process, right now, knows about a session's thread and its
    * provider's adapter. `buildOrchestrationSessionSummary` supplies the
    * third input (the folded lifecycle state) and calls the one predicate.
@@ -1859,7 +1859,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#3525 fix round FIX 1: `armedInternalStopTurnId` in the return
+   * archive#3525 fix round FIX 1: `armedInternalStopTurnId` in the return
    * value is `undefined` when no turn was open to suppress, and otherwise
    * names the turn id `internalStops.arm` armed BEFORE the
    * `stopSession` below — every caller of this method is responsible for
@@ -1883,7 +1883,7 @@ export class OrchestrationService {
     if (!existing) {
       throw new Error('Credential profile recovery session is unavailable.');
     }
-    // station#3476: resolve by the session's own persisted provider rather
+    // archive#3476: resolve by the session's own persisted provider rather
     // than by probing every adapter for a live thread. This path REPLACES the
     // provider process wholesale, so it must work for a session restored at
     // boot with no engine behind it — boot reconciliation reaches here via
@@ -1895,7 +1895,7 @@ export class OrchestrationService {
     this.threadProviders.set(input.threadId, adapter.provider);
     let armedInternalStopTurnId: string | undefined;
     if (await adapter.hasSession(input.threadId)) {
-      // station#3525: this stop tears down mid-turn, and the caller may
+      // archive#3525: this stop tears down mid-turn, and the caller may
       // re-dispatch the SAME turn afterward — an internal retry, not a
       // user-visible failure, PROVIDED the rest of this restart (and the
       // caller's own follow-up) actually succeeds. The `catch` below (and
@@ -1905,7 +1905,7 @@ export class OrchestrationService {
       try {
         await adapter.stopSession(input.threadId);
       } catch (error) {
-        // station#3525 fix round MEDIUM 1: `stopSession` rejecting gets its
+        // archive#3525 fix round MEDIUM 1: `stopSession` rejecting gets its
         // OWN try/catch, separate from the restart's remaining steps below —
         // a single shared catch could not distinguish "torn down, then the
         // retry failed" (a genuine redispatch failure) from "the teardown
@@ -2009,7 +2009,7 @@ export class OrchestrationService {
   /**
    * Resolve the canonical session agent and enforce the authored-spec start
    * gate in one place for both ordinary starts and credential restarts.
-   * station#3027 made the gate symmetric across every delivery-capable
+   * archive#3027 made the gate symmetric across every delivery-capable
    * engine — claude, codex, muse, and every ACP-dispatched engine alike —
    * with no resume grandfathering: a cold resume of an existing thread is
    * gated exactly like a fresh start (boot recovery and live-session
@@ -2100,7 +2100,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#3530: apply the session agent's own `execution.credentialProfileRef`
+   * archive#3530: apply the session agent's own `execution.credentialProfileRef`
    * so an agent can name WHICH account of its engine it runs on.
    *
    * Both ordinary starts and credential restarts route through
@@ -2212,7 +2212,7 @@ export class OrchestrationService {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    // station#2959: never leave a watchdog timer outliving this service.
+    // archive#2959: never leave a watchdog timer outliving this service.
     this.turnProgress.dispose();
     await this.recoveryCoordinator?.dispose();
     this.adapterRegistryUnsubscribe?.();
@@ -2257,7 +2257,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#980 Wave 0 (AC3 defensive guard): `station-agent` is the private
+   * archive#980 Wave 0 (AC3 defensive guard): `station-agent` is the private
    * orchestration adapter that relays managed-agent chat through
    * `/api/agents/:slug/chat` (`withPrivateOrchestrationAdapter`,
    * `orchestration-adapter-registry.ts`) — it is dispatchable (`get`) but
@@ -2267,7 +2267,7 @@ export class OrchestrationService {
    * method backs `GET /api/orchestration/providers`, the closest thing to a
    * generic "provider inventory" surface). Today's New Chat/engine pickers
    * are built from agents + engine connections, not this endpoint (audited
-   * station#980), so this is currently a no-op in practice — kept anyway as
+   * archive#980), so this is currently a no-op in practice — kept anyway as
    * the guard against a future caller reading this list for inventory.
    */
   async listProviders(
@@ -2335,7 +2335,7 @@ export class OrchestrationService {
     const adapter = this.options.adapterRegistry.get(provider);
     if (!adapter) return [];
     const models = await listLaunchableAdapterModels(adapter, options);
-    // station#977: an empty live/cached catalog (unreachable engine, no
+    // archive#977: an empty live/cached catalog (unreachable engine, no
     // cache yet) shouldn't leave the model picker empty for an external
     // engine that ships a known-models fallback — keeps the picker
     // consistent with the launchability gate's own fallback below.
@@ -2398,7 +2398,7 @@ export class OrchestrationService {
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
-    // station#4466: batched over every readable thread in a fixed number of
+    // archive#4466: batched over every readable thread in a fixed number of
     // SQL round trips instead of one `listSessionProjectionEvents` +
     // `countEventsByThread` pair per thread — this route is polled on the
     // Activity view's mount and stalled proportionally to the thread count
@@ -2412,13 +2412,13 @@ export class OrchestrationService {
       new Map<string, number>();
     return readableThreadIds
       .map((threadId) => {
-        // station#1867: summary facts are queried by their load-bearing
+        // archive#1867: summary facts are queried by their load-bearing
         // methods, never by a recent tail. A Flow/policy binding can be older
         // than an arbitrarily long streaming turn and must remain visible.
         const events = eventsByThread.get(threadId) ?? [];
         // Invariant: `countEventsByThreads` is queried for this same
         // `readableThreadIds` set, so a missing entry here means the store
-        // itself reports zero raw events for the thread (station#4466
+        // itself reports zero raw events for the thread (archive#4466
         // review remediation) — never "count unknown, guess from the bounded
         // projection", which would silently under-report a thread whose
         // history exceeds its handful of folded facts.
@@ -2469,7 +2469,7 @@ export class OrchestrationService {
     const readableThreadIds = [...threadIds].filter((threadId) =>
       this.sessionAuthz.canReadSession(threadId, authority),
     );
-    // station#4466: batched the same way `listSessionReadModel` is — one
+    // archive#4466: batched the same way `listSessionReadModel` is — one
     // `listSessionProjectionEventsForThreads`/`countEventsByThreads` pair for
     // the whole readable set instead of a per-thread pair inside this `.map`.
     const eventStore = this.options.eventStore;
@@ -2481,17 +2481,17 @@ export class OrchestrationService {
       new Map<string, number>();
     return readableThreadIds
       .map((threadId) => {
-        // station#1867: same complete state-bearing projection as the
+        // archive#1867: same complete state-bearing projection as the
         // session list; never let a transcript tail erase governance facts.
         const events = eventsByThread.get(threadId) ?? [];
         // Invariant: `countEventsByThreads` is queried for this same
         // `readableThreadIds` set, so a missing entry here means the store
-        // itself reports zero raw events for the thread (station#4466
+        // itself reports zero raw events for the thread (archive#4466
         // review remediation) — never "count unknown, guess from the bounded
         // projection", which would silently under-report a thread whose
         // history exceeds its handful of folded facts.
         const eventCount = eventCountByThread.get(threadId) ?? 0;
-        // station#1778 delta review: loaded-first, matching every other
+        // archive#1778 delta review: loaded-first, matching every other
         // emission site AND `buildAgentRunSummary`'s own
         // `base = loaded ?? persisted`. It was persisted-first here, so a run's
         // `providerId` was derived loaded-first while the `providerRegistered`
@@ -2556,7 +2556,7 @@ export class OrchestrationService {
       .filter((session) => session.projectSlug === projectSlug)
       .map((session): SessionBoardItem => {
         const run = runsBySessionId.get(session.threadId);
-        // station#1778: NOT a second fold. The board used to re-derive
+        // archive#1778: NOT a second fold. The board used to re-derive
         // `lifecycleState ?? 'running'` and `pendingReview` from the same raw
         // fields the base summary had already folded — one of at least three
         // parallel projections layered over `listSessionReadModel`, and the
@@ -2646,8 +2646,8 @@ export class OrchestrationService {
     }
 
     // Conversation history remains the full-record contract of this detail
-    // reader. It is deliberately outside #1867's summary/query slice; the
-    // cursor migration for that payload belongs to #2004.
+    // reader. It is deliberately outside archive#1867's summary/query slice; the
+    // cursor migration for that payload belongs to archive#2004.
     const events = (this.options.eventStore?.listEvents(threadId) ?? []).map(
       (event) => event.payload,
     );
@@ -2670,8 +2670,8 @@ export class OrchestrationService {
     };
   }
 
-  // Conversation lineage/handoff/history forwarders (epic #4024 slice 5,
-  // #4155): bodies live in ConversationLineage (conversation-lineage.ts).
+  // Conversation lineage/handoff/history forwarders (epic archive#4024,
+  // archive#4155): bodies live in ConversationLineage (conversation-lineage.ts).
   // Flat same-named forwarders keep the test Proxy's authority injection
   // (T3) and each body's initialize() latch (T9) exactly as the bodies had.
   async resolveConversationContinuation(
@@ -2860,7 +2860,7 @@ export class OrchestrationService {
    * precedence `sessionOpenHref`/`resolveNotificationOpenHref` use), read
    * synchronously from the persisted event store + in-memory read model —
    * no adapter I/O (deliberately NOT `listSessionReadModel()`, which polls
-   * every registered adapter's `listSessions()`). station#1284: lets
+   * every registered adapter's `listSessions()`). archive#1284: lets
    * `approval-inbox.ts` attach `projectSlug` to a `request.opened`
    * notification's metadata at delivery time without stalling on adapter
    * calls unrelated to the thread that just opened a request.
@@ -2892,7 +2892,7 @@ export class OrchestrationService {
     return summary.delegation?.projectSlug ?? summary.projectSlug;
   }
 
-  // Event paging & stream replay forwarders (epic #4024 slice 5, #4155):
+  // Event paging & stream replay forwarders (epic archive#4024, archive#4155):
   // bodies live in SessionEventReads (session-event-reads.ts). Flat
   // same-named forwarders keep the test Proxy's authority injection (T3)
   // and the per-method initialize() latch (T9) exactly as the bodies had.
@@ -3010,7 +3010,7 @@ export class OrchestrationService {
 
   /**
    * Fold a native-SDK session's persisted events into engine-agnostic usage
-   * totals via the shared reducer (station#1299 slice 1). Mirrors
+   * totals via the shared reducer (archive#1299). Mirrors
    * `readSessionMessages` exactly — same authorization gate, same event
    * source — so the stats route's memory-store fallback can reuse this one
    * seam instead of re-reading the event store itself.
@@ -3024,7 +3024,7 @@ export class OrchestrationService {
   }
 
   /**
-   * Every persisted session's usage, for lifetime analytics (station#3245).
+   * Every persisted session's usage, for lifetime analytics (archive#3245).
    *
    * It is a loop over {@link readSessionUsage} and nothing else: no second
    * reducer, no second scope handling, no direct event access — so the
@@ -3064,7 +3064,7 @@ export class OrchestrationService {
 
   /**
    * Presence-subject resolution (body lives in SessionAuthorization —
-   * epic #4024 slice 6, #4166); the initialize() latch stays here (T9).
+   * epic archive#4024, archive#4166); the initialize() latch stays here (T9).
    */
   resolveSessionPresenceSubject(
     threadId: string,
@@ -3074,7 +3074,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#3525: called by `wireTurnCompletionNotifications` before it
+   * archive#3525: called by `wireTurnCompletionNotifications` before it
    * would otherwise schedule a push for `turnId`'s terminal event. Returns
    * true (and consumes the entry) exactly when `InternalStopSuppression.arm`
    * armed this turn id for an internal-machinery stop — see
@@ -3207,7 +3207,7 @@ export class OrchestrationService {
             delete session.ephemeral;
           }
           this.trackSession(session, adapter);
-          // Quota routing identity (#2354 slice 2): the selected external
+          // Quota routing identity (archive#2354): the selected external
           // connection is command context captured at start, ported here
           // from the pre-refactor startSession case during the shepherd
           // merge — the factory closure is shared across concurrent starts,
@@ -3245,7 +3245,7 @@ export class OrchestrationService {
             );
         },
         validateReattachAgainstPersisted: (input, session) => {
-          // station#3493 residual 6: the reattach conflicts that need no
+          // archive#3493 residual 6: the reattach conflicts that need no
           // adapter, checked against the PERSISTED row so a dormant session
           // refuses BEFORE `materializeRestoredSession` spawns its engine.
           // `validateReattach` below still runs after materialisation — the
@@ -3325,7 +3325,7 @@ export class OrchestrationService {
               reviewIsolation: internal.reviewIsolation,
             };
           }
-          // station#2821 hardening L3: `stripReservedCapabilityMetadata`
+          // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
           // above removed `sessionVisibility` from EVERY caller's metadata,
           // trusted or not, because it cannot tell them apart. Only an
           // internal caller that set `ephemeralSessionVisibility` gets it
@@ -3462,10 +3462,10 @@ export class OrchestrationService {
   }
 
   /**
-   * station#2821 hardening L3: server-only session start that may set
+   * archive#2821 hardening L3: server-only session start that may set
    * privileged internal-only fields (currently only
    * `ephemeralSessionVisibility`) no HTTP command body can supply. Mirrors
-   * `dispatchWithReceipt`'s `internal`-escape-hatch precedent (station#978
+   * `dispatchWithReceipt`'s `internal`-escape-hatch precedent (archive#978
    * review r1) but preserves `SessionCommandOutcome`'s exact shape —
    * `dispatchWithReceipt`'s own `startSession` branch collapses a
    * `rejected`/`failed`/`indeterminate` outcome into one
@@ -3495,7 +3495,7 @@ export class OrchestrationService {
       tenantExecutionContext?: TenantExecutionContext;
       clientOrigin?: ClientOrigin;
       /**
-       * station#4075 stage 2: the caller's resolved PrincipalRef, stamped
+       * archive#4075 stage 2: the caller's resolved PrincipalRef, stamped
        * at emit time onto the `turn.started` this dispatch causes (via the
        * same `ClientOriginTurnPropagation` mechanism `clientOrigin` already
        * rides). Additive — every existing caller that only threads `userId`
@@ -3534,7 +3534,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#978 review r1 (HIGH fix): `internal` is a service-internal-only
+   * archive#978 review r1 (HIGH fix): `internal` is a service-internal-only
    * escape hatch, never reachable from an HTTP body — every route calls
    * `dispatchWithReceipt(command, context)` with exactly two arguments (the
    * command is zod-validated JSON; `context` is server-built from
@@ -3553,7 +3553,7 @@ export class OrchestrationService {
       tenantExecutionContext?: TenantExecutionContext;
       clientOrigin?: ClientOrigin;
       /**
-       * station#4075 stage 2: the caller's resolved PrincipalRef, stamped
+       * archive#4075 stage 2: the caller's resolved PrincipalRef, stamped
        * at emit time onto the `turn.started` this dispatch causes (via the
        * same `ClientOriginTurnPropagation` mechanism `clientOrigin` already
        * rides). Additive — every existing caller that only threads `userId`
@@ -3720,7 +3720,7 @@ export class OrchestrationService {
             threadProviders: this.threadProviders,
             requireAdapter: (provider) => this.requireAdapter(provider),
             adapters: this.options.adapterRegistry.list(),
-            // station#3476: a turn is the one command that genuinely needs an
+            // archive#3476: a turn is the one command that genuinely needs an
             // engine, so this is where a session restored at boot gets one.
             // Every "first turn" seam funnels here — foreground chat and its
             // continue route, the UI composer/queue drain/voice/`station
@@ -3817,7 +3817,7 @@ export class OrchestrationService {
               `${adapter.metadata.displayName} does not support file attachments.`,
             );
           }
-          // station#1224 (offline slice 2): the crux of server-side turn
+          // archive#1224 (offline): the crux of server-side turn
           // idempotency. A `clientTurnId` already claimed for this thread
           // means either (a) it was already resolved to a `turnId` by a
           // prior dispatch — hand that back verbatim instead of calling
@@ -3828,7 +3828,7 @@ export class OrchestrationService {
           // resolve rather than racing a second execution. Only a genuinely
           // new claim falls through to actually calling the adapter below.
           const clientTurnId = turnInput.clientTurnId;
-          // station#1224 HIGH fix (independent review): true only once this
+          // archive#1224 HIGH fix (independent review): true only once this
           // dispatch has genuinely claimed ownership of `clientTurnId` — the
           // dedup-hit/in-flight branch below returns before this is ever
           // set, so it never touches a claim it doesn't own.
@@ -3880,7 +3880,7 @@ export class OrchestrationService {
               ownedClientTurnClaim = claim.claim;
             }
           }
-          // station#1224 HIGH fix (independent review): everything from here
+          // archive#1224 HIGH fix (independent review): everything from here
           // through the return below is wrapped in ONE try/finally so every
           // exit path — including `reserveAttachmentCapacity` throwing
           // before `adapter.sendTurn` is ever called, and
@@ -4241,7 +4241,7 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
-          // station#3493 residual 1: mid-materialisation there IS work to
+          // archive#3493 residual 1: mid-materialisation there IS work to
           // cancel — the turn that triggered the start is about to be
           // announced, and the dormant branch would answer `no-active-turn`
           // and do nothing. `isDormantSessionThread` now reads a
@@ -4251,7 +4251,7 @@ export class OrchestrationService {
           // cancel for the thread's next `turn.started` and answering
           // `pending-turn-start`. No separate branch: injecting one here
           // proved redundant with that existing path.
-          // station#3476: a session restored at boot holds no engine, so
+          // archive#3476: a session restored at boot holds no engine, so
           // there is nothing running to interrupt and nothing to spawn one
           // for. Deliberately NOT materialised — starting an engine in order
           // to cancel it would be the whole defect this issue is about.
@@ -4329,7 +4329,7 @@ export class OrchestrationService {
           return { receipt, result: interrupted };
         }
         case 'steerTurn': {
-          // station#3476: same as interrupt — no engine, therefore no live
+          // archive#3476: same as interrupt — no engine, therefore no live
           // turn to steer. `no-active-turn` is the existing vocabulary for
           // exactly this and is what the caller would have received anyway
           // once a freshly-restarted engine reported no turn in flight.
@@ -4374,7 +4374,7 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
-          // station#3559: `activeTurnIdForEvents` folds via `nextActiveTurnId`,
+          // archive#3559: `activeTurnIdForEvents` folds via `nextActiveTurnId`,
           // which reads only `ACTIVE_TURN_FOLD_METHODS` and treats every
           // other canonical method as a pass-through no-op — so narrowing
           // the query to that shared list is bit-identical to folding the
@@ -4418,7 +4418,7 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
-          // station#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): a
+          // archive#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): a
           // steer's `turn.started (inputKind:'steer')` reuses the SAME
           // turnId as the turn it steers, so two concurrent steers on one
           // thread collide on the exact same `ClientOriginTurnPropagation`
@@ -4448,7 +4448,7 @@ export class OrchestrationService {
           try {
             try {
               this.assertAdapterCurrent(adapter);
-              // station#4075 stage 2: the same begin/settle propagation
+              // archive#4075 stage 2: the same begin/settle propagation
               // `sendTurn` uses above (:3700/:3751 in this file) — reserved
               // BEFORE the adapter call so the steer's own `turn.started
               // (inputKind:'steer')` (published asynchronously through the
@@ -4543,13 +4543,13 @@ export class OrchestrationService {
           return { receipt, result: undefined };
         }
         case 'stopSession': {
-          // station#3493 residual 1: a Stop that lands mid-materialisation
+          // archive#3493 residual 1: a Stop that lands mid-materialisation
           // must tear down the engine that is starting, not report success
           // around it. Await the in-flight start (bounded by the
           // adapter-stop deadline below — never unbounded), then take the
           // live path against the bound adapter. A
           // start that FAILS leaves nothing to stop — its failure evidence
-          // is already recorded on the thread (station#1090) — so fall
+          // is already recorded on the thread (archive#1090) — so fall
           // through to the dormant branch against the persisted row, whose
           // `error` status the dormant write now preserves.
           const materializing = this.materializingSessions.get(
@@ -4580,7 +4580,7 @@ export class OrchestrationService {
               );
             }
           }
-          // station#3476: stopping a session restored at boot must not first
+          // archive#3476: stopping a session restored at boot must not first
           // start it. There is no process to tear down, so the whole of
           // `stopUserSessionImmediately`'s observable effect is its two local
           // steps — persist the row as resumable, forget the live binding —
@@ -4624,11 +4624,11 @@ export class OrchestrationService {
           error instanceof ModelLaunchPlanUnavailableError ||
           error instanceof SessionReattachConflictError ||
           error instanceof SessionEndedError ||
-          // station#3493 residual 4: the startSession path already classifies
+          // archive#3493 residual 4: the startSession path already classifies
           // the host's resource-posture refusal `rejected` (`isRejectedError`
           // above); the same refusal on the turn path must not read `failed`.
           error instanceof CriticalResourcePostureError ||
-          // station#3493 fix round: a Stop refused because the session is
+          // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
           error instanceof SessionStopWhileStartingError
             ? ('rejected' as const)
@@ -4645,7 +4645,7 @@ export class OrchestrationService {
         // resource-posture refusal carry their codes through the wrapper —
         // `session_ended` so the chat route's error body lets clients
         // translate the refusal instead of parroting it, and
-        // `resource_posture_critical` (station#3493 residual 4) because the
+        // `resource_posture_critical` (archive#3493 residual 4) because the
         // startSession path already carries it (session-command-module's
         // `fail()`), so the same host refusal is typed on both paths. Other
         // inner errors keep their existing (message-only) projection
@@ -4664,8 +4664,8 @@ export class OrchestrationService {
    * Run one explicit, bounded, no-tools chat turn and then erase its ephemeral
    * orchestration session. This is never called by inventory/menu reads.
    *
-   * Forwarder: the behaviour lives in `ConnectionSmoke` (epic #4024 slice 9,
-   * #4195). `initialize()` stays HERE — this is one of the T9 latch-carrying
+   * Forwarder: the behaviour lives in `ConnectionSmoke` (epic archive#4024,
+   * archive#4195). `initialize()` stays HERE — this is one of the T9 latch-carrying
    * public forwarders, and the module must never take an `initialize` dep.
    */
   async runConnectionSmoke(
@@ -4745,7 +4745,7 @@ export class OrchestrationService {
    * Flow-bound). REST callers use this to resolve the run id, then operate
    * through the existing /api/projects/:slug/flow routes.
    *
-   * The view carries freshness alongside the run (station#189 S1) so every
+   * The view carries freshness alongside the run (archive#189 S1) so every
    * consumer states what the run has actually evaluated. `run.state.updated_at`
    * is not that: it moves on writes no gate was involved in, which is how the
    * gates pane came to read `step=plan status=active` for a run that had never
@@ -4762,7 +4762,7 @@ export class OrchestrationService {
   }
 
   /**
-   * The Builder run joined to this session (station#189 S4), read entirely
+   * The Builder run joined to this session (archive#189 S4), read entirely
    * from the published sidecar contract.
    *
    * Deliberately a SEPARATE read from `readSessionFlowRun`, not a field on it.
@@ -4792,7 +4792,7 @@ export class OrchestrationService {
   }
 
   /**
-   * Session-scoped `logger.child()` (station#1897 logging slice 3): every
+   * Session-scoped `logger.child()` (archive#1897 logging slice 3): every
    * warn/debug this class emits while starting/reattaching a session goes
    * through the logger this returns, so those lines carry the SAME
    * `conversationId`/`agentSlug` bindings a `read_logs?q=<id>` query and a
@@ -4824,7 +4824,7 @@ export class OrchestrationService {
    * Read the workflow sidecar binding + current durable state for a session
    * (null when the session is not task-bound).
    *
-   * NO CALLER TODAY (station#4218 review M1): the previous sentence here
+   * NO CALLER TODAY (archive#4218 review M1): the previous sentence here
    * claimed REST callers resolve the task slug through this method before
    * reading /api/projects/:slug/workflow. That route exists
    * (`routes/evidence/workflow-sidecars.ts`) but reaches the sidecar
@@ -4852,7 +4852,7 @@ export class OrchestrationService {
   }
 
   private monitoringContextFor(threadId: string): {
-    /** Absent when the session reported none (station#3082). */
+    /** Absent when the session reported none (archive#3082). */
     slug?: string;
     conversationId: string;
     /** Absent when the session reported none. */
@@ -4881,7 +4881,7 @@ export class OrchestrationService {
    * no attribution to state.
    *
    * ONE derivation with two consumers — monitoring spans above, and lifetime
-   * analytics through {@link listSessionUsage} (station#3245). The
+   * analytics through {@link listSessionUsage} (archive#3245). The
    * conversation id in particular has to be the same answer in both places:
    * it is the join key that keeps a Station-engine chat, which exists in the
    * memory substrate AND here, from being counted twice.
@@ -4901,7 +4901,7 @@ export class OrchestrationService {
       .find((event) => event.method === 'session.configured');
     if (configured?.method !== 'session.configured') return null;
     const metadata = configured.metadata ?? {};
-    // No 'unknown' literal (station#3082): an unreported slug is an absence,
+    // No 'unknown' literal (archive#3082): an unreported slug is an absence,
     // and substituting a string makes it indistinguishable from an agent
     // actually named unknown — permanently, in the durable record.
     const slug =
@@ -4945,7 +4945,7 @@ export class OrchestrationService {
         event = await this.captureUsagePricingSnapshot(event);
         lastThreadId = event.threadId;
         const previousState = this.readCurrentLifecycleState(event.threadId);
-        // station#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
+        // archive#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
         // `activeTurnIdForEvents` — this value is stamped onto the
         // persisted event's `sessionState` (below), which
         // `deriveLifecycleTransition`'s stamp early-return then honors
@@ -5011,7 +5011,7 @@ export class OrchestrationService {
       // A SQLITE_BUSY from the loop's own event-store work is not an agent
       // failure: the agent connection was fine and our store was locked —
       // typically by another Station process using the same Station home
-      // (station#3304). Name the store so the operator remedy (find the
+      // (archive#3304). Name the store so the operator remedy (find the
       // second process) is discoverable instead of blaming the agent.
       const storeContention = isSqliteContentionError(error);
       if (storeContention) {
@@ -5042,10 +5042,10 @@ export class OrchestrationService {
         //
         // Note what the catch costs when it fires. This event is not a delta,
         // so it flushes that thread's buffered text on its way through the
-        // coalescer (station#3350) and a delivery failure on THAT flush now
+        // coalescer (archive#3350) and a delivery failure on THAT flush now
         // propagates — landing here, where it is logged as a failure to
         // surface. The thread then gets no `runtime.error` at all, which is
-        // the very message station#3304 added to name the locked store. It is
+        // the very message archive#3304 added to name the locked store. It is
         // the accepted cost of letting a synchronous delta failure reach the
         // stream's own recovery rather than being swallowed, and the shape
         // pre-dates coalescing (the publish itself could always throw here);
@@ -5188,8 +5188,8 @@ export class OrchestrationService {
   }
 
   /**
-   * The ONE teardown seam for a thread's in-memory state (epic #4024 slice 2,
-   * #4131; seam map trap T2). Before this existed there were six divergent
+   * The ONE teardown seam for a thread's in-memory state (epic archive#4024,
+   * archive#4131; seam map trap T2). Before this existed there were six divergent
    * copies of "forget this thread", each clearing a different subset — the
    * map calls that the single largest correctness hazard in the
    * decomposition, because moving any per-thread map into a sub-service
@@ -5331,7 +5331,7 @@ export class OrchestrationService {
 
   /**
    * The only model-capability gate before adapter invocation (body lives in
-   * ModelLaunchPlanning — epic #4024 slice 8, #4179). Kept as a forwarder
+   * ModelLaunchPlanning — epic archive#4024, archive#4179). Kept as a forwarder
    * deliberately: a test reach-in casts and binds this exact 4-arg name,
    * and the recovery prepareModelLaunch closure routes through it — that
    * in-file caller is what keeps biome's unsafe pass from deleting a
@@ -5442,7 +5442,7 @@ export class OrchestrationService {
   }
 
   /**
-   * Turn-provenance moved to `turn-provenance-sidecar.ts` (epic #4024, the
+   * Turn-provenance moved to `turn-provenance-sidecar.ts` (epic archive#4024, the
    * one leaf sub-cut inside a C2 that is otherwise closed by inspection).
    * This forwarder stays because `routes/orchestration/orchestration.ts`
    * calls it on the service and the suite drives it the same way — a public
@@ -5462,7 +5462,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#3350: every event reaching the publish body below pays a
+   * archive#3350: every event reaching the publish body below pays a
    * read-model projection, a SQLite append with four projections, an
    * execution-coordinator and recovery observation, a monitoring call and a
    * synchronous bus fan-out -- and each connected SSE client then pays its own
@@ -5479,7 +5479,7 @@ export class OrchestrationService {
     if (!originEvent) return true;
     event = originEvent;
     // Progress is a fact about the ENGINE producing output, not about what we
-    // chose to publish. The turn-stall watchdog (station#2959) observes here,
+    // chose to publish. The turn-stall watchdog (archive#2959) observes here,
     // so it must see every raw delta as it arrives -- batching them for
     // persistence would otherwise make a healthy fast turn look stalled.
     // `publishCanonicalEvent` therefore skips re-observing a merged delta.
@@ -5519,7 +5519,7 @@ export class OrchestrationService {
   }
 
   private publishCanonicalEvent(event: CanonicalRuntimeEvent): boolean {
-    // station#1399 fix round (independent review, H1/M4/M6, hardened in fix
+    // archive#1399 fix round (independent review, H1/M4/M6, hardened in fix
     // round 2 per B1/B4): a provenance-sanitizing writer — see
     // `ui-block-provenance.ts`'s docblock for why it is NOT the only one
     // (`AttachedSessionFollowService#appendAndPublish` is a second) and
@@ -5549,7 +5549,7 @@ export class OrchestrationService {
     const quarantined = this.quarantinedThreads.has(event.threadId);
     if (quarantined && event.method !== 'session.exited') return false;
     if (quarantined) this.quarantinedThreads.delete(event.threadId);
-    // station#2959: every canonical event this service actually persists and
+    // archive#2959: every canonical event this service actually persists and
     // publishes passes through here — adapter-streamed content/tool/state
     // events AND this service's own internally-derived terminal events
     // (`session.stop-settled`, the forced-path `turn.aborted`), which never
@@ -5660,7 +5660,7 @@ export class OrchestrationService {
     if (!isCoalescableDelta(event))
       this.sessionExecutionCoordinator.observe(projectedEvent);
     this.monitoringBridge.onRuntimeEvent(projectedEvent);
-    // station#3451 finding 5: a failed turn used to be either mis-counted as
+    // archive#3451 finding 5: a failed turn used to be either mis-counted as
     // `completed` (pre-#3442) or dropped from this metric entirely — count it
     // as its own outcome instead. Scoped to a turn-scoped, non-deferred
     // `runtime.error` (has a `turnId`, and is not codex's willRetry arm):
@@ -5691,7 +5691,7 @@ export class OrchestrationService {
     // Recovery observes only after canonical persistence, so a restart can
     // reconstruct the source turn without copying its content into recovery.
     this.recoveryCoordinator?.observe(projectedEvent);
-    // station#1120: invalidate the session-owner cache BEFORE emitting on
+    // archive#1120: invalidate the session-owner cache BEFORE emitting on
     // the event bus, so any subscriber reacting to this same event (e.g.
     // the /events route's canUserReadSession gate) that re-derives
     // ownership never observes a stale cached entry for it. In the normal
@@ -5725,7 +5725,7 @@ export class OrchestrationService {
     }
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
       event: projectedEvent,
-      // station#1410: a turn's provenance envelope rides ALONGSIDE the
+      // archive#1410: a turn's provenance envelope rides ALONGSIDE the
       // canonical event, never inside it — the persisted event stays
       // byte-identical to what the adapter produced, and this stays a
       // projection (R5). Same shape as the SSE frame's derived `id:`
@@ -5739,7 +5739,7 @@ export class OrchestrationService {
       // "every assistant turn gets a card" was false on the primary path.
       ...this.turnProvenance.sidecarFor(projectedEvent),
     });
-    // station#1101: 'turn.event.projected' milestone — this is the single
+    // archive#1101: 'turn.event.projected' milestone — this is the single
     // dispatch point every turn.completed/turn.aborted event flows through
     // on its way to persistence, so it's the correct place to certify "this
     // event has been appended + projected + synchronously dispatched"
@@ -5761,7 +5761,7 @@ export class OrchestrationService {
     return true;
   }
 
-  // station#3557/#3558 fix-round review BLOCK 4: this is a THIRD WRITE path
+  // archive#3557/#3558 fix-round review BLOCK 4: this is a THIRD WRITE path
   // over the bounded projection, not a read-only consumer — its result feeds
   // `consumeAdapterEvents`'s `previousState` into
   // `normalizeCanonicalRuntimeEventLifecycle`, which stamps
@@ -5824,11 +5824,11 @@ export class OrchestrationService {
         });
       },
       trackSession: (session, adapter) => {
-        // station#3493 residual 2: recovery snapshots the persisted rows,
+        // archive#3493 residual 2: recovery snapshots the persisted rows,
         // then awaits `adapter.hasSession` per session — a first turn racing
         // boot can materialise this thread inside that window, and
         // `trackOrchestrationSession` writes unconditionally (this store's
-        // CAS-less read-modify-write class, cf. station#1606). A live
+        // CAS-less read-modify-write class, cf. archive#1606). A live
         // binding means the read model already holds a NEWER row than the
         // boot snapshot: keep it, and keep the routing identity the live
         // start resolved.
@@ -5852,7 +5852,7 @@ export class OrchestrationService {
         if (typeof connectionId === 'string') {
           this.sessionConnectionIds.set(session.threadId, connectionId);
         }
-        // station#3476: `adapter` arrives only when it reported holding the
+        // archive#3476: `adapter` arrives only when it reported holding the
         // thread. Passing the registry's adapter unconditionally, as this
         // used to, asserted this process was holding an engine it had merely
         // restored a row for.
@@ -5864,7 +5864,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#3476: the engine-start half of recovery, shared by every caller
+   * archive#3476: the engine-start half of recovery, shared by every caller
    * that needs a restored session to have a live engine.
    */
   private recoveredSessionStartOptions(): RecoveredSessionStartOptions {
@@ -5898,13 +5898,13 @@ export class OrchestrationService {
         ),
       admitEngineStart: () =>
         admitEngineStart(this.options.resourcePosture, this.options.logger),
-      // #1011: recovery replays only the cwd persisted at start, so a
+      // archive#1011: recovery replays only the cwd persisted at start, so a
       // project-bound session created before that resolution existed (or by a
       // client that never supplied one) keeps recovering with none — and the
       // engine keeps inheriting the server process's directory. Fill the gap
       // from the replayed `metadata.projectSlug`. Deliberately only when the
       // persisted cwd is ABSENT: a session that already has one is not the
-      // #1011 case, and re-validating it here would close otherwise healthy
+      // archive#1011 case, and re-validating it here would close otherwise healthy
       // sessions whose directory is momentarily unavailable (an unmounted
       // volume, a not-yet-restored worktree) — recovery has always been
       // tolerant there and this fix is not the place to change that.
@@ -5920,7 +5920,7 @@ export class OrchestrationService {
   }
 
   /**
-   * station#3476: start the engine for a session this process restored at
+   * archive#3476: start the engine for a session this process restored at
    * boot but never spawned a process for.
    *
    * Returns `undefined` — leaving the caller's historical "no provider
@@ -5928,7 +5928,7 @@ export class OrchestrationService {
    * restored session: unknown threads, quarantined threads, read-only
    * attached threads (which never own an engine), terminal rows, and
    * providers whose adapter is not registered here. A start that FAILS
-   * throws, having already recorded the station#1090 failure evidence, so
+   * throws, having already recorded the archive#1090 failure evidence, so
    * the turn fails loudly rather than reporting success into nothing.
    */
   private materializeRecoveredSession(
@@ -5972,13 +5972,13 @@ export class OrchestrationService {
   }
 
   /**
-   * station#3476: a thread this process knows about but holds no engine for.
+   * archive#3476: a thread this process knows about but holds no engine for.
    * The commands that do not need an engine (stop, interrupt, steer) read
    * this instead of materialising one just to tear it down.
    */
   private isDormantSessionThread(threadId: string): boolean {
     if (this.sessionAdapters.has(threadId)) return false;
-    // station#3493 residual 1: an engine is starting for this thread RIGHT
+    // archive#3493 residual 1: an engine is starting for this thread RIGHT
     // NOW. `sessionAdapters` is bound only after `adapter.startSession`
     // resolves (trackStartedSession), so for the whole start latency the
     // thread looks engine-free — and the engine-free branches would report
@@ -6004,7 +6004,7 @@ export class OrchestrationService {
   }
 
   /**
-   * #895 wave B (decided ambiguity A5): the latest persisted `session.started`
+   * archive#895 wave B (decided ambiguity A5): the latest persisted `session.started`
    * event's metadata for a thread, with the reserved
    * server-owned receipts stripped before reuse (they are facts from the
    * PREVIOUS start, not inputs to re-resolve). Re-resolves fresh via `resolveSessionAgent` rather than

@@ -1,5 +1,5 @@
 /**
- * station#1501 slice 3a — the migration shadow at the session-cwd seam.
+ * archive#1501 — the migration shadow at the session-cwd seam.
  *
  * These tests exist to make the divergence record TRUSTWORTHY, because slice
  * 3c is gated on it being empty. A shadow whose agreement rules are wrong
@@ -51,7 +51,7 @@ const tmpRoots: string[] = [];
  * `homeDir` is mandatory on `CwdShadowDeps` so that forgetting it in the
  * production wiring is a type error rather than a fabricated divergence
  * record. Tests that inject `resolve` never reach it for RESOLUTION — but
- * since station#1686 the observer also appends its durable observation record
+ * since archive#1686 the observer also appends its durable observation record
  * there, so it has to be a real writable directory. Pointing it at a
  * throwaway per-test home means every test below exercises the PRODUCTION
  * record path (`deps.record` left unset) instead of a stub, which is what
@@ -248,7 +248,7 @@ describe('compareCwdShadow — the agreement rules', () => {
     resourceId: 'local:acme',
     reason: 'no binding',
   };
-  /** station#1594: a RECORD exists and its path is gone. */
+  /** archive#1594: a RECORD exists and its path is gone. */
   const missing = (declaredPath: string): ResourceResolutionResult => ({
     state: 'missing',
     resourceId: 'local:acme',
@@ -256,7 +256,7 @@ describe('compareCwdShadow — the agreement rules', () => {
     record: 'working-directory',
     declaredPath,
   });
-  /** station#1594: the directory was observed; whose repo it is was not. */
+  /** archive#1594: the directory was observed; whose repo it is was not. */
   const unverified = (
     state: 'stale' | 'drifted',
     unverifiedPath: string,
@@ -306,11 +306,11 @@ describe('compareCwdShadow — the agreement rules', () => {
   });
 
   test('station#1594: a directory-less project DISagrees when the shadow names a directory through `unverifiedPath` too — not only through `bound`', () => {
-    // Before #1594 `stale`/`drifted` could carry no directory at all, so this
+    // Before archive#1594 `stale`/`drifted` could carry no directory at all, so this
     // pair folded into `agree`. Now they can, and a resolver naming one where
     // the project declares none means a binding row the seam cannot see. That
     // is a real divergence and it must not be rounded away by the same fold
-    // that made #1594's own conflation invisible.
+    // that made archive#1594's own conflation invisible.
     for (const state of ['stale', 'drifted'] as const) {
       const comparison = compareCwdShadow(
         sample({ baseline: { kind: 'no-directory' } }),
@@ -329,7 +329,7 @@ describe('compareCwdShadow — the agreement rules', () => {
     // record that reads as "do not flip" — the mirror of the emptiness trap.
     //
     // `stale` and `drifted` get DIFFERENT outcome names (review round 1):
-    // folded together, a `drifted` sample could satisfy #1501's gate clause
+    // folded together, a `drifted` sample could satisfy archive#1501's gate clause
     // written for the `stale` leg, and the gate would read as covered by a
     // population it never observed.
     expect(
@@ -410,7 +410,7 @@ describe('compareCwdShadow — the agreement rules', () => {
   test('station#1594: the #791 missing-directory branch now AGREES with `missing` — the honest agreement this comparison could not previously express', () => {
     // Before the split, both sides said "no usable directory" and the
     // resolver could only say `unbound` — which also meant "this project is
-    // an organizational scope" (#1023, must terminate at $HOME). One state,
+    // an organizational scope" (archive#1023, must terminate at $HOME). One state,
     // two opposite contracts, so the comparison had to record a non-agreement
     // (`conflated-unbound`) to keep the record honest. `missing` is the
     // discriminator, and this is the population it was created for.
@@ -428,7 +428,7 @@ describe('compareCwdShadow — the agreement rules', () => {
   test('station#1594: `conflated-unbound` is now a FAIL-OPEN TRIPWIRE — it must read zero before the flip, and it watches two causes', () => {
     // Kept rather than deleted. A tripwire removed once it stops firing
     // cannot tell you when it starts again — and the thing it watches for is
-    // precisely the defect #1594 existed to fix.
+    // precisely the defect archive#1594 existed to fix.
     const baseline = { kind: 'missing-directory' as const, path: '/gone' };
     const conflated = compareCwdShadow(sample({ baseline }), {
       ok: true,
@@ -449,7 +449,7 @@ describe('compareCwdShadow — the agreement rules', () => {
   test('station#1594: a declared-and-gone directory the resolver answers with neither a path nor `missing` is `shadow-unresolved`, and carries no note', () => {
     // The note asserts a specific fact about re-conflation. `ambiguous` and
     // the access states are distinguishable answers with different repairs;
-    // telling their reader that the #791/#1023 discriminator is missing would
+    // telling their reader that the archive#791/#1023 discriminator is missing would
     // bury a real finding under the wrong prescription.
     const baseline = { kind: 'missing-directory' as const, path: '/gone' };
     for (const state of [
@@ -751,7 +751,7 @@ describe('observeCwdShadow — reporting, containment, and the kill switch', () 
           state: 'drifted',
           resourceId: 'github.com/acme/api',
           reason: 'the checkout advertises [github.com/acme/other]',
-          // station#1594: `drifted` now REPORTS the directory it observed, so
+          // archive#1594: `drifted` now REPORTS the directory it observed, so
           // a divergence at this seam is a path mismatch rather than the
           // shadow naming nothing at all.
           unverifiedPath: '/elsewhere',
@@ -768,7 +768,7 @@ describe('observeCwdShadow — reporting, containment, and the kill switch', () 
       baselineKind: 'directory',
       baselinePath: '/repo',
       shadowState: 'drifted',
-      // station#1594: the line names the directory the shadow would have used,
+      // archive#1594: the line names the directory the shadow would have used,
       // which is the whole reason the mismatch is actionable.
       shadowPath: '/elsewhere',
       detail: 'the checkout advertises [github.com/acme/other]',
@@ -874,7 +874,7 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
     // (`orchestration-service.ts`), the resolver does
     // `project.workingDirectory?.trim()`, and the route schema accepts an
     // untrimmed string. So the two sides disagree about whether a directory
-    // was DECLARED at all: seam says declared-and-gone (throws today, #791),
+    // was DECLARED at all: seam says declared-and-gone (throws today, archive#791),
     // resolver says nothing-recorded (would default to $HOME post-flip).
     //
     // Pinned rather than repaired here: the repair is either the resolver's
@@ -930,7 +930,7 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
     // A: bound to a real directory.
     expect((await observe(harness, 'ab', dir)).outcome).toBe('agree');
 
-    // B: the directory is cleared. The seam's #1023 terminus; the resolver's
+    // B: the directory is cleared. The seam's archive#1023 terminus; the resolver's
     // `unbound`. Agreement here is the rule the whole log depends on.
     await putProject(harness.adapter, {
       ...project,
@@ -961,13 +961,13 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
 
     expect((await observe(harness, 'dir-ab', dir)).outcome).toBe('agree');
 
-    // The #791 branch: the seam will throw, and — since station#1594 — the
+    // The archive#791 branch: the seam will throw, and — since archive#1594 — the
     // resolver reports `missing` with `record: 'working-directory'`. That is
     // the honest AGREEMENT this comparison could not previously express: it
     // had to record `conflated-unbound`, because `unbound` also meant "this is
     // a scope-only project" and the two need opposite behavior after the flip.
     //
-    // This assertion is the end-to-end proof of the #1594 fix — through the
+    // This assertion is the end-to-end proof of the archive#1594 fix — through the
     // REAL resolver, not a double — and `conflated-unbound` is now the
     // regression tripwire that fires if the split is ever undone.
     rmSync(dir, { recursive: true, force: true });
@@ -1018,11 +1018,11 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
   });
 
   test('station#1594: DRIFT at the SAME directory is `agree-drifted`, not a divergence — and the drift itself is still recorded', async () => {
-    // Re-derived by station#1594, and the reasoning matters because the
+    // Re-derived by archive#1594, and the reasoning matters because the
     // previous name of this test asserted the opposite.
     //
     // The working directory is a checkout of a DIFFERENT repository than the
-    // manifest names. Before #1594 the resolver could name no directory at
+    // manifest names. Before archive#1594 the resolver could name no directory at
     // all here, so the comparison read `shadow-unresolved` — a divergence,
     // and a correct one AT THE TIME: flipping would have turned "chat works"
     // into "chat fails" for this project.
@@ -1067,7 +1067,7 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
     // The population that grows with every `createProject` backfill: a
     // manifested git resource on a host where `git` cannot be run (absent from
     // a service PATH, an unreadable `.git`, an `index.lock` race). Before
-    // #1594 this resolved `stale` with no path, so a flip would have sent the
+    // archive#1594 this resolved `stale` with no path, so a flip would have sent the
     // session to $HOME or thrown — the S2 404 shape applied to every engine
     // session. This is the leg slice 3c's gate requires evidence for.
     const harness = createHarness(async () => ({

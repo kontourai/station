@@ -154,13 +154,13 @@ export interface NativeStationProfileRepository {
     exactOrigin: string,
   ): NativeProfileRequestBinding | null;
   /**
-   * Same-user local self-authorization (station#1715, revised station#1818
-   * part 1): the process-selected Station's name, IF it is a local-service install
+   * Same-user local self-authorization (archive#1715, revised archive#1818):
+   * the process-selected Station's name, IF it is a local-service install
    * — otherwise `undefined`. Every other profile shape (remote, no selection
    * selected) returns `undefined` so the caller falls straight through to
    * today's pairing-ceremony UI with no special-casing.
    *
-   * station#1818: this DELIBERATELY no longer pre-filters on
+   * archive#1818: this DELIBERATELY no longer pre-filters on
    * `credentialRef`/`configurationState`. It used to return `undefined` for
    * any profile already carrying `credentialRef` + `configured`, on the
    * theory that those two fields mean "already durably provisioned" — but
@@ -444,7 +444,7 @@ export class NativeStationProfileStorage
     const profile = this.profileStore.profiles.find(
       (candidate) => profileConnectionId(candidate) === selectedConnectionId,
     );
-    // station#1715 live-boot fix: `station setup local` (packages/cli/src/
+    // archive#1715 live-boot fix: `station setup local` (packages/cli/src/
     // commands/setup-command.ts) writes a fresh local-service profile with
     // `configurationState: 'configured'` and NO `credentialRef` at all — the
     // CLI itself never needed one, so "configured" here has always meant
@@ -454,13 +454,13 @@ export class NativeStationProfileStorage
     // live verification against an actual `~/.station/config/profiles.json`
     // showed the wiring never even invoked the native command.
     //
-    // station#1818 part 1 review round 1 (HIGH): this function used to ALSO
+    // archive#1818: this function used to ALSO
     // skip any profile already carrying `credentialRef` + `configured`,
     // re-encoding the exact defect this fix exists to close — a stranded
     // profile after a bundle-swap keychain ACL mismatch looks EXACTLY like
     // that shape (both fields recorded, credential unreadable), so that
     // short-circuit silently prevented `station_local_self_provision` from
-    // ever running in precisely the incident scenario station#1818 reports.
+    // ever running in precisely the incident scenario archive#1818 reports.
     // This process (the webview) cannot read the OS keychain to check
     // usability itself; only the Rust command can
     // (`profile_already_locally_provisioned` in `src-desktop/src/lib.rs`).

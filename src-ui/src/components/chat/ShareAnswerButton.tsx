@@ -24,7 +24,7 @@ const loadShareAnswerPairingPrompt = () =>
   }));
 
 /**
- * "Share answer" (station#1423) — the operator's mint affordance, sitting
+ * "Share answer" (archive#1423) — the operator's mint affordance, sitting
  * beside the turn's provenance card because a share IS the answer plus its
  * receipts.
  *
@@ -38,7 +38,7 @@ const loadShareAnswerPairingPrompt = () =>
  *
  *  - It reads the session and turn ids from the ENVELOPE, never from the
  *    surrounding row's props. The envelope's ids are the exact correlation
- *    #1410 AC4 establishes; a positional or prop-derived id could mint a
+ * archive#1410 establishes; a positional or prop-derived id could mint a
  *    permalink to a different answer than the one the operator clicked.
  *  - **The permalink is composed HERE, from `window.location.origin`**, and
  *    the server never sends one. It cannot: the browser talks to the UI port,
@@ -79,7 +79,7 @@ export function ShareAnswerButton({
     permalink: string;
     copied: boolean;
   } | null>(null);
-  // station#2652 redesign: the unshareable-origin explanation is USEFUL, but
+  // archive#2652 redesign: the unshareable-origin explanation is USEFUL, but
   // printing it under every answer forever made the share affordance the
   // loudest thing in the turn. It now appears when the user actually reaches
   // for the control — the moment the sentence answers a question they have.
@@ -150,7 +150,7 @@ export function ShareAnswerButton({
           {errorText(mint.error)}
         </span>
       )}
-      {/* station#1423 H-1 put minting behind a presented credential, so an
+      {/* archive#1423 put minting behind a presented credential, so an
           operator whose browser was never paired hits the auth boundary
           rather than the route. Only the 401 gets the pairing path: a 403
           means a credential WAS presented and refused, and telling that

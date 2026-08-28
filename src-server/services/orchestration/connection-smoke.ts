@@ -67,8 +67,8 @@ export interface ConnectionSmokeDeps {
 
 /**
  * Connection smoke — one explicit, bounded, no-tools chat turn plus the
- * erasure of its ephemeral orchestration session (epic #4024 slice 9,
- * #4195; C17 in docs/design/orchestration-decomposition-map.md §II.3).
+ * erasure of its ephemeral orchestration session (epic archive#4024,
+ * archive#4195; C17 in docs/design/orchestration-decomposition-map.md §II.3).
  * Owns NO state: eleven named deps and nothing else, which is why this
  * cluster was cuttable on the strength of the existing seams alone.
  *
@@ -79,7 +79,7 @@ export interface ConnectionSmokeDeps {
  * the adapter-owns branch's arm is a defensive change-detector under the
  * current service invariant (its guard fixture pins the call, not a
  * behavior the invariant permits). `InternalStopSuppression.arm` returns the open turn id;
- * both call sites discard it on purpose (station#3525) — a smoke turn is
+ * both call sites discard it on purpose (archive#3525) — a smoke turn is
  * never a user conversation, so its own diagnostic timeout ending it must
  * not surface as "your agent needs attention." Suppression is consumed
  * downstream by turn-completion-notifications; the un-consumed case is
@@ -141,7 +141,7 @@ export class ConnectionSmoke {
           },
         },
         undefined,
-        // station#978 review r1: this internal connectivity probe is the one
+        // archive#978 review r1: this internal connectivity probe is the one
         // legitimate `systemPrompt` sender — see `unsupportedModelOptionKeys`'s
         // docblock (contracts `provider.ts`) for why that key is otherwise
         // rejected unconditionally now, for every provider and every other
@@ -309,7 +309,7 @@ export class ConnectionSmoke {
       const adapter = this.deps.adapterFor(input.provider);
       const cleanupObservableOwnership = async () => {
         if (sessionStarted || this.deps.hasThreadProvider(threadId)) {
-          // station#3525: this connectivity probe's turn was never a user
+          // archive#3525: this connectivity probe's turn was never a user
           // conversation — its own diagnostic timeout ending it is internal
           // machinery, not something to alarm a user about.
           this.deps.armInternalStop(threadId);

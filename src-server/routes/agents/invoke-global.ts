@@ -107,7 +107,7 @@ export async function invokeGlobalPrompt(
     ? ctx.replaceTemplateVariables(appConfig.systemPrompt)
     : ctx.replaceTemplateVariables(DEFAULT_SYSTEM_PROMPT);
 
-  // station#1834: an unattended invocation has no approval channel, so the
+  // archive#1834: an unattended invocation has no approval channel, so the
   // gate would deny every non-autoApproved tool. The authenticated caller
   // NAMING the tools in the request body is the consent artifact for this
   // invocation — treat that explicit list as the autoApprove grant. Policy

@@ -68,10 +68,10 @@ describe('groupMobileActivity snooze', () => {
     ).toEqual(['conversation-1']);
   });
 
-  // station#1311 review (MEDIUM, opposite direction from #1295's original
+  // archive#1311 (opposite direction from archive#1295's original
   // report): a Station-native/bedrock direct chat re-synthesizes a FRESH
   // `chatSessionId` on every reopen (`useOpenConversation`'s
-  // `${agentSlug}:${Date.now()}` branch) while its `conversationId` (== the
+  // `${agentSlug}:${Date.now}` branch) while its `conversationId` (== the
   // item's `id` here) stays constant. Keying the snooze on `chatSessionId`
   // would lose it on every close+reopen — `item.id` (which already prefers
   // the conversationId) must be what wins, unaffected by chatSessionId
@@ -143,13 +143,13 @@ describe('snoozeWakeAt', () => {
 });
 
 /**
- * station#1783 — the mobile grouping is derived from `lifecycleLabel`, so the
+ * archive#1783 — the mobile grouping is derived from `lifecycleLabel`, so the
  * `'Unanswerable'` label added to `orchestrationLifecycleLabel` reaches this
  * surface without a second derivation.
  *
- * station#3227 A6 changed WHERE such an item files: the groups now come from
+ * archive#3227 A6 changed WHERE such an item files: the groups now come from
  * the shared lane partition (`partitionHomeWorkItems`), whose Active lane
- * means "not finished" — and #1783's own desktop adjudication was that an
+ * means "not finished" — and archive#1783's own desktop adjudication was that an
  * unanswerable session did not finish, it stopped being reachable. So it
  * stays in "Active now" on mobile exactly as it does on desktop, carrying
  * its basis (`unanswerableNotice` + the translated "Can't answer here"

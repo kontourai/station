@@ -93,7 +93,7 @@ describe('the reserved Station record (station#3662)', () => {
     // the public slug a different object than every Station-engine seam
     // resolves, and without the runtime spec's built-in tool servers.
     //
-    // Until #3662 this was skipped for a reason that was not true: the record
+    // Until archive#3662 this was skipped for a reason that was not true: the record
     // named a `station` engine CONNECTION that cannot exist, so the capability
     // matrix classified Station's own Agent as an unknown external engine. The
     // record no longer carries that binding, so the skip has to hold on the

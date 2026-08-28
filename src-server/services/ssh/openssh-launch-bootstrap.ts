@@ -5,7 +5,7 @@ export const SSH_LAUNCH_PROTOCOL_VERSION = 1;
 const MAX_OUTPUT_BYTES = 256 * 1024;
 const LAUNCH_KEY_PATTERN = /^[0-9a-f-]{36}$/i;
 // Printable ASCII only, bounded length. Wide enough to carry `station
-// start`'s own structured port-conflict message (station#1133 live-
+// start`'s own structured port-conflict message (archive#1133 live-
 // verification finding) as well as the narrower single-token details
 // (a version string, a port number, an elapsed-seconds count) — but still a
 // closed, safe shape: no control characters, no ANSI escapes, no unicode
@@ -89,7 +89,7 @@ type RunLaunchProcess = (input: {
 }) => Promise<LaunchProcessResult>;
 
 /**
- * station#1133 R1: POSIX `sh` bootstrap piped over SSH stdin (never copied
+ * archive#1133 R1: POSIX `sh` bootstrap piped over SSH stdin (never copied
  * to the remote as a file first). It is idempotent and self-contained:
  *
  *  1. Resolve a Node.js 24.x binary through a version-manager cascade — bare
@@ -139,7 +139,7 @@ type RunLaunchProcess = (input: {
  *
  * `remotePort` in the result is always the port this script itself chose or
  * reused — it is never echoed back from the caller's `targetPort`, which is
- * used only for the external-attach check in step 3. (station#1133 live
+ * used only for the external-attach check in step 3. (archive#1133 live
  * verification against a real host found and fixed an earlier version of
  * this contract that asked the caller to pick the port up front and pass it
  * to `station start` via a caller-chosen "remotePort" input: `station
@@ -163,7 +163,7 @@ type RunLaunchProcess = (input: {
  * own log file under the state directory, inspectable over the same SSH
  * access an operator already has.
  *
- * Two further hardenings from the station#1133 live security review:
+ * Two further hardenings from the archive#1133 live security review:
  * `node_ready` (the readiness/reuse/external-detect check) verifies a
  * genuine Station handshake plus identity (both endpoints the existing
  * worker probe already checks — `environmentId`, `instanceId`, `sha`,
@@ -331,7 +331,7 @@ function pickFreePort() {
       continue;
     }
     // station start also claims serverPort+1 (terminal), serverPort+2
-    // (voice), and serverPort+3 (consent, station#3677); all four plus a
+    // (voice), and serverPort+3 (consent, archive#3677); all four plus a
     // separate ui port must be simultaneously free and distinct
     // (validateLifecyclePorts in lifecycle.ts).
     if (serverPort > 65532) continue;
@@ -586,7 +586,7 @@ function posixShellQuote(value: string): string {
 }
 
 /**
- * station#1133 security fix (live-verified RCE, reported by independent
+ * archive#1133 security fix (live-verified RCE, reported by independent
  * review): OpenSSH does **not** treat trailing command arguments as an
  * argv-safe array the way `spawn(cmd, [...args])` does locally. Per `ssh(1)`,
  * when more than one command argument follows the destination, ssh joins
@@ -763,7 +763,7 @@ function parseContractLine(line: string): OpenSshLaunchResult | null {
 }
 
 /**
- * station#1133 security-review finding (MEDIUM): some hosts' PAM stack
+ * archive#1133 security-review finding (MEDIUM): some hosts' PAM stack
  * (e.g. `pam_motd.so`, default on Debian/Ubuntu) can emit stdout chatter for
  * a non-interactive exec session ahead of anything the invoked command
  * itself prints. Strictly requiring exactly one stdout line would make that

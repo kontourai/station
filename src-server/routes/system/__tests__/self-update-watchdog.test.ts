@@ -58,7 +58,7 @@ describe('runSelfUpdateWatchdog — the real incident: bound port, never answere
   test('a child that binds the port but never answers is detected, killed, and recorded failed', async () => {
     // Every fetch attempt hangs forever, exactly like a socket that accepted
     // the connection and then never wrote a response — the wedge this
-    // watchdog exists to catch (station#1903). It must never resolve on its
+    // watchdog exists to catch (archive#1903). It must never resolve on its
     // own; only the watchdog's own per-attempt timeout should move things
     // forward.
     const fetchImpl = vi.fn(
@@ -185,7 +185,7 @@ describe('runSelfUpdateWatchdog — the real incident: bound port, never answere
 
 describe('runSelfUpdateWatchdog — identity, not just liveness (AC: review finding 1)', () => {
   test('a 200 reporting the WRONG sha never verifies, is killed, and records only the fixed identity-mismatch code', async () => {
-    // Models the class #1903 names: the new build (hash Y) crashed on boot
+    // Models the class archive#1903 names: the new build (hash Y) crashed on boot
     // and freed the port, and something else — an auto-respawned OLD build,
     // in this case — answers 200 on it throughout the whole budget.
     const fetchImpl = vi.fn(() =>

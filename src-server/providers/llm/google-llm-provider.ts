@@ -77,7 +77,7 @@ export class GoogleLLMProvider extends AiSdkLLMProvider {
           }>;
           nextPageToken?: unknown;
         };
-        // station#1430: no `supportsTools` here — Google's `GET
+        // archive#1430: no `supportsTools` here — Google's `GET
         // /v1beta/models` entries carry `supportedGenerationMethods` (used
         // below to filter to chat-capable models) plus token limits and
         // sampling defaults, but no explicit function-calling/tool-use

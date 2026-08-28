@@ -31,7 +31,7 @@ registerCommand(
           // undefined while Station has not yet read what this chat's agent
           // can do, and `tool_execution` is false once it has and the answer
           // is no. Saying "doesn't run tools" for both asserts a cause
-          // nothing derived — the defect station#3969 exists to remove, so it
+          // nothing derived — the defect archive#3969 exists to remove, so it
           // is not one to reproduce here.
           content: bindingStatus
             ? 'This chat’s agent doesn’t run tools, so there are none to list.'

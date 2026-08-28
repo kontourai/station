@@ -257,7 +257,7 @@ export function createRuntimeServiceBundle(
     factories.createProjectService?.(storageAdapter) ??
     new ProjectService(
       storageAdapter,
-      // station#1499: every NEW project gets a manifest sidecar, so the legacy
+      // archive#1499: every NEW project gets a manifest sidecar, so the legacy
       // `workingDirectory`-only path shrinks monotonically instead of becoming
       // a permanent second mode (portable-project-identity.md §5).
       new ProjectManifestStore(context.projectHomeDir, storageAdapter),
@@ -294,7 +294,7 @@ export function createRuntimeServiceBundle(
   // `createRuntimeServiceBundle` is synchronous (called from `StationRuntime`'s
   // constructor, which cannot await) while `configLoader.loadAppConfig()` is async
   // and, at this exact point in cold start, has not resolved yet (`this.appConfig`
-  // is assigned later, once `initialize()`'s async flow completes — see #208's
+  // is assigned later, once `initialize()`'s async flow completes — see archive#208's
   // fix). This mirrors the file's own established precedent for the identical
   // tension: `providerService`/`connectionService` above also take a *lazy*
   // `() => context.configLoader.loadAppConfig()` getter rather than an
@@ -325,7 +325,7 @@ export function createRuntimeServiceBundle(
     new TerminalService(ptyAdapter, historyStore, context.getTerminalShell);
 
   const terminalAuth = {
-    // Scoped pairing (station#1098): a valid credential must ALSO carry
+    // Scoped pairing (archive#1098): a valid credential must ALSO carry
     // terminal:operate — a read-only paired device authenticates fine but
     // never reaches an open terminal session. Shared with voice's identical
     // gate (`runtime-initialize.ts`) via `credentialAuthorizedForScope`.
@@ -368,7 +368,7 @@ export function createRuntimeServiceBundle(
       context.persistEvent,
     ) ?? new MonitoringEmitter(context.monitoringEvents, context.persistEvent);
 
-  // #1403: ACP probes prepare their own connection-scoped private workspace
+  // archive#1403: ACP probes prepare their own connection-scoped private workspace
   // beneath Station home. Pass the authority root, not a launch cwd; the
   // probe keeps an explicitly configured connection cwd ahead of this seam.
   const acpManagedWorkspaceHome = context.configLoader.getProjectHomeDir();

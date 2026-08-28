@@ -1,5 +1,5 @@
 /**
- * Runtime-derived Feature Previews registry (station#2961).
+ * Runtime-derived Feature Previews registry (archive#2961).
  *
  * A preview becomes visible only when runtime composition binds a consumer.
  * A bound consumer returns the selector used at its real branch; persistence

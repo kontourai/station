@@ -83,7 +83,7 @@ export interface CredentialProfileRecoveryDeps {
 
 /**
  * Credential-profile recovery, orchestration-side execution half (epic
- * #4024 slice 7, #4174): the C6 cluster from the seam map, PARTIALLY
+ * archive#4024, archive#4174): the C6 cluster from the seam map, PARTIALLY
  * extracted — `restartCredentialProfileProviderSession` stays on the
  * service as the `restartProviderSession` dep (it is generic session-start
  * machinery, not recovery policy). This module owns the restart loop-guard
@@ -155,7 +155,7 @@ export class CredentialProfileRecovery {
   }): Promise<{ turnId: string }> {
     const { adapter, armedInternalStopTurnId } =
       await this.deps.restartProviderSession(input);
-    // station#3525 fix round FIX 1: the restart above only means the
+    // archive#3525 fix round FIX 1: the restart above only means the
     // provider process is back up, not that this turn actually redispatches
     // — if sendTurn itself now fails, nothing is retrying, and the armed
     // internal-stop suppression (for the turn `restartCredentialProfileProviderSession`
@@ -196,7 +196,7 @@ export class CredentialProfileRecovery {
     threadId: string;
     signal: AbortSignal;
   }): Promise<void> {
-    // station#3525 fix round FIX 1 (secondary instance): this boot-restore
+    // archive#3525 fix round FIX 1 (secondary instance): this boot-restore
     // path never dispatches a turn afterward, so any internal-stop
     // suppression `restartCredentialProfileProviderSession` armed on its way
     // through here is reported exactly like a failed retry (nothing IS
@@ -234,7 +234,7 @@ export class CredentialProfileRecovery {
     this.deps.markThreadQuarantined(threadId);
 
     const adapter = this.deps.sessionAdapterFor(threadId);
-    // station#3476: read the provider BEFORE the live bindings below are
+    // archive#3476: read the provider BEFORE the live bindings below are
     // deleted, and independently of whether an engine is bound. Boot recovery
     // no longer starts an engine for a restored session, so `sessionAdapters`
     // is empty for exactly the sessions boot reconciliation quarantines —

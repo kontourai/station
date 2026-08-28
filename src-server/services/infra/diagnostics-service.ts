@@ -174,7 +174,7 @@ export class DiagnosticsService {
           // Redacted like every sibling field. `branch` and `channel` are
           // free text this process was handed by its supervisor, so the one
           // field in the bundle that skipped the sanitizer would be the one
-          // carrying an operator-supplied string (station#2010 review).
+          // carrying an operator-supplied string (archive#2010 review).
           ...(build ? { build: redactDeep(build) } : {}),
         },
         config: redactDeep(config),

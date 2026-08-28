@@ -14,8 +14,8 @@ interface ToggleProps {
   /**
    * Forwarded to the underlying `role="switch"` button. Defaults to the
    * native button's own tab stop (unset). Pass `-1` when an enclosing
-   * `activatable()` region is already the single keyboard/AT stop for this
-   * control (station#1915) — the switch stays reachable via its accessible
+   * `activatable` region is already the single keyboard/AT stop for this
+   * control (archive#1915) — the switch stays reachable via its accessible
    * name, it just isn't a second tab stop.
    */
   tabIndex?: number;

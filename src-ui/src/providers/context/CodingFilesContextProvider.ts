@@ -4,7 +4,7 @@
  *
  * Unlike the ambient providers (timezone, geolocation) this one is dynamic: the
  * file explorer adds/removes entries at runtime. It is still a single
- * MessageContextProvider so it surfaces as one toggle in Settings; getContext()
+ * MessageContextProvider so it surfaces as one toggle in Settings; getContext
  * composes every attached file. A cached snapshot keeps it
  * useSyncExternalStore-safe.
  */

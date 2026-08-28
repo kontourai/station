@@ -18,7 +18,7 @@ export interface PendingRpcRequest {
   resolve(value: unknown): void;
   reject(error: Error): void;
   /**
-   * station#3473 fix round: recorded so a forced teardown (`stopSession`, the
+   * archive#3473 fix round: recorded so a forced teardown (`stopSession`, the
    * process `exit` handler) can tell whether a `turn/interrupt` request was
    * in flight for the turn it is about to force-reject, WITHOUT racing
    * `interruptTurn`'s own bookkeeping — inspecting what is synchronously
@@ -27,7 +27,7 @@ export interface PendingRpcRequest {
    */
   method: string;
   /**
-   * station#3451 fix round D2: the turn a `turn/interrupt` request targets.
+   * archive#3451 fix round D2: the turn a `turn/interrupt` request targets.
    * Without this, `rejectPendingRpcRequests`'s in-flight signal carried no
    * turn identity — `pendingRpcRequests` has no timeout eviction (entries
    * leave only via a matching response or a force-reject), so an
@@ -60,7 +60,7 @@ export interface CodexSessionRecord {
   activeTurnId?: string;
   activeTurnStartedAt?: number;
   /**
-   * station#3473 fix round: the turn id whose terminal (a real
+   * archive#3473 fix round: the turn id whose terminal (a real
    * `turn.completed`/`turn/completed{status:'failed'}`/`turn/interrupt`
    * success, or a synthesized orphaned-turn `runtime.error`) has already been
    * published. `publishOrphanedTurnFailure` reads this instead of inferring

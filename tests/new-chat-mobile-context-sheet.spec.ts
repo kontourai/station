@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
- * kontourai/station#689 — the New Chat workspace/project picker must be
+ * kontourai/archive#689 — the New Chat workspace/project picker must be
  * fully usable on mobile: no clipping inside the header's scroll box, no
  * nested scroll-fighting between the header and the picker, and a single
  * contained scroll region (the bottom sheet's own list).
@@ -158,7 +158,7 @@ async function seedRoutes(page: Page) {
 
 async function openNewChat(page: Page) {
   await page.goto('/?dock=open');
-  // This suite runs at 390x844. #3309 pinned New chat as a far-right header
+  // This suite runs at 390x844. archive#3309 pinned New chat as a far-right header
   // icon; with this fixture's single chat-ready runtime, clicking it would
   // take the one-click direct path, so assert the affordance and open the
   // modal via the deterministic event instead (the pattern

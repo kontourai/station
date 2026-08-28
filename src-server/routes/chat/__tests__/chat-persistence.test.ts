@@ -319,7 +319,7 @@ describe('persistUserTurnIfMissing (#797)', () => {
     expect(memoryAdapter.addMessage).toHaveBeenCalledTimes(1);
   });
 
-  // station#1293: the old tail-only check missed a race where this turn's
+  // archive#1293: the old tail-only check missed a race where this turn's
   // user message DID already land (the framework's queued write beat this
   // read) but a different row became the new literal tail in between —
   // e.g. an interleaved, unrelated genuine user message (a slash command, a
@@ -353,7 +353,7 @@ describe('persistUserTurnIfMissing (#797)', () => {
     expect(memoryAdapter.addMessage).not.toHaveBeenCalled();
   });
 
-  // station#1293 review (HIGH-1): the `[CHAT_ERROR]` marker
+  // archive#1293 review (HIGH-1): the `[CHAT_ERROR]` marker
   // (`chat-lifecycle.ts`) is persisted with role `'user'`, so a scan that
   // only stopped at `role === 'assistant'` walked straight past it — two
   // back-to-back zero-output failed turns with IDENTICAL text then read as
@@ -414,7 +414,7 @@ describe('persistUserTurnIfMissing (#797)', () => {
 
   // The stop-at-assistant rule (see isUserTurnAlreadyPersisted's doc
   // comment) is what keeps the widened window from becoming the
-  // silent-data-loss alternative #797's review rejected: an assistant reply
+  // silent-data-loss alternative archive#797's review rejected: an assistant reply
   // between the match and the tail means that earlier occurrence belongs to
   // a DIFFERENT, already-answered turn, not this one.
   test('does not treat an earlier, already-answered occurrence of the same text as a duplicate of this turn', async () => {

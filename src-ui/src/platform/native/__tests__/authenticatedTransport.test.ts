@@ -244,7 +244,7 @@ describe('native authenticated transport', () => {
   });
 
   /**
-   * station#1818 R2 — the fault this proves against: a rejected
+   * archive#1818 — the fault this proves against: a rejected
    * `invoke('station_native_http_request')` used to be collapsed with
    * `String(error)`, which stringifies the `NativeCommandError` object Rust
    * now rejects with (`{ code, message }`) to the useless
@@ -301,7 +301,7 @@ describe('native authenticated transport', () => {
    * a bare string — preserved as the error's text, with `code` falling back
    * to that same text (an unrecognized code, not a crash). */
   /**
-   * station#1818 review round 1 (LOW): a legacy/uncoded rejection's raw
+   * archive#1818: a legacy/uncoded rejection's raw
    * prose must NOT become `.code` — that would let a future `.code`
    * consumer accidentally match on a sentence, reopening the FFI-boundary
    * prose-matching this mechanism replaced. The message itself is still

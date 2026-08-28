@@ -1,4 +1,4 @@
-// The error primitive is OWNED by `@kontourai/station-sdk` now (station#4201,
+// The error primitive is OWNED by `@kontourai/station-sdk` now (archive#4201,
 // sequencing step 1 of docs/design/pane-host-contract.md): it joined the
 // published component set so extracted panes and iframe plugins can import
 // the exact component the shell renders, instead of receiving it through a

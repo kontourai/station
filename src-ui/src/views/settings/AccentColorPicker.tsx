@@ -23,8 +23,8 @@ export function AccentColorPicker() {
   const { setDeviceSetting } = useDeviceSettingsActions();
   const color = accentColor ?? '';
 
-  // Keyed on the store VALUE, not the click handler (station#settings-
-  // revamp slice2 review finding 4): applies the DOM side effect however
+  // Keyed on the store VALUE, not the click handler (archive#settings-
+  // revamp): applies the DOM side effect however
   // the value changed — a click here, an import elsewhere on this same
   // page, or a cross-tab sync — instead of only the one path this
   // component's own click handler drives. An imported/reset `null` accent

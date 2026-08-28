@@ -36,7 +36,7 @@ vi.mock('../../contexts/DeviceSettingsContext', () => ({
     chatDockHeight: 320,
     chatDockWidth: 400,
   }),
-  // `DockShell` (station#4460) owns dock chrome now, including the
+  // `DockShell` (archive#4460) owns dock chrome now, including the
   // drag-end device-settings commit `useChatDockState` used to own.
   useDeviceSettingsActions: () => ({ setDeviceSetting: () => {} }),
 }));
@@ -79,7 +79,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
 
-// station#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects()`
+// archive#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects`
 // for its project-binding deletion cleanup. Mocked here the same way every
 // other unrelated context in this file is — this suite is about occupant
 // admission/replacement, not project binding (see
@@ -92,7 +92,7 @@ vi.mock('../../contexts/ProjectsContext', () => ({
   }),
 }));
 
-// `DockShell` (station#4460) registers `dock.toggle`/`dock.maximize` via the
+// `DockShell` (archive#4460) registers `dock.toggle`/`dock.maximize` via the
 // real `useKeyboardShortcut`, which requires a `KeyboardShortcutsProvider`
 // this host-level test doesn't mount. Neutralized the same way
 // `ChatDockHeaderCollapse.test.tsx` neutralizes the header's own shortcut
@@ -202,7 +202,7 @@ test('ambient dock renderPane mounts the canonical chat occupant through a chrom
   // `WorkspacePaneHost` itself still contributes no chrome and no element
   // (its "chromeless" contract) — the labelled "Workspace panes" container
   // belongs to a tab strip's group of panes; there is no group here. What
-  // DOES wrap the occupant now is `DockShell` (station#4460): the one
+  // DOES wrap the occupant now is `DockShell` (archive#4460): the one
   // `.chat-dock` root every occupant shares, a real element by design (it
   // owns the shell's root box, resize handle and geometry). The occupant is
   // a DIRECT descendant of it, not buried under a second host-owned wrapper.
@@ -244,11 +244,11 @@ test('the published dock action reports EXACTLY the ambient scope derivation', (
 
 /**
  * Regression pin for the wiring that kept "Dock this pane" off every route
- * (station#4090): `onDockSlotActionChange={setReplace}` handed the host's
+ * (archive#4090): `onDockSlotActionChange={setReplace}` handed the host's
  * replace FUNCTION straight to a state setter, which React treats as an
  * updater — the stored state became `controller.replace(null)` (a boolean),
  * so the published action was permanently null. The docked-slot unit test
- * captured the authority with a `vi.fn()` and never saw it. This test goes
+ * captured the authority with a `vi.fn` and never saw it. This test goes
  * through the REAL mounted host and the REAL App-facing callback.
  */
 test('the mounted ambient host publishes a live dock action, not null forever', async () => {
@@ -407,7 +407,7 @@ test('a persisted non-canonical Activity occupant is refused on restore: Chat re
 });
 
 /* ------------------------------------------------------------------ *
- * M5 (station#4090): the occupant picker and the published occupant. *
+ * (archive#4090): the occupant picker and the published occupant. *
  * ------------------------------------------------------------------ */
 
 /** Keeps EVERY published action so occupant-change republishes are visible. */
@@ -521,7 +521,7 @@ test('choosing the CURRENT occupant closes the menu without replacing anything',
 });
 
 /**
- * D10, no vestige: the dock-slot header's fixed "return to Chat" action is
+ *no vestige: the dock-slot header's fixed "return to Chat" action is
  * deleted. Chat is one of the menu's entries, not a hardcoded header label
  * or a standing header button. Re-adding `<span>Chat</span>` or the old
  * header `WorkspacePaneDockAction` fails here.
@@ -539,7 +539,7 @@ test('the dock-slot header names the occupant and carries no fixed Chat return a
   await waitFor(() => {
     expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
   });
-  // station#4460: Home now renders through the SAME shared `ChatDockHeader`
+  // archive#4460: Home now renders through the SAME shared `ChatDockHeader`
   // Chat does (`.chat-dock__header`), not a separate `.dock-slot__header`.
   const header = document.querySelector('.chat-dock__header');
   expect(header).not.toBeNull();

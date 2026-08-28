@@ -18,7 +18,7 @@ import type { Locator } from '@playwright/test';
  *
  * Symptom, twice: a real 4.74:1 placeholder measured as 3.64:1 in
  * `accessibility-core` while the failure message still named the theme it
- * thought it was testing (fixed #1173); and `new-chat-provider-managed`'s
+ * thought it was testing (fixed archive#1173); and `new-chat-provider-managed`'s
  * `elementContrast` measured every `color-mix()` agent-row surface as black,
  * so its `>= 4.5` assertions passed on an inverted reading of the row. A third
  * instance was found the same day in an ad-hoc probe by another lane.

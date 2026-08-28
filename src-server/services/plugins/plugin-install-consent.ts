@@ -1,6 +1,6 @@
 /**
  * Plugin install consent — the decision, and the check that it precedes the
- * mutation (station#4288).
+ * mutation (archive#4288).
  *
  * ## What was wrong
  *
@@ -72,7 +72,7 @@
  * It is not an authorization boundary against the credential holder.
  *
  * It also does not widen what the derivation can see. `entrypoint`, `layout`,
- * `workspacePanes` and `agents` still derive no permission (station#3396);
+ * `workspacePanes` and `agents` still derive no permission (archive#3396);
  * that is why {@link PluginInstallConsent} binds the DIGEST rather than only
  * the permission set, and why {@link PluginConsentBasis.undisclosedContributions}
  * names those kinds directly for the callers that hold no decision at all.
@@ -108,7 +108,7 @@ export interface PluginConsentBasis {
   dependencies: string[];
   /**
    * Manifest fields this plugin declares that {@link
-   * requiredPermissionsForManifest} emits NOTHING for (station#4288, review
+   * requiredPermissionsForManifest} emits NOTHING for (archive#4288, review
    * HIGH 1). Named by their manifest field so the refusal can say which one.
    *
    * This is the axis `pendingConsent` cannot see, and it is the dangerous
@@ -316,7 +316,7 @@ export function assertPluginInstallConsent(input: {
     //   only the first arm is what let a registry plugin declaring nothing
     //   but `workspacePanes` + `entrypoint` — a `<script>` in the shell's own
     //   document — install on one click with no preview and no prompt
-    //   (station#4288, review HIGH 1).
+    //   (archive#4288, review HIGH 1).
     //
     // Only a plugin that declares neither goes through: a passive-permission,
     // server-side-only plugin, whose whole contribution the derivation CAN

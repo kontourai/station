@@ -73,7 +73,7 @@ type CoordinatorOptions = Omit<
   'recoveryDispatchAdapter'
 > & {
   recoveryDispatchAdapter?: RecoveryDispatchAdapter;
-  /** Existing #2526 scenarios are adapted at the test seam only. */
+  /** Existing archive#2526 scenarios are adapted at the test seam only. */
   sendTurn?: (input: {
     threadId: string;
     input: string;
@@ -1695,7 +1695,7 @@ describe('SessionRecoveryCoordinator', () => {
         input: 'typed input',
         ambientContext: '[Timezone: America/Denver]',
         // The real bytes, not merely "an array": persistence stores these as a
-        // blob reference (station#3374), so this is what proves the replay
+        // blob reference (archive#3374), so this is what proves the replay
         // resolves the reference rather than handing the provider a husk.
         attachments: [
           {
@@ -2677,7 +2677,7 @@ describe('SessionRecoveryCoordinator', () => {
           // for the recovered turn BEFORE the dispatch promise itself
           // resolves acceptance — durable (appended to the store), but
           // never observed LIVE by the coordinator. This is the exact race
-          // station#3510 describes: a turn that fails before
+          // archive#3510 describes: a turn that fails before
           // `recoveryDispatchAdapter.dispatch` returns.
           store.appendEvent({
             eventId: 'recovered-turn-failed',
@@ -2720,7 +2720,7 @@ describe('SessionRecoveryCoordinator', () => {
     });
     coordinator.reconcile();
     await vi.runAllTimersAsync();
-    // Before the station#3510 fix, `replayObservedTerminal` searched only
+    // Before the archive#3510 fix, `replayObservedTerminal` searched only
     // `turn.completed`/`turn.aborted` and found nothing here — the intent
     // stayed `resumed` forever. It must now close as `failed`.
     expect(recoveryLedger(store).latestProjection('thread')).toMatchObject({
@@ -2746,7 +2746,7 @@ describe('SessionRecoveryCoordinator', () => {
           // codex's own willRetry error: `isDeferredRetriableTurnError` —
           // the SAME predicate the stall watchdog uses — must exclude this
           // from the replay search too, or the two would disagree about
-          // whether the turn had ended (station#3510's explicit condition).
+          // whether the turn had ended (archive#3510's explicit condition).
           store.appendEvent({
             eventId: 'recovered-turn-retriable',
             provider: 'codex',

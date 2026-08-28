@@ -129,7 +129,7 @@ async function drain(
 /**
  * Asserts nothing further is queued after a `drain(iterator, N, label)` call.
  *
- * station#3450 fault injection found this gap: `drain` with a fixed count
+ * archive#3450 fault injection found this gap: `drain` with a fixed count
  * proves the first N events, but an EXTRA event published after them (e.g. a
  * stray `turn.completed` appended after the intended `runtime.error`) is
  * simply left unread and never fails anything — the fixed count is a floor
@@ -380,7 +380,7 @@ describe('MuseAdapter', () => {
     harness.processes[0].exit(1);
     await flushIo();
 
-    // station#3450: a failed turn publishes exactly ONE terminal event —
+    // archive#3450: a failed turn publishes exactly ONE terminal event —
     // `runtime.error` — never `turn.completed` alongside it. The double
     // publish used to make every non-lifecycle-fold consumer (the "your
     // agent finished" push notification, `closeDelegate`, the
@@ -409,7 +409,7 @@ describe('MuseAdapter', () => {
     // session after its first turn.
     expect(methods).not.toContain('session.exited');
     // A fixed drain count alone cannot catch a STRAY event published after
-    // the ones it asked for (station#3450 fault injection found this gap).
+    // the ones it asked for (archive#3450 fault injection found this gap).
     await expectNoFurtherEvent(harness.iterator, 'crash');
     expect(await harness.adapter.hasSession('thread-crash')).toBe(true);
     // The session survives, so the next turn still spawns.
@@ -420,7 +420,7 @@ describe('MuseAdapter', () => {
     expect(harness.processes).toHaveLength(2);
   });
 
-  // station#3450 review (FIX 3): `muse-exit-without-terminal` and
+  // archive#3450 review (FIX 3): `muse-exit-without-terminal` and
   // `muse-terminal-not-completed` were the only two `error`-outcome call
   // sites with test coverage; `muse-spawn-failed` and
   // `muse-terminal-not-completed` had none. This covers `muse-spawn-failed`
@@ -468,7 +468,7 @@ describe('MuseAdapter', () => {
     expect(harness.processes).toHaveLength(2);
   });
 
-  // station#3450 review (FIX 3 + the FIX 1 sub-case): `run_terminal` with a
+  // archive#3450 review (FIX 3 + the FIX 1 sub-case): `run_terminal` with a
   // non-`completed` terminal and NO deltas streamed is the narrow case where
   // `effect.text` is the ONLY carrier of muse's reported text anywhere in
   // the event stream — `settleTurn`'s `outputTextDetail` folds it into
@@ -562,9 +562,9 @@ describe('MuseAdapter', () => {
     expect(harness.logger.info).toHaveBeenCalledWith(
       expect.stringContaining('stderr'),
     );
-    // station#3450 review round 2 (FIX C): the `completed` arm needs the
+    // archive#3450 review round 2 (FIX C): the `completed` arm needs the
     // same ceiling as the `error` arm — a stray `runtime.error` appended
-    // after `turn.completed` (the exact mirror of #3450's original defect)
+    // after `turn.completed` (the exact mirror of archive#3450's original defect)
     // would otherwise be invisible here.
     await expectNoFurtherEvent(harness.iterator, 'stderr');
   });
@@ -593,7 +593,7 @@ describe('MuseAdapter', () => {
     // No per-chunk relay at all: `AsyncEventQueue` clears itself on overflow,
     // so an unbounded stderr relay could discard the turn's real events.
     expect(methods.filter((m) => m === 'runtime.warning')).toHaveLength(0);
-    // station#3450: no `turn.completed` alongside the failure.
+    // archive#3450: no `turn.completed` alongside the failure.
     expect(methods).not.toContain('turn.completed');
     const error = events[3];
     expect(error.method).toBe('runtime.error');
@@ -606,7 +606,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'stderr flood');
   });
 
-  // station#3450 review round 2 (FIX D): MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS
+  // archive#3450 review round 2 (FIX D): MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS
   // had no test proving its rejection path runs — the sibling stderr-tail
   // bound above does. Mirrors that test's shape exactly, against
   // `outputTextDetail` instead of `stderrDetail`.
@@ -648,7 +648,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text flood');
   });
 
-  // station#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
+  // archive#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
   // outputTextDetail now redacts BEFORE truncating. The scrub test above uses
   // a 64-char secret, well under MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS (500) — for
   // a short string, redact-then-slice and slice-then-redact are IDENTICAL, so
@@ -711,13 +711,13 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text straddle');
   });
 
-  // station#3450 review round 2 (FIX A): `effect.terminal`/`effect.reason`
+  // archive#3450 review round 2 (FIX A): `effect.terminal`/`effect.reason`
   // come from `extractString` — a bare `typeof` check with no length cap of
   // its own — and interpolate into `muse-terminal-not-completed`'s
   // `runtime.error.message` PREFIX, which neither `outputTextDetail`'s nor
   // `stderrDetail`'s bounds cover. An oversized `reason` must not reach the
   // published message unbounded (the exact route to the
-  // `malformedRelevant`/`RuntimeAuthHealthEventDiagnostic` throw #3450
+  // `malformedRelevant`/`RuntimeAuthHealthEventDiagnostic` throw archive#3450
   // removed the OTHER route to).
   test('clamps an oversized terminal/reason before it reaches runtime.error.message', async () => {
     const harness = createHarness();
@@ -815,7 +815,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'stderr secret');
   });
 
-  // station#3450 review round 2 (FIX B): outputTextDetail folds
+  // archive#3450 review round 2 (FIX B): outputTextDetail folds
   // run_terminal.text into the SAME runtime.error.message string
   // stderrDetail's redacted tail lands in — it must be scrubbed too, or an
   // unredacted secret would sit right next to a redacted one in one string.
@@ -851,7 +851,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text secret');
   });
 
-  // station#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
+  // archive#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
   // boundedTerminalField now scrubs too — `reason` is the field an engine is
   // most likely to fill with an auth error. Kept well under
   // MUSE_TERMINAL_FIELD_MAX_CHARS (200, ~66 chars here) so the clamp's own
@@ -987,7 +987,7 @@ describe('MuseAdapter', () => {
     });
     // Still one session, still no session.exited from a killed turn child.
     expect(await harness.adapter.hasSession('thread-interrupt')).toBe(true);
-    // station#3450 review round 2 (FIX C): the `aborted` arm needs the same
+    // archive#3450 review round 2 (FIX C): the `aborted` arm needs the same
     // ceiling as the `error` arm — this test's own name claims "exactly
     // once", which the fixed-count drain above does not compute on its own.
     await expectNoFurtherEvent(harness.iterator, 'interrupt');
@@ -1160,7 +1160,7 @@ describe('MuseAdapter', () => {
 
     // Nothing is written and the child never exits: without a deadline this
     // turn stays open forever — the last remaining `hasOpenTurn` hang path.
-    // station#3450: exactly one terminal event — `runtime.error` — never
+    // archive#3450: exactly one terminal event — `runtime.error` — never
     // `turn.completed` alongside it.
     const events = await drain(harness.iterator, 4, 'turn deadline');
     expect(events.map((event) => event.method)).toEqual([

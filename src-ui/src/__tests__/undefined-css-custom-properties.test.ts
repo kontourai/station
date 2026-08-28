@@ -10,13 +10,13 @@ import { describe, expect, test } from 'vitest';
  *
  * That has now shipped three times in the same component family:
  *
- * - **station#1125/#1167** — the danger red used as a fill under white text.
- * - **station#1168** — `--error-primary` / `--error-secondary`, referenced in
+ * - **archive#1125/archive#1167** — the danger red used as a fill under white text.
+ * - **archive#1168** — `--error-primary` / `--error-secondary`, referenced in
  *   eight places and defined in none. Eight error indicators, including the
  *   badge that says a tool call was DENIED, rendered as ordinary body copy.
- * - **station#1246** — `--success-primary` / `--success-secondary`, the exact
- *   mirror, *one CSS rule above* the rule #1168 fixed. It survived because
- *   #1168's search was scoped to the `--error-` prefix. The same sweep found
+ * - **archive#1246** — `--success-primary` / `--success-secondary`, the exact
+ * mirror, *one CSS rule above* the rule archive#1168 fixed. It survived because
+ * archive#1168's search was scoped to the `--error-` prefix. The same sweep found
  *   `--color-bg-tertiary` two rules further up, which is why the "Auto-approved"
  *   chip had no fill either.
  *
@@ -44,7 +44,7 @@ import { describe, expect, test } from 'vitest';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 
-/** Trees whose `var()` references are audited. */
+/** Trees whose `var` references are audited. */
 const REFERENCE_ROOTS = ['src-ui/src', 'packages'];
 
 /**
@@ -135,9 +135,9 @@ interface VarExpression {
 }
 
 /**
- * Every `var()` in `text`, with its fallback kept intact.
+ * Every `var` in `text`, with its fallback kept intact.
  *
- * A regex cannot do this: a fallback can itself contain `var()`, so finding
+ * A regex cannot do this: a fallback can itself contain `var`, so finding
  * where the expression ends needs paren balancing. Getting that wrong is how
  * `var(--a, var(--b))` reads as "has a fallback, therefore fine" when both
  * names are undefined and the declaration is dropped entirely.
@@ -180,7 +180,7 @@ function parseVarExpressions(text: string): VarExpression[] {
           fallback: commaAt === -1 ? null : text.slice(commaAt + 1, end).trim(),
         });
       }
-      // Resume after the whole expression so its own fallback's `var()`s are
+      // Resume after the whole expression so its own fallback's `var`s are
       // not re-reported as top-level references.
       opener.lastIndex = cursor;
     } else {
@@ -192,8 +192,8 @@ function parseVarExpressions(text: string): VarExpression[] {
 }
 
 /**
- * Whether a `var()` can produce a value: either its name is defined, or its
- * fallback can. A fallback with no `var()` in it is a literal and always can.
+ * Whether a `var` can produce a value: either its name is defined, or its
+ * fallback can. A fallback with no `var` in it is a literal and always can.
  */
 function resolves(expression: VarExpression, defined: Set<string>): boolean {
   if (defined.has(expression.name)) return true;
@@ -229,7 +229,7 @@ interface Reference {
 }
 
 /**
- * Every `var()` reference in the audited trees, one entry per occurrence,
+ * Every `var` reference in the audited trees, one entry per occurrence,
  * carrying enough source position to name the offender in a failure.
  */
 function collectReferences(): Array<Reference & { expression: VarExpression }> {
@@ -258,10 +258,10 @@ function collectReferences(): Array<Reference & { expression: VarExpression }> {
  * surface that is *not* rendering what its author wrote — this list is a
  * backlog, not an approval.
  *
- * **It is empty, and that is the point.** station#1246's sweep opened it with
- * 24 names across eight surfaces; station#1254 closed all 24, one owning
+ * **It is empty, and that is the point.** archive#1246's sweep opened it with
+ * 24 names across eight surfaces; archive#1254 closed all 24, one owning
  * surface per commit, and each of those commits shrank this array. There is
- * now no `var()` anywhere in `src-ui` or `packages` that cannot produce a
+ * now no `var` anywhere in `src-ui` or `packages` that cannot produce a
  * value.
  *
  * Adding a name here is a deliberate act: it says "this surface is knowingly
@@ -270,10 +270,10 @@ function collectReferences(): Array<Reference & { expression: VarExpression }> {
  * both directions.
  *
  * **A retired token can come back.** While this branch was open, `main`
- * re-seeded `--border-subtle` — the exact token station#1254 retired — into
- * five new sites: station#1359 added four (`ConnectionsHubPage.css`,
+ * re-seeded `--border-subtle` — the exact token archive#1254 retired — into
+ * five new sites: archive#1359 added four (`ConnectionsHubPage.css`,
  * `SettingsView.css`, and two in `KeyboardShortcutsSection.css`) and
- * station#1423/#1492 added a fifth (`AnswerSharesSection.css`, written as
+ * archive#1423/archive#1492 added a fifth (`AnswerSharesSection.css`, written as
  * `var(--border-subtle, var(--border))` — an undefined token chained onto
  * another undefined token, which is precisely the paren-balanced case the
  * parser above was rewritten to catch). All five were converted to
@@ -291,7 +291,7 @@ const KNOWN_UNDEFINED: string[] = [];
  *
  * `var(--color-warning, #f59e0b)` paints. Nothing is missing, nothing is
  * unstyled, and {@link KNOWN_UNDEFINED} is silent by design — the docblock
- * above calls it "only a smell". station#3050 is what that smell costs when it
+ * above calls it "only a smell". archive#3050 is what that smell costs when it
  * is left alone: `--color-warning` was defined in no theme root, so five
  * stylesheets rendered a **hardcoded** amber. It could not flip with the
  * theme, and it had never been contrast-measured — the literal `#f59e0b` is
@@ -312,7 +312,7 @@ const KNOWN_UNDEFINED: string[] = [];
  *
  * The list is a backlog, not an approval — 22 names that each render a fixed
  * pigment in both themes today. It was opened by this gate rather than by a
- * sweep, so nothing on it has been triaged. station#3050 cleared the names it
+ * sweep, so nothing on it has been triaged. archive#3050 cleared the names it
  * was filed for and pinned the rest so they stay visible and cannot grow:
  *
  * - `--color-warning` — five stylesheets, now `--warning-text`.
@@ -320,9 +320,9 @@ const KNOWN_UNDEFINED: string[] = [];
  *   One is the runtime dot directly below a `--color-warning` rule; the other
  *   was also the LABEL over an 18% tint of itself, so it took the self-tint
  *   recipe its own sibling rule had already settled on. Stopping at the first
- *   would have repeated station#1246 precisely — that defect shipped because
- *   station#1168's search was prefix-scoped and stopped one rule short.
- * - `--color-bg-tertiary` — the token station#1246 explicitly retired, re-seeded
+ *   would have repeated archive#1246 precisely — that defect shipped because
+ *   archive#1168's search was prefix-scoped and stopped one rule short.
+ * - `--color-bg-tertiary` — the token archive#1246 explicitly retired, re-seeded
  *   behind a translucent-white fallback. Now `--bg-tertiary`.
  *
  * Note what the list is NOT: `--color-bg`, `--color-text`, `--color-border`,
@@ -334,7 +334,7 @@ const KNOWN_UNDEFINED: string[] = [];
  * `var(--error-text)`), but it adds a second name for one colour, so the
  * references were pointed at the real foreground tokens instead. The same
  * family's last two holes (`--color-surface-muted`, `--color-text-muted`) were
- * in `MCPToolUIFrame.css` and went with station#3177 — that panel wrote
+ * in `MCPToolUIFrame.css` and went with archive#3177 — that panel wrote
  * theme-aware text on a card those names pinned light, 1.07:1 in dark.
  *
  * Adding a name is a deliberate act. The fix is to point the reference at a
@@ -365,7 +365,7 @@ const UNTHEMED_FALLBACK: string[] = [
 /**
  * Whether a fallback is a colour, and therefore theme- and contrast-bearing.
  *
- * Conservative by construction: hex and the `rgb()`/`hsl()` function forms are
+ * Conservative by construction: hex and the `rgb`/`hsl` function forms are
  * what this codebase actually writes, and a fallback that is a bare keyword
  * (`transparent`, `currentColor`) carries no fixed pigment to go stale.
  * Anything unrecognised is treated as not-a-colour, so the gate under-reports
@@ -394,7 +394,7 @@ describe('custom properties that no var() reference can resolve', () => {
     // contributes far more than 500 references, so dropping `packages` from
     // REFERENCE_ROOTS leaves the floor satisfied and this whole suite
     // reporting clean over a tree it no longer reads — the same shape as
-    // station#1559 (a gate enumerating 523 of 525 files while printing a
+    // archive#1559 (a gate enumerating 523 of 525 files while printing a
     // success line naming the scope it did not walk).
     //
     // The pin has to be an INDEPENDENT statement of what the scope must be.
@@ -406,11 +406,11 @@ describe('custom properties that no var() reference can resolve', () => {
     expect(DEFINITION_ROOTS).toEqual(['src-ui/src', 'packages', 'src-server']);
     expect(VENDOR_STYLESHEET_ROOTS).toEqual(['node_modules/@kontourai/ui']);
 
-    // Stated rather than implied: `examples/` also contains `var()` sites and
+    // Stated rather than implied: `examples/` also contains `var` sites and
     // is deliberately NOT audited — the sample workspaces carry their own
     // token sets and are not shipped surfaces of this app. Naming it here
     // means the next reader knows it is unscanned, instead of assuming the
-    // roots above cover every `var()` in the repository.
+    // roots above cover every `var` in the repository.
   });
 
   test('EVERY declared root is actually walked, not just enough of them to clear the floor (epic #1555)', () => {
@@ -533,11 +533,11 @@ describe('custom properties that no var() reference can resolve', () => {
       '--success-bg',
       '--success-border',
       '--bg-tertiary',
-      // station#3050: five stylesheets now reference this with no fallback, so
+      // archive#3050: five stylesheets now reference this with no fallback, so
       // deleting it would drop their declarations entirely rather than quietly
       // reverting them to a literal.
       '--warning-text',
-      // station#3140: the engine chip's fill and its text rung.
+      // archive#3140: the engine chip's fill and its text rung.
       '--text-tertiary',
     ]) {
       expect(defined.has(token), `${token} must be defined`).toBe(true);

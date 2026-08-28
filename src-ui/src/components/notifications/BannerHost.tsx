@@ -259,7 +259,7 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
           ) : null}
           {banner.badge ? ' ' : null}
           {banner.message}
-          {/* station#3297: one line, tap to expand. The detail is rendered
+          {/* archive#3297: one line, tap to expand. The detail is rendered
               inside the message cell so it wraps under the summary rather
               than fighting the action column for width.
 
@@ -308,7 +308,7 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
             {(banner.actions ?? []).map((action, index) => {
               const className = `banner-host__action banner-host__action--${action.variant ?? 'secondary'}`;
               // Keyed by POSITION, not `action.label`: a two-step destructive
-              // confirm (station#4470's "Remove connection") relabels its own
+              // confirm (archive#4470's "Remove connection") relabels its own
               // button in place ("Remove connection" -> "Confirm removal")
               // rather than swapping in a second control, and a label is not
               // stable identity for a control whose whole point is that its
@@ -363,7 +363,7 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
             onClick={() => {
               const nextCollapsed = !collapsed;
               bannerStore.setCollapsed(banner.id, nextCollapsed);
-              // station#4470: fires only on the COLLAPSING press, never on
+              // archive#4470: fires only on the COLLAPSING press, never on
               // expand — `onCollapse`'s own contract (banner-store.ts).
               if (nextCollapsed) banner.onCollapse?.();
             }}
@@ -389,9 +389,9 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
 }
 
 /**
- * Chrome-banner overlay under the app toolbar (station#3308 phase 1).
+ * Chrome-banner overlay under the app toolbar (archive#3308 phase 1).
  *
- * Sources: `useBanner().present` / `bannerStore.present` with a stable id
+ * Sources: `useBanner.present` / `bannerStore.present` with a stable id
  * and `BANNER_PRIORITY` band. Host owns stack order, exit reflow, and dismiss.
  * See `BANNER_PRIORITY_BANDS` for the ordered priority table.
  *
@@ -399,7 +399,7 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
  * height it occupies as `--banner-stack-height`, which `.main-content` uses
  * to inset itself by exactly that much. Two things follow, and both were the
  * point: the host still owns its own box (no in-flow rail, no per-banner
- * layout row, and nothing reserved when the store is empty — the #2268
+ * layout row, and nothing reserved when the store is empty — the archive#2268
  * defect was a blank 104px rail on mobile), and content is never underneath
  * it. The overlay-only version of this host had the second property
  * backwards: it never reflowed, and in exchange it permanently covered the
@@ -409,11 +409,11 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
  *
  * Each banner is individually collapsible to a minimal bar, blocking ones
  * included: collapsing keeps the card mounted, named and actionable, so
- * station#3432's "the connectionBlocking band never collapses" rule — which
+ * archive#3432's "the connectionBlocking band never collapses" rule — which
  * is about going behind the stack cap, where a card leaves the DOM and its
  * `role="alert"` never announces — is untouched. Multiple banners collapse
  * to the front banner (or, inside the
- * `connectionBlocking` band, every live band member — station#3432) plus a
+ * `connectionBlocking` band, every live band member — archive#3432) plus a
  * stack cap tinted by the first hidden banner's severity; the cap expands
  * the stack into a bounded, internally-scrolling list.
  *
@@ -425,11 +425,11 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
  * pointer events, for exactly the box they render.
  * `.banner-host__item` is `flex-shrink: 0` so a card is never compressed to
  * fit the bound — real overflow is what makes the stack's `overflow-y: auto`
- * engage (station#3432; before this, flex children shrank to fit instead of
+ * engage (archive#3432; before this, flex children shrank to fit instead of
  * overflowing, so the scroll declaration was inert and content silently
  * clipped).
  *
- * station#3432 round 2: the stack's own `pointer-events: auto` opt-in is
+ * archive#3432: the stack's own `pointer-events: auto` opt-in is
  * conditional on `stackScrollable` below, DERIVED from a real `scrollHeight`
  * vs `clientHeight` comparison (via `ResizeObserver`), not asserted from
  * being in a bounded mode. A bounded stack with nothing to scroll — the
@@ -461,13 +461,13 @@ export function BannerHost({
     (banner) => banner.phase !== 'exiting',
   ).length;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: banners/expanded are intentional triggers (station#3432 round 3, MEDIUM-1) — the body reads live DOM geometry, not either value, but ResizeObserver alone misses a box already pinned at its cap; re-running the effect on every banner-set/mode change forces a synchronous re-measure that does not depend on RO firing. This suppression comment is the only thing standing between this list and `biome check --write --unsafe`, whose FIXABLE suggestion for this diagnostic is to remove the extra deps — do not let an automated unsafe-fix pass delete `banners`/`expanded` here.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: banners/expanded are intentional triggers (archive#3432) — the body reads live DOM geometry, not either value, but ResizeObserver alone misses a box already pinned at its cap; re-running the effect on every banner-set/mode change forces a synchronous re-measure that does not depend on RO firing. This suppression comment is the only thing standing between this list and `biome check --write --unsafe`, whose FIXABLE suggestion for this diagnostic is to remove the extra deps — do not let an automated unsafe-fix pass delete `banners`/`expanded` here.
   useEffect(() => {
     if (!stackNode) {
       setStackScrollable(false);
       return;
     }
-    // station#3432 round 2: `pointer-events: auto` is granted only when the
+    // archive#3432: `pointer-events: auto` is granted only when the
     // stack ACTUALLY has something to scroll — `ResizeObserver` fires on
     // every real layout change (content added/removed, the expanded/
     // connection-slot bound switching, a card's own height changing), so
@@ -475,15 +475,15 @@ export function BannerHost({
     // sub-pixel layout rounding without letting a stack that merely touches
     // its bound (no overflow at all) read as scrollable.
     //
-    // station#3432 round 3, MEDIUM-1: `ResizeObserver` only fires when the
+    // archive#3432: `ResizeObserver` only fires when the
     // OBSERVED BOX's own size changes. Once the stack is already pinned at
     // its `max-height` cap, adding more content grows `scrollHeight` without
     // moving `clientHeight` at all — no resize, no callback, and the class
     // gets stuck non-scrollable while content keeps overflowing. Listing
-    // `banners`/`expanded` as deps (not just `stackNode`) re-runs `measure()`
+    // `banners`/`expanded` as deps (not just `stackNode`) re-runs `measure`
     // synchronously on every banner-set or mode change regardless of whether
     // RO fires; RO then only has to cover the layout changes a render can't
-    // (font load, viewport resize). The extra `measure()` call costs two
+    // (font load, viewport resize). The extra `measure` call costs two
     // integer reads per render, and React bails out of the re-render when
     // the derived boolean comes out unchanged.
     //
@@ -527,7 +527,7 @@ export function BannerHost({
    * Publish the space the stack occupies onto the host's own container, so
    * `.main-content` can inset itself by exactly that much (`BannerHost.css`).
    *
-   * This is the fix for the reported defect. station#3308 made the host an
+   * This is the fix for the reported defect. archive#3308 made the host an
    * absolutely-positioned overlay to stop the app reflowing per banner, and
    * that trade is right for a notice that comes and goes — but every banner
    * this host carries names a durable state, so the overlay simply covered
@@ -632,7 +632,7 @@ export function BannerHost({
       // a second line of defence — do not read it as one.
       //
       // The modal half of this test is the shell's own derivation, shared
-      // rather than re-queried (station#3767): `isModalDialogOpen` is the
+      // rather than re-queried (archive#3767): `isModalDialogOpen` is the
       // same fact the keyboard registry now suppresses global chords on, so
       // this stack and the shortcut dispatcher cannot come to disagree about
       // whether a modal is up.

@@ -26,10 +26,10 @@ import type { OrchestrationEvent } from './types';
 export const MAX_FEED_EVENTS = 200;
 
 /**
- * Backoff for a transient `/event-window` history failure — station#3378.
+ * Backoff for a transient `/event-window` history failure — archive#3378.
  *
  * The failure this replaces was silent and permanent: one failed history fetch
- * called `close()` on the live stream and nothing ever reopened it, so a blip
+ * called `close` on the live stream and nothing ever reopened it, so a blip
  * in ONE endpoint took the session's live feed down until the component
  * remounted. The ceiling is `SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS` — the
  * cadence the capability path already re-probes an unavailable host on — so
@@ -45,7 +45,7 @@ const HISTORY_RETRY_MAX_MS = SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS;
  * stopping is the honest end state. Every other status — and any network
  * error — is the class a retry exists for. Same vocabulary, and the same
  * `isTerminalConnectionStatus` derivation, as the SSE transport's own
- * `classifySseFailure` (station#1094).
+ * `classifySseFailure` (archive#1094).
  */
 function isTerminalHistoryFailure(cause: unknown): boolean {
   return (
@@ -137,7 +137,7 @@ export interface SessionEventStream {
   upgradeRequired: boolean;
   error?: Error;
   /**
-   * Mirrors the history-retry schedule (station#3378): set when a retry is
+   * Mirrors the history-retry schedule (archive#3378): set when a retry is
    * scheduled, cleared when a hydration succeeds or the failure is classified
    * terminal. Nothing computes it from the timer — it is written by the same
    * two code paths that own the timer, and it is only as true as they are.
@@ -149,12 +149,12 @@ export interface SessionEventStream {
   historyRetrying: boolean;
   /**
    * How much of the CURRENTLY RETAINED feed a bounded read handed back
-   * reduced, by reason (station#3386). Recomputed wherever the feed changes,
+   * reduced, by reason (archive#3386). Recomputed wherever the feed changes,
    * so an event the feed later trims stops being counted.
    */
   elidedHistory: ElidedHistorySummary;
   /**
-   * station#3426: the live `/api/orchestration/events` stream classified its
+   * archive#3426: the live `/api/orchestration/events` stream classified its
    * own failure `terminal` (401/403, via `fetchSSE`'s `onTerminal`) and gave
    * up automatic reconnection — set there, cleared on the next successful
    * `onOpen`. Distinct from `connected === false`, which is equally true
@@ -162,7 +162,7 @@ export interface SessionEventStream {
    */
   liveStreamStoppedTerminal: boolean;
   /**
-   * station#3426: the `/event-window` history read's own retry ladder hit a
+   * archive#3426: the `/event-window` history read's own retry ladder hit a
    * terminal (401/403) failure and stopped — same `isTerminalHistoryFailure`
    * branch that clears `historyRetrying`, so the two together tell "history
    * failed and is coming back" (`historyRetrying`) apart from "history
@@ -170,7 +170,7 @@ export interface SessionEventStream {
    */
   historyStoppedTerminal: boolean;
   /**
-   * station#3426: the bounded capability re-probe
+   * archive#3426: the bounded capability re-probe
    * (`claimSessionEventWindowCapabilityRecovery`, budget
    * `MAX_AUTOMATIC_CAPABILITY_RECOVERIES` = 3) ran out of automatic attempts.
    * Unlike the two terminal flags above, this is not a credential rejection —
@@ -218,7 +218,7 @@ export function useSessionEventStream(
   const queue = useRef(Promise.resolve());
   const reloadWindow = useRef<() => Promise<void>>(async () => {});
   const recoveredCapabilityKey = useRef<string | undefined>(undefined);
-  // station#3386: the window read reports which budget withheld part of an
+  // archive#3386: the window read reports which budget withheld part of an
   // event's payload. Both readers below (`loadOlder` and the hydration path)
   // unwrap `item.event` and would otherwise drop it on the floor, which is
   // how one consumer of this read disclosed the elision and the other stayed
@@ -315,15 +315,15 @@ export function useSessionEventStream(
       recoveredCapabilityKey.current === capabilityKey;
     if (capabilityWasRecovered) recoveredCapabilityKey.current = undefined;
     let windowCapable = capabilityWasRecovered;
-    // station#3458 fix-round finding (BLOCKING): hydration used to gate on a
+    // archive#3458: hydration used to gate on a
     // `streamOpened` flag written only by `onOpen` — a reasonable proxy for
-    // "the host answered us" pre-#3458, when `onOpen` fired for EVERY
+    // "the host answered us" pre-archive#3458, when `onOpen` fired for EVERY
     // response, ok or not. Once `onOpen` only fires for a response the
     // transport actually consumes, that flag would mean what its name says —
     // the live connection is genuinely open — and stop being true for a live
     // stream stuck retrying a 5xx/502/503/504. That is a DIFFERENT fact from
     // "a response has been observed at all, so reading persisted history is
-    // worth attempting", which is what hydration actually needs (station#3378:
+    // worth attempting", which is what hydration actually needs (archive#3378:
     // the live stream and the history read are different endpoints, and a
     // blip in one must not freeze the other). `hostResponded` is that second
     // fact — the hook has no remaining reader for "is the live connection
@@ -344,7 +344,7 @@ export function useSessionEventStream(
     let historyRetryDelay = HISTORY_RETRY_BASE_MS;
     let historyRetryScheduled = false;
     let historyRetryTimer: ReturnType<typeof setTimeout> | undefined;
-    // station#3445: a retry scheduled under "this failure was transient" must
+    // archive#3445: a retry scheduled under "this failure was transient" must
     // not be left to fire after a LATER attempt has already established
     // "this failure is terminal" — the pending timer knows nothing of that
     // later outcome and would otherwise fire anyway, succeed or fail, and
@@ -374,10 +374,10 @@ export function useSessionEventStream(
       historyRetryTimer = retryTimer;
       recoveryTimers.add(retryTimer);
     };
-    // station#3518: `recoverPersistedEvents` has five independent entries —
+    // archive#3518: `recoverPersistedEvents` has five independent entries —
     // the retry timer, `startInitialHydration`, the `onOpen` reconnect path,
     // the snapshot-frame `onMessage` handler, and `loadOlder`'s
-    // watermark-regression branch via `reloadWindow.current()` below. All
+    // watermark-regression branch via `reloadWindow.current` below. All
     // five funnel through this one function body, so the epoch checks inside
     // it (not a per-call-site guard) are what every entry honours. A call
     // issued AFTER a terminal has been established must still be allowed to
@@ -385,7 +385,7 @@ export function useSessionEventStream(
     // own start, which is already past the terminal's bump, so it passes the
     // checks below on its own merits. The one entry that can actually reach
     // this AFTER a terminal in production is `loadOlder`'s: the terminal
-    // branch's `authenticatedStream?.close()` aborts the live SSE
+    // branch's `authenticatedStream?.close` aborts the live SSE
     // connection, and its reconnect loop only runs `while
     // (!controller.signal.aborted)`, so no further `onOpen`/`onMessage` can
     // fire for this effect instance once a terminal has landed — `loadOlder`
@@ -402,8 +402,8 @@ export function useSessionEventStream(
             turnLimit: 10,
           },
         );
-        // station#3518 fix round: this call may have started BEFORE a later,
-        // independent call to `recoverPersistedEvents()` established a
+        // archive#3518: this call may have started BEFORE a later,
+        // independent call to `recoverPersistedEvents` established a
         // terminal outcome — the terminal branch below now bumps
         // `epoch.current` itself (its own comment explains why), so a
         // success landing after that terminal fails this check and cannot
@@ -412,7 +412,7 @@ export function useSessionEventStream(
         // this checkpoint is REDUNDANT with the one inside
         // `queue.current.then`: if this one would bail, the queued one bails
         // too, and removing this one only turns an early return into a
-        // queued no-op (fault injection confirmed: removing it alone leaves
+        // queued no-op ( confirmed: removing it alone leaves
         // the full suite green). It is NOT redundant for the third test
         // below ("a terminal landing while the queue drains") — there, this
         // checkpoint runs BEFORE the terminal lands and passes, and only the
@@ -476,13 +476,13 @@ export function useSessionEventStream(
         await queue.current;
       } catch (cause) {
         if (!active) return;
-        // station#3518 fix round: this call may itself be stale — started
+        // archive#3518: this call may itself be stale — started
         // before a DIFFERENT, independent call already established a
         // terminal outcome (or completed a success) that bumped
         // `epoch.current`. Without this check, `setError`/`setUpgradeRequired`
         // below would overwrite the honest terminal error with this call's
         // own (often generic transient) failure message, and a late
-        // non-terminal rejection would still reach `scheduleHistoryRetry()`
+        // non-terminal rejection would still reach `scheduleHistoryRetry`
         // and re-arm polling over a session already stopped for good.
         if (requestEpoch !== epoch.current) return;
         const failure =
@@ -490,7 +490,7 @@ export function useSessionEventStream(
         setError(failure);
         setUpgradeRequired(false);
         if (isTerminalHistoryFailure(cause)) {
-          // station#3518 fix round: bump `epoch.current` here, the ONE place
+          // archive#3518: bump `epoch.current` here, the ONE place
           // that previously never did — every OTHER call already in flight
           // (this attempt's own overlapping siblings, or a retry whose timer
           // already fired) captured its `requestEpoch` before this moment,
@@ -501,7 +501,7 @@ export function useSessionEventStream(
           epoch.current += 1;
           bufferedLive.splice(0);
           authenticatedStream?.close();
-          // station#3445: a retry scheduled by an EARLIER transient failure
+          // archive#3445: a retry scheduled by an EARLIER transient failure
           // (this attempt may not be the first) must not survive this
           // terminal outcome — left alone, it fires later regardless, and a
           // subsequent success would clear historyStoppedTerminal/error and
@@ -513,7 +513,7 @@ export function useSessionEventStream(
           setHistoryStoppedTerminal(true);
           return;
         }
-        // station#3378: the live stream is a DIFFERENT endpoint, and tearing
+        // archive#3378: the live stream is a DIFFERENT endpoint, and tearing
         // it down because this one blipped is what froze the session's feed
         // with nothing to restart it. Leave it connected, keep buffering what
         // it delivers, and retry the history read on its own ladder.
@@ -526,9 +526,9 @@ export function useSessionEventStream(
       initialHydrationStarted = true;
       void recoverPersistedEvents();
     };
-    // station#3437 review (MEDIUM-3, extended in review round 2 LOW-3):
+    // archive#3437 (extended in 2):
     // guards `negotiateWindow` against overlapping probes. Two synchronous
-    // `retryCapabilityRecovery()` calls (a genuine double-click, or two
+    // `retryCapabilityRecovery` calls (a genuine double-click, or two
     // callers racing) would otherwise each invalidate the cache and start
     // their OWN probe — two parallel recovery chains that each independently
     // consume a budget slot on resolution, so the ladder exhausts after one
@@ -572,7 +572,7 @@ export function useSessionEventStream(
       recoveryTimers.add(recoveryTimer);
     };
     const negotiateWindow = () => {
-      // station#3437 review round 2 (LOW-3): the guard now lives here, so
+      // archive#3437: the guard now lives here, so
       // EVERY entry (manual retry, onError, the automatic re-probe timer,
       // and this effect's own start) shares it, not just the manual one.
       if (capabilityProbeInFlight) return;
@@ -614,13 +614,13 @@ export function useSessionEventStream(
           startInitialHydration();
         })
         .catch(() => {
-          // station#3437 review round 3 (NIT): `.finally` alone releases the
+          // archive#3437 (NIT): `.finally` alone releases the
           // guard on a rejection but does not handle it, leaving an
           // unhandled rejection — swallow it here so the defense-in-depth
           // below is complete, not just half of it.
         })
         .finally(() => {
-          // Defense-in-depth (station#3437 review round 2, LOW-3
+          // Defense-in-depth (archive#3437 2,
           // maintenance note): `fetchSessionEventWindowCapability` cannot
           // currently reject — every internal failure is caught and resolved
           // as `undefined` — so this never fires ahead of the `.then` above
@@ -632,20 +632,20 @@ export function useSessionEventStream(
     };
     retryCapabilityRecoveryRef.current = () => {
       if (!active) return;
-      // station#3437 review (MEDIUM-3): a probe already in flight (whether
+      // archive#3437: a probe already in flight (whether
       // from this same manual retry re-entered, or an automatic re-probe
       // timer) owns the current recovery attempt — do not start a second,
       // parallel one. `negotiateWindow` itself now enforces this same guard
-      // (review round 2, LOW-3) for every entry, so this early return is no
+      // ( 2) for every entry, so this early return is no
       // longer the only thing standing between a manual click and a second
       // probe — it stays here to skip the RESET/INVALIDATE side effects
       // below too, not just the probe itself, when one is already running.
       if (capabilityProbeInFlight) return;
       resetSessionEventWindowCapabilityRecovery(apiBase, threadId);
-      // station#3437 review (HIGH-1): without this, the capability CACHE
+      // archive#3437: without this, the capability CACHE
       // (distinct from the recovery BUDGET reset above) still holds the
       // just-resolved probe from the automatic round that set
-      // `capabilityRecoveryExhausted` — `negotiateWindow()` below would
+      // `capabilityRecoveryExhausted` — `negotiateWindow` below would
       // return that cached settlement, issuing zero new requests for up to
       // `SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS` while the copy claims a
       // fresh probe is running.
@@ -654,10 +654,10 @@ export function useSessionEventStream(
       negotiateWindow();
     };
 
-    // station#1092: whether this host's stream honors a resume cursor at
+    // archive#1092: whether this host's stream honors a resume cursor at
     // all. Resolved async and defaults to "not yet known" (`false`) so the
     // very first `onOpen` — which fires before this can possibly resolve —
-    // conservatively keeps refetching, same as pre-#1092 behavior; only a
+    // conservatively keeps refetching, same as pre-archive#1092 behavior; only a
     // later reconnect, once the flag is known, can skip the redundant
     // refetch below.
     let resumeCapable = false;
@@ -665,7 +665,7 @@ export function useSessionEventStream(
       if (active) resumeCapable = capable;
     });
 
-    // station#1092 AC3: drop a duplicate/overlapping frame the replay path
+    // archive#1092: drop a duplicate/overlapping frame the replay path
     // re-delivers. `mergeSessionEvents` already dedups by eventId, so this
     // is a cheap early-out rather than a correctness requirement here — but
     // keeping it consistent with the global stream's guard avoids a
@@ -687,10 +687,10 @@ export function useSessionEventStream(
           if (resumeCapable) {
             // The server replays exactly what was missed via the retained
             // `Last-Event-ID` cursor — a REST refetch here would be the
-            // redundant merge path station#1092 removes.
+            // redundant merge path archive#1092 removes.
             return;
           }
-          // Pre-#1092 (or not-yet-known) host: a reconnect can span missed
+          // Pre-archive#1092 (or not-yet-known) host: a reconnect can span missed
           // frames with no server-side replay, so rehydrate from persisted
           // history before continuing from live delivery — the prior
           // behavior, unchanged.
@@ -698,7 +698,7 @@ export function useSessionEventStream(
         },
         onError: (cause) => {
           resumeCapable = false;
-          // A rejected response (401/403, or any non-2xx — station#3458 made
+          // A rejected response (401/403, or any non-2xx — archive#3458 made
           // `onOpen` stop firing for these) still means the host answered:
           // `consumeSseResponse` only ever throws a `StationHttpError` for a
           // `Response` it actually received. A NETWORK-level failure (no
@@ -713,15 +713,15 @@ export function useSessionEventStream(
         // Fires once alongside `onError` for the SAME failure, only when
         // `fetchSSE` classified it `terminal` (401/403) and gave up
         // automatic reconnection — the additive signal `connected === false`
-        // alone cannot give (station#3426): that is equally true while the
+        // alone cannot give (archive#3426): that is equally true while the
         // ladder is mid-backoff and about to retry on its own.
         onTerminal: () => setLiveStreamStoppedTerminal(true),
-        // station#3437 review (HIGH-2): `onOpen` was the only clearing path,
-        // but the transport's terminal state ends at the WAKE (`retry()` or
-        // `notifyCredentialChanged()`), not at a successful open — a resumed
+        // archive#3437: `onOpen` was the only clearing path,
+        // but the transport's terminal state ends at the WAKE (`retry` or
+        // `notifyCredentialChanged`), not at a successful open — a resumed
         // attempt that fails transiently (network-level, or an HTTP-status
         // rejection such as a 500) only fires `onError`, never `onOpen`
-        // (station#3458 made `onOpen` fire only for a response the
+        // (archive#3458 made `onOpen` fire only for a response the
         // transport actually consumes), so the flag stayed stuck true
         // through a failure that is not a credential rejection. Clear it as
         // soon as the transport is actively retrying again; `onOpen` still
@@ -730,7 +730,7 @@ export function useSessionEventStream(
         onRetry: () => setLiveStreamStoppedTerminal(false),
         onMessage: (raw) => {
           if (raw.event === 'orchestration:snapshot') {
-            // station#1092 review fix (HIGH, defense in depth): a snapshot
+            // archive#1092 fix (defense in depth): a snapshot
             // frame on THIS thread-scoped stream means the server could not
             // bound-replay what was missed — a genuine per-thread
             // gap>threshold, an invalid/foreign cursor, or (belt-and-braces
@@ -738,7 +738,7 @@ export function useSessionEventStream(
             // fell back to snapshot. Silently discarding it, as before,
             // permanently loses this thread's own missed events: the
             // eventStreamResume-capable branch above already skipped
-            // `recoverPersistedEvents()` on this `onOpen`, and `fetchSSE`
+            // `recoverPersistedEvents` on this `onOpen`, and `fetchSSE`
             // has already advanced `Last-Event-ID` to the snapshot's `id`,
             // so nothing else will ever re-deliver them. Treat "replay did
             // not happen" as the explicit trigger to refetch persisted
@@ -756,7 +756,7 @@ export function useSessionEventStream(
             if (!payload?.event) return;
             if (!hydrated) {
               bufferedLive.push({ id: raw.id ?? '0', event: payload.event });
-              // station#3378: a retried hydration can stay unhydrated for as
+              // archive#3378: a retried hydration can stay unhydrated for as
               // long as `/event-window` keeps failing, so this buffer now has
               // a lifetime instead of a request, and an unbounded array is the
               // only way a longer wait could cost more than a slower one.
@@ -766,7 +766,7 @@ export function useSessionEventStream(
               // rescues the `turn.started` anchoring the retained window's
               // first turn, reaching back past its own cut to find it — so a
               // blind splice here deletes a frame the merge would have kept,
-              // and the turn arrives with no beginning (station#3378 review).
+              // and the turn arrives with no beginning (archive#3378).
               if (bufferedLive.length > MAX_FEED_EVENTS) {
                 const dropped = bufferedLive.splice(
                   0,

@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3 — the CONSUMING half of fleet inference
+ * archive#1398 — the CONSUMING half of fleet inference
  * (`docs/design/inference-fleet.md` §3.1, §4.4, §4.5, §11 slice 3).
  *
  * Station A's side. This module answers one question — *which paired
@@ -123,7 +123,7 @@ interface FleetCandidateServiceOptions {
   now?: () => Date;
   timeoutMs?: number;
   /**
-   * station#1398 slice 5. OPTIONAL, and its absence is the pre-slice-5
+   * archive#1398. OPTIONAL, and its absence is the pre-slice-5
    * behavior exactly: every candidate stays `peer-attested` under the
    * unchanged cap. A consuming Station that has not opted into probing is
    * not silently downgraded, and `probe-failed` simply stays unreachable
@@ -223,7 +223,7 @@ export function peerAttestedEvidence(
 
 /**
  * Folds this Station's own probe observation into a peer-attested grade
- * (station#1398 slice 5).
+ * (archive#1398).
  *
  * The peer's raw claim survives untouched in `peerAttested` — a probe adds a
  * first-hand observation, it does not replace what the peer said. Both are on
@@ -465,7 +465,7 @@ export class FleetCandidateService {
         continue;
       }
 
-      // station#1398 slice 5. `observe` NEVER performs I/O: it answers from
+      // archive#1398. `observe` NEVER performs I/O: it answers from
       // the probe cache and schedules a refresh when there is nothing fresh,
       // so the FIRST resolution behaves exactly as it did before slice 5 and
       // the upgrade lands on a later window. Ordering matters — the peer's

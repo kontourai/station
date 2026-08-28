@@ -52,7 +52,7 @@ vi.mock('@aws-sdk/client-pricing', () => ({
 }));
 
 describe('Models Routes', () => {
-  // station#1557: the route is a factory taking the stored config, so each
+  // archive#1557: the route is a factory taking the stored config, so each
   // test gets its own instance with its own caches. It used to be a module
   // singleton whose caches had to be cleared with `vi.resetModules()`.
   const appConfig = {
@@ -102,7 +102,7 @@ describe('Models Routes', () => {
     expect(body.success).toBe(true);
     expect(body.data).toEqual([]);
     expect(body.warning).toContain('AWS credentials not configured');
-    // station#3373: the empty list on its own cannot say whether Bedrock
+    // archive#3373: the empty list on its own cannot say whether Bedrock
     // reported no models or was never asked. `complete: false` is what makes
     // this answer "unknown" rather than "none".
     expect(body.source).toBe('bedrock');
@@ -208,7 +208,7 @@ describe('Models Routes', () => {
     expect(body.data).toHaveProperty('region');
     expect(body.data).toHaveProperty('currency');
   });
-  // station#1557. The catalogue used to be fetched from
+  // archive#1557. The catalogue used to be fetched from
   // `process.env.AWS_REGION || 'us-east-1'` with no reference to the stored
   // setting, so Settings could display eu-west-1 while the model list a user
   // picked from came out of us-east-1.

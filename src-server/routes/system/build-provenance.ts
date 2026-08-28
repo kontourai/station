@@ -18,7 +18,7 @@ function presentValue(raw: string | undefined): string | undefined {
 }
 
 /**
- * The server's esbuild-baked identity fallback (station#1985), read off the
+ * The server's esbuild-baked identity fallback (archive#1985), read off the
  * banner global `esbuild.config.mjs` sets on every bundled server entry.
  */
 function readBakedServerBuildIdentity():
@@ -38,7 +38,7 @@ function readBakedServerBuildIdentity():
 /**
  * Reads whatever build provenance the process was given, field by field.
  *
- * Deliberately partial (station#1085): a missing or invalid field never hides
+ * Deliberately partial (archive#1085): a missing or invalid field never hides
  * another usable field. The baked bundle stamp wins over supervisor metadata:
  * a supervisor may be running from a newer checkout while still serving older
  * dist-server bytes. An env-only SHA is therefore labelled checkout-derived.

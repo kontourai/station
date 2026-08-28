@@ -1,11 +1,11 @@
 /**
- * station#4543 regression: `station delegate status`/`events` could not
+ * archive#4543 regression: `station delegate status`/`events` could not
  * resolve a task the SAME create call had just dispatched, for every
  * delegation target (reproduced live against an ACP target).
  *
  * Root cause: `delegateTask`'s local session-start wrote
  * `metadata.environmentId` through the plain public
- * `orchestrationService.sessionCommands.execute` seam. station#4024's
+ * `orchestrationService.sessionCommands.execute` seam. archive#4024's
  * `ENVIRONMENT_ID_RESERVED_METADATA_KEY` (packages/contracts/src/provider.ts,
  * landed 2026-08-23) added `environmentId` to
  * `RESERVED_ORCHESTRATION_METADATA_KEYS`, which `OrchestrationService`'s
@@ -23,7 +23,7 @@
  * tail call into it — already routed around the strip via
  * `orchestrationService.startSessionInternal`'s `conversationIdentity`
  * internal-only escape hatch (see its call site and
- * `orchestration-service.test.ts`'s "station#2821 hardening L3" comment for
+ * `orchestration-service.test.ts`'s "archive#2821 hardening L3" comment for
  * the established pattern). Commit a8a2dcb01 introduced BOTH the strip and
  * that escape-hatch fix together, migrating the foreground/continue path in
  * the same change that regressed this one — `delegateTask`'s own create path
@@ -279,7 +279,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
       }),
       // ACP is a session-delivery-capable provider (sessionDeliveryChannels
       // is defined for it), so `resolveSessionAgentForStart`'s fail-closed
-      // authored-spec gate (station#3027) requires a resolvable Agent spec
+      // authored-spec gate (archive#3027) requires a resolvable Agent spec
       // for 'opencode-agent' or every session start refuses before this
       // test can reach the binding logic under test.
       resolveSessionAgent: createSessionAgentResolver({
@@ -352,7 +352,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
       observeDelegatedTaskEvents({ taskId }, service),
     ).resolves.toMatchObject({ taskId });
 
-    // station#4543 MED-1 (issue-author ruling): both id forms RESOLVE — the
+    // archive#4543 MED-1 (issue-author ruling): both id forms RESOLVE — the
     // bare uuid is not a separate identity, just the same task missing its
     // prefix, and `loadDelegatedTask` retries under the prefixed form on a
     // primary miss. The CLI keeps printing the canonical `task:<uuid>` form
@@ -369,7 +369,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
       observeDelegatedTaskEvents({ taskId: bareUuid }, service),
     ).resolves.toMatchObject({ taskId });
 
-    // station#4543 LOW-5: `continueDelegatedTask` loads the same binding
+    // archive#4543 LOW-5: `continueDelegatedTask` loads the same binding
     // through `loadDelegatedTask` before it can dispatch a follow-up turn —
     // the same strip broke it for a freshly created task pre-fix, and this
     // fix transitively repairs it. Pin that half of the verb surface too.

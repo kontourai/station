@@ -1,5 +1,5 @@
 /**
- * Fire-and-forget haptic helpers for the React app (station#1954).
+ * Fire-and-forget haptic helpers for the React app (archive#1954).
  *
  * Feature code calls these helpers; they consult the platform adapter's
  * `haptics` capability and never import Tauri or OS APIs directly.

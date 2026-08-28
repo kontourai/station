@@ -29,7 +29,7 @@ vi.mock(
       >();
     return {
       ...actual,
-      // The stores take the ASYNC lock since #2646; overriding only the sync
+      // The stores take the ASYNC lock since archive#2646; overriding only the sync
       // twin left this injection inert and the grants store failing with
       // `store infrastructure failure (ENOENT)`.
       acquireFileMutationLockAsync: (
@@ -137,7 +137,7 @@ describe('createAgentHooks', () => {
     expect(approved).toMatchObject({
       allowed: false,
       reason: expect.stringContaining('delegated child session'),
-      // station#3091: a denial produced by the staged pre-tool policy
+      // archive#3091: a denial produced by the staged pre-tool policy
       // evaluator (this is pre-tool-policy.ts's `delegated_tool_blocked`
       // deny()) must reach the caller with `policyDenied: true` intact —
       // this is what the UI's policy-denied badge derives from.
@@ -380,13 +380,13 @@ describe('createAgentHooks — Flow Agents policy seams (S3)', () => {
       allowed: false,
       reason: expect.any(String),
     });
-    // station#3091: a human declining via the approval requester is NOT a
+    // archive#3091: a human declining via the approval requester is NOT a
     // policy denial — `policyDenied` must stay unset here, or the UI would
     // mislabel a user's own choice as something Station's policy blocked.
     expect((secondDenial as { policyDenied?: true }).policyDenied).toBe(
       undefined,
     );
-    // station#3210 (the inversion): this reason is a PURE Station template —
+    // archive#3210 (the inversion): this reason is a PURE Station template —
     // it embeds no guardian, hook, or tool-supplied prose — yet the absent
     // `policyDenied` marker was making both engine adapters redact it to
     // `Tool call failed.`, so the user who clicked Deny was told nothing
@@ -402,7 +402,7 @@ describe('createAgentHooks — Flow Agents policy seams (S3)', () => {
     expect(firstRequester).toHaveBeenCalledOnce();
     expect(secondRequester).toHaveBeenCalledOnce();
     releaseFirst();
-    // station#1834: once the requester is released the conversation has no
+    // archive#1834: once the requester is released the conversation has no
     // approval channel any more — the gate fails closed instead of silently
     // approving (the pre-fix behavior this assertion used to pin).
     await expect(

@@ -94,7 +94,7 @@ const externalAgent = {
 } as unknown as AgentData;
 
 // Real persisted agent records carry NO executionMode field (no production
-// writer sets it — review finding F1 on this change); Station-engine-ness
+// writer sets it — on this change); Station-engine-ness
 // lives on the live session chat state. This fixture models that reality.
 const stationAgent = {
   slug: 'station',

@@ -1218,7 +1218,7 @@ describe('classifyUndeliverableSend (station#3686)', () => {
   // `getOwnPropertyDescriptor(navigator, 'onLine')` is undefined and a
   // restore-if-present cleanup never runs — it silently leaks `onLine = false`
   // into every later test in the file. Delete the injected own property
-  // instead (station#3686 review).
+  // instead (archive#3686).
   function setOnLine(value: boolean) {
     Object.defineProperty(window.navigator, 'onLine', {
       configurable: true,

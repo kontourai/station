@@ -36,7 +36,7 @@ describe('SSH forward reconnect state', () => {
     ).toBe('Launcher closed');
   });
 
-  // station#3711: the label was previously derived from a boolean fed by the
+  // archive#3711: the label was previously derived from a boolean fed by the
   // query's `isSuccess`, which is also false while LOADING — so a row claimed
   // "Host offline" on its own first render, before any probe completed, and
   // asserted a power/network state this device never observes.

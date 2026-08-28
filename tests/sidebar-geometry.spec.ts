@@ -4,7 +4,7 @@ import {
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
 
-// Chevron centering (#1629): the chevron's containing block used to be
+// Chevron centering (archive#1629): the chevron's containing block used to be
 // `.sidebar__project-row`, which also held the Chats pill and the expanded
 // `.sidebar__layouts` list as siblings — either one inflated the row's height
 // and pushed the chevron (`position: absolute; top: 50%`) off-center from the
@@ -94,7 +94,7 @@ test.describe('Sidebar chevron and header lockup geometry (#1629)', () => {
   test('keeps the collapsed-rail project accent stripe anchored after the row-main wrapper', async ({
     page,
   }) => {
-    // Plan stop-short risk (#1629): the new `.sidebar__project-row-main`
+    // Plan stop-short risk (archive#1629): the new `.sidebar__project-row-main`
     // wrapper becomes the nearest `position: relative` ancestor for the
     // collapsed-rail accent stripe (`.sidebar--collapsed
     // .sidebar__project-accent { position: absolute; left: 2px; }`) instead

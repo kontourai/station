@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3 — the AI SDK model that executes a turn on a PEER
+ * archive#1398 — the AI SDK model that executes a turn on a PEER
  * Station through slice 2's serving route
  * (`docs/design/inference-fleet.md` §3.2 Option A, §2.7, §10 OQ-8, §11 slice 3).
  *
@@ -73,7 +73,7 @@ export const FLEET_COMPLETION_TIMEOUT_MS =
 
 /**
  * How each peer refusal is projected onto Relay's invocation-error vocabulary
- * (station#1398 slice 5.5 review, finding 2).
+ * (archive#1398 review, finding 2).
  *
  * `retryable` is `true` for EVERY entry, and that is a statement about
  * failover rather than about repeating this call. Dispatch's engine never

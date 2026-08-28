@@ -1126,7 +1126,7 @@ test('dirty close requires an explicit production confirmation before removing t
 });
 
 test('a pane with no bespoke label is named by its descriptor, never by its id', () => {
-  // station#3971: the tab strip printed `pane:builtin:coding:file-browser` at
+  // archive#3971: the tab strip printed `pane:builtin:coding:file-browser` at
   // people while every descriptor carried a name the whole time. Each element
   // is named in its own assertion so a regression says which one went back to
   // showing an id.
@@ -1597,7 +1597,7 @@ test('close publishes its removal but preserves state referenced by another layo
   await act(async () => {
     fireEvent.click(
       screen.getByRole('button', {
-        // The pane's declared name, not its id (station#3971).
+        // The pane's declared name, not its id (archive#3971).
         name: 'Close File Preview',
       }),
     );
@@ -2263,7 +2263,7 @@ test('delayed close arbitration preserves a newer selected pane for state, navig
 });
 
 /**
- * station#3793. The persistence lease is elected once per (storage, lock name,
+ * archive#3793. The persistence lease is elected once per (storage, lock name,
  * lock manager) — not once per render. Its effect used to depend on the
  * `emitOperationalEvent` callback, which is rebuilt whenever the consumer's
  * `operationalEventContext` identity changes; every host consumer passes that
@@ -2323,7 +2323,7 @@ test('elects the persistence lease once across renders that only rebuild consume
 });
 
 /**
- * station#3795, at the seam that pays for it: the persistence lease restores
+ * archive#3795, at the seam that pays for it: the persistence lease restores
  * the stored document on every grant, and `restore` used to mint a new
  * document identity whether or not anything had changed — so every
  * re-election re-ran the `[state.document]` effects, including the one that

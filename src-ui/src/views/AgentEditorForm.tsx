@@ -135,7 +135,7 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
           onEngineKindChange={onEngineKindChange}
           stationConnectionId={stationConnectionId}
         />
-        {/* station#3551: which ACCOUNT of the bound engine. Renders nothing
+        {/* archive#3551: which ACCOUNT of the bound engine. Renders nothing
             for engines with no app-home channel — see its docblock. */}
         <AgentEditorCredentialProfile
           form={form}

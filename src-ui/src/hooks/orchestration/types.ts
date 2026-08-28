@@ -19,7 +19,7 @@ export type OrchestrationSnapshotPayload = {
     threadId: string;
     status: string;
     /**
-     * The read-model's turn-aware activity fold (#1034). `status` is the
+     * The read-model's turn-aware activity fold (archive#1034). `status` is the
      * provider's coarse process state — 'running' means the session process
      * is alive, not that a turn is open. When present and false, a 'running'
      * status must not re-strand the UI in turn-active rendering.
@@ -31,7 +31,7 @@ export type OrchestrationSnapshotPayload = {
     reportedModel?: string;
     effectiveModelOptions?: Record<string, string | number | boolean>;
     /**
-     * station#1301 slice 1: the wire already carries these three fields on
+     * archive#1301: the wire already carries these three fields on
      * every serialized `OrchestrationSessionSummary` (the snapshot route
      * serializes the read-model's session objects verbatim) — this type
      * previously under-declared them. `delegation.parentTaskId` is the

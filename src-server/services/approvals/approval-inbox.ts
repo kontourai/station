@@ -228,13 +228,13 @@ export class ApprovalInboxNotificationProvider
   }
 
   /**
-   * station#1284 (AC4): the session's project binding, when it has one —
+   * archive#1284 (AC4): the session's project binding, when it has one —
    * same lookup `AttentionProjectionService.sessionOpenHref` uses, exposed
    * here so `wireApprovalInboxNotifications`'s `request.opened` handler can
    * stamp `metadata.projectSlug` onto a fresh orchestration approval
    * notification without reaching into `deps` directly.
    *
-   * FAIL-SOFT (station#1284 HIGH 3, call-site half). This is deep-link
+   * FAIL-SOFT (archive#1284 HIGH 3, call-site half). This is deep-link
    * DECORATION and must never gate creating the notification: it runs
    * inside the `EventBus` emit path, where an escaping throw used to delete
    * the whole approval-inbox listener (see `event-bus.ts`), and even now it
@@ -252,7 +252,7 @@ export class ApprovalInboxNotificationProvider
   }
 
   /**
-   * station#1284 (HIGH 2): what the persisted log says about this
+   * archive#1284 (HIGH 2): what the persisted log says about this
    * notification's request — see `OrchestrationService.readRequestOutcome`.
    * Exposed on the provider for the same reason `resolveProjectSlug` is:
    * `wireApprovalInboxNotifications`'s sweep reads it without reaching into
@@ -270,7 +270,7 @@ export class ApprovalInboxNotificationProvider
 }
 
 /**
- * station#1284 (HIGH 2): converge on read.
+ * archive#1284 (HIGH 2): converge on read.
  *
  * The bug this closes is a boot-ordering one. When this was written,
  * `OrchestrationService.initialize()` ran an orphan-reconciliation pass at
@@ -280,7 +280,7 @@ export class ApprovalInboxNotificationProvider
  * delivered to nobody, and the stale approval notification it was supposed
  * to clear stayed `delivered` forever.
  *
- * station#1779 deleted that pass (the answer is projected at read time now
+ * archive#1779 deleted that pass (the answer is projected at read time now
  * and nothing synthetic is written), which removes the ORIGINAL trigger but
  * not the class: any resolution that lands before this subscribe — an
  * adapter's own `request.resolved` during recovery, or one from a previous
@@ -374,7 +374,7 @@ export function wireApprovalInboxNotifications(
 
       const event = message.data.event as CanonicalRuntimeEvent;
       if (event.method === 'request.opened') {
-        // station#1284 (AC4): resolved synchronously (no adapter I/O — see
+        // archive#1284 (AC4): resolved synchronously (no adapter I/O — see
         // OrchestrationService.resolveSessionProjectSlug's doc comment) so the
         // approval card can deep-link into the project chat dock like a
         // lifecycle card already does, instead of always falling back to

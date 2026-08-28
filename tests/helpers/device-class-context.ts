@@ -3,7 +3,7 @@ import { expect } from '@playwright/test';
 import { requireE2EBrowserSessionCredential } from './e2e-operator-credential';
 
 /**
- * The two device classes `devicePresentation` can report (station#3843 §1),
+ * The two device classes `devicePresentation` can report (archive#3843 §1),
  * as browser contexts, plus the premise assertion that makes each one a
  * FACT about the fixture rather than a hope.
  *
@@ -24,7 +24,7 @@ import { requireE2EBrowserSessionCredential } from './e2e-operator-credential';
  *    is what makes the cookie decide, and the runner's cookie is minted by
  *    exchanging the launcher capability over the UI PORT
  *    (`scripts/run-e2e-suite.mjs`) — byte for byte the URL `station start`
- *    prints for the operator. Since station#3876 that is an exchange the
+ *    prints for the operator. Since archive#3876 that is an exchange the
  *    server stamps `home-possession` on, because Station's own proxy attests
  *    that its client was on this machine; before it, only a direct-socket
  *    exchange no user performs was stamped. So the premise assertion below is
@@ -99,7 +99,7 @@ export interface DeviceClassContext {
  * Opens a context of `deviceClass` and PROVES it is one before the caller
  * asserts anything about presentation. A spec whose fixture silently drifted
  * into the other class would otherwise assert the wrong surface and pass —
- * exactly the shape of station#3753, one layer down.
+ * exactly the shape of archive#3753, one layer down.
  */
 export async function openDeviceClassContext(
   browser: Browser,

@@ -24,7 +24,7 @@ interface ConsentRequest {
   displayName: string;
   permissions: PermissionRequest[];
   /**
-   * station#4288. `true` when the plugin is NOT installed yet and the answer
+   * archive#4288. `true` when the plugin is NOT installed yet and the answer
    * decides whether it gets installed at all. Approving records nothing here:
    * there is no tree to bind a grant to, and grants bind to content. The
    * decision travels with `POST /install`, which grants what it covers once
@@ -42,7 +42,7 @@ interface PermissionContextType {
     permissions: PermissionRequest[],
   ) => Promise<boolean>;
   /**
-   * Ask BEFORE installing (station#4288). Same chrome, but it only returns
+   * Ask BEFORE installing (archive#4288). Same chrome, but it only returns
    * the decision — no grant is written and no host approval is opened,
    * because the plugin does not exist yet. The caller carries the answer into
    * the install, which is what refuses to mutate without it.
@@ -82,7 +82,7 @@ const wait = (milliseconds: number) =>
 export function PermissionManager({ children }: { children: ReactNode }) {
   const { apiBase } = useApiBase();
   const [pending, setPending] = useState<ConsentRequest | null>(null);
-  // station#3677 PR 3: a Tauri host reviews trusted approvals in native OS
+  // archive#3677: a Tauri host reviews trusted approvals in native OS
   // chrome — the WebView cannot reach the distinct-origin consent page on
   // some targets, and the native dialog is unscriptable by design.
   const reviewNatively = useNativeConsentBroker();
@@ -177,7 +177,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
       }
 
       // No browser way in, and no native path to take instead: the consent
-      // listener is down for a caller that needed it (station#3731). Say so
+      // listener is down for a caller that needed it (archive#3731). Say so
       // rather than opening a popup at nothing.
       if (!body.approval.reviewUrl) {
         throw new Error(
@@ -185,7 +185,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
         );
       }
 
-      // station#3677: the server mints an ABSOLUTE review URL on the
+      // archive#3677: the server mints an ABSOLUTE review URL on the
       // distinct-origin consent listener (same hostname, its own port) —
       // deliberately NOT this app's origin, so plugin code sharing our origin
       // cannot script the review page. `apiBase` stays only as the base for a
@@ -269,7 +269,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
     setPending(null);
   };
 
-  // station#3796: one memoised value per provider — a fresh object literal
+  // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
   // This provider owns the consent modal's own state, so it re-renders on

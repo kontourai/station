@@ -4,7 +4,7 @@ export type OpenConnectionsModalDetail = {
   /**
    * - `list` — the connection list (the default).
    * - `pair-device` — device pairing (host approve surface).
-   * - `request-access` — re-pairing for the ACTIVE connection, station#3297.
+   * - `request-access` — re-pairing for the ACTIVE connection, archive#3297.
    *   The connection indicator uses this: a device whose credential has gone
    *   stale needs the one exchange that replaces it, not a list to navigate.
    */

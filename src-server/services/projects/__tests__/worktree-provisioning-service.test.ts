@@ -217,11 +217,11 @@ describe('worktree isolation helpers', () => {
 });
 
 describe('WorktreeProvisioningService', () => {
-  // station#3246 follow-up. `worktreeBaseDir` is a free-text policy field, so
+  // archive#3246 follow-up. `worktreeBaseDir` is a free-text policy field, so
   // `~/worktrees` used to `resolve()` to a LITERAL `~` directory relative to
   // the process cwd -- Station's own install root -- and every worktree for
   // the session would be provisioned inside it. Silent, and wrong somewhere
-  // nobody looks: the same failure station#3155 shipped for knowledge
+  // nobody looks: the same failure archive#3155 shipped for knowledge
   // namespaces.
   //
   // Nothing sets this field today (no route, CLI command, UI surface or doc),

@@ -4,7 +4,7 @@ import { WebNativePlatformAdapter } from '../web';
 import { completeNativeCapabilityReport } from './completeNativeCapabilityReportFixture';
 
 /**
- * station#3677 PR 3, review round 1 gap: nothing pinned the capability id →
+ * archive#3677, 1 gap: nothing pinned the capability id →
  * adapter → EXACT Tauri command-name wiring, so a rename on either side
  * would have gone silently green (the component tests mock the hook, and
  * the Rust tests never see the JS command string).

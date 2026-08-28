@@ -1,5 +1,5 @@
 /**
- * E2E: agent editor pixel geometry, in a real browser (station#4521 items
+ * E2E: agent editor pixel geometry, in a real browser (archive#4521 items
  * 3/4 — the "Agent actions" popover's anchoring, and the header title's
  * truncation).
  *
@@ -57,7 +57,7 @@ import { EngineChip } from './src-ui/src/components/badges/EngineChip';
 import { AgentReadinessCell } from './src-ui/src/components/AgentReadinessCell';
 
 /**
- * station#4521 item 3: the exact "Agent actions" trigger + popover JSX from
+ * archive#4521 item 3: the exact "Agent actions" trigger + popover JSX from
  * \`AgentsViewEditorPane\`, copied verbatim (including the
  * \`overlayClassName="agent-actions-overlay" panelClassName="agent-actions-panel"\`
  * wiring this fix added), inside a sticky header at the TOP of a tall page —
@@ -118,10 +118,10 @@ function PopoverHarness() {
 }
 
 /**
- * station#4521 items 1/4: the real \`DetailHeader\` with the real
+ * archive#4521 items 1/4: the real \`DetailHeader\` with the real
  * \`titleAccessory\` \`AgentsViewEditorPane\` builds — \`compact\` toggles the
- * SAME prop the real pane always passes now, reproducing the pre-fix header
- * (the badge speaking the full server sentence, uncompacted) against the
+ * SAME prop the real pane always passes now, reproducing the uncompacted
+ * header (the badge speaking the full server sentence) against the
  * current one (\`AgentReadinessCell\`'s own \`compact\` form, "Not set up") in
  * the same harness. Both scenarios render the chip — the design ruling that
  * replaced dropping it entirely was that a caution row must still read

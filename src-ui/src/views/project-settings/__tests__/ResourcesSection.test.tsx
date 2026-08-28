@@ -1,13 +1,13 @@
 /**
  * @vitest-environment jsdom
  */
-// station#1502 slice 4 — §3.6's resolution states and §4.1's not-backing path,
+// archive#1502 — §3.6's resolution states and §4.1's not-backing path,
 // as rendered. The two traps this suite exists to hold shut:
 //
 //   1. `missing` and `unbound` must NOT render alike. They were ONE state
-//      until station#1594/#1603 split them, precisely because "nothing was
+// until archive#1594/archive#1603 split them, precisely because "nothing was
 //      ever declared" and "the declared directory is gone" owe opposite
-//      behaviour (#1023's `$HOME` terminus vs #791's fail-closed throw).
+// behaviour (archive#1023's `$HOME` terminus vs archive#791's fail-closed throw).
 //      Collapsing them in the UI reintroduces the defect one layer up.
 //   2. The three path SLOTS are three different claims — an answer, an
 //      observation, and a declaration — and no label may be reused across
@@ -31,7 +31,7 @@ let bindPending = false;
  * ran and the whole refusal path — the point of the slice — was untested: the
  * `refusal` state, the "That checkout was not recorded" block, its reset, and
  * the pending label would every one of them still have passed this suite if
- * deleted (station#1502 fix round, MEDIUM-4).
+ * deleted (archive#1502).
  */
 interface CapturedBindOptions {
   onSuccess?: (outcome: unknown, path: string) => void;
@@ -78,7 +78,7 @@ function renderView(view: ProjectResolutionView) {
 }
 
 /**
- * station#1503 slice 5 — the view carries a LIST and a primary selection. This
+ * archive#1503 — the view carries a LIST and a primary selection. This
  * helper keeps every slice-4 assertion pointed at the single-resource case it
  * was written for; the multi-resource cases are their own describe block.
  */
@@ -239,7 +239,7 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     ).toBeTruthy();
     // NOT "the check did not run": the resolver emits `stale` when
     // `readCheckoutRemotes` answers `ok: false`, i.e. the check ran and
-    // FAILED, which is the common case (station#1502 fix round, LOW-3).
+    // FAILED, which is the common case (archive#1502).
     expect(screen.queryByText(/did not run/)).toBeNull();
 
     const reverify = screen.getByRole('button', { name: 'Re-verify' });
@@ -431,7 +431,7 @@ describe('the repair action is an explicit operator act', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Point at checkout' }));
 
     expect(bindMutate).toHaveBeenCalledTimes(1);
-    // station#1503: the mutation carries WHICH resource it repairs, so a
+    // archive#1503: the mutation carries WHICH resource it repairs, so a
     // multi-repo project's third row cannot write the primary's binding.
     expect(bindMutate).toHaveBeenCalledWith({
       path: '/Users/dev/code/api',
@@ -483,7 +483,7 @@ describe('loading and error states use the canonical primitives', () => {
   });
 });
 
-// ── station#1502 fix round ────────────────────────────────────────────────
+// ── archive#1502 ────────────────────────────────────────────────
 
 describe('MEDIUM-4 — the refusal path, driven through the real callbacks', () => {
   it("shows the server's reason VERBATIM under its own title", () => {
@@ -636,7 +636,7 @@ describe('LOW-2 — the three slots are visually distinct, not just textually', 
   // The CSS comment CLAIMS this; `--observation` and `--declared` shared one
   // identical rule block, so the claim was unpinned and false. Pinned here so
   // it cannot become false again silently.
-  // `process.cwd()` and not `import.meta.url`: this file runs under jsdom,
+  // `process.cwd` and not `import.meta.url`: this file runs under jsdom,
   // where `import.meta.url` is an http URL that `readFileSync` refuses.
   const css = readFileSync(
     join(process.cwd(), 'src-ui/src/views/ProjectSettingsView.css'),
@@ -738,7 +738,7 @@ describe('AC5 stand-in — the local-only vocabulary guard', () => {
   });
 });
 
-// ── station#1503 slice 5 — a partially-bound multi-repo project ────────────
+// ── archive#1503 — a partially-bound multi-repo project ────────────
 
 describe('a partially-bound multi-repo project is LEGIBLE', () => {
   const API_BOUND: ResourceResolutionResult = {

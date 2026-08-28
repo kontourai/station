@@ -1,5 +1,5 @@
 /**
- * #3601/#3602 delta review (MEDIUM) — the response boundary is ordered after
+ * archive#3601/archive#3602 — the response boundary is ordered after
  * the state it reports, in a browser that HAS the Web Locks API too.
  *
  * `ConnectionStore` serializes its shared-storage writes under a Web Lock, so

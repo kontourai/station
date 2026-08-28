@@ -63,7 +63,7 @@ export function ACPConnectionDetailModal({
       integration.kind === 'mcp' && integration.transport === 'stdio',
   );
 
-  // Serialization (repo review, 2026-07-26): rapid toggles must never lose a
+  // Serialization: rapid toggles must never lose a
   // selection to a reversed-completion race. `desiredRef` is the
   // latest-wanted selection, updated synchronously on every toggle;
   // `lastSentRef` is what the most recent dispatch actually sent;
@@ -256,7 +256,7 @@ export function ACPConnectionDetailModal({
           </div>
         </div>
 
-        {/* station#3722 slice 1: the two-row capability description, derived
+        {/* archive#3722: the two-row capability description, derived
             from the engine capability matrix. Custom engines all resolve
             through the 'acp' matrix — per-connection capability discovery is
             the issue's remaining scope. */}

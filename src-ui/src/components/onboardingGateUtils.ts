@@ -12,7 +12,7 @@ export interface SetupBannerContent {
   actionLabel: string;
   badges: string[];
   /**
-   * station#1544: `'runtimes'` used to be a third target here. No branch of
+   * archive#1544: `'runtimes'` used to be a third target here. No branch of
    * `buildSetupBannerContent` has ever returned it since the variants below
    * settled, so the `actionTarget === 'runtimes'` checks in `OnboardingGate`
    * and `ChatEmptyState` were unreachable navigation. Removed with the
@@ -24,7 +24,7 @@ export interface SetupBannerContent {
 }
 
 /**
- * station#1544: `'engine-picker'` was removed from this union. #1387 deleted
+ * archive#1544: `'engine-picker'` was removed from this union. archive#1387 deleted
  * all three `return 'engine-picker'` statements from `setupBannerVariant`
  * below — a deliberate product reversal ("a verified ready path must never be
  * presented as setup work") — which left the variant unproducible while
@@ -72,7 +72,7 @@ export function configuredLlmProviders(
 }
 
 export function setupBannerVariant(status: SystemStatus): SetupBannerVariant {
-  // station#chat-dock-maximize-readiness: while system prerequisite
+  // archive#chat-dock-maximize-readiness: while system prerequisite
   // discovery is still `pending`, the status snapshot is an all-false
   // placeholder that would otherwise read as 'unconfigured'. Withhold the
   // setup conclusion until discovery settles so a genuinely ready
@@ -96,7 +96,7 @@ export function setupBannerVariant(status: SystemStatus): SetupBannerVariant {
   }
 
   // A per-engine failure is setup work only when no engine can already start
-  // chat. Keep this before the attention branch: an array `.some()` over
+  // chat. Keep this before the attention branch: an array `.some` over
   // unready rows cannot encode the ready-path precedence contract.
   if (status.externalEngines?.some((engine) => engine.ready)) {
     return 'hidden';
@@ -144,10 +144,10 @@ export function setupBannerVariant(status: SystemStatus): SetupBannerVariant {
 }
 
 /**
- * station#1194 (epic #1191, slice B) introduced a second, narrower predicate
+ * archive#1194 introduced a second, narrower predicate
  * (`chatSetupNeeded`) that excluded the 'engine-picker' variant, because that
  * variant meant "chat already works, pick which engine backs it" and a chat
- * surface must not read it as setup work. station#1544 removed that variant,
+ * surface must not read it as setup work. archive#1544 removed that variant,
  * which made the two predicates identical — so there is one again, and every
  * caller uses it. Re-introduce the narrower one only alongside a variant it
  * actually excludes.

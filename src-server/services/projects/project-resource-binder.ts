@@ -1,5 +1,5 @@
 /**
- * station#1502 slice 4 — the explicit bind repair action
+ * archive#1502 — the explicit bind repair action
  * (`docs/design/portable-project-identity.md` §3.5, §3.6).
  *
  * This is the write half of the resolution surface: `describeProjectResolution`
@@ -67,7 +67,7 @@ export type BindProjectResourceRefusalCode =
   | 'ambiguous'
   /**
    * A `resourceId` was named and this project does not declare it
-   * (station#1503). Never answered by binding the primary instead: that would
+   * (archive#1503). Never answered by binding the primary instead: that would
    * write a record for a resource the operator did not name, which is decision
    * 2 from the other end.
    */
@@ -142,7 +142,7 @@ function selectBindTarget(
 ):
   | { ok: true; resource: ProjectRepoResource }
   | { ok: false; code: BindProjectResourceRefusalCode; reason: string } {
-  // station#1503 slice 5: an explicitly named resource is bound EXACTLY, or
+  // archive#1503: an explicitly named resource is bound EXACTLY, or
   // refused by name. Falling back to the primary would record a checkout
   // against a resource the operator never named — and on a multi-repo project
   // that is the ordinary case, not an edge one: the repair form for the third
@@ -179,7 +179,7 @@ function selectBindTarget(
  * Records the binding for one of a project's resources at an operator-supplied
  * path — or refuses, with the reason, having written nothing.
  *
- * `resourceId` names WHICH resource (station#1503 slice 5). Omitting it keeps
+ * `resourceId` names WHICH resource (archive#1503). Omitting it keeps
  * slice 4's behaviour byte-for-byte: the primary, or a refusal when no single
  * resource can be named. It is optional rather than required because a
  * single-repo project's repair form has nothing to name and every existing

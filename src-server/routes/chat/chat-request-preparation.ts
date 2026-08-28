@@ -34,7 +34,7 @@ interface PrepareChatRequestContext {
     | 'storageAdapter'
     | 'logger'
     | 'activeAgents'
-    // station#2652: read-only, for the first-run `[USER PROFILE]` block.
+    // archive#2652: read-only, for the first-run `[USER PROFILE]` block.
     // `chat.ts` already passes the full context, and `RuntimeContext.appConfig`
     // is re-assigned on every config reload, so this stays fresh without a
     // per-turn file read.
@@ -56,7 +56,7 @@ export async function prepareChatRequest(
   injectContext: string | null;
   ragContext: string | null;
   /**
-   * station#2649: what this preparation actually composed, recorded block by
+   * archive#2649: what this preparation actually composed, recorded block by
    * block AS each string is built (one derivation per block — the receipt
    * cannot name context this function did not inject). The stream layer adds
    * its own conversation-feedback block and emits the finished record.
@@ -87,7 +87,7 @@ export async function prepareChatRequest(
               ? options.model
               : undefined,
         projectSlug: context.projectSlug,
-        // station#1288: the station-agent relay (station-agent-adapter.ts's
+        // archive#1288: the station-agent relay (station-agent-adapter.ts's
         // sendTurn) has a model override but no providerId to pair with it —
         // neither ProviderSessionStartInput nor ProviderSendTurnInput carries
         // one. Let a lone model apply against the same default connection
@@ -190,7 +190,7 @@ export async function prepareChatRequest(
       // EXPAND: this reaches flowAgentsRoot(cwd) -> statSync, and the opt-in
       // check is FAIL-OPEN — a `~/…` path threw, was read as "not opted in", and
       // Flow-Agents steering was silently never injected into any chat context
-      // for a tilde-configured project (station#3155). Nothing surfaced.
+      // for a tilde-configured project (archive#3155). Nothing surfaced.
       const workspaceCwd = project?.workingDirectory
         ? resolve(expandTilde(project.workingDirectory))
         : undefined;
@@ -226,7 +226,7 @@ export async function prepareChatRequest(
     }
   }
 
-  // station#2652 chapter 2: the first-run "About you" answers, composed like
+  // archive#2652 chapter 2: the first-run "About you" answers, composed like
   // every block above. Returns `ragContext` unchanged when the user skipped
   // the questions — see `injectUserProfileContext` for why no default User Profile
   // is ever substituted, and why this reaches Station's engine only.

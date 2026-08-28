@@ -22,7 +22,7 @@ function withPointerCapture(el: Element) {
 /**
  * A controllable `requestAnimationFrame` double: frames are queued, not run
  * synchronously, so a test can assert coalescing behavior (multiple moves
- * queued before a single manual `flush()`) instead of the `beforeEach`
+ * queued before a single manual `flush`) instead of the `beforeEach`
  * default (which runs callbacks immediately and would hide coalescing bugs).
  */
 function installControllableRaf() {

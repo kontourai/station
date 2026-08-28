@@ -209,7 +209,7 @@ describe('approval inbox notifications', () => {
   });
 
   /**
-   * station#1284 (HIGH 3, call-site half). `resolveSessionProjectSlug`
+   * archive#1284 (HIGH 3, call-site half). `resolveSessionProjectSlug`
    * replays a session's whole event log to decorate a deep link, and it
    * runs inside `EventBus.emit`. A throw there used to take the entire
    * approval-inbox listener off the bus permanently; even with the bus

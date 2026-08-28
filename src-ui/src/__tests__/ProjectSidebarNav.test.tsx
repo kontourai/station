@@ -5,7 +5,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-// station#3313: the nav derives surface visibility from live flags (enabled
+// archive#3313: the nav derives surface visibility from live flags (enabled
 // feature previews + the developer-tools device setting). The derivation has
 // its own test (useSurfaceVisibilityFlags.test.ts); here it is a controllable
 // set so these tests pin what the nav DOES with the flags it is given.

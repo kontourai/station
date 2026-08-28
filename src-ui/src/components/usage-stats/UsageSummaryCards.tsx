@@ -8,7 +8,7 @@ import { StatCard } from './StatCard';
 
 /**
  * How many engine sessions the lifetime cost was actually measured across
- * (station#3245). Absent when this deployment has no engine sessions to
+ * (archive#3245). Absent when this deployment has no engine sessions to
  * describe.
  */
 export interface EngineUsageCoverage {
@@ -21,7 +21,7 @@ export interface EngineUsageCoverage {
  * The one sentence that keeps a partial sum from reading as a complete one.
  *
  * A lifetime cost is summed over the sessions that reported a cost; the rest
- * contributed nothing rather than a zero (station#3201's rule, applied to a
+ * contributed nothing rather than a zero (archive#3201's rule, applied to a
  * sum). Saying so is the difference between "$0.25 spent" and "$0.25 spent,
  * and four of the five engines you ran never told us what they charged".
  *

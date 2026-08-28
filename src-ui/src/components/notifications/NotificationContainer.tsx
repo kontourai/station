@@ -245,7 +245,7 @@ export function NotificationContainer() {
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);
   /**
-   * station#1259. This popover is the one surface in the app whose own action
+   * archive#1259. This popover is the one surface in the app whose own action
    * removes the control it has to hand focus back to: approving or denying the
    * last request empties `approvals`, the queue element unmounts with the
    * trigger inside it, and — when nothing transient is left — the whole
@@ -258,7 +258,7 @@ export function NotificationContainer() {
   /**
    * Every close path, not just Escape. The outside-pointerdown path used to
    * leave focus wherever the pointer put it — on `<body>` for a tap on
-   * non-focusable chrome (station#1126's outcome) — and the auto-close effect
+   * non-focusable chrome (archive#1126's outcome) — and the auto-close effect
    * below restored nothing at all. `applyReturnFocus` declines when another
    * actor already holds focus, which is what makes it safe to call on the
    * pointer path: a tap on a real control keeps that control.
@@ -278,7 +278,7 @@ export function NotificationContainer() {
   const stackedTransients = selectToastStackItems(transientNotifications);
   const stackLayout = buildToastStackLayout(stackedTransients.length);
   /**
-   * Coarse-pointer expansion for the #1960 stack. CSS `:hover`/`:focus-within`
+   * Coarse-pointer expansion for the archive#1960 stack. CSS `:hover`/`:focus-within`
    * expansion has no touch equivalent, so on a device that cannot hover the
    * stack could never be expanded at all. A tap on the collapsed stack sets
    * this state (the CSS treats it as a third expansion trigger); outside-tap
@@ -423,7 +423,7 @@ export function NotificationContainer() {
   };
 
   /**
-   * station#872 slice 2 (#1971) put an empty state here and it was the wrong
+   * archive#872 (archive#1971) put an empty state here and it was the wrong
    * surface. This container is mounted unconditionally in `main.tsx` as the
    * fixed-position toast overlay (z-index 1900) — it has no open/closed state,
    * so "render something when empty" means a card pinned over the top-right of

@@ -52,7 +52,7 @@ describe('Button pending state (SHELL-01 / SHELL-12 / SHELL-16)', () => {
     expect(screen.getByRole('button').getAttribute('aria-busy')).toBeNull();
   });
 
-  // Review of round 1 named two behaviours that were argued in the source
+  // Review of named two behaviours that were argued in the source
   // ("a disabled submit button should not be the form's implicit Enter
   // submitter", "the same DOM button survives the spinner/label swap") and
   // asserted nowhere. Both are the difference between a pending state and a
@@ -107,7 +107,7 @@ describe('Button pending state (SHELL-01 / SHELL-12 / SHELL-16)', () => {
     rerender(<Toggle pending />);
     const after = screen.getByRole('button');
 
-    // A remounted button would leave <body> focused — the station#1126
+    // A remounted button would leave <body> focused — the archive#1126
     // outcome. Identity, not a re-query, is the fact being pinned.
     expect(after).toBe(before);
     expect(after.textContent).toContain('Creating…');

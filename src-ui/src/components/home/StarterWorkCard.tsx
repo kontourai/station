@@ -77,7 +77,7 @@ export function StarterWorkCard() {
           role="status"
           aria-label="Starter work"
         >
-          {/* station#3965: was "Starter task is NOT_VERIFIED or unavailable" —
+          {/* archive#3965: was "Starter task is NOT_VERIFIED or unavailable" —
               an internal verification token, and two states at once. */}
           We couldn’t open your first task.{' '}
           <Button onClick={() => void boundTask.refetch()}>Try again</Button>

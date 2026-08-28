@@ -53,7 +53,7 @@ describe('ApprovalRegistry', () => {
     expect(result).toBe(false);
   });
 
-  // station#3158 — `register()`'s boolean cannot tell "someone said no" from
+  // archive#3158 — `register()`'s boolean cannot tell "someone said no" from
   // "nobody answered", and its one consumer that has to explain itself to a
   // person was printing both as "denied or timed out". These pin the outcome
   // seam that keeps them apart, each ending asserted as its own value rather

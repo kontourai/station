@@ -28,7 +28,7 @@ const { DatabaseSync } = require('node:sqlite') as {
 };
 
 /**
- * station#3661. The claim under test is not "WAL gets set" — it is that a
+ * archive#3661. The claim under test is not "WAL gets set" — it is that a
  * SECOND process reaching `PRAGMA journal_mode = WAL` while a first holds the
  * write lock on a never-WAL database survives.
  *
@@ -391,7 +391,7 @@ describe('applyWalJournalMode reports, and fails closed where asked (#3661 revie
 
   test('a store asking to fail closed throws on a NON-contention failure', () => {
     // What `scheduler-ledger.ts` and the working-state worker did before
-    // #3661, restored: an unwritable or failing database does not come up
+    // archive#3661, restored: an unwritable or failing database does not come up
     // pretending to be healthy.
     expect(() =>
       applyWalJournalMode(stubDb(ioError), {
@@ -521,7 +521,7 @@ describe('two processes first-opening a never-WAL database (#3661)', () => {
   });
 
   test('the scheduler ledger STARTS UP through the race it used to die on', async () => {
-    // station#3661 as reported: `PRAGMA journal_mode = WAL` sat unguarded in
+    // archive#3661 as reported: `PRAGMA journal_mode = WAL` sat unguarded in
     // the ledger constructor, so a second instance opening a brand-new home
     // threw `SQLITE_BUSY: database is locked` before the ledger existed and
     // took scheduler startup with it.

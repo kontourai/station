@@ -1,5 +1,5 @@
 /**
- * #3654 review, H3 — the reason a Bedrock CHAT probe records must not carry
+ * archive#3654 review, H3 — the reason a Bedrock CHAT probe records must not carry
  * the identity AWS echoes back.
  *
  * The catalogue path redacted where it produced its text, which left the other

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1223 (offline slice 1) — cache-first persistence.
+ * archive#1223 (offline) — cache-first persistence.
  *
  * Drives the real save/restore round trip through `setupQueryPersistence`
  * against an in-memory mock of the `AsyncStorage` contract, so these pin the
@@ -181,7 +181,7 @@ describe('setupQueryPersistence — save/restore round trip (simulated reload)',
     clientA.setQueryData(['agents'], [{ slug: 'writer' }]);
     // A paused mutation is the ONE case react-query's *default*
     // shouldDehydrateMutation persists (`mutation.state.isPaused`) — this
-    // proves our explicit `() => false` override actually wins over that
+    // proves our explicit ` => false` override actually wins over that
     // default rather than merely happening to not exercise it.
     clientA
       .getMutationCache()
@@ -319,7 +319,7 @@ describe('applyPersistedQueryGcTimeDefaults — gcTime >= persister maxAge', () 
 });
 
 describe('<PersistQueryClientProvider> — isRestoring gates fetches during async restore', () => {
-  /** A persister whose restoreClient() resolves only when the test calls
+  /** A persister whose restoreClient resolves only when the test calls
    * `resolveRestore` — simulates the real IndexedDB gap between mount and
    * an async restore actually landing. */
   function createControllableRestorePersister() {
@@ -454,10 +454,10 @@ describe('restore failure degrades gracefully', () => {
     try {
       const queryClient = new QueryClient();
       // Deliberately do NOT touch `handle.restored` here (no await/.then/
-      // .catch) before checking for an unhandled rejection below — a caller
+      //catch) before checking for an unhandled rejection below — a caller
       // that never inspects it is exactly the real fire-and-forget shape
       // this guards against. Awaiting it first would attach our OWN
-      // handler and mask a missing internal `.catch()`.
+      // handler and mask a missing internal `.catch`.
       setupQueryPersistence(queryClient, {
         storage: throwingStorage,
         throttleTime: 0,

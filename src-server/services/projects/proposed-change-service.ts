@@ -37,7 +37,7 @@ interface ProposedChangeDecisionOutcome {
   updated: ProposedChange;
 }
 
-// Async-compatible seam (#2646): the default is the ASYNC cross-process lock
+// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
 // so a contended acquisition yields the event loop; sync test fakes remain
 // assignable (awaiting a non-promise is a no-op).
 type ProposedChangeMutationLock = (

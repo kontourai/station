@@ -1,5 +1,5 @@
 /**
- * Dispatch-as-claim tests (roadmap #584, part of epic #580, S4; hardened
+ * Dispatch-as-claim tests (roadmap archive#584, part of epic archive#580, S4; hardened
  * post-ship against independent review findings #1-#6, see this file's
  * per-test comments for which finding each test proves).
  *
@@ -1067,7 +1067,7 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
     });
   });
 
-  // station#1501 slice 3b, seam S4's second input (consumer A7): production
+  // archive#1501, seam S4's second input (consumer A7): production
   // composes an ASYNC project-workspace resolver. Both the
   // artifact-root derivation and the fail-closed blocked path must await it —
   // an unawaited Promise is truthy, so a missing `await` would turn "the

@@ -572,7 +572,7 @@ export function createRegistryRoutes(
             {
               registryId: id,
               registryKey: registryInstall.registryKey,
-              // station#4288. This route installs on one click with no
+              // archive#4288. This route installs on one click with no
               // preview and no prompt, so it holds no operator decision and
               // says so rather than passing a decision nobody made. The
               // installer refuses exactly what this route could not have
@@ -615,7 +615,7 @@ export function createRegistryRoutes(
       // The same refusal the direct install route answers 409 to, through the
       // same derivation — this is the second route that can observe it, and
       // two routes describing one refusal differently is how the reader learns
-      // not to trust either (station#4309 follow-up).
+      // not to trust either (archive#4309 follow-up).
       const lockCycle = findPluginContentLockCycleError(error);
       if (lockCycle) {
         deps?.logger?.warn(

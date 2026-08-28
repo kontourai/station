@@ -53,7 +53,7 @@ describe('privacy inventory', () => {
    * declaration was unrepresentable AND unreachable — the iOS manifest would
    * have claimed unlinked regardless of what the inventory said. That is the
    * defect this inventory exists to prevent, sitting inside the renderer.
-   * station#2484 is the entry that needs it.
+   * archive#2484 is the entry that needs it.
    */
   test('propagates linkage and tracking from the inventory into the Apple manifest', () => {
     const entry = (
@@ -87,7 +87,7 @@ describe('privacy inventory', () => {
   test('propagates linkage from the inventory into Play Data Safety', () => {
     // Synthetic entries for the same reason as the Apple test above: asserting
     // the "Yes" branch against the REAL inventory made this test depend on some
-    // entry happening to be linked, so it broke the moment station#2484 made
+    // entry happening to be linked, so it broke the moment archive#2484 made
     // them all false — and would have silently stopped proving anything if it
     // had been written to assert the "No" branch instead.
     const entry = (linkedToIdentity: boolean): PrivacyInventoryEntry => ({

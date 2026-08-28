@@ -57,7 +57,7 @@ vi.mock('../hooks/useSystemStatus', () => ({
     isLoading,
     isPending,
     isError,
-    // station#1818 review round 1 (HIGH): while `isConnectPending` is true
+    // archive#1818: while `isConnectPending` is true
     // (still retrying), the real `@tanstack/query-core` reducer only ever
     // populates `failureReason` — `error` is set exclusively by the
     // `'error'` action, which simultaneously flips `status` to `'error'`
@@ -70,7 +70,7 @@ vi.mock('../hooks/useSystemStatus', () => ({
   }),
 }));
 
-// station#1290: exercised in its own dedicated unit test
+// archive#1290: exercised in its own dedicated unit test
 // (useInvalidateCachesOnConnectionSwitch.test.tsx) against a real
 // QueryClient. This suite mocks every other dependency at the module
 // boundary rather than wrapping in a QueryClientProvider, so mock this one
@@ -79,7 +79,7 @@ vi.mock('../hooks/useInvalidateCachesOnConnectionSwitch', () => ({
   useInvalidateCachesOnConnectionSwitch: () => {},
 }));
 
-// station#2472: UsageTelemetryDisclosure reaches for a real QueryClient.
+// archive#2472: UsageTelemetryDisclosure reaches for a real QueryClient.
 // Its consent behavior is covered in its own suite; this suite's contract
 // (documented above) is module-boundary mocks, not a QueryClientProvider
 // wrap — so mock the component away like every other cross-cutting dep.
@@ -94,8 +94,8 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: toastMocks.showToast }),
 }));
 
-// station#1715: the local self-authorization effect calls
-// `nativeProfileRepository()` whenever `platformProfile.isDesktop` is true —
+// archive#1715: the local self-authorization effect calls
+// `nativeProfileRepository` whenever `platformProfile.isDesktop` is true —
 // every desktop-supervision case in this file. Returning `undefined` from
 // `pendingLocalSelfProvisionProfileName` keeps the effect a no-op for every
 // test here that isn't specifically about it.
@@ -130,8 +130,8 @@ vi.mock('../lib/serverHealth', () => ({
   checkServerHealthDetailed: vi.fn(),
 }));
 
-// station#1776 review (MEDIUM) — this used to mock `connectionFailureCopy`
-// itself with a canned `(reason: string) => ...` shape that ignores every
+// archive#1776 — this used to mock `connectionFailureCopy`
+// itself with a canned `(reason: string) =>...` shape that ignores every
 // argument beyond `reason`. `OnboardingGate` threads real `host`/`address`
 // arguments through it (`activeConnection.name || apiBase`,
 // `activeConnection.url`) and excludes the `awaiting-approval` reason before
@@ -223,7 +223,7 @@ vi.mock('../components/PendingPairingReconciler', async () => {
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
   useForceRefetchSystemStatus: () => forceRefetch,
-  // station#1194: EnginePicker (rendered when the engine-picker variant
+  // archive#1194: EnginePicker (rendered when the engine-picker variant
   // applies) reads these — empty/no-op defaults keep every other test in
   // this file (none of which exercise the picker's own behavior) unaffected.
   useAgentConnectionsQuery: () => ({ data: [] }),
@@ -347,7 +347,7 @@ describe('OnboardingGate', () => {
     activeConnectionUrl = 'http://localhost:3242';
     activeConnectionId = 'tailnet-station';
     connections = [];
-    // station#1194 review round 2: resolved, no explicit choice yet — the
+    // archive#1194: resolved, no explicit choice yet — the
     // representative "config has loaded" default for every existing test
     // in this file (none of which exercise the picker's own gating).
     configData = {};
@@ -589,7 +589,7 @@ describe('OnboardingGate', () => {
     expect(screen.queryByText('Connection manager')).toBeNull();
   });
 
-  // #794: the launcher used to record a *persisted* dismissal when the user
+  // archive#794: the launcher used to record a *persisted* dismissal when the user
   // navigated to Connections to do the setup, so it vanished for good — while
   // Connections still read "chat: setup needed" and its own copy promised it
   // "disappears automatically once chat is ready".
@@ -616,12 +616,12 @@ describe('OnboardingGate', () => {
     fireEvent.click(screen.getByLabelText('Dismiss setup launcher'));
 
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
-    // Dismissal now persists through the device-settings store (station#
-    // settings-revamp slice 2) rather than its own raw localStorage key.
+    // Dismissal now persists through the device-settings store (archive#
+    // settings-revamp) rather than its own raw localStorage key.
     expect(deviceSettingsStore.get('onboardingSetupDismissed')).toBe(true);
   });
 
-  // #794 review: a deferral covers the trip into Connections. Leaving that
+  // archive#794: a deferral covers the trip into Connections. Leaving that
   // area without finishing setup must bring the launcher back, or the same
   // "gone while chat is still unready" complaint returns, session-scoped.
   test('re-arms the launcher when the user leaves the Connections area', async () => {
@@ -1073,10 +1073,10 @@ describe('OnboardingGate', () => {
   });
 
   /**
-   * station#4475 — `restartBundledServer`'s own doc comment says the boolean
+   * archive#4475 — `restartBundledServer`'s own doc comment says the boolean
    * exists "so the recovery screen can tell the user when it didn't [reach
    * the host]", but both callers of it discarded that boolean with a bare
-   * `void restartBundledServer();` — a dangling proxy (tailscale serve → a
+   * `void restartBundledServer;` — a dangling proxy (tailscale serve → a
    * port nothing owns) makes the restart POST fail, and the button read as
    * dead: no error, no re-enable, nothing. This is the mechanism check: a
    * failed restart must surface visibly and the control must remain
@@ -1131,7 +1131,7 @@ describe('OnboardingGate', () => {
     expect(toastMocks.showToast.mock.calls[0]?.[0]).toMatch(
       /couldn.t restart/i,
     );
-    // station#4512 review (H3): sticky until dismissed — a 5s default would
+    // archive#4512: sticky until dismissed — a 5s default would
     // vanish this toast, "Try again" and all, while the reader was still
     // reading the first sentence of a restart failure.
     expect(toastMocks.showToast.mock.calls[0]?.[2]).toBe(0);
@@ -1142,16 +1142,16 @@ describe('OnboardingGate', () => {
   });
 
   /**
-   * station#4512 review (H3) — a prior round claimed "re-tappable" evidence
+   * archive#4512 — a prior round claimed "re-tappable" evidence
    * by re-clicking the ORIGINAL restart control, which never exercises the
-   * toast's own retry action at all. A reviewer's fault injection that
+   * toast's own retry action at all. A reviewer's that
    * deleted the whole `actions` argument from the `showToast` call stayed
    * green against all 79 tests in this file, because nothing invoked it.
    * This drives the action's `onClick` directly, the way a reader clicking
    * "Try again" IN THE TOAST (not back on the original control) would.
    */
   test('the failure toast carries a working Try again action that retries the same request', async () => {
-    // station#4512 review (B2) — this used to assert the ARGUMENT passed to
+    // archive#4512 — this used to assert the ARGUMENT passed to
     // the mocked `showToast` (`calls[0][2] === 0`), which proved nothing
     // about the actual toast: the real store's `duration: 0` new-toast path
     // scheduled `setTimeout(dismiss, 0)` regardless, dismissing the toast on
@@ -1234,7 +1234,7 @@ describe('OnboardingGate', () => {
       ).toBeTruthy();
 
       // Run every timer the store scheduled. A `duration: 0` toast must
-      // still be present after this — the exact case B2 broke.
+      // still be present after this — the exact case broke.
       act(() => {
         vi.runAllTimers();
       });
@@ -1500,7 +1500,7 @@ describe('OnboardingGate', () => {
       pairingReconcilerOutcome = {
         title: 'Access request declined',
         message:
-          // The reconciler's real output since station#3849: the shared map
+          // The reconciler's real output since archive#3849: the shared map
           // names the Station by its browser-local label, so a banner about a
           // Station the reader is not looking at says which one.
           'Tailnet Station declined this device. Request access again if that was unexpected.',
@@ -1604,7 +1604,7 @@ describe('OnboardingGate', () => {
         </OnboardingGate>,
       );
 
-      // Withholding it would be the original #3387 defect: the user just asked
+      // Withholding it would be the original archive#3387 defect: the user just asked
       // B for access and got refused. It renders — naming B.
       const banner = await screen.findByText(
         /Tailnet Station declined this device/,
@@ -1630,7 +1630,7 @@ describe('OnboardingGate', () => {
       // its subject is what keeps it honest.
       expect(banner.textContent).toContain('Station B');
       expect(banner.textContent).not.toContain('Station A');
-      // ...and nothing of A's is left collapsed behind a cap either.
+      //.and nothing of A's is left collapsed behind a cap either.
       expect(screen.queryByTestId('banner-stack-cap')).toBeNull();
     });
 
@@ -1639,7 +1639,7 @@ describe('OnboardingGate', () => {
       // `resolvePendingTarget` find-or-adds by origin and does not activate,
       // so the target is a connection the user has never selected. Keyed on
       // the target alone with no render for a non-active subject, this decline
-      // would be invisible — #3387 reintroduced.
+      // would be invisible — archive#3387 reintroduced.
       activeConnectionId = 'station-a';
 
       render(
@@ -1739,12 +1739,12 @@ describe('OnboardingGate', () => {
     expect(alert.textContent).toMatch(
       /Tailnet Station isn't accepting this device/,
     );
-    // station#3297: one line. The remedy is a tap away, not a third line of
+    // archive#3297: one line. The remedy is a tap away, not a third line of
     // prose on a phone.
-    // station#3903 rewrote that second line: it used to say "pair this device
+    // archive#3903 rewrote that second line: it used to say "pair this device
     // again" beside a button labelled Request access.
     expect(alert.textContent).not.toMatch(/request access to/i);
-    // station#4470b: the disclosure toggle's label is the constant "Details"
+    // archive#4470b: the disclosure toggle's label is the constant "Details"
     // now (was "More"/"Less").
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(
@@ -1955,8 +1955,8 @@ describe('OnboardingGate', () => {
     });
 
     /**
-     * station#4475 — the banner's own "Restart Station" action used to
-     * discard `restartBundledServer`'s result (`void restartBundledServer();`
+     * archive#4475 — the banner's own "Restart Station" action used to
+     * discard `restartBundledServer`'s result (`void restartBundledServer;`
      * in OnboardingGate.tsx), so a request that never reached the host (the
      * owner's dangling-tailscale-proxy scenario) left the banner reading
      * exactly as it did before the tap — a dead button, silently.
@@ -2090,7 +2090,7 @@ describe('OnboardingGate', () => {
     });
   });
 
-  // #1007 / #1958. Pairing chrome flows through BannerHost under the header
+  // archive#1007 / archive#1958. Pairing chrome flows through BannerHost under the header
   // (not a root strip). Pin in-flow layout, drag region, and dismiss.
   describe('pairing banner does not occlude the window chrome (#1007)', () => {
     function shell(children?: ReactNode) {

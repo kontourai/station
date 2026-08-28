@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 import { VISUAL_VIEWPORT_BOTTOM_INSET_VAR } from '../hooks/useMobileVisualViewport';
 
 /**
- * station#3902 — the chat dock is rendered by the shell (`App.tsx`), so how
+ * archive#3902 — the chat dock is rendered by the shell (`App.tsx`), so how
  * much of the bottom of the viewport it owns is a SHELL fact, and every route
  * has to be able to clear it without knowing anything about the dock.
  *
@@ -107,7 +107,7 @@ describe('the dock clearance is one derivation (station#3902)', () => {
 
   test('one shell class places every dock occupant — no second per-occupant wrapper', () => {
     const source = withoutComments(indexCss);
-    // station#4460: every occupant (Chat, Home, Activity) now renders
+    // archive#4460: every occupant (Chat, Home, Activity) now renders
     // through the shared `DockShell`, whose root carries `.chat-dock`
     // regardless of which occupant is docked — there is exactly one wrapper
     // class, not the old `:is(.chat-dock, .dock-slot)` fork where a non-chat
@@ -128,7 +128,7 @@ describe('the dock clearance is one derivation (station#3902)', () => {
       ].map(() => path.slice(uiSrc.length + 1));
     });
 
-    // station#3929: Chat supplies live geometry to the ambient slot, but the
+    // archive#3929: Chat supplies live geometry to the ambient slot, but the
     // host alone publishes the shell's clearance. A second writer races the
     // mount order and loses mobile safe-area and drag-frame correctness.
     expect(

@@ -1,14 +1,14 @@
 /**
  * @vitest-environment jsdom
  *
- * AC5 and AC7 for the Agents view model.
+ * and for the Agents view model.
  *
- * AC5 — after Create, the list must already contain the new Agent and it must
+ * after Create, the list must already contain the new Agent and it must
  * be the selected one, with no reload; and "Loading agent…" must be BOUNDED.
  * A detail read that never resolves used to leave that line on screen forever
  * with nothing to press.
  *
- * AC7 — `engineDefault` is no longer a lock. It used to be, and a fresh
+ * `engineDefault` is no longer a lock. It used to be, and a fresh
  * install's only four agents therefore opened as a six-tab editor with every
  * field disabled, a dead Delete, and a Save styled as an active primary that
  * could never save. The Skills tab's `+ Add` keys off the same `locked`, which
@@ -230,7 +230,7 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
         slug: 'writer',
         name: 'Writer',
         prompt: 'Write.',
-        // A ready engine binding: `validate()` refuses to save without one.
+        // A ready engine binding: `validate` refuses to save without one.
         execution: { ...form.execution, agentConnectionId: 'claude' },
       }));
     });
@@ -491,10 +491,10 @@ describe('AC7 — engineDefault is not a lock', () => {
 });
 
 /**
- * station#4521 item 2: does the editor actually let the user SET the
+ * archive#4521: does the editor actually let the user SET the
  * agent's model/provider binding — read from a loaded agent, and written
  * back through the real agent-update contract on Save, mocked at the route
- * seam (`useAgentActions().updateAgent`, the same seam every other save
+ * seam (`useAgentActions.updateAgent`, the same seam every other save
  * assertion in this file uses).
  */
 describe('the Model connection binding round-trips through Save (station#4521 item 2)', () => {
@@ -514,7 +514,7 @@ describe('the Model connection binding round-trips through Save (station#4521 it
     state.detail = {
       slug: 'station',
       name: 'Station',
-      // station#4521 LOW-2: the exact wire shape reported — `execution`
+      // archive#4521: the exact wire shape reported — `execution`
       // OMITTED entirely, not an object with empty strings. A Station agent
       // that has never had its execution configured has no `spec.execution`
       // at all; `formFromAgent` already reads it with optional chaining, so

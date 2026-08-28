@@ -88,8 +88,8 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
     // First run has no project context, and §3.3 A1 says an owned Agent never
     // appears outside its own project. Counting one here would claim "Already
     // set up as X" for an Agent this context cannot reach, while the global
-    // picker still offers Enable for the same engine (#3027 M2, the defect
-    // the picker already paid a review round to fix).
+    // picker still offers Enable for the same engine (archive#3027, the defect
+    // the picker already paid a to fix).
     const [option] = buildFirstRunEngineOptions({
       engines: [READY_CODEX],
       agents: [

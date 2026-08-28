@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The operator's shared-answer management list (station#1423).
+ * The operator's shared-answer management list (archive#1423).
  *
  * Fixture completeness is deliberate here: every member of `AnswerShareState`
  * — `'active'`, `'revoked'`, `'expired'` — is rendered by a test below, so

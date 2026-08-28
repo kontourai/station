@@ -43,7 +43,7 @@ export interface SettingsCatalogEntry {
 export const SETTINGS_SECTIONS = [
   { id: 'station-config', title: 'Station configuration', group: 'Station' },
   { id: 'system', title: 'System', group: 'Station' },
-  // station#3313 (IA option A): the retired standalone Feature Previews view,
+  // archive#3313 (IA option A): the retired standalone Feature Previews view,
   // as a Station-scope section (previews persist on the Station).
   { id: 'feature-previews', title: 'Feature previews', group: 'Station' },
   { id: 'answer-shares', title: 'Shared answers', group: 'Station' },
@@ -58,7 +58,7 @@ export const SETTINGS_SECTIONS = [
   },
   { id: 'notifications', title: 'Notifications', group: 'This device' },
   { id: 'voice', title: 'Voice & Features', group: 'This device' },
-  // station#3313: gates the Developer surface's sidebar/palette entries on
+  // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'This device' },
   { id: 'knowledge', title: 'My knowledge store', group: 'Knowledge' },

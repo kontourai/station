@@ -1,13 +1,11 @@
 /**
- * station#1484 slice 1 — member/device key identity and agent authorization
- * (`docs/design/conversation-state.md` §2.7, §3.7, §10.4, OQ-5 and OQ-7 as
- * ratified on #1484).
+ * Member/device key identity and agent authorization
+ * (`docs/design/conversation-state.md` §2.7, §3.7, §10.4, OQ-5 and OQ-7).
  *
  * **Shapes and total functions only.** No key is generated, stored,
  * distributed, or verified here. §2.3's finding stands — nothing in this
- * repo signs anything — and the #1484 decision keeps signing off slice 1's
- * critical path, so every function below either reads a shape or refuses to
- * answer.
+ * repo signs anything — so every function below either reads a shape or
+ * refuses to answer.
  *
  * ## OQ-5, and the two things it decides that a type can carry
  *
@@ -24,7 +22,7 @@
  * 2. **There is no recovery, and its absence is enforced rather than
  *    described.** {@link validateChannelMemberIdentityKey} refuses every
  *    field in {@link KEY_RECOVERY_FIELDS_NOT_IN_V1} by name. Recovery is a
- *    trust root (§10.4) and deserves its own decision; a slice that adds one
+ *    trust root (§10.4) and deserves its own decision; adding one
  *    has to delete a refusal, which is visible in a diff, rather than add a
  *    field, which is not.
  *
@@ -89,7 +87,7 @@ export const CHANNEL_AGENT_AUTHORIZATION_REVOCATION_SCHEMA_VERSION =
   'station.channel-agent-authorization-revocation/v1' as const;
 
 /**
- * The one algorithm slice 1 names. Kept as a closed union rather than a free
+ * The one algorithm this contract names. Kept as a closed union rather than a free
  * string so that adding a second is a contract change with a review, not a
  * value somebody passes.
  */
@@ -132,7 +130,7 @@ export interface ChannelMemberIdentityKey {
 /**
  * `station.channel-device-certificate/v1` — the member identity key
  * certifying one device key. This is the record OQ-5 calls "the
- * certification chain", and it is a slice-1 record type because the proposal
+ * certification chain", and it is a record type here because the proposal
  * schema's `author.keyId` is meaningless without it.
  */
 export interface ChannelDeviceKeyCertificate {
@@ -221,8 +219,8 @@ export interface ChannelAgentAuthorizationRevocation {
 /**
  * A record as it sits in the log: the record plus where it was committed.
  *
- * **How these records reach the log, stated because slice-1 review found the
- * package contradicting itself about it.** `CHANNEL_SEQUENCEABLE_SCHEMA_VERSIONS`
+ * **How these records reach the log, stated precisely.**
+ * `CHANNEL_SEQUENCEABLE_SCHEMA_VERSIONS`
  * contains exactly one entry — the proposal — so a grant, a revocation, and a
  * key revocation are **proposal bodies**, committed as the `body` of a
  * proposal whose `kind` is `agent-authorization` (grants and their
@@ -267,8 +265,8 @@ function isCoordinate(value: unknown): value is ChannelCommitCoordinate {
 /**
  * Order two coordinates in the same channel: epoch first, then sequence.
  *
- * **Three outcomes, not two** (slice-1 review, MEDIUM). The earlier
- * `number | null` shape folded "not this channel's fact" together with "I
+ * **Three outcomes, not two.** A
+ * `number | null` shape folds "not this channel's fact" together with "I
  * could not read this coordinate", and the arithmetic silently answered
  * "later" for a `NaN` or a stringified number: `a.epoch !== b.epoch` is true
  * and `a.epoch < b.epoch` is false, so the result was always `1`. Both
@@ -283,10 +281,10 @@ function isCoordinate(value: unknown): value is ChannelCommitCoordinate {
  * **Stated limit.** This assumes epochs of one unforked history. §3.4's
  * labeled-fork recovery can produce an epoch+1 that descends from a
  * *discarded* history, and two coordinates across such a divergence are not
- * ordered by this function in any meaningful sense. Slice 1 has no fork
+ * ordered by this function in any meaningful sense. There is no fork
  * record to consult, so the limitation is named rather than papered over;
- * the fork-aware comparison belongs with slice 5, which is where forks
- * become producible.
+ * the fork-aware comparison belongs with the fork records, which is where
+ * forks become producible.
  */
 export function compareChannelCommitCoordinates(
   a: ChannelCommitCoordinate,
@@ -322,7 +320,7 @@ export type ChannelCertificationBreakReason =
   | 'key-revoked';
 
 export type ChannelCertificationUnknownReason =
-  /** No verifier was supplied. The slice-1 answer for a well-formed chain. */
+  /** No verifier was supplied. The honest answer for a well-formed chain. */
   | 'signature-unverified'
   /** A verifier was supplied and could not establish the certificate. */
   | 'certificate-signature-gap';
@@ -353,7 +351,7 @@ export interface ChannelCertificationInput {
   at: ChannelEvaluationInstant;
   /** Committed revocations this reader holds. */
   revocations?: readonly CommittedChannelRecord<ChannelKeyRevocation>[];
-  /** Supplied from slice 3 onward. Absent, the result is never `certified`. */
+  /** Supplied when a verifier exists. Absent, the result is never `certified`. */
   verifier?: ChannelAssuranceVerifier;
 }
 
@@ -505,7 +503,7 @@ export function resolveChannelCertification(
     };
   }
 
-  // The signature must be the MEMBER KEY'S (slice-1 review, HIGH). Without
+  // The signature must be the MEMBER KEY'S. Without
   // this, `certified` meant "some key we did not name produced a signature we
   // did not attribute" — which is not what the one-hop chain claims, and it
   // is trivially satisfied by an attacker's own well-formed certificate. The
@@ -567,7 +565,7 @@ export interface ChannelAuthorizationInput {
    * The key that signed the proposal being evaluated, and the owner the
    * proposal's `onBehalfOf` names.
    *
-   * **Required, and the reason is the slice-1 review's second HIGH.** Without
+   * **Required, and the reason is deliberate.** Without
    * them, this function answered "a grant with this id exists and carries
    * this capability" while its status said `authorized`. Authorization ids
    * are not secret — they are in the log — so any member device could author
@@ -641,7 +639,7 @@ export function resolveAgentAuthorizationAtCommit(
     };
   }
 
-  // The grant must be the one THIS author holds (slice-1 review, HIGH).
+  // The grant must be the one THIS author holds.
   if (grant.record.agentKeyId !== input.author.keyId) {
     return {
       status: 'unauthorized',
@@ -658,7 +656,7 @@ export function resolveAgentAuthorizationAtCommit(
   }
 
   // The one decision-bearing invariant re-checked here rather than trusted
-  // from the validator (slice-1 review, MEDIUM). Nothing forces a caller to
+  // from the validator. Nothing forces a caller to
   // validate before resolving, and a grant that can mint grants makes
   // revocation meaningless — too costly to leave to a precondition.
   if (grant.record.capabilities.includes('agent-authorization')) {

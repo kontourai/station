@@ -33,7 +33,7 @@ const EVERY_EDGE: readonly DockMode[] = ['left', 'right', 'bottom'];
 
 /**
  * The sole device policy for the ambient dock slot, and deliberately NOT the
- * mobile breakpoint (station#3928).
+ * mobile breakpoint (archive#3928).
  *
  * They ask different questions. `MOBILE_MEDIA_QUERY` asks "is this a phone",
  * and it has to stay byte-identical to the condition on every mobile `@media`

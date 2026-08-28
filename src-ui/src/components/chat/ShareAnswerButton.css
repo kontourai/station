@@ -1,4 +1,4 @@
-/* Share-answer affordance (station#1423). Sits beside the provenance card,
+/* Share-answer affordance (archive#1423). Sits beside the provenance card,
    so it takes the same Console Kit --k-* trust-surface tokens — see the
    token-scoping rule at the top of src-ui/src/index.css. */
 
@@ -9,7 +9,7 @@
   font-size: var(--k-text-sm);
 }
 
-/* Quiet text-weight control (station#2652 redesign) — sits in the turn
+/* Quiet text-weight control (archive#2652 redesign) — sits in the turn
    footer beside the provenance disclosure at the same visual weight. */
 .share-answer__button {
   align-self: flex-start;
@@ -45,7 +45,7 @@
   color: var(--k-text-muted);
 }
 
-/* The pairing path (station#1423 N-4), shown only after a 401. */
+/* The pairing path (archive#1423), shown only after a 401. */
 .share-answer__pairing {
   display: inline-flex;
   flex-direction: column;

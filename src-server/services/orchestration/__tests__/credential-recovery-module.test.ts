@@ -54,7 +54,7 @@ type TestCredentialRecoveryAdapter = Omit<
   acknowledge?: () => Promise<CredentialReceiptAcknowledgement>;
 };
 
-/** Keeps approved #2526 behaviour tests at the new Adapter seam. */
+/** Keeps approved archive#2526 behaviour tests at the new Adapter seam. */
 function createCredentialRecoveryModuleForTest(
   dependencies: Omit<
     Parameters<typeof createCredentialRecoveryModule>[0],

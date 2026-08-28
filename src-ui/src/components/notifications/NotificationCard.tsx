@@ -11,7 +11,7 @@ import {
 import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
 
 /**
- * The full notifications page's row. station#1780 AC3: the same annotation
+ * The full notifications page's row. archive#1780: the same annotation
  * the popover renders, on the same join, so the two surfaces cannot tell
  * different stories about one approval. This card offers no Allow/Deny of
  * its own (only Dismiss), so there is nothing here to disable — the
@@ -20,7 +20,7 @@ import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions
  * has already said nothing can answer it.
  *
  * `onDismiss` keeps its name because it is the caller's mutation handle
- * (`useAttentionInbox().dismiss` → `DELETE /notifications/:id`); what the
+ * (`useAttentionInbox.dismiss` → `DELETE /notifications/:id`); what the
  * user reads comes from the action model, not from this prop.
  */
 export function NotificationCard({
@@ -72,7 +72,7 @@ export function NotificationCard({
         </time>
       </header>
       {/*
-       * station#1912: this used to gate on `status === 'delivered'` only,
+       * archive#1912: this used to gate on `status === 'delivered'` only,
        * so an `expired` or still-`pending` notification — exactly the shape
        * a stale pairing request or a not-yet-delivered scheduled one takes —
        * rendered with NO way to dismiss it at all. `dismissed`/`actioned`
@@ -84,7 +84,7 @@ export function NotificationCard({
         notification.status !== 'actioned' && (
           <div className="notification-card__actions">
             {/*
-             * station#3779: the label is read from the shared action model,
+             * archive#3779: the label is read from the shared action model,
              * not written here. `DELETE /notifications/:id` does NOT delete —
              * it sets `status: 'dismissed'` and keeps the record — so the word
              * stays "Dismiss"; see `notificationRowActions` for the measured

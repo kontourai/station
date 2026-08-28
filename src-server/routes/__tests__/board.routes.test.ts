@@ -93,10 +93,10 @@ describe('board routes', () => {
   });
 
   /**
-   * The headline provenance-boundary AC (station#4079 design: "Pinning a
-   * claiming block requires its provenance to be present — the #1399
+   * The headline provenance-boundary AC (archive#4079 design: "Pinning a
+   * claiming block requires its provenance to be present — the archive#1399
    * refusal applies at pin, not just at render"). A card with `fields`
-   * (station#1399's exact claiming-block predicate) but no `derivedFrom` is
+   * (archive#1399's exact claiming-block predicate) but no `derivedFrom` is
    * refused with the SAME typed error family `render_component` uses.
    *
    * Fix round C6: the message now names `board_pin`, not `render_component`

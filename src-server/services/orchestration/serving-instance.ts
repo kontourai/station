@@ -1,6 +1,6 @@
 /**
  * Who "this Station" is, for claims that are only true of ONE process
- * (station#1778 / ADR 0012).
+ * (archive#1778 / ADR 0012).
  *
  * The answerability decoration on a session summary is such a claim: two
  * Station instances share `~/.station`, and the one holding an adapter for

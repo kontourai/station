@@ -26,7 +26,7 @@ vi.mock('@aws-sdk/client-bedrock', () => ({
   ListInferenceProfilesCommand: listInferenceProfilesCommand,
 }));
 /**
- * #3654: the credential chain is mocked as RESOLVABLE on purpose. Health used
+ * archive#3654: the credential chain is mocked as RESOLVABLE on purpose. Health used
  * to be derived from exactly this — "a credential resolved on this laptop" —
  * and the tests below only discriminate against that old derivation if the
  * resolution succeeds.
@@ -60,7 +60,7 @@ describe('BedrockLLMProvider catalog provenance', () => {
     listInferenceProfilesCommand.mockClear();
   });
 
-  // station#1430 (deliberately re-pinned, not an oversight): AWS Bedrock's
+  // archive#1430 (deliberately re-pinned, not an oversight): AWS Bedrock's
   // ListFoundationModels/GetFoundationModel/ListInferenceProfiles responses
   // (checked against the installed @aws-sdk/client-bedrock type defs) carry
   // no tool/function-calling capability field at all — only modality,
@@ -384,7 +384,7 @@ describe('BedrockLLMProvider catalog provenance', () => {
       source: 'unavailable',
       models: [],
       reason: 'discovery unavailable',
-      // #3654: an unnamed, statusless failure is not an observation of what
+      // archive#3654: an unnamed, statusless failure is not an observation of what
       // AWS thinks of these settings, so it must not read as a refusal.
       reasonKind: 'unreachable',
     });
@@ -554,7 +554,7 @@ describe('BedrockLLMProvider.listModelCatalog threads auth to the real BedrockCl
       models: [],
       reason:
         'Bedrock connection is set to "profile" auth but has no named AWS profile configured.',
-      // #3654: settings that cannot produce a request are a failed check with
+      // archive#3654: settings that cannot produce a request are a failed check with
       // a fixable reason, never a claim that AWS could not be reached.
       reasonKind: 'refused',
     });
@@ -1087,7 +1087,7 @@ describe('BedrockModelCatalog pricing bounds', () => {
 });
 
 /**
- * #3654 — Bedrock recorded no check receipts.
+ * archive#3654 — Bedrock recorded no check receipts.
  *
  * Two defects met here. The catalogue catch discarded the AWS error, so no
  * `reason`/`reasonKind` ever reached `recordModelCatalogDiscovery`, which

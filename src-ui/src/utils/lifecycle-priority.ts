@@ -1,6 +1,6 @@
 /**
  * Canonical status-priority ranking for `HomeWorkItem.lifecycleLabel`
- * (station#1100 AC4) — single source of truth shared by the Home list's
+ * (archive#1100) — single source of truth shared by the Home list's
  * merge layer (`home-view-model.ts`'s `mergeHomeWorkItems`, which resolves a
  * winning label when a chat/orchestration pair carries two different ones)
  * and `LifecycleStatusChip`'s chip-rendering decision. Extracted verbatim
@@ -13,7 +13,7 @@
  * its local Current/Ready/Recent labels and this UI-only module cannot be
  * imported by `src-server`.
  *
- * Review-adjudicated (station#1100): the split is legitimately forced today
+ * Review-adjudicated (archive#1100): the split is legitimately forced today
  * by the different label sets plus the src-ui/src-server runtime boundary,
  * not an accident of two people not talking — the ordering *concept* (needs
  * attention/input outranks a failure outranks in-progress outranks done) is
@@ -44,7 +44,7 @@ export type HomeLifecycleLabel = (typeof HOME_LIFECYCLE_LABELS)[number];
  * re-sorts on `lifecycleLabel`, so changing a number here cannot move a row
  * on Home.
  *
- * `Unanswerable` is station#1783's addition (ADR 0012 residual), placed just
+ * `Unanswerable` is archive#1783's addition (ADR 0012 residual), placed just
  * above `Completed`: it has not finished, and nothing here can act on it. An
  * earlier version of this comment claimed the renumbering was what stopped a
  * dead session "pinning the top of Home" — review caught that as a claim
@@ -75,7 +75,7 @@ export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
  *
  * Every other member of this union is already the user's word — "Running",
  * "Needs attention", "Ready". `'Unanswerable'` is not: it is this system's
- * term for "no path exists in the serving process", and station#1783 leaked
+ * term for "no path exists in the serving process", and archive#1783 leaked
  * it verbatim to two surfaces (the chat-dock inbox chip, the mobile task
  * switcher's `Current · …` line) purely because the label set is shared.
  * The chip family has always translated (`Running` → "Active", `Completed`
@@ -107,7 +107,7 @@ export const LIFECYCLE_CHIP_LABELS = new Set<HomeLifecycleLabel>([
   'Stopped',
   'Running',
   'Completed',
-  // station#1783: chipped so the row says WHY it dropped down the list —
+  // archive#1783: chipped so the row says WHY it dropped down the list —
   // silently demoting it and rendering nothing would be de-prioritization
   // without the fact, which is the filtering ADR 0012 forbids wearing a
   // different hat. The chip renders in the neutral treatment, not a fourth

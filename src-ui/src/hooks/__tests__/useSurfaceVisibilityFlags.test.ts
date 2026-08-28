@@ -31,7 +31,7 @@ vi.mock('../../contexts/DeviceSettingsContext', () => ({
 import { DEVELOPER_TOOLS_FLAG } from '../../app-shell/surface-registry';
 import { useSurfaceVisibilityFlags } from '../useSurfaceVisibilityFlags';
 
-// station#3313: the one enabled-flags set the sidebar and palette filter
+// archive#3313: the one enabled-flags set the sidebar and palette filter
 // previewFlag-gated surfaces against — enabled server previews plus the
 // developer-tools device setting.
 describe('useSurfaceVisibilityFlags', () => {

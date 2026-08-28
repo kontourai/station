@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#2645 follow-up (live diagnosis 2026-08-14): the Logs tab's error
+ * archive#2645 follow-up (live diagnosis): the Logs tab's error
  * came from a transient outage window, but the cached error rendered a
  * dead-end ErrorState — the tab looked permanently broken. The error state
  * must carry a retry that refetches.

@@ -91,7 +91,7 @@ export function PluginRegistryBootstrap() {
       // moment of reconnect settles degraded AFTER this transition is spent,
       // so gating on the settled state loses the reload entirely and the
       // banner then reports a failure no post-reconnect attempt produced.
-      // `reload()` coalesces an in-flight pass through `reloadQueued`.
+      // `reload` coalesces an in-flight pass through `reloadQueued`.
       loadStatus.state !== 'ready' &&
       loadStatus.failure !== 'remote-isolation'
     ) {

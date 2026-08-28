@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { resumedWorkspaceBinding } from '../station-control-delegation.js';
 
 /**
- * station#3421: `station chat` prints a `Resume:` command in its own success
+ * archive#3421: `station chat` prints a `Resume:` command in its own success
  * output, and that command could never work. A continuation names a
  * conversation, so the CLI deliberately sends no workspace and refuses
  * workspace flags there — the server rebuilds the binding instead. It rebuilt

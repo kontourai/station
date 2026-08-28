@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 /**
- * station#3227 A1 — the structural half of the fix.
+ * archive#3227 A1 — the structural half of the fix.
  *
  * `session-state-word-consistency.test.ts` proves the shared fold and its
  * refinement table cannot produce a contradiction. It cannot prove that a

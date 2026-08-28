@@ -34,7 +34,7 @@ export function renderHomeWorkRow({
   onSnooze,
 }: HomeWorkRowProps) {
   // The catalog entry itself, never a synthesised object: `AgentIcon` takes
-  // `agent` by identity, and MessageBubble's station#1424 N4 note records
+  // `agent` by identity, and MessageBubble's archive#1424 N4 note records
   // what allocating a fresh one per render costs. `null` means this Station
   // has no agent under this row's slug — see `homeRowIconAgent` for why that
   // renders nothing rather than a guessed engine mark.
@@ -84,7 +84,7 @@ export function renderHomeWorkRow({
                   unavailable={() => null}
                 />
               )}
-              {/* station#1783: the basis for the Unanswerable chip. The chip
+              {/* archive#1783: the basis for the Unanswerable chip. The chip
                   alone would be a label; this is what computed it. */}
               {task.unanswerableNotice && (
                 <small

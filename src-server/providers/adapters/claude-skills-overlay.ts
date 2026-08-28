@@ -1,9 +1,9 @@
 /**
- * station#1174: the Station-owned per-session directory a cwd-less Claude
+ * archive#1174: the Station-owned per-session directory a cwd-less Claude
  * session's skills materialize into, when there is no real project/user
  * cwd to bind the session to (ProviderSessionStartInput.cwdDefaulted).
  *
- * Background (station#897 follow-through): a cwd-less station chat
+ * Background (archive#897 follow-through): a cwd-less station chat
  * <external-agent> defaults its session cwd to $HOME
  * (orchestration-service.ts's resolveStartSessionCwd), and
  * claude-skills-materialization.ts's section 6.1 hard guard (isGlobalConfigTarget)
@@ -20,7 +20,7 @@
  * like one materialized under the real session cwd, with the real session
  * cwd (and the spawned engine's actual working directory) left completely
  * unchanged. This is the SDK-supports-a-custom-skills-root branch of the
- * station#1174 design choice -- no session-cwd override, no weakening of
+ * archive#1174 design choice -- no session-cwd override, no weakening of
  * isGlobalConfigTarget.
  *
  * Every directory this module ever creates or removes is deterministically

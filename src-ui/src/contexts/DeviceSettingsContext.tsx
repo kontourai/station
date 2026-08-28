@@ -1,7 +1,7 @@
 /**
  * DeviceSettingsContext — the read/write hook split for the device-scope
  * client-settings store (`src-ui/src/lib/device-settings-store.ts`),
- * modeled on `ConfigContext.tsx`'s `useConfig()`/`useConfigActions()` split.
+ * modeled on `ConfigContext.tsx`'s `useConfig`/`useConfigActions` split.
  * No provider component: like `ConfigContext.tsx`, this reads/writes a
  * module-level store directly rather than threading a React context value.
  */
@@ -12,7 +12,7 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { setHapticsUserEnabled } from '../platform/native/haptics';
 
 // Keep the fire-and-forget haptic gate in lockstep with the preference
-// without requiring every call site to read device settings (station#1954).
+// without requiring every call site to read device settings (archive#1954).
 setHapticsUserEnabled(deviceSettingsStore.get('hapticsEnabled'));
 deviceSettingsStore.subscribe(() => {
   setHapticsUserEnabled(deviceSettingsStore.get('hapticsEnabled'));

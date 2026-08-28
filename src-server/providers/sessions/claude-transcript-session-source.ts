@@ -28,7 +28,7 @@ const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_LINE_BYTES = 128 * 1024;
 const DEFAULT_MAX_EVENTS = 512;
 /**
- * station#1997: how many transcript lines `read()` parses between event-loop
+ * archive#1997: how many transcript lines `read()` parses between event-loop
  * yields. Without an interior yield, a full `maxBytes` window (2MB of JSONL
  * with per-line JSON.parse + record mapping) runs as ONE synchronous slab on
  * the main thread — profiled live as the dominant non-idle stack while
@@ -48,9 +48,9 @@ export interface ClaudeTranscriptSessionSourceOptions {
   maxEvents?: number;
   maxTraversalEntries?: number;
   maxDepth?: number;
-  /** Lines parsed between event-loop yields in `read()` (station#1997). */
+  /** Lines parsed between event-loop yields in `read()` (archive#1997). */
   readYieldEveryLines?: number;
-  /** Test seam: observe/replace the interior yield (station#1997). */
+  /** Test seam: observe/replace the interior yield (archive#1997). */
   yieldFn?: () => Promise<void>;
 }
 
@@ -272,7 +272,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     if (windowStart > 0 && cursorOffset === 0 && !usage) usageDeferred = true;
 
     while (offset < completeEnd && events.length < this.maxEvents) {
-      // station#1997: a fresh cursor over a large window otherwise parses the
+      // archive#1997: a fresh cursor over a large window otherwise parses the
       // whole slab (JSON.parse per line + record mapping) without ever
       // letting the event loop breathe — the profiled starvation source.
       linesScanned += 1;

@@ -8,7 +8,7 @@
  * Station#settings-revamp slice 1 — see
  * `docs/design/settings-architecture.md` §4. `sanitizeAppConfigUpdate`
  * itself moved to `@kontourai/station-contracts/settings-registry` in
- * slice 6 (§6, closing #175): it had no genuine server-only dependency, and
+ * slice 6 (§6, closing archive#175): it had no genuine server-only dependency, and
  * living in `packages/contracts` lets `station config set`'s `--offline`
  * path (`packages/cli/src/commands/config.ts`) run the exact same
  * validation instead of forking a second copy. Re-exported here unchanged
@@ -39,7 +39,7 @@ export type { SettingProvenanceEntry, SettingProvenanceSource };
 /**
  * Whether a value is a DECISION rather than the absence of one.
  *
- * station#1557 review fix (M4): the resolvers trim and treat a whitespace-only
+ * archive#1557 review fix (M4): the resolvers trim and treat a whitespace-only
  * string as absent. Provenance used a bare truthiness test, so `AWS_REGION="  "`
  * made Settings report "Set by operator: AWS_REGION" for a value the resolver
  * discards — the surface re-deriving "absent" for itself, which is the entire
@@ -63,7 +63,7 @@ function isStoredValue(value: unknown): boolean {
  * file/env source simply has no provenance entry — there is nothing honest
  * to report.
  *
- * station#1557: provenance now reports where the value ACTUALLY comes from
+ * archive#1557: provenance now reports where the value ACTUALLY comes from
  * rather than which env vars happen to be set. A stored value is `'file'`
  * whatever the environment says, because the resolvers read the stored value
  * first; a registered key that is absent from the config and declares an
@@ -97,7 +97,7 @@ export function buildAppConfigProvenance(
     // accept it — `AWS_REGION=US-EAST-1` is discarded by the Bedrock resolver
     // as malformed, and a badge reading "Set by operator: AWS_REGION" over a
     // value nothing uses is this cluster's whole defect, reproduced live
-    // during the round-2 boot check (station#1557).
+    // during the round-2 boot check (archive#1557).
     if (
       envFallback &&
       isStoredValue(envValue) &&

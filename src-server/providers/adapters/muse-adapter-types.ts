@@ -85,7 +85,7 @@ export interface MuseActiveTurn {
   itemId?: string;
   /**
    * Accumulated `run_output_delta.text`. On a successful turn it becomes
-   * `turn.completed.outputText`; on a failed turn (station#3450: a failed
+   * `turn.completed.outputText`; on a failed turn (archive#3450: a failed
    * turn publishes `runtime.error` only, never `turn.completed`) it is
    * folded, bounded, into the published `runtime.error.message` instead —
    * see `muse-adapter.ts`'s `outputTextDetail`.

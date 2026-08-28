@@ -14,7 +14,7 @@
  *
  * Keyboard semantics follow the native elements the roles imitate (this is
  * what screen reader users' muscle memory expects, per the ARIA authoring
- * practices — review finding, PR #1277 round 2):
+ * practices):
  * - `role="button"`: Enter activates on keydown; Space activates on KEYUP,
  *   with the page-scroll default suppressed on keydown — native buttons
  *   depress on keydown and fire on keyup, and keyup also cannot auto-repeat,
@@ -81,7 +81,7 @@ export type InertProps = Record<string, never>;
 
 /**
  * Which elements have a LIVE, unprevented Space press on them — press
- * provenance for the keyup activation below (round-2 review HIGH, PR #1277).
+ * provenance for the keyup activation below.
  * Without it, a bare keyup activates: press Space on control A, Tab away
  * while holding, release over control B, and B fires with no press of its
  * own; a keydown a nested handler prevented would likewise still activate on
@@ -89,7 +89,7 @@ export type InertProps = Record<string, never>;
  * "focus away = cancel".
  *
  * Keyed by the DOM element (module-level, WeakSet so it can never leak),
- * NOT a closure inside `activatable()` — the returned handlers are recreated
+ * NOT a closure inside `activatable` — the returned handlers are recreated
  * on every render, so any per-call state would be silently reset by an
  * unrelated re-render landing between keydown and keyup, dropping real
  * activations.

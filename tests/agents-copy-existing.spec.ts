@@ -19,7 +19,7 @@ import {
  * The load-bearing half is what is NOT copied. `cloneableAgentFields`
  * (`src-ui/src/views/agent-editor/agentsViewUtils.ts`) whitelists the fields a
  * clone inherits, and `execution.credentialProfileRef` — which account of the
- * bound engine the agent runs on (station#3530) — is deliberately outside it.
+ * bound engine the agent runs on (archive#3530) — is deliberately outside it.
  * A copy that inherited it would silently run on somebody else's enrolled
  * account, which is exactly the kind of thing a green "the form pre-filled"
  * assertion would not notice. So the proof is a read of the PERSISTED record

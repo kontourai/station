@@ -7,7 +7,7 @@
 export const SSE_KEEPALIVE_INTERVAL_MS = 30_000;
 
 /**
- * station#1092: reconnect replay-vs-snapshot gap threshold for the
+ * archive#1092: reconnect replay-vs-snapshot gap threshold for the
  * orchestration event stream's sequence-cursor resume. A reconnecting
  * client whose `Last-Event-ID` cursor is within this many events of the
  * current head gets a bounded replay of exactly what it missed; further

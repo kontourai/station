@@ -97,7 +97,7 @@ export function useFirstRunEngineOptions(): {
 export interface EnginesStepProps {
   options: readonly FirstRunEngineOption[];
   /**
-   * Which machine is reading the chapter (#3843 T2). The scan runs on the
+   * Which machine is reading the chapter (archive#3843). The scan runs on the
    * host, so every sentence about where Station looked has to name it —
    * "this machine" is only true for someone sitting at the host.
    */
@@ -112,7 +112,7 @@ export interface EnginesStepProps {
   /**
    * How many creates the running batch is performing, or `null`/absent when
    * no batch is running — the busy state and the announced count are ONE
-   * value on purpose (station#3027 delta review MEDIUM-B). They used to be
+   * value on purpose (archive#3027). They used to be
    * two: `busy` came from the chapter, and the count was re-derived here from
    * the current `options`, which shrinks as each create lands and flips its
    * row to `enabled`. In a live region that RE-ANNOUNCES: "Setting up 2
@@ -129,7 +129,7 @@ export interface EnginesStepProps {
   /**
    * Leave the run without the engines that failed. Distinct from
    * `onAcknowledge` because it must NOT be recorded as a completed first run
-   * (review H1) — the user is going on without what they asked for.
+   *  — the user is going on without what they asked for.
    */
   onGiveUp: () => void;
 }
@@ -400,7 +400,7 @@ export function FirstRunEnginesChapter({
   /**
    * The user is going on without engines that FAILED to materialise. Separate
    * from `onDone` because the run did not do what it offered to do, so it may
-   * not be recorded as completed (review H1).
+   * not be recorded as completed
    */
   onGiveUp: () => void;
 }) {

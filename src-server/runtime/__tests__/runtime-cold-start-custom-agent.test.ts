@@ -1,5 +1,5 @@
 /**
- * Regression test for #208: a Station home containing one or more custom
+ * Regression test for archive#208: a Station home containing one or more custom
  * agents on disk must cold-boot successfully via `StationRuntime.initialize()`
  * — the real production entry point, not a reimplementation of
  * `initializeRuntime()`'s deps in isolation. See the s208-coldstart-appconfig
@@ -13,7 +13,7 @@
  *
  * The VoltAgent mock mirrors the dependency's lifecycle boundary: `ready`
  * resolves independently while provider startup runs fire-and-forget. The
- * retry test delays Hono's internal route construction and pins #212's
+ * retry test delays Hono's internal route construction and pins archive#212's
  * invariant that Station awaits the actual provider startup operation.
  *
  * All three network surfaces are mocked or replaced below. This keeps the
@@ -28,7 +28,7 @@
  * macOS's, not Station's — every `fs.watch` handle in a process shares one
  * libuv FSEvents stream, so closing one tears that stream down on a CFRunLoop
  * thread and the latency tracks machine load rather than the (three small,
- * empty) directories being watched. Config hot-reload is not part of the #208
+ * empty) directories being watched. Config hot-reload is not part of the archive#208
  * regression and nothing below asserts on it, so the watcher is faked and
  * `ConfigLoader` itself stays real.
  */
@@ -72,7 +72,7 @@ const routeMocks = vi.hoisted(() => {
     configureRuntimeRoutes: vi.fn((context: any) => {
       // This crosses the same Dispatcher Interface that task routes and
       // capability bindings receive while `initializeRuntime` is still
-      // constructing VoltAgent/routes. Before #2528's ordering repair this
+      // constructing VoltAgent/routes. Before archive#2528's ordering repair this
       // access crashed because StationRuntime assigned the field only after
       // initializeRuntime returned.
       const dispatch = context.taskDispatcher.dispatch(
@@ -115,7 +115,7 @@ vi.mock(
       >();
     return {
       ...actual,
-      // The stores take the ASYNC lock since #2646; overriding only the sync
+      // The stores take the ASYNC lock since archive#2646; overriding only the sync
       // twin left this injection inert and the grants store failing with
       // `store infrastructure failure (ENOENT)`.
       acquireFileMutationLockAsync: (
@@ -137,7 +137,7 @@ vi.mock('@voltagent/core', async (importOriginal) => {
     // Invoke the server provider during construction so a route-service
     // assignment that moves below `new VoltAgent(...)` fails deterministically.
     // Do NOT mock `Agent` — real agent construction inside
-    // `framework.createAgent(...)` remains part of the #208 proof.
+    // `framework.createAgent(...)` remains part of the archive#208 proof.
     VoltAgent: vi.fn().mockImplementation(function MockVoltAgent(options: any) {
       const server = options.server?.({});
       const startServer = () => server?.start();
@@ -166,7 +166,7 @@ vi.mock('@voltagent/server-hono', () => ({
         await config.configureFullApp({
           // The production Hono app exposes this live registration list.
           // Keep the lifecycle harness structurally honest now that startup
-          // verifies the completed route surface (station#2000).
+          // verifies the completed route surface (archive#2000).
           app: { routes: [] },
           routes: handlers,
           middlewares: handlers,
@@ -209,11 +209,11 @@ vi.mock('../bootstrap/runtime-startup.js', async (importOriginal) => {
 });
 
 /**
- * station#3218. Spied, not stubbed away for convenience: the scheduled
+ * archive#3218. Spied, not stubbed away for convenience: the scheduled
  * store verification has one production caller, and every test of the
  * verification module itself injects both its interval and its probe. With
  * nothing asserting this call, deleting it left that whole corpus green — a
- * silently-unwired scheduler, which after station#3219 removes the boot check
+ * silently-unwired scheduler, which after archive#3219 removes the boot check
  * would leave the only detector being a user losing their history.
  *
  * The spy does not delegate. What has to hold here is the WIRING — that the
@@ -279,7 +279,7 @@ function replaceTerminalListener(
   return { start, stop };
 }
 
-// #1019: these cases cold-boot a real StationRuntime (route services, servers,
+// archive#1019: these cases cold-boot a real StationRuntime (route services, servers,
 // terminal/voice seams) — under parallel vitest workers or a sibling agent
 // session on the same host, real spawns starve the 5s default budget and this
 // file becomes the dominant source of red local gate runs. 30s is a cap on
@@ -395,7 +395,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     });
     replaceTerminalListener(runtime);
     // This receipt-composition proof does not cover native-engine discovery.
-    // Match the existing #2365 cold-start harness so unavailable sandbox CLIs
+    // Match the existing archive#2365 cold-start harness so unavailable sandbox CLIs
     // cannot consume the test's timeout budget.
     vi.spyOn(
       runtime as unknown as { resolveBuiltinEngineBinding: () => unknown },
@@ -497,7 +497,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       'configureLaunchability',
     );
     // Not `mockResolvedValueOnce`: the startup-migration connection listing
-    // (station#954) now runs `connectionService.listRuntimeConnections()`
+    // (archive#954) now runs `connectionService.listRuntimeConnections()`
     // during boot, which evaluates every registered adapter's readiness —
     // including Bedrock's, which calls this same `checkBedrockCredentials`
     // internally (`bedrock-adapter.ts`). That's a real, additional call
@@ -513,7 +513,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
     // Load-bearing assertion: the custom agent must actually be loaded, not
     // silently soft-failed inside `initializeRuntimeAgents`'s per-agent
-    // try/catch (the #208 symptom — pre-fix this list is missing
+    // try/catch (the archive#208 symptom — pre-fix this list is missing
     // 'custom-writer' because `appConfig`/`framework` were `undefined` when
     // `buildRuntimeAgentInstance` ran for it).
     expect(runtime.listAgents()).toContain('custom-writer');

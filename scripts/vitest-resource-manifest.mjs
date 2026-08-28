@@ -292,13 +292,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // outside a checkout, plus a real install-to-tempdir-and-run round trip —
   // same bounded, single-shot shape as the other entry-point gates above.
   'scripts/__tests__/station-dev.test.ts',
-  // station#4572 fix round (MED-2): drives the deploy-ledger commit-back's
+  // Drives the deploy-ledger commit-back's
   // bounded re-derive-and-retry against real local git repositories — the
   // two-writer convergence proof, the off-main ancestry refusal, retry
   // exhaustion, and the duplicate re-record refusal all assert real git
   // state, so the child processes are the claim.
   'scripts/__tests__/deploy-ledger-commit.test.ts',
-  // station#4572 fix round (HIGH-1/HIGH-2): proves the published-packages
+  // Proves the published-packages
   // JSON parse's success and refusal exit statuses as a real child process,
   // the same "gate as a real child" shape as the entry-point gates above.
   'scripts/__tests__/deploy-ledger-parse-published.test.ts',
@@ -547,7 +547,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium via `@playwright/test` to hit-test connections-flow controls
   // with and without an active banner.
   'src-ui/src/__tests__/ConnectionsSectionFrame.banner-hittest.test.tsx',
-  // station#4463 slice 2 fix round (M1, delta review round 3): same shape
+  // Same shape
   // again — launches a real Chromium via `@playwright/test` to measure real
   // cascade-resolved row heights (the loading skeleton row vs. the real item
   // row it stands in for).

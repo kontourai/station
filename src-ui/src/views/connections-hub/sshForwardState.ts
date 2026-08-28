@@ -13,7 +13,7 @@ export function sshForwardProvenanceWarning(
 /**
  * What this device actually knows about the forwarded host's instance probe.
  *
- * station#3711: this used to be a boolean `hostReachable` fed from the query's
+ * archive#3711: this used to be a boolean `hostReachable` fed from the query's
  * `isSuccess`, with `false` rendered as "Host offline" — so the row asserted
  * the host's power/network state during its own FIRST RENDER, before any probe
  * had completed, and equally for a malformed response or an auth failure.
@@ -35,7 +35,7 @@ export type SshForwardProbeState =
  * Derive the probe state from the query flags, HERE rather than at the call
  * site — the original defect was the caller collapsing `isSuccess` to a
  * boolean, and a caller-side ternary could quietly regress to exactly that
- * shape while every label test stayed green (station#3713 review). With the
+ * shape while every label test stayed green (archive#3713). With the
  * derivation in this module, the caller passes the flags through and the
  * discriminating case (neither success nor error = still checking) is pinned
  * by this module's own tests.

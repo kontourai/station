@@ -43,7 +43,7 @@ export interface IStreamChunk {
 }
 
 /**
- * station#3113: the single fixed message either engine adapter substitutes
+ * archive#3113: the single fixed message either engine adapter substitutes
  * for an ORDINARY (non-policy) tool failure's real error text before it
  * leaves the framework boundary — see voltagent-adapter.ts's
  * `normalizeVoltAgentToolErrors` and strands-stream-events.ts's
@@ -55,7 +55,7 @@ export interface IStreamChunk {
  * its reason carries `ToolCallDenial.stationComposedReason`: the marker meaning
  * `denial-message.ts` composed the text (Station prose, a sanitized tool name,
  * and any foreign fragment flattened, capped, quoted and attributed —
- * station#3210). It is NOT `policyDenied` that grants the exemption; that
+ * archive#3210). It is NOT `policyDenied` that grants the exemption; that
  * marker derives provenance, not authorship, and the two came apart.
  * One shared literal, not two independently-worded ones, so the failure
  * reads identically regardless of which engine ran the agent.
@@ -63,7 +63,7 @@ export interface IStreamChunk {
 export const GENERIC_TOOL_FAILURE_MESSAGE = 'Tool call failed.';
 
 /**
- * station#3179: the `finish` chunk's `finishReason` when a turn ended
+ * archive#3179: the `finish` chunk's `finishReason` when a turn ended
  * because a tool call was denied rather than because the model stopped.
  *
  * `@voltagent/core` aborts its own operation controller the moment a
@@ -205,7 +205,7 @@ export interface InvocationContext {
  * A denied tool call with the human-readable reason for the denial. The
  * adapters surface `reason` in the error the model/user sees, so it should
  * say what happened and what to do about it — never a generic label
- * (station#1834: every denial used to read as a delegated-child block).
+ * (archive#1834: every denial used to read as a delegated-child block).
  */
 export interface ToolCallDenial {
   allowed: false;
@@ -215,19 +215,19 @@ export interface ToolCallDenial {
    * (`pre-tool-policy.ts`'s `deny()`) — never inferred elsewhere, and never
    * set by a denial that originated from a human declining an interactive
    * approval request (that path returns this same shape without the marker).
-   * station#3091: this is the one authoritative signal that distinguishes
+   * archive#3091: this is the one authoritative signal that distinguishes
    * "Station's policy blocked this" from "the user declined this" once the
    * denial crosses into the UI's approval vocabulary — an absent value means
    * "we don't know why", never "policy denied it".
    *
-   * station#3210: this is PROVENANCE ("the policy evaluator produced this"),
+   * archive#3210: this is PROVENANCE ("the policy evaluator produced this"),
    * not a statement about who wrote `reason`. It deliberately no longer gates
    * whether `reason` reaches the user verbatim — see
    * `stationComposedReason` below.
    */
   policyDenied?: true;
   /**
-   * station#3210: on a `ToolCallDenial` this is set by `denial-message.ts`'s
+   * archive#3210: on a `ToolCallDenial` this is set by `denial-message.ts`'s
    * `stationDenial()` and by nothing else — that function is the one composer
    * of a user-visible denial reason. It derives exactly
    * one thing: this `reason` string was composed by Station — its sentence is
@@ -299,14 +299,14 @@ export interface IAgentHooks {
 // ── Framework Adapter ──────────────────────────────────
 
 /**
- * Live connection evidence for Dispatch candidate grading (station#1426).
+ * Live connection evidence for Dispatch candidate grading (archive#1426).
  *
  * Backed by `ConnectionService`, so callers get every requested connection's
  * actual current `ConnectionEvidenceLevel` instead of a self-asserted
  * constant. Batched by design (fix round, SF-5): resolving connection
  * readiness triggers a full connection-discovery pass, including health
  * probes, so a Dispatch candidate set — small and bounded — is resolved in
- * ONE call per resolution, never once per candidate. station#1431:
+ * ONE call per resolution, never once per candidate. archive#1431:
  * `createConfiguredDispatchModel` resolves candidate evidence lazily behind
  * a short TTL rather than once at construction, so this source is now
  * invoked once per TTL window over the life of a built Dispatch model
@@ -324,7 +324,7 @@ export interface DispatchEvidenceSource {
     connectionIds: readonly string[],
   ): Promise<ReadonlyMap<string, ConnectionReadinessEvidence>>;
   /**
-   * Live per-candidate tool-surface evidence (station#1430), backing
+   * Live per-candidate tool-surface evidence (archive#1430), backing
    * `deriveDispatchCapabilities`'s `structured-tools` derivation.
    *
    * Optional so every existing `DispatchEvidenceSource` (test doubles, and
@@ -339,7 +339,7 @@ export interface DispatchEvidenceSource {
    * `LaunchableModelRecord.toolSurface` from the deterministic,
    * compute-on-demand model inventory (`ConnectionService.listLaunchableModelInventory()`
    * via `ConnectionService.getModelToolSurface`, never the route-populated
-   * `getCachedLaunchableModelInventory()` snapshot — station#1430's second
+   * `getCachedLaunchableModelInventory()` snapshot — archive#1430's second
    * finding is that the cached snapshot depends on whether the Connections
    * page happened to be visited) — `null` when the model is unknown to the
    * inventory or its tool support is genuinely unreported, `[]` when the
@@ -357,7 +357,7 @@ export interface DispatchEvidenceSource {
 
 /**
  * Everything the fleet half of Dispatch routing needs, in one object
- * (station#1398 slice 3).
+ * (archive#1398).
  *
  * Bundled rather than threaded as three optional fields because they are
  * useless apart: routing to a peer without recording the decision is the
@@ -380,7 +380,7 @@ export interface DispatchFleetRouting {
    * Appends one sealed record to the hash-chained local receipt log and
    * returns it.
    *
-   * Returns the SEALED envelope rather than `void` (station#1398 security
+   * Returns the SEALED envelope rather than `void` (archive#1398 security
    * review, L-5) because `receiptId` is only knowable after sealing, and it
    * is the value anything wanting to reference this decision needs — the
    * `TurnProvenanceRoutingReceiptRef` shape in `turn-provenance.ts` is
@@ -410,7 +410,7 @@ export interface AgentCreationConfig {
   listProviderConnections?: () => ProviderConnectionConfig[];
   /** Live connection evidence for Dispatch candidate grading. */
   dispatchEvidenceSource?: DispatchEvidenceSource;
-  /** Fleet candidates + the routing-receipt log (station#1398 slice 3). */
+  /** Fleet candidates + the routing-receipt log (archive#1398). */
   fleetRouting?: DispatchFleetRouting;
   /** Used for Dispatch grading diagnostics (loud-path/exclusion logging). */
   logger?: Logger;
@@ -450,11 +450,11 @@ export interface IAgentFramework {
      * The conversation store this agent reads and writes. Optional only for
      * callers that genuinely want a throwaway agent; omitting it gives the
      * framework's own in-process default, which is what left Model-connection
-     * agents with no conversation history at all (#914).
+     * agents with no conversation history at all (archive#914).
      */
     memoryAdapter?: StorageAdapter;
     /**
-     * station#1834: the shared beforeToolCall gate for this agent's tools.
+     * archive#1834: the shared beforeToolCall gate for this agent's tools.
      * Any temp agent given tools MUST also be given hooks — omitting them
      * leaves those tools completely ungated (the default agent, scheduler
      * jobs, /invoke and the CLI all execute through temp agents). Callers
@@ -562,9 +562,9 @@ export interface RuntimeContext {
   eventBus: EventBus;
   orchestrationEventStore: EventStore;
   logger: any;
-  /** Live connection evidence for Dispatch candidate grading (station#1426). */
+  /** Live connection evidence for Dispatch candidate grading (archive#1426). */
   dispatchEvidenceSource?: DispatchEvidenceSource;
-  /** Fleet candidates + the routing-receipt log (station#1398 slice 3). */
+  /** Fleet candidates + the routing-receipt log (archive#1398). */
   fleetRouting?: DispatchFleetRouting;
 
   // Monitoring / metrics (used by chat and monitoring routes)

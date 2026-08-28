@@ -16,12 +16,12 @@ import {
 } from './helpers/ollama-fixture';
 
 /**
- * station#4537 item 2: a real chat send inside pr-smoke's own gate.
+ * archive#4537 item 2: a real chat send inside pr-smoke's own gate.
  *
  * `orchestration-chat-flow.spec.ts` and `cross-runtime-chat-switching.spec.ts`
  * — the two "canonical chat" specs pr-smoke already runs — both fake
  * `POST /api/orchestration/chat` via `page.route`, so no PR-gating run has
- * ever dispatched a real turn (station#4537). This is a dedicated, lean spec
+ * ever dispatched a real turn (archive#4537). This is a dedicated, lean spec
  * so the merge gate proves at least one real send/receive without touching
  * those two specs' existing mocked SSE-render-state coverage (which is
  * legitimately component-level: it proves the transcript/approval UI reacts
@@ -160,7 +160,7 @@ test.describe('pr-smoke live chat send', () => {
     // SDK's credential-vault hydration is async, and opening a chat and
     // sending too quickly can race ahead of it — the very first chat POST
     // then carries no Authorization header and the server correctly (if
-    // confusingly) reports `principal_unresolved`, the exact #4518 error
+    // confusingly) reports `principal_unresolved`, the exact archive#4518 error
     // shape, from a client that never actually lost its credential.
     await statusReady;
     await page.evaluate(() =>
@@ -181,7 +181,7 @@ test.describe('pr-smoke live chat send', () => {
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill('pr-smoke real send.');
     await page.getByRole('button', { name: 'Send' }).click();
-    // Fix round (review MED-6): this is pr-smoke's own merge-gate spec
+    // This is pr-smoke's own merge-gate spec
     // (retries:0, fail-and-fix) — a bare `expect.poll` here reads a real
     // "Host is at capacity" refusal (a genuine, disclosed shared-host
     // condition — see AGENTS.md and journey 3's own use of this same

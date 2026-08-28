@@ -154,7 +154,7 @@ describe('knowledge-scan-utils', () => {
 });
 
 /**
- * station#1501 slice 3b, seam S3
+ * archive#1501, seam S3
  * (`docs/design/portable-project-identity.md` §2.2.1).
  */
 describe('resolveKnowledgeScanPath — migrated onto resolveProjectResource', () => {
@@ -215,7 +215,7 @@ describe('resolveKnowledgeScanPath — migrated onto resolveProjectResource', ()
   });
 
   /**
-   * station#1501 slice 3b review, L3. The migration pins the resolver's
+   * archive#1501 review, L3. The migration pins the resolver's
    * project source to the `storageAdapter` this function was HANDED, because
    * an unpinned resolver constructs its own `FileStorageAdapter` over the
    * ambient home and would answer from a different project store than the
@@ -338,7 +338,7 @@ function listHome(home: string): string[] {
   return walk(home, '').sort();
 }
 
-// ── station#1503 slice 5 — knowledge roots reference repos by id ───────────
+// ── archive#1503 — knowledge roots reference repos by id ───────────
 
 describe('resolveKnowledgeScanPath — a namespace anchored to a NAMED repo', () => {
   interface RepoHarness {

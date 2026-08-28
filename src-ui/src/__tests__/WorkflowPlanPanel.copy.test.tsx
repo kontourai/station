@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3341 Class B: the plan panel awaited `navigator.clipboard?.writeText`
+ * archive#3341 Class B: the plan panel awaited `navigator.clipboard?.writeText`
  * inside a try/catch, which RESOLVES when there is no clipboard at all — so on
  * a non-secure origin (Station reached over plain http:// from another device)
  * the button reported "Copied" for a write that never happened. The catch only

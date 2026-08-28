@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Deploy-ledger commit-back with bounded re-derive-and-retry (station#4572,
- * review MED-2). One checked-in implementation shared by nightly.yml,
+ * Deploy-ledger commit-back with bounded re-derive-and-retry (archive#4572).
+ * One checked-in implementation shared by nightly.yml,
  * publish-release.yml, and publish-packages.yml.
  *
  * ## Why retry is the normal case, not the exception
@@ -38,7 +38,7 @@
  * exactly this run's entry to exactly `origin/main`'s current ledger, and
  * the pushed commit carries ledger files only.
  *
- * ## The ancestry guard (review MED-4)
+ * ## The ancestry guard
  *
  * With `--require-ancestor <sha>` (publish-release.yml passes the release
  * SHA), the script refuses before committing anything unless that SHA is an
@@ -196,7 +196,7 @@ export function commitLedgerWithRetry({
     // below (only the ledger files can enter the commit) — NOT from this
     // checkout: git carries non-conflicting local modifications forward
     // silently and refuses only when the checkout would overwrite them
-    // (delta review LOW-B).
+
     // earlier workflow steps leaving tracked modifications is exactly the
     // kind of state this commit must not silently absorb.
     git(['checkout', '--detach', remoteHead]);
@@ -317,7 +317,7 @@ function main(argv) {
 // realpathSync both sides: an unresolved argv[1] under a symlinked workspace
 // makes this compare false, the script imports as a module, and it exits 0
 // having recorded nothing — the exact silent-unrecorded-ship gap this
-// feature exists to close (delta review LOW-A).
+// feature exists to close.
 if (
   process.argv[1] &&
   realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)

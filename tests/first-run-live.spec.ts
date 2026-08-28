@@ -14,7 +14,7 @@ const REPLY = 'First live Station chat works on mobile.';
 
 test.use({ actionTimeout: 15_000 });
 
-// #1628: a short, dedicated desktop check that a fresh temp-home server
+// archive#1628: a short, dedicated desktop check that a fresh temp-home server
 // boots to Home's zero-project empty state with no dead end — deliberately
 // not a full chat round-trip (no ollama fixture) so the 'first-run' bucket's
 // weight budget is not meaningfully increased. Declared BEFORE the mobile
@@ -77,8 +77,8 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   const chapter = page.getByTestId('first-run-engines');
   await expect(chapter).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Step 2 of 3')).toBeVisible();
-  // Same #3656 shell move as tests/first-run-engines.spec.ts — the `main`
-  // landmark is the shell's, Home is a `section` inside it (station#3877).
+  // Same archive#3656 shell move as tests/first-run-engines.spec.ts — the `main`
+  // landmark is the shell's, Home is a `section` inside it (archive#3877).
   await expect(
     page.locator('main.main-content .home-view .first-run-engines'),
   ).toHaveCount(1);
@@ -118,7 +118,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   ).toHaveCount(0);
 
   // The run was DEFERRED, so this home has no Agent to chat with — and since
-  // station#3627 Home says so rather than recommending one. The card used to
+  // archive#3627 Home says so rather than recommending one. The card used to
   // read "Start direct chat" unconditionally over `flatList[0]`, which on a
   // fresh home named an Agent the New Chat picker one click away flagged "Not
   // set up". Asserting the old label here would be asserting that
@@ -171,7 +171,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await authenticatedRequest.get('/api/system/status')
     ).json()) as { providers?: { configuredChatReady?: boolean } };
     expect(initialStatus.providers?.configuredChatReady).toBe(false);
-    // #1628: a fresh temp-home server must not have seeded a phantom
+    // archive#1628: a fresh temp-home server must not have seeded a phantom
     // `Default` project — the direct proof that runStartupMigrations did
     // not create anything, at the E2E layer rather than just the unit layer.
     const initialProjects = (await (
@@ -254,8 +254,8 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await emptyState.getByRole('button', { name: 'Open Connections' }).click();
     await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
 
-    // #3733 gave every Connections section ONE add action, named for what it
-    // adds; the picker it opens is a route now, not a dialog (station#3877 —
+    // archive#3733 gave every Connections section ONE add action, named for what it
+    // adds; the picker it opens is a route now, not a dialog (archive#3877 —
     // same structural staleness, a different shipped change).
     await page.getByRole('button', { name: 'Add model connection' }).click();
     await expect(page).toHaveURL(/\/connections\/models\/new(?:\?|$)/);
@@ -286,7 +286,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await page.goto(
       `${baseURL}/projects/mobile-dogfood/layouts/coding?dock=open`,
     );
-    // #3309 pulled New chat back out of the "Chat actions" overflow to a
+    // archive#3309 pulled New chat back out of the "Chat actions" overflow to a
     // pinned far-right header icon. Assert the affordance, then open the
     // selection surface via the deterministic event — clicking the icon takes
     // the one-click direct path whenever exactly one runtime is chat-ready,

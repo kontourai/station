@@ -199,22 +199,22 @@ export function createStrandsFunctionTools(
           const denial = toolUseId ? deniedToolCalls.get(toolUseId) : undefined;
           if (toolUseId && denial !== undefined) {
             deniedToolCalls.delete(toolUseId);
-            // station#1834: surface the gate's REAL reason as a tool ERROR.
+            // archive#1834: surface the gate's REAL reason as a tool ERROR.
             // Throwing here is how every other tool failure surfaces —
             // FunctionTool.stream() catches and wraps it in a
             // `status: 'error'` ToolResultBlock. The old behavior returned a
             // fabricated "denied by the user" SUCCESS string, so unattended
             // runs completed as if the blocked tool had simply agreed.
             //
-            // station#3091: `denial.policyDenied` rides along on the thrown
+            // archive#3091: `denial.policyDenied` rides along on the thrown
             // Error as a custom own-property. Strands' own error handling
             // (`createErrorResult` in the installed SDK) holds the SAME
             // Error object reference on the resulting ToolResultBlock's
             // `.error` field rather than cloning it, so the marker survives
             // into `mapStrandsStreamEvent` unchanged — that's the carrying
-            // seam this station#3091 fix depends on.
+            // seam this archive#3091 fix depends on.
             //
-            // station#3210: the authorship marker `stationComposedReason`
+            // archive#3210: the authorship marker `stationComposedReason`
             // rides the same own-property channel, and is what
             // `mapStrandsStreamEvent` reads to decide verbatim vs. redacted.
             const error = new Error(denial.reason) as Error & {

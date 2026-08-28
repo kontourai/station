@@ -16,7 +16,7 @@ function session(
     eventCount: 0,
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
-    // station#1778: a cast is an EXEMPTION from the required-member
+    // archive#1778: a cast is an EXEMPTION from the required-member
     // enforcement, so this fixture is typed rather than asserted. The
     // decoration is irrelevant to what this file tests — that is exactly why
     // it would have gone unnoticed as undecorated.
@@ -31,7 +31,7 @@ function session(
  * something, so a test that only covered the honest states would not notice
  * the qualifier leaking onto a settled binding.
  *
- * station#3227 A3 retired `sessionProjectSection` (the `Project · <label>`
+ * archive#3227 A3 retired `sessionProjectSection` (the `Project · <label>`
  * heading wrapper) — it never regained a rendering caller and Home's project
  * grouping wants neither its prefix nor its 'Unassigned' fold. Every case it
  * covered is kept here against `sessionProjectLabel`, which is what it
@@ -84,8 +84,8 @@ describe('sessionProjectLabel', () => {
     ).toBe('station');
   });
 
-  // station#1463 FIX ROUND: a directory match proves the DIRECTORY, and
-  // station#1462 is the standing proof that two projects can sit on one
+  // archive#1463 FIX ROUND: a directory match proves the DIRECTORY, and
+  // archive#1462 is the standing proof that two projects can sit on one
   // directory — so the name is still unverified and must still say so.
   test('a directory-corroborated join keeps the unverified-name caveat (station#1463)', () => {
     expect(
@@ -115,7 +115,7 @@ describe('sessionProjectLabel', () => {
     ).toBe('station');
   });
 
-  // station#1462 FIX ROUND, L2.
+  // archive#1462 FIX ROUND,.
   test('a bounded candidate list counts what it omitted (station#1462)', () => {
     expect(
       sessionProjectLabel(
@@ -132,7 +132,7 @@ describe('sessionProjectLabel', () => {
 });
 
 /**
- * station#1462/#1463 FIX ROUND: the sessions list and the session detail
+ * archive#1462/archive#1463 FIX ROUND: the sessions list and the session detail
  * panel must not disagree about the same session. The detail panel used to
  * read `delegation?.projectSlug ?? projectSlug` directly, so a heading
  * qualified as an unverified name match became a row reading
@@ -140,7 +140,7 @@ describe('sessionProjectLabel', () => {
  * row vanished entirely (no slug on either field). Both now go through
  * `sessionProjectLabel`, so these assertions are what pins them together.
  *
- * station#3227 A3 fix round: the cross-surface pin here used to compare the
+ * archive#3227 A3: the cross-surface pin here used to compare the
  * label against `sessionProjectSection`, which DERIVED its value from the
  * same call — it could not fail. Home is the surface that genuinely computed
  * a second answer (`session.projectSlug || 'No project'`, which dropped a

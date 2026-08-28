@@ -184,7 +184,7 @@ export interface BrandIconProps {
   style?: React.CSSProperties;
   alt?: string;
   /**
-   * Deterministic identicon seed (station#1424) — when set, the plain-text
+   * Deterministic identicon seed (archive#1424) — when set, the plain-text
    * initials fallback (no glyph/brand mark/image resolved) renders with a
    * seed-derived hue instead of the flat default swatch, so two different
    * unbranded identities are visually distinguishable. Omitted callers
@@ -243,7 +243,7 @@ export function BrandIcon({
         {
           width: size,
           height: size,
-          // station#1424 review fix (round 3 NEW-4): `.brand-icon__initials`'s
+          // archive#1424: `.brand-icon__initials`'s
           // font-size is a percentage of THIS custom property, not of `size`
           // directly — a bare percentage font-size resolves against the
           // inherited ambient text size, not this element's own box

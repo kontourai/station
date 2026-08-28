@@ -19,7 +19,7 @@ import {
  *
  * This derivation moved here from
  * `plugin-api-surface-station-routes.test.ts` when the plugin frame's
- * `api-request` bridge was deleted (station#4300). The bridge is what used to
+ * `api-request` bridge was deleted (archive#4300). The bridge is what used to
  * consume the list; the COLLISION it describes is a property of the route
  * table and outlives it.
  */

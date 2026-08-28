@@ -176,7 +176,7 @@ function parseDiffFiles(patch: string): FileDiffMetadata[] {
 }
 
 /**
- * station#3170. `FileDiffMetadata` has no `binary` field — @pierre/diffs'
+ * archive#3170. `FileDiffMetadata` has no `binary` field — @pierre/diffs'
  * patch parser never recognizes git's `Binary files a/x and b/x differ`
  * marker line, so a binary file parses with an empty `hunks` array and
  * whatever `type` its other header lines implied (typically `change`),
@@ -245,7 +245,7 @@ export function diffFileChangeCounts(
 }
 
 /**
- * station#3170. `diffFileChangeCounts` sums line-level hunk content, which
+ * archive#3170. `diffFileChangeCounts` sums line-level hunk content, which
  * is `0`/`0` for any file with zero hunks — a pure rename or a binary file,
  * neither of which has hunk-shaped content to sum. `+0 −0` is a correct line
  * count and a misleading summary: it reads as "nothing changed" for a file
@@ -290,7 +290,7 @@ export function diffTotalChangeCounts(
 
 /**
  * A file whose total changed lines (additions + deletions) exceed this is
- * collapsed by default (station#3104) — keeps a many-file agent turn
+ * collapsed by default (archive#3104) — keeps a many-file agent turn
  * skimmable without scrolling through every hunk. Counts still render on a
  * collapsed file (see `renderHeaderMetadata` below), so collapsing never
  * hides that a big change exists.
@@ -330,7 +330,7 @@ export function DiffPanel({
   const diffTheme = DIFF_THEME_NAMES[theme];
 
   // Sticky view preferences, persisted via the device-settings store
-  // (station#settings-revamp slice 2 — previously their own raw
+  // (archive#settings-revamp — previously their own raw
   // `station.diff.style`/`station.diff.wrap` localStorage keys).
   const { diffStyle, diffWrap: wrap } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
@@ -354,13 +354,13 @@ export function DiffPanel({
 
   const files = useMemo(() => parseDiffFiles(diff), [diff]);
 
-  // station#3170 — file names @pierre/diffs' parser drops when a file is
+  // archive#3170 — file names @pierre/diffs' parser drops when a file is
   // binary (see `binaryFileNames`'s docblock).
   const binaryNames = useMemo(() => binaryFileNames(diff), [diff]);
 
   // Per-file addition/deletion counts, keyed by the same id CodeView items
   // use. Derived straight from the parsed hunks (see `diffFileChangeCounts`)
-  // — never a separate scan of the raw patch text.
+  // never a separate scan of the raw patch text.
   const fileCounts = useMemo(() => {
     const map = new Map<string, DiffChangeCounts>();
     files.forEach((fileDiff, index) => {
@@ -368,7 +368,7 @@ export function DiffPanel({
     });
     return map;
   }, [files]);
-  // Per-file kind (station#3170) — whether a hunkless file's header should
+  // Per-file kind (archive#3170) — whether a hunkless file's header should
   // read "renamed"/"binary" instead of a misleading "+0 −0".
   const fileKinds = useMemo(() => {
     const map = new Map<string, DiffFileKind>();
@@ -627,7 +627,7 @@ export function DiffPanel({
       const counts = fileCounts.get(item.id);
       if (!counts) return null;
       const kind = fileKinds.get(item.id) ?? 'lines';
-      // station#3170 — a hunkless file (rename or binary) has no line
+      // archive#3170 — a hunkless file (rename or binary) has no line
       // counts to sum, so `+0 −0` would read as "nothing changed" for a
       // file that did. Render what kind of hunkless change it was instead.
       if (kind !== 'lines') {

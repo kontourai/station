@@ -38,7 +38,7 @@ export function DeveloperView({
   // default 32px, flush at x=248). The tab strip names the section; the
   // frame renders it.
   //
-  // station#4463 slice 1: the eyebrow is 'Developer' — a real parent (the
+  // archive#4463: the eyebrow is 'Developer' — a real parent (the
   // title is the active tab's name, never 'Developer' itself), so it stays
   // and is linked back to `/developer` rather than left as inert text.
   const eyebrow = useMemo(
@@ -73,7 +73,7 @@ export function DeveloperView({
         id={TABS_ID}
         className="developer-view__tabs"
         aria-label="Developer"
-        // Manual activation (station#4463 slice 2 review HIGH-2): each
+        // Manual activation (archive#4463): each
         // tab's onSelect pushes a ROUTE (`navigate`), so automatic
         // activation was pushing one history entry per arrow-key press and
         // yanking focus out of the strip. Arrows move focus only here;

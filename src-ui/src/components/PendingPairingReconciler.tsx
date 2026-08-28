@@ -171,9 +171,9 @@ export function PendingPairingReconciler({
           }
           return;
         }
-        // The shared pairing-state map (station#3849). This surface is chrome
+        // The shared pairing-state map (archive#3849). This surface is chrome
         // that may be reporting on a Station the reader is not looking at, so
-        // it takes the DEVICE-subject decline — station#3387's distinction,
+        // it takes the DEVICE-subject decline — archive#3387's distinction,
         // kept as a second named id rather than collapsed away — and names
         // that Station by its browser-local label.
         const stationLabel = pending.targetConnectionLabel;

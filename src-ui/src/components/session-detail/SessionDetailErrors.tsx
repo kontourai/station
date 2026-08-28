@@ -4,9 +4,9 @@ import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
  * Mutation-error surface for the session detail page — a genuine failure
  * banner (`session-failure`) plus one alert per mutation that can fail
  * independently (stop, send, respond). Split out of `MutableSessionDetail`
- * per station#1204.
+ * per archive#1204.
  *
- * station#3213: the failure banner itself now lives in `SessionFailureAlert`,
+ * archive#3213: the failure banner itself now lives in `SessionFailureAlert`,
  * shared with the chat dock. No `note` here — this pane hides its composer for
  * a terminal session, so a "you can continue" line would name an affordance
  * that is not on screen.

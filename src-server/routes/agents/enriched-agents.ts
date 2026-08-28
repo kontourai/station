@@ -40,7 +40,7 @@ type UnavailableFix = NonNullable<EnrichedAgentProjection['unavailableFix']>;
  * The one projection from a live runtime connection to the summary this
  * route family consumes.
  *
- * station#2845: there used to be two hand-maintained copies of this mapping
+ * archive#2845: there used to be two hand-maintained copies of this mapping
  * in `runtime-routes.ts` — one feeding `/api/agents`, one feeding
  * save-response validation. Adding `provider` to only the second left the
  * catalog reading `provider: undefined`, which silently disabled the very
@@ -84,7 +84,7 @@ export interface EnrichedAgentDeps {
   /**
    * MUST be `AgentService.getAgent`, not `ConfigLoader.loadAgent` — the
    * service is where the reserved Station identity's engine binding is
-   * projected (station#3662 delta H3), and nothing in this route re-derives
+   * projected (archive#3662 delta H3), and nothing in this route re-derives
    * it. `agent-binding-projection.test.ts` is the source guard on that.
    */
   loadAgent: (slug: string) => Promise<AgentSpec>;
@@ -134,7 +134,7 @@ export function isHonestlyAvailableConnectedAgent(
 /**
  * Why this agent's engine cannot run it, in words a person can act on.
  *
- * station#3742: every branch printed the connection ID — "Engine connection
+ * archive#3742: every branch printed the connection ID — "Engine connection
  * 'e2e-nonexistent-engine' is not configured." went straight into the Agents
  * rail and the New Chat picker, where DESIGN's vocabulary rule says a
  * connection id is never a user noun. The connection carries the name its
@@ -217,7 +217,7 @@ export function externalEngineUnavailable(
  * How many stable-read attempts a catalog request makes before degrading, and
  * the pause between them. Reconciliation passes are sub-second, so two short
  * retries resolve ordinary drift; anything longer is the churn case that the
- * last-stable cache absorbs (#1574).
+ * last-stable cache absorbs (archive#1574).
  */
 const CATALOG_READ_ATTEMPTS = 3;
 const CATALOG_RETRY_DELAY_MS = 150;
@@ -233,7 +233,7 @@ function sleep(ms: number): Promise<void> {
  * Station-identity projection.
  *
  * A named function rather than two inline lambdas in `runtime-routes.ts`
- * because this wiring is the whole of station#3662 delta H3: point
+ * because this wiring is the whole of archive#3662 delta H3: point
  * `loadAgent` at `ConfigLoader.loadAgent` instead and every reader of
  * `/api/agents` — list, detail, and `/:slug/binding`, which is what
  * `station chat` classifies from — silently goes back to reading the file.
@@ -335,7 +335,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
               ? { engineConnectionType: connection.type }
               : {}),
           }
-        : // station#3662 review HIGH-3: only when this Agent really is on
+        : // archive#3662 review HIGH-3: only when this Agent really is on
           // Station's own engine. The fallback used to assert it from the
           // SLUG alone, so a home whose built-in engine is Codex still had
           // the detail read chip it "Station" whenever connection
@@ -429,7 +429,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
     // No Station-identity overlay here. `deps.loadAgent` IS
     // `AgentService.getAgent` and `deps.listAgents` IS
     // `AgentService.listAgents`, and both already carry the projection
-    // (station#3662 delta H3): for the reserved Station identity the RUNTIME
+    // (archive#3662 delta H3): for the reserved Station identity the RUNTIME
     // owns the engine binding, not the file. This route applied that overlay
     // itself in round 1, which is precisely what left `/:slug/binding` and the
     // save-response validation reading the raw record.
@@ -451,14 +451,14 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       // Station identity are exactly the two sources the session resolver
       // can enrich. Registry connection aliases have neither.
       hasResolvedAgent: !engineDefault || metadata.slug === 'station',
-      // station#3027: symmetric across every engine default. Honest for an
+      // archive#3027: symmetric across every engine default. Honest for an
       // existing alias-bound conversation too — enabling the engine creates
       // an authored Agent for NEW chats; it does not resurrect this thread.
       unresolvedReason: `Agent '${metadata.slug}' has no authored Agent definition, so Station cannot start new sessions or continue existing conversations with it. Enable this engine by creating an Agent for it — new chats will run as that Agent; existing conversations stay readable.`,
     });
     if (!runtimeConfigurationCurrent) {
       // Only reachable after every in-route retry found the runtime mid-change
-      // AND no previously stable catalog exists to serve instead (#1574). The
+      // AND no previously stable catalog exists to serve instead (archive#1574). The
       // copy must not promise a retry the caller would have to perform: the
       // route already retried, and it keeps retrying on subsequent requests.
       return {
@@ -504,7 +504,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
           kind: 'engine-disabled',
           ...(connection ? { target: connection.id } : {}),
         },
-        // station#3027: the machine-readable remedy for exactly this refusal.
+        // archive#3027: the machine-readable remedy for exactly this refusal.
         // Only an engine-default alias whose bound connection is USABLE is
         // enableable — a dead/degraded connection would make the created
         // Agent equally unstartable, so `enable` would overclaim. Strict
@@ -605,7 +605,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
    * Served (flagged, with its capture time) when the runtime stays
    * mid-reconciliation past the in-route retries: a moment-stale catalog
    * keeps chat startable, where the old behavior marked every agent
-   * unavailable with a retry the route never performed (#1574). Only the
+   * unavailable with a retry the route never performed (archive#1574). Only the
    * full-list read writes it (a slug-filtered read is a partial catalog),
    * a monotonic revision guard keeps a delayed older read from clobbering a
    * fresher snapshot, and entries past the max age degrade honestly instead
@@ -798,7 +798,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       if (!selected) {
         return c.json({ success: false, error: 'Agent not found' }, 404);
       }
-      // station#3662 delta M2: both branches now carry the Station-identity
+      // archive#3662 delta M2: both branches now carry the Station-identity
       // projection — `listMetadata`/`loadAgent` are the service's, so this
       // endpoint can no longer answer with a binding the identity cannot have
       // (or "unbound" while the runtime runs it on Codex). `station chat`

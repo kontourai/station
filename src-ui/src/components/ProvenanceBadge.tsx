@@ -1,6 +1,6 @@
 /**
- * station#settings-revamp slice 3 (docs/design/settings-architecture.md §4
- * "provenance ... so the UI can render 'overridden by operator env' badges
+ * archive#settings-revamp (docs/design/settings-architecture.md §4
+ * "provenance... so the UI can render 'overridden by operator env' badges
  * instead of accepting doomed edits").
  *
  * Reads `GET /config/app`'s per-field provenance map
@@ -17,7 +17,7 @@
  * - `source: 'file'` (the common case: a real, editable stored value) -> no badge.
  * - No provenance entry at all -> no badge.
  *
- * **station#1557 — there is no "Overridden by {var}" chip and no disabled
+ * **archive#1557 — there is no "Overridden by {var}" chip and no disabled
  * control.** This module used to render one whenever a registered
  * `envOverride` var was set, describing the stored value as inert, and
  * `isProvenanceOverridden` disabled the input on the same signal. No

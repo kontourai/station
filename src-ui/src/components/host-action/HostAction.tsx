@@ -1,6 +1,6 @@
 /**
  * HostAction — the ONE presentation rule for an affordance that executes on
- * the host's machine (station#3843 §2).
+ * the host's machine (archive#3843 §2).
  *
  * Three branches, and no surface gets to invent a fourth:
  *

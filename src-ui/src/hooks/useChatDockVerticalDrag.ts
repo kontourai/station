@@ -101,7 +101,7 @@ export function useChatDockVerticalDrag({
       // Enter/Space on a focused control is 0. Suppression is retired by the
       // next `pointerdown` (below) or a 500ms timer, neither of which a
       // keyboard user reaches — so without this a stale flag silently ate the
-      // first Enter/Space on every mobile dock header control (station#3345:
+      // first Enter/Space on every mobile dock header control (archive#3345:
       // the `…` overflow trigger needed two presses).
       if (event.detail === 0) return;
       if (!suppressClickRef.current) return;
@@ -127,8 +127,7 @@ export function useChatDockVerticalDrag({
       // Only a primary-button press is a dock gesture. A right-click, middle
       // click, or pen barrel press keeps its native behavior — capture-first
       // would otherwise swallow it and the replay would synthesize a primary
-      // activation the browser never intended (sol review of this change,
-      // HIGH). isPrimary is deliberately not consulted: a second concurrent
+      // activation the browser never intended. isPrimary is deliberately not consulted: a second concurrent
       // pointer replacing the gesture is the accepted multi-touch limitation,
       // and constructed PointerEvents default it to false.
       if (event.button !== 0) return;
@@ -165,8 +164,8 @@ export function useChatDockVerticalDrag({
        * A press that begins on a passthrough control might still be a tap.
        * The first shape of this gesture deferred pointer CAPTURE until
        * movement proved a drag, to keep the control's native click alive —
-       * and real Android touch showed why that fails (#1052 follow-up,
-       * owner device report 2026-08-14): between pointerdown and the
+       * and real Android touch showed why that fails (archive#1052 follow-up,
+       * owner device report): between pointerdown and the
        * threshold crossing, the WebView still owns the gesture and can
        * resolve it however it likes, so drags starting on header controls
        * died while the bare resize grip (immediate capture) kept working.
@@ -207,7 +206,7 @@ export function useChatDockVerticalDrag({
        * mid-drag (which a downward drag itself provokes) changed the frame the
        * pointer was measured against, so the dock jumped out from under a
        * finger that had not moved. A drag is measured against the viewport it
-       * started in (#1052).
+       * started in (archive#1052).
        *
        * Accepted trade-off: a software keyboard opening or closing mid-drag
        * would also be ignored for the rest of that one gesture (self-correcting
@@ -292,7 +291,7 @@ export function useChatDockVerticalDrag({
         if (!release) return;
         const deltaY = release.clientY - startY;
         if (!moved && Math.abs(deltaY) < TAP_MOVE_THRESHOLD) {
-          // Accepted limitation (sol review, MED): the replay is bound to the
+          // Accepted limitation (MED): the replay is bound to the
           // node that was pressed. If a re-render REPLACED it mid-press, the
           // tap fires nothing — deliberately safer than activating whatever
           // element now occupies those coordinates.

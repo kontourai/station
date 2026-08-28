@@ -41,11 +41,11 @@ afterEach(() => {
 });
 
 /**
- * The point of M3 is that Activity renders because the shared Workspace Pane
+ * The point of is that Activity renders because the shared Workspace Pane
  * selector admitted its renderer — not because `ActivityView` names it.
  * These pin that the selection is load-bearing at the route: if it were
  * decorative, both cases would render the same thing. (Same shape as
- * `HomeViewPaneSelection.test.tsx`, M2's route.)
+ * `HomeViewPaneSelection.test.tsx`, route.)
  */
 test('mounts the builtin Activity renderer when the selector admits it as the primary', () => {
   selection.result = {

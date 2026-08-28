@@ -20,14 +20,13 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
 }
 
 /**
- * Activity, declared as a Workspace Pane (station#3193; epic station#4142
- * slice M3).
+ * Activity, declared as a Workspace Pane.
  *
- * "Activity" here is the SESSIONS surface — the `/activity` route PR #4088
- * canonicalized (`SessionsView`: every session on this host, including
- * read-only attached external-engine ones). station#3193's proposed
- * "what happened while I was away" feed is a different product slice with its
- * own issue; it is not this pane and must not be folded into it.
+ * "Activity" here is the SESSIONS surface — the `/activity` route's
+ * canonicalized `SessionsView`: every session on this host, including
+ * read-only attached external-engine ones. A proposed
+ * "what happened while I was away" feed is a different product surface with
+ * its own issue; it is not this pane and must not be folded into it.
  *
  * The two load-bearing declarations mirror Home's, for the same reasons:
  *

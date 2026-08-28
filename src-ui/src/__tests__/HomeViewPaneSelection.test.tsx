@@ -43,14 +43,14 @@ vi.mock('../components/first-run/FirstRunHomeChapter', () => ({
 
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => null }));
 
-// Route chrome from #3636, not part of pane selection; it unconditionally
+// Route chrome from archive#3636, not part of pane selection; it unconditionally
 // calls `useConfigActions`, which the minimal ConfigContext mock above
 // deliberately does not provide.
 vi.mock('../components/first-run/FirstRunHomeChapter', () => ({
   FirstRunHomeChapter: () => null,
 }));
 
-// The Home role seam (stage 3), not pane selection: no grant here, and the
+// The Home role seam, not pane selection: no grant here, and the
 // real hook needs a QueryClient this minimal harness deliberately lacks.
 vi.mock('../views/home/useWorkspaceHomeRole', () => ({
   useWorkspaceHomeRoleStatus: () => ({ state: 'none' }),
@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 /**
- * The point of station#3122 stage 2 is that Home renders because the shared
+ * The point of archive#3122 is that Home renders because the shared
  * Workspace Pane selector admitted its renderer — not because `HomeView`
  * names it. These pin that the selection is load-bearing at the route: if it
  * were decorative, both cases would render the same thing.

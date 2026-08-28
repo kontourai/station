@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3427 review round 2. Nothing exercised `ChatDockBody`'s history
+ * archive#3427 2. Nothing exercised `ChatDockBody`'s history
  * failure notice before this file — an independent review deleted the
  * notice's whole CSS block and 13 files / 172 tests stayed green. This pins
  * the behavior and markup a class-name assertion can reach (see
@@ -39,7 +39,7 @@ vi.mock('@kontourai/station-connect', () => ({
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agentsMock.current,
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 

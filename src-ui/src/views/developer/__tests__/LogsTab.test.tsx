@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
  *
- * #3843 T3 — the Developer log read on a paired principal.
+ * archive#3843 — the Developer log read on a paired principal.
  *
- * D6 redacts this read for anyone who did not prove home possession, and it
+ * redacts this read for anyone who did not prove home possession, and it
  * is right to. What was missing is the sentence: a page that quietly serves
  * `[REDACTED]` reads as a broken page rather than as a correct boundary. The
  * read itself is remote-safe — the host performs it, this device only asks —

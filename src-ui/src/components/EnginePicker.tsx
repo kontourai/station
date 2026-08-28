@@ -1,17 +1,17 @@
 /**
- * station#1194 (epic #1191, slice B): the picker that binds Station's
+ * archive#1194: the picker that binds Station's
  * built-in DEFAULT agent to an engine.
  *
  * Where it renders (and why that changed twice): it began as the first-run
- * modal behind `OnboardingGate`'s `setupBannerVariant` gate. #1359 retired
+ * modal behind `OnboardingGate`'s `setupBannerVariant` gate. archive#1359 retired
  * that call site — chat readiness no longer routes through a chooser — and
- * #1441 revived the component as the Settings "Change…" action
+ * archive#1441 revived the component as the Settings "Change…" action
  * (`views/settings/BuiltinEngineRow.tsx`), which is now its ONE consumer.
  * That matters for the empty state below: the modal no longer appears on its
  * own, it appears because the user clicked a button, and a button that opens
  * nothing is worse than no button.
  *
- * Deliberately does NOT cover `station-voice` (review round 2): Voice is a
+ * Deliberately does NOT cover `station-voice` ( 2): Voice is a
  * speech-to-speech agent (`voice-session.ts`'s `IS2SProvider`, e.g. Nova
  * Sonic) that never reads an engine binding — "running Voice on Claude
  * Code/Codex" is a category error, not a real capability this picker can
@@ -20,7 +20,7 @@
  * Every capability judgement comes from
  * `@kontourai/station-contracts/engine-capability-matrix` via
  * `utils/engineBinding.ts` — the SAME matrix the agent editor's own engine
- * picker (station#975, `AgentEditorBasicTab.tsx`) reads and the same one
+ * picker (archive#975, `AgentEditorBasicTab.tsx`) reads and the same one
  * `session-agent-resolution.ts` keys its station-control exemption on — so
  * this never hardcodes a per-engine-id branch and can never diverge from
  * what the resolver will accept.
@@ -64,7 +64,7 @@ const CAPABILITY_DESCRIPTION =
  * The sentence that names what to connect. Derived from the capability
  * matrix itself (`controlPlaneCapableEngineNames`), never written out
  * here: an engine gains or loses its place in this list the moment its
- * matrix cell changes, exactly as Codex did when #1195 shipped
+ * matrix cell changes, exactly as Codex did when archive#1195 shipped
  * `'url-token'`. A hardcoded sentence would have kept saying "Claude Code"
  * for weeks after Codex became capable.
  */
@@ -81,7 +81,7 @@ export interface EnginePickerProps {
   /** Called when the user dismisses without choosing. */
   onDismiss: () => void;
   /**
-   * station#settings-revamp slice 3: the Settings "Change…" action
+   * archive#settings-revamp: the Settings "Change…" action
    * (`views/settings/BuiltinEngineRow.tsx`) overrides this copy so the modal
    * reads as a deliberate re-configuration rather than first-run framing.
    * The none-capable panel below keeps its own title and description — there
@@ -92,7 +92,7 @@ export interface EnginePickerProps {
   title?: string;
   description?: string;
   /**
-   * station#settings-revamp slice 3 review finding 3: when provided, the
+   * archive#settings-revamp: when provided, the
    * picker calls this with the chosen connectionId (then `onChosen`)
    * instead of PATCHing `builtinAgentEngineConnectionId` itself. The
    * Settings "Change…" row (`views/settings/BuiltinEngineRow.tsx`) passes
@@ -121,14 +121,14 @@ export function EnginePicker({
 
   const stationChatReady = status ? isStationChatReady(status) : false;
   const readyOptions = readyEngineOptions({ stationChatReady, connections });
-  // Owner directive (station#1194): offer ONLY engines that can actually
+  // Owner directive (archive#1194): offer ONLY engines that can actually
   // power the assistant. Chat readiness is already decoupled from this
-  // choice (#1263), so the only thing this modal binds is the ability to
+  // choice (archive#1263), so the only thing this modal binds is the ability to
   // operate Station — and an engine that cannot carry `station-control`
   // would deliver an assistant that responds and cannot do the one thing it
   // exists for.
   const options = capableEngineOptions(readyOptions);
-  // station#1549: ready engines Station has a reviewed mechanism for but has
+  // archive#1549: ready engines Station has a reviewed mechanism for but has
   // never observed. Listed and explained, never offered as a radio — see
   // `pendingObservationEngineOptions`.
   const pendingOptions = pendingObservationEngineOptions(readyOptions);
@@ -143,7 +143,7 @@ export function EnginePicker({
     .map((option) => ({
       connectionId: option.connectionId,
       matrix: option.matrix,
-      // station#1549 (review finding): the observation MUST travel with the
+      // archive#1549: the observation MUST travel with the
       // matrix here. `resolveBuiltinAgentEngineBinding` re-derives capability
       // from (matrix, observation) rather than trusting the caller's filter,
       // so dropping it would make this picker offer a row it then refuses to
@@ -167,7 +167,7 @@ export function EnginePicker({
   const resolvedSelectedId =
     selectedId !== undefined ? selectedId : computedDefaultId;
 
-  // station#1549: opening the picker is the moment the user asks the
+  // archive#1549: opening the picker is the moment the user asks the
   // question, so it is the moment to go and answer it. Probing is already
   // this connection's own standing job (the ACP probe runs a
   // spawn+initialize cycle on a cadence); this only asks for one now, so a
@@ -178,7 +178,7 @@ export function EnginePicker({
   // connection per mount: a probe is a real child process, and re-firing it
   // on every render (or for connections whose answer is already known)
   // would turn an explanation into a spawn loop.
-  // `mutateAsync`, NOT `mutate` with an `onSettled` option (review finding):
+  // `mutateAsync`, NOT `mutate` with an `onSettled` option:
   // a `useMutation` observer holds ONE options slot and ONE current mutation,
   // so a second `mutate(...)` in the same pass overwrites the first's
   // callbacks and detaches its observer — with two unobserved connections,
@@ -219,7 +219,7 @@ export function EnginePicker({
     }
   }, [pendingIds, probeConnection, queryClient]);
 
-  // station#1549: the not-yet-observed rows, shared by both panels below.
+  // archive#1549: the not-yet-observed rows, shared by both panels below.
   // Rendered as plain rows with no `<input type="radio">` — the absence of a
   // control IS the honesty: there is nothing to choose here yet, and a
   // disabled radio would still assert the row belongs to the same set of
@@ -263,10 +263,10 @@ export function EnginePicker({
     //
     // Nothing is persisted from this panel. The state resolves by itself the
     // moment an engine's matrix cell gains a station-control delivery
-    // mechanism (exactly how Codex went from excluded to offered when #1195
+    // mechanism (exactly how Codex went from excluded to offered when archive#1195
     // shipped `'url-token'`), and any saved choice must still be sitting
     // there untouched when it does.
-    // station#1549: a not-yet-observed engine has NOT been judged incapable,
+    // archive#1549: a not-yet-observed engine has NOT been judged incapable,
     // so it must not appear in the "can chat, but it can't operate Station"
     // sentence — that sentence is a verdict, and Station has not reached one.
     // It gets its own row below instead.
@@ -307,7 +307,7 @@ export function EnginePicker({
             documentation…") would be describing a verdict Station has not
             reached. Gating one and not the other would keep half of a
             two-sentence claim on screen with its premise removed.
-          */}
+*/}
           {(incapableNames.length > 0 || pendingOptions.length === 0) && (
             <>
               <div className="engine-picker__description">
@@ -317,7 +317,7 @@ export function EnginePicker({
                     ? `${incapableNames[0]} can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.`
                     : `Your connected engines (${incapableNames.join(', ')}) can chat, but none of them can operate Station — creating agents, running jobs, changing settings — so none of them can run the built-in assistant.`}
               </div>
-              {/* station#1547 AC5. Restored, and this time it has a producer:
+              {/* archive#1547. Restored, and this time it has a producer:
                   the ACP adapter now delivers the credential-free
                   `station-docs` server on every ACP session (acp-adapter.ts),
                   which is exactly the engine class that can never carry
@@ -428,7 +428,7 @@ export function EnginePicker({
           disabled={updateConfig.isPending}
           onClick={() => {
             if (onSelect) {
-              // finding 3: route the choice through the caller's own
+              // route the choice through the caller's own
               // draft/save cycle — no network mutation here.
               onSelect(resolvedSelectedId);
               onChosen();

@@ -1,5 +1,5 @@
 /**
- * station#3079 — the service-owns-home state became reachable when the
+ * archive#3079 — the service-owns-home state became reachable when the
  * supervisor started publishing liveness (#3064), and this banner reported
  * it as "your local Station is stopped" with a Restart button whose only
  * possible outcome is an error: `restart_bundled_server` fails closed for a
@@ -65,7 +65,7 @@ describe('BundledServiceBanner (station#3079)', () => {
     vi.restoreAllMocks();
   });
 
-  // station#3476 — the healthy service-owned home is not news.
+  // archive#3476 — the healthy service-owned home is not news.
   test('a healthy service-owned home presents no banner at all', () => {
     // This is `attached_service_status`'s ONLY shape: it hardcodes `stopped`,
     // `fail_closed: false`, `ownership: Service`. The desktop's own sidecar is
@@ -306,7 +306,7 @@ describe('BundledServiceBanner dismissibility (station#3476)', () => {
     // Against the REAL store, because this is a store-contract hazard rather
     // than a component one: user-dismissal suppression is keyed by
     // `id` + `occurrence`, and a dismissible banner with NO occurrence stays
-    // suppressed until `clear()`. Without `occurrence` the failed banner below
+    // suppressed until `clear`. Without `occurrence` the failed banner below
     // is silently dropped — a genuinely broken Station reported to nobody,
     // caused by the dismissibility this change adds.
     const view = render(

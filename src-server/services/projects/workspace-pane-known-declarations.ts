@@ -186,7 +186,7 @@ export const KNOWN_WORKSPACE_PANE_DECLARATIONS = Object.freeze([
  * preview descriptors deliberately remain instance-free until a caller has
  * supplied their bounded state and the host has accepted placement.
  *
- * Chat appears here AND in the shell's ambient dock (station#3970): a Project
+ * Chat appears here AND in the shell's ambient dock (archive#3970): a Project
  * layout places the Project-bound occurrence, the dock places the projectless
  * one, and both are canonical. Removing it from this catalog would have taken
  * Chat out of every Project layout to give the dock one.

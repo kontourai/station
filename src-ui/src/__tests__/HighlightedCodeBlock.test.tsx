@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3339 — the code block's copy button reported "Copied" for a write
+ * archive#3339 — the code block's copy button reported "Copied" for a write
  * that never happened: `navigator.clipboard?.writeText(code)` no-ops entirely
  * on a non-secure origin (Station reached over plain http:// from another
  * device is a real deployment mode) and rejects on a permission refusal, and

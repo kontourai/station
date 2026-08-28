@@ -81,7 +81,7 @@ function CatalogContents({
 }
 
 /**
- * station#3318: the project page shows only the project's ACTIVE panes (placed
+ * archive#3318: the project page shows only the project's ACTIVE panes (placed
  * occurrences) plus the "Add pane" affordance. Availability diagnostics for
  * unplaced/unavailable panes live in the picker modal, not on the page.
  */

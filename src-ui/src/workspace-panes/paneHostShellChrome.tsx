@@ -17,7 +17,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 /**
  * The two contract members whose implementation is the SHELL's own chrome and
- * the SHELL's own derivation, shared by both transports (station#4201,
+ * the SHELL's own derivation, shared by both transports (archive#4201,
  * `docs/design/pane-host-contract.md`).
  *
  * `confirm` and `facts` are the members where "one interface, two transports"

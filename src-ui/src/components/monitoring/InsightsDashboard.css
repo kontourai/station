@@ -216,7 +216,7 @@
   }
 }
 
-/* station#3075/#3076: filter chips, the selectable agent row, and the
+/* archive#3075/#3076: filter chips, the selectable agent row, and the
    affordance that hands the user the rows behind a number. */
 .insights-filter-row {
   display: flex;
@@ -275,7 +275,7 @@
   line-height: 1.4;
 }
 
-/* The Feedback tab drifted from its own stylesheet (station#3157). Two
+/* The Feedback tab drifted from its own stylesheet (archive#3157). Two
    classes were renamed on one side only — fixed by pointing the TSX at the
    names defined here — and three had never been written at all. */
 

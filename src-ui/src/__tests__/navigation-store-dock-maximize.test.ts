@@ -9,7 +9,7 @@ import { navigationStore } from '../contexts/navigation-store';
  * `lastDockMaximized` exists so a mobile round trip through a closed dock
  * (e.g. following a delegated task into `/activity` and back via the task
  * switcher) can restore the dock's maximize preference even though a closed
- * dock's `maximize` URL param is always cleared by design (#795 review — see
+ * dock's `maximize` URL param is always cleared by design (archive#795 — see
  * the field doc on `NavigationStore`). These tests drive the real singleton
  * through `window.history`, the same surface production code uses.
  */
@@ -54,19 +54,19 @@ describe('navigationStore dock maximize memory', () => {
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 
-  // #945 HIGH (review of the original fix): a closed-but-still-maximized URL
+  // archive#945 (review of the original fix): a closed-but-still-maximized URL
   // is NOT safe on mobile either — index.css's `@media (max-width: 768px)`
   // `.chat-dock.is-maximized` rule matches on `is-maximized` alone (it does
   // not exclude `is-collapsed`) and sets `height` with `!important`, which
   // beats the dock's plain inline height guard. A closed dock carrying
-  // `maximize=true` therefore still renders the #795 blank full-height shell
+  // `maximize=true` therefore still renders the archive#795 blank full-height shell
   // on mobile, with its body omitted because `isDockOpen` is false. The
   // task switcher's `onOpenSession` (`ChatDock.tsx`) must always go through
   // `setDockState` to close — never leave `maximize` in the URL directly —
   // and rely on `lastDockMaximized` (not the URL) for the later restore.
   test('the mobile task-switcher navigation sequence never leaves dock closed + maximize=true in the URL', () => {
     // Mirrors ChatDock's onOpenSession handler exactly: setDockState(false,
-    // isDockMaximized) to close (honoring the #795 invariant), then navigate
+    // isDockMaximized) to close (honoring the archive#795 invariant), then navigate
     // to the session route.
     navigationStore.setDockState(true, true);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
@@ -90,10 +90,10 @@ describe('navigationStore dock maximize memory', () => {
     expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
-  // station#1284 review finding 3 (MED): useChatDockActiveChatSync's
+  // archive#1284 (MED): useChatDockActiveChatSync's
   // cold-path fallback navigates to /activity with { chat: null, dock: null,
-  // session: <id> } specifically because navigate() otherwise PRESERVES
-  // every unlisted param -- a dock-targeting deep link (station#1284 AC4)
+  // session: <id> } specifically because navigate otherwise PRESERVES
+  // every unlisted param -- a dock-targeting deep link (archive#1284)
   // already stamps dock=open on the URL the dead pointer came from, so
   // omitting dock: null here would land on /activity?dock=open and force
   // the dock open and empty on a page with nothing to show in it.
@@ -135,11 +135,11 @@ describe('navigationStore dock maximize memory', () => {
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
   });
 
-  // station#1298 review (station#1312): ChatDock's #1298 collapse-on-navigate
+  // archive#1298 (archive#1312): ChatDock's archive#1298 collapse-on-navigate
   // seams (an inbox row falling back to `/activity`, the project-context
   // badge, a delegation toast) keep the dock OPEN the whole time — there is
   // no close-then-reopen round trip for `setDockState(open, false)`'s
-  // `lastDockMaximized` clobber to survive. `collapseMaximizedDock()` is the
+  // `lastDockMaximized` clobber to survive. `collapseMaximizedDock` is the
   // primitive those seams use instead: it must clear the effective
   // `maximize` flag (so the dock visibly un-maximizes) WITHOUT touching
   // `lastDockMaximized`, or a later `focusSession`-style restore would

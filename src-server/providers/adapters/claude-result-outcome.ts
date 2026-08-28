@@ -1,6 +1,6 @@
 /**
  * Pure classifier for a Claude Agent SDK `result` message's outcome —
- * station#1827, mirroring `classifyConnectionFailure`'s pattern
+ * archive#1827, mirroring `classifyConnectionFailure`'s pattern
  * (`connection-recovery-policy.ts`): a small, directly-unit-testable
  * function that reduces an untrusted SDK message to a bounded
  * classification instead of leaving callers to parse the engine's prose.

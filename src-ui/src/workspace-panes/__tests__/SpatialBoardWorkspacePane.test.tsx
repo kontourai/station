@@ -187,7 +187,7 @@ describe('SpatialBoardWorkspacePane', () => {
       />,
     );
     expect(screen.getAllByText('task project-a/task-1')).toHaveLength(4);
-    // station#3965: the chip reads as words now; the state still drives the
+    // archive#3965: the chip reads as words now; the state still drives the
     // class, so the styling contract is unchanged.
     expect(screen.getAllByText('Moved')).toHaveLength(2);
     expect(screen.getAllByText('Release session')).toHaveLength(2);

@@ -274,7 +274,7 @@ export function useSlashCommands(
   );
 
   // Per-keystroke ACP argument autocomplete has no equivalent on
-  // ProviderAdapterShape (no getCommandOptions()-style method) after the
+  // ProviderAdapterShape (no getCommandOptions-style method) after the
   // #149 orchestration-path cutover — accepted gap, filed as a follow-up
   // (see docs/guides/acp.md "Slash Commands"). Returning an empty list
   // here keeps the static command list (acpCommands, above) as the only

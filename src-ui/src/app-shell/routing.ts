@@ -80,7 +80,7 @@ export function getLegacyPathRedirect(path: string): string | null {
     for (const [key, value] of params) canonicalParams.append(key, value);
     return `/settings?${canonicalParams.toString()}`;
   }
-  // station#3313 (Settings IA, option A): Feature Previews is a Settings
+  // archive#3313 (Settings IA, option A): Feature Previews is a Settings
   // section now; the standalone route redirects into it, same pattern as
   // /developer/config above.
   if (pathname === '/feature-previews') {
@@ -135,10 +135,10 @@ export function getLegacyPathRedirect(path: string): string | null {
   }
 
   const exactRedirects: Readonly<Record<string, string>> = {
-    // station#3280: Activity is canonical before v1. Existing notification
+    // archive#3280: Activity is canonical before v1. Existing notification
     // and Discord deep links remain valid through this permanent redirect.
     // Both spellings: hand-typed and copy-mangled links commonly carry a
-    // trailing slash, and an exact-lookup table would 404 it (review F3).
+    // trailing slash, and an exact-lookup table would 404 it
     '/sessions': '/activity',
     '/sessions/': '/activity',
     '/monitoring': '/developer/telemetry',
@@ -324,8 +324,8 @@ export function resolveViewFromPath(
   if (path === '/projects/new') {
     return { type: 'project-new' };
   }
-  // station#4079 slice 1: /board/session/:id and /board/task/:projectId/:id
-  // — URL-reachable, no sidebar item this slice (page-frame-registry.ts).
+  // archive#4079: /board/session/:id and /board/task/:projectId/:id
+  // URL-reachable, no sidebar item this slice (page-frame-registry.ts).
   if (path.startsWith('/board/session/')) {
     const encodedId = path.slice('/board/session/'.length);
     if (!encodedId || encodedId.includes('/')) {

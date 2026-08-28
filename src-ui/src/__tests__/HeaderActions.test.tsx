@@ -9,7 +9,7 @@ let pendingCount = 0;
 let connectionStatus: 'connected' | 'connecting' | 'error' = 'connected';
 let connectionReason: string | null = null;
 let bundledStatus: { ownership: 'sidecar' | 'service' | 'none' } | null = null;
-// station#4512 — null unless a test arms a locally-tracked pending access
+// archive#4512 — null unless a test arms a locally-tracked pending access
 // request; `usePendingPairingApproval` is otherwise stubbed to whatever this
 // holds, so the chip's derivation is exercised without a real ticking clock.
 let pendingApprovalRecord: { requestKind: 'direct' | 'code' } | null = null;
@@ -27,7 +27,7 @@ let savedConnections: unknown[] = [SAVED_STATION];
 // Partial: the indicator derivation and labels under test are the real ones;
 // only the health coordinator and the dot's pixels are replaced. The stub dot
 // records the state it was handed, which is what proves the header stopped
-// relying on a hover-only tooltip (station#3297).
+// relying on a hover-only tooltip (archive#3297).
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   ConnectionStatusDot: ({ status }: { status: string }) => (
@@ -151,7 +151,7 @@ describe('HeaderActions attention badge', () => {
   });
 });
 
-// station#3311 (supersedes the #1094 title-only pin): the connection surface
+// archive#3311 (supersedes the archive#1094 title-only pin): the connection surface
 // is self-describing — connection state and identity are visible text with a
 // matching accessible name, not tooltip-only metadata.
 describe('HeaderActions — self-describing connection surface', () => {
@@ -185,7 +185,7 @@ describe('HeaderActions — self-describing connection surface', () => {
     ['connecting', null, 'Reconnecting'],
     ['error', 'unreachable', "Can't connect"],
     ['error', 'authentication-failed', 'Pair'],
-    // station#4512: an identity mismatch is a host that answered, not one
+    // archive#4512: an identity mismatch is a host that answered, not one
     // that stopped answering — it gets its own remedy word, not the generic
     // "Can't connect" a genuinely unreachable host produces.
     ['error', 'identity-mismatch', 'Needs re-pairing'],
@@ -207,8 +207,8 @@ describe('HeaderActions — self-describing connection surface', () => {
 });
 
 /**
- * station#1094 put the blocked/reconnecting distinction in a `title`, noting
- * the dot could not carry it. station#3297 moved it into the dot itself: a
+ * archive#1094 put the blocked/reconnecting distinction in a `title`, noting
+ * the dot could not carry it. archive#3297 moved it into the dot itself: a
  * title is a hover tooltip, and the surface where this failure is actually
  * met has no hover. These now pin the channels that survive touch.
  */
@@ -224,9 +224,9 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
 
   test('leaves the healthy control titled exactly as before', () => {
     renderHeader();
-    // station#3311 put the state and identity in the accessible name, so the
+    // archive#3311 put the state and identity in the accessible name, so the
     // name is no longer the bare string — the TITLE is, which is what
-    // station#3297 pinned and what the E2E selectors key on.
+    // archive#3297 pinned and what the E2E selectors key on.
     const button = screen.getByRole('button', { name: /^Manage Stations/ });
     expect(button.title).toBe('Manage Stations');
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
@@ -280,7 +280,7 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
 });
 
 /**
- * station#4512 — a pending access request against a REACHABLE host used to
+ * archive#4512 — a pending access request against a REACHABLE host used to
  * read as "Can't connect" (red): the device has no credential yet, so every
  * health probe 401s exactly like a dead host's would. The chip now consumes
  * the same locally-tracked pending-exchange fact `ConnectionBannerSource`
@@ -310,7 +310,7 @@ describe('HeaderActions — a pending access request reads as waiting, not broke
     expect(button!.getAttribute('aria-label')).toContain('Awaiting approval');
   });
 
-  // Precedence (station#4512): the pending-request fact is independent of
+  // Precedence (archive#4512): the pending-request fact is independent of
   // `reason` and wins even over identity-mismatch, mirroring
   // `ConnectionBannerSource`'s own `!pendingApproval` gate — while a request
   // is open, nothing else this endpoint's probes say is more true than
@@ -340,7 +340,7 @@ describe('HeaderActions — a pending access request reads as waiting, not broke
     renderHeader();
     // `needs-credential` renames the control to its remedy ("Pair this
     // device again"), so it no longer starts with "Manage Stations" —
-    // `renderConnButton()` would not find it.
+    // `renderConnButton` would not find it.
     const button = screen.getByRole('button', {
       name: /^Pair this device again/,
     });
@@ -354,7 +354,7 @@ describe('HeaderActions — a pending access request reads as waiting, not broke
 });
 
 /**
- * station#4512 — an identity mismatch (a reset/reinstalled host, or a
+ * archive#4512 — an identity mismatch (a reset/reinstalled host, or a
  * different machine now answering at the same address) is not a dead host:
  * retrying cannot fix it, so it gets its own remedy word and its tap must
  * not spend a recheck that can only fail again.
@@ -416,7 +416,7 @@ describe('HeaderActions — desktop sidecar state', () => {
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — Connected · Kontour · App only',
     );
-    // The button's own title is station#3297's control name; the sidecar's
+    // The button's own title is archive#3297's control name; the sidecar's
     // lifetime explanation moved onto the note it describes.
     expect(button.title).toBe('Manage Stations');
     expect(screen.getByTestId('desktop-sidecar-indicator').title).toBe(
@@ -431,7 +431,7 @@ describe('HeaderActions — desktop sidecar state', () => {
   });
 });
 
-// station#3311 review: `idle` was unreachable — the health coordinator only
+// archive#3311: `idle` was unreachable — the health coordinator only
 // ever reports connecting/connected/error — while a comment and the mobile
 // CSS both claimed it meant "no Station connected yet". It now derives from
 // the SAME predicate that renders MobileConnectionBanner, so a first run
@@ -470,7 +470,7 @@ describe('HeaderActions — a device with no Station saved', () => {
   });
 });
 
-// Delta review: `hasRealSavedConnection` deliberately excludes injected host
+// `hasRealSavedConnection` deliberately excludes injected host
 // connections (`cli-base`, `managed-loopback`), and those CAN be the active
 // one — ConnectionStore prefers an injected connection with a URL, and an
 // injected connection can never earn a `lastSuccessAt`. Consulting the

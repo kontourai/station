@@ -58,7 +58,7 @@ export interface ProviderAdapterMetadata {
    * Canonical engine identity (docs/design/agent-engine-unification.md §4.1):
    * `'station'` for Station's own engine, otherwise the engine's canonical
    * id (e.g. `'claude-code'`, `'codex'`, `'acp'`). Replaces `executionClass`
-   * as of Phase B (station#1003 unification slice 6) — derive engineId via
+   * as of Phase B (archive#1003 unification slice 6) — derive engineId via
    * `engineIdForAdapter` (adapter-identity.ts) rather than reading
    * `executionClass` directly.
    */
@@ -84,7 +84,7 @@ export interface ProviderAdapterMetadata {
    */
   modelLaunch?: ModelLaunchCapabilities;
   /**
-   * Local default model id for an external native engine (station#977 —
+   * Local default model id for an external native engine (archive#977 —
    * "local default + defer to engine"). Used ONLY by the connected-CLI
    * launchability gate (`orchestration-service.ts`) as a fallback when no
    * explicit `modelId` was requested, and as a last-resort catalog entry
@@ -192,9 +192,9 @@ export interface ProviderAdapterShape {
   listSessions(): Promise<ProviderSession[]>;
   /**
    * Whether THIS PROCESS currently holds a live engine binding for the
-   * thread — never durable state (station#3493 residual 5). Answering from
+   * thread — never durable state (archive#3493 residual 5). Answering from
    * persisted rows or resume cursors would be a lie the whole dormant/live
-   * derivation is built on: boot recovery (station#3476) binds an adapter
+   * derivation is built on: boot recovery (archive#3476) binds an adapter
    * only when this returns true, and every command's engine-free branch
    * trusts that a `false` here meant "no process to act on". After a
    * restart the correct answer is almost always `false`, even for sessions
@@ -246,7 +246,7 @@ export interface ProviderAdapterShape {
     signal?: AbortSignal;
     maxEntries?: number;
     /**
-     * station#1430 review, H-2: passed through to a provider's own
+     * archive#1430 review, H-2: passed through to a provider's own
      * `ModelCatalogRequest` (`model-provider-types.ts`) for adapters whose
      * underlying provider does per-model capability enrichment beyond its
      * base catalog call (currently: Ollama's `/api/show` `supportsTools`

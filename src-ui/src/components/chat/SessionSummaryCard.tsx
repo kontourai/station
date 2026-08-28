@@ -21,7 +21,7 @@ interface GenerateRunState {
  * A sibling of the transcript log, never a transcript row: this semantic
  * separation makes derived model output visibly distinct from source turns.
  *
- * kontourai/station#3310: where a host offers its OWN entry point, the
+ * archive#3310: where a host offers its OWN entry point, the
  * un-generated state renders NOTHING, so an unsummarized chat pays zero
  * transcript pixels for a feature it isn't using. That host opts in with
  * `hasSettingsEntryPoint` — today the chat dock, whose gear opens
@@ -93,7 +93,7 @@ export function SessionSummaryCard({
   useEffect(() => {
     if (!queryError) return;
     // The user did nothing — degrade silently instead of injecting an alert
-    // band into the chat (#3310). The menu entry point still works.
+    // band into the chat (archive#3310). The menu entry point still works.
     log.chat('session summary query failed: %o', queryError);
   }, [queryError]);
   const dismissError = dismiss.error;
@@ -126,7 +126,7 @@ export function SessionSummaryCard({
 
   if (!data && !isGenerating && !failedGeneration) {
     // No host entry point: keep the inline button, or this host loses the
-    // only way to summarize (#3310 review — ACPChatPanel).
+    // only way to summarize (archive#3310 — ACPChatPanel).
     if (hasSettingsEntryPoint) return null;
     return (
       <aside className="session-summary" aria-label="Derived session summary">

@@ -238,7 +238,7 @@ describe('parseInlineMarkdown — Steps view inline formatting (#764)', () => {
 
   test('handles empty labels and terminal brackets as plain markup', () => {
     // `[](x)` is an empty-label link (matches the parser's link shape);
-    // `[]()` has an empty destination and stays text; a trailing `]` is text.
+    // `[]` has an empty destination and stays text; a trailing `]` is text.
     expect(parseInlineMarkdown('[](https://x)')).toEqual([
       { type: 'link', value: '', href: 'https://x' },
     ]);

@@ -18,7 +18,7 @@ function session(
     provider: 'claude',
     status: 'ready',
     controlMode: 'station-owned',
-    // station#1778: required decoration, supplied rather than cast away.
+    // archive#1778: required decoration, supplied rather than cast away.
     answerability: { answerable: true },
     isLoaded: true,
     isPersisted: true,
@@ -157,7 +157,7 @@ describe('partitionSessionLanes (station#3027)', () => {
   });
 
   test('an unanswerable waiting session is NOT claimed as "Needs you"', () => {
-    // station#1783: `needs_input` plus an observed negative answerability is a
+    // archive#1783: `needs_input` plus an observed negative answerability is a
     // session nothing can act on. Filing it under "Needs you" would tell the
     // reader to do something no affordance can do.
     const sessions = [
@@ -233,7 +233,7 @@ describe('project attribution keys and the filter predicate', () => {
   });
 
   test('an AMBIGUOUS session survives BOTH candidates’ filters', () => {
-    // station#1462: a directory configured as two projects. Picking a winner
+    // archive#1462: a directory configured as two projects. Picking a winner
     // here would make the session vanish from the other project's filter with
     // no signal at all — the exact failure the ambiguous state exists to stop.
     const ambiguous = session({
@@ -248,7 +248,7 @@ describe('project attribution keys and the filter predicate', () => {
     expect(matchesProjectFilter(ambiguous, 'station')).toBe(true);
     expect(matchesProjectFilter(ambiguous, 'beacon')).toBe(true);
     expect(matchesProjectFilter(ambiguous, 'lantern')).toBe(false);
-    // ...and it is not a filter CONTROL: one click cannot say which it meant.
+    //...and it is not a filter CONTROL: one click cannot say which it meant.
     expect(sessionProjectFilterKey(ambiguous)).toBeNull();
   });
 

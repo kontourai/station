@@ -36,7 +36,7 @@ import { ollamaReportedUsage } from './ai-sdk-reported-usage.js';
 const DEFAULT_BASE_URL = DEFAULT_OLLAMA_BASE_URL;
 
 /**
- * station#3588: boundary guard mirroring `bedrock-adapter.ts`'s
+ * archive#3588: boundary guard mirroring `bedrock-adapter.ts`'s
  * `normalizeFinishReason` — `LLMStreamChunk.finishReason` is typed as a bare
  * `string | undefined` (it also has to accommodate any value
  * `mapAiSdkFinishReason` maps through, `ai-sdk-llm-provider.ts`), so this
@@ -178,7 +178,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       model,
       // Retained so a later `session.configured` can restate it: consumers
       // read `cwd` off the latest such event, so an event that omits it
-      // erases the session's working directory downstream (#796 review).
+      // erases the session's working directory downstream (archive#796 review).
       ...(input.cwd ? { cwd: input.cwd } : {}),
       resumeCursor: input.resumeCursor,
       createdAt: now,
@@ -271,7 +271,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
     }
     this.activeTurns.set(input.threadId, { turnId, controller });
 
-    // #796: a per-turn model override changes the model this session actually
+    // archive#796: a per-turn model override changes the model this session actually
     // runs on, but only `session.configured` carries a model into the read
     // model and the persisted row — without republishing it the stored model
     // silently disagrees with what ran once the session is rehydrated.
@@ -334,7 +334,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
     messages.push({ role: 'user', content: input.input });
 
     let assistantText = '';
-    // station#1182: Ollama's OpenAI-compatible chat response genuinely
+    // archive#1182: Ollama's OpenAI-compatible chat response genuinely
     // includes a `model` field describing what actually served the
     // request (ai-sdk's openai-compatible provider parses it straight off
     // the response body — `@ai-sdk/openai-compatible`'s
@@ -344,9 +344,9 @@ export class OllamaAdapter implements ProviderAdapterShape {
     // this.modelId }`) — so only this adapter treats the shared
     // `LLMStreamChunk.reportedModel` as trustworthy.
     let reportedModel: string | undefined;
-    // station#3588: the signal `AiSdkLLMProvider.createStream` (which this
+    // archive#3588: the signal `AiSdkLLMProvider.createStream` (which this
     // adapter's `OllamaLLMProvider` inherits unmodified) has propagated
-    // since station#3545, and this adapter never read: `chunk.finishReason`
+    // since archive#3545, and this adapter never read: `chunk.finishReason`
     // on the finish chunk. Before this fix, a truncated (token-ceiling-cut)
     // Ollama generation still published `finishReason: 'stop'` —
     // `publishCompletion`'s `options.finishReason ?? 'stop'` default was the
@@ -359,12 +359,12 @@ export class OllamaAdapter implements ProviderAdapterShape {
       | 'max-tokens'
       | 'other'
       | undefined;
-    // station#4197: the finish chunk's reported usage, held for
+    // archive#4197: the finish chunk's reported usage, held for
     // `publishCompletion` to translate into `token-usage.updated`. Stays
     // `undefined` when the stream reported none — absence publishes no
     // event, never an event of zeros.
     let turnUsage: LLMStreamChunk['usage'];
-    // station#3457: one id for the ONE assistant text item this turn
+    // archive#3457: one id for the ONE assistant text item this turn
     // streams, minted before the loop and reused by every chunk of it.
     // Minting inside the loop gave each token its own `itemId`, which is
     // per-chunk identity — that is what `eventId` is for.
@@ -394,13 +394,13 @@ export class OllamaAdapter implements ProviderAdapterShape {
         if (chunk.type === 'finish') {
           if (chunk.reportedModel) reportedModel = chunk.reportedModel;
           finishReason = normalizeOllamaFinishReason(chunk.finishReason);
-          // station#4197: Ollama's OpenAI-compatible endpoint reports usage
+          // archive#4197: Ollama's OpenAI-compatible endpoint reports usage
           // on every completed turn and this adapter used to discard it
-          // (the #4048 audit's "engines report, Station drops" finding).
+          // (the archive#4048 audit's "engines report, Station drops" finding).
           if (chunk.usage) turnUsage = chunk.usage;
         }
-        // station#3596 (found while implementing station#3586/#3588, folded
-        // into this branch on review: station#3586 widens the population
+        // archive#3596 (found while implementing archive#3586/#3588, folded
+        // into this branch on review: archive#3586 widens the population
         // that reaches an `error` chunk — request-time failures and
         // mid-stream ai-sdk failures both now produce one, see
         // `ai-sdk-llm-provider.ts`'s docblock — and this adapter, unlike
@@ -425,7 +425,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
         this.sessions.has(input.threadId) &&
         this.isCurrentTurn(input.threadId, turnId)
       ) {
-        // station#3466: this used to branch on `controller.signal.aborted`
+        // archive#3466: this used to branch on `controller.signal.aborted`
         // and publish `turn.completed`/`finishReason:'cancelled'` there.
         // That branch is UNREACHABLE, not merely untested: every `.abort()`
         // call site (the superseded-turn overwrite, `interruptTurn`'s
@@ -446,7 +446,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
         // a regression here would record a user-initiated cancel as a
         // FAILURE, not silence. The ordering-invariant tests above are what
         // actually catch it either way; this comment just says what the
-        // failure mode is now. station#3442: a genuine stream/runtime
+        // failure mode is now. archive#3442: a genuine stream/runtime
         // failure — not a cancellation — must publish `runtime.error`, the
         // only canonical event the session-lifecycle projector folds to
         // 'failed'. This branch used to publish `turn.completed` with
@@ -595,13 +595,13 @@ export class OllamaAdapter implements ProviderAdapterShape {
     turnId: string,
     outputText: string | undefined,
     options: {
-      // station#3588: widened from `'stop' | 'cancelled' | 'other'` to
+      // archive#3588: widened from `'stop' | 'cancelled' | 'other'` to
       // include `'tool-calls'` and `'max-tokens'` — the finish branch of
       // `sendTurn`'s loop now actually populates this from the producer's
       // `chunk.finishReason` (`normalizeOllamaFinishReason`), so values
       // beyond `'stop'` are genuinely reachable here for the first time.
       // `'cancelled'` stays declared though nothing currently supplies it
-      // (see the `station#3466` comment on the unreachable abort branch
+      // (see the `archive#3466` comment on the unreachable abort branch
       // above `sendTurn`'s catch block) — narrowing the accepted type is a
       // separate decision from fixing this issue's actual gap.
       finishReason?:
@@ -611,14 +611,14 @@ export class OllamaAdapter implements ProviderAdapterShape {
         | 'cancelled'
         | 'other';
       reportedModel?: string;
-      /** station#4197: the finish chunk's reported usage, when present. */
+      /** archive#4197: the finish chunk's reported usage, when present. */
       usage?: LLMStreamChunk['usage'];
     } = {},
   ): void {
     if (!this.isCurrentTurn(threadId, turnId)) return;
     const completedAt = new Date().toISOString();
     const metadata = reportedModelMetadata(options.reportedModel);
-    // station#4197: publish exactly what Ollama reported for THIS turn —
+    // archive#4197: publish exactly what Ollama reported for THIS turn —
     // one per-turn event (declared `per-turn` in `PROVIDER_USAGE_SCOPE`),
     // derived by `ollamaReportedUsage` (cache-read presence-gated on the
     // OpenAI-compatible wire object; see that function's docblock). No
@@ -660,7 +660,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * station#3442: the failure counterpart to `publishCompletion` — publishes
+   * archive#3442: the failure counterpart to `publishCompletion` — publishes
    * `runtime.error` (never `turn.completed`) so the session-lifecycle
    * projector derives `failed`, then restores the same adapter-internal
    * session bookkeeping (`ready`/`idle`) `publishCompletion` performs so a
@@ -701,7 +701,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
     if (!requested) {
       throw new Error('Ollama adapter requires a launchable model selector.');
     }
-    // station#1430 review, H-2: this only ever reads `match.id` — never a
+    // archive#1430 review, H-2: this only ever reads `match.id` — never a
     // capability field — but runs on every session start and model switch,
     // an unbounded-frequency hot path. `skipCapabilityEnrichment` keeps it
     // from paying for (or being stalled by) `/api/show` lookups whose result

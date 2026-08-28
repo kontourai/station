@@ -15,14 +15,14 @@
  * chokidar watcher, and that shape had two problems.
  *
  * The first is cost. A real watcher means a real `FSWatcher.close()`, which is
- * a *synchronous* 0.5-17s block of the JS thread (#956) that the suite has to
+ * a *synchronous* 0.5-17s block of the JS thread (archive#956) that the suite has to
  * await before it can delete the watched tree. Two such tests were enough to
  * push the file to a 46s timeout in the serialized lane.
  *
  * The second is worse: the coverage was not there to begin with. Because the
  * poller alone recovers every one of these cases, the tests passed whether or
  * not the watcher delivered anything — verified directly by running the old
- * file against a watch layer that arms and never delivers (#970), where all 22
+ * file against a watch layer that arms and never delivers (archive#970), where all 22
  * tests still passed. "The watcher observed an internal write" was an
  * unenforced precondition, so the deduplication it claimed to prove was never
  * actually exercised.
@@ -123,7 +123,7 @@ afterEach(async () => {
 
 describe('app config launchability', () => {
   it('publishes revisions for external add, change and remove with no watcher event at all', async () => {
-    // The #970 host, exactly: the watcher is armed and stays silent forever.
+    // The archive#970 host, exactly: the watcher is armed and stays silent forever.
     // `config/app.json` is the one watched file with a second line of defence,
     // and this is the test that says so out loud.
     const { revisions, watcher } = startLoader();
@@ -147,7 +147,7 @@ describe('app config launchability', () => {
 
   it('recovers a content change that the reconciliation cannot see', async () => {
     // The case above has two rescuers, because appearing and disappearing are
-    // both visible to the #952 reconciliation, which diffs *path existence*.
+    // both visible to the archive#952 reconciliation, which diffs *path existence*.
     // Seeding the file before the loader starts puts it in `knownConfigPaths`,
     // so reconciliation is permanently silent about it and the 250ms
     // fingerprint poller is the only mechanism left. This is the assertion that

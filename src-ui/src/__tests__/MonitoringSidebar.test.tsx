@@ -109,7 +109,7 @@ describe('MonitoringSidebar', () => {
   // all. The keyboard control is the agent-header ROW, not the card: the
   // running card contains the conversation controls, and a button role on
   // the card would flatten them to presentational in accessibility APIs
-  // (review HIGH, PR #1277 round 2).
+  //
   test('the agent-header row is the keyboard control, and Shift carries through', () => {
     const onAgentClick =
       vi.fn<(agentSlug: string, event: ActivateEvent) => void>();

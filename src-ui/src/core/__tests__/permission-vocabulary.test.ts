@@ -6,7 +6,7 @@ import {
 } from '../permission-vocabulary.js';
 
 describe('permission vocabulary', () => {
-  // station#4301. The permission list is the artifact a person is asked to
+  // archive#4301. The permission list is the artifact a person is asked to
   // make a trust decision from, so every entry in it has to be a capability
   // Station can actually name. Two failure directions, and this repo has had
   // both:
@@ -37,7 +37,7 @@ describe('permission vocabulary', () => {
     }
   });
 
-  // station#4301: the retired storage vocabulary must not come back by
+  // archive#4301: the retired storage vocabulary must not come back by
   // accident. It gated nothing — no route, middleware or bridge read either
   // name — and `storage.write` was `active`, so the product asked for consent
   // to a capability that did not exist. Reintroduce them only alongside a

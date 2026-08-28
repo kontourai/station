@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1094 review (HIGH): a stream that terminal-stops (401/403) must
- * be `.close()`d, not just dropped from `ensureOrchestrationEventStream`'s
+ * archive#1094: a stream that terminal-stops (401/403) must
+ * be `.close`d, not just dropped from `ensureOrchestrationEventStream`'s
  * dedup map — otherwise it becomes an orphan that stays strongly referenced
  * by the SDK's origin-scoped credential-change wake registry
  * (`packages/sdk/src/client/http.ts`) and silently reactivates alongside
@@ -84,7 +84,7 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
 
     ensureOrchestrationEventStream(APP_ORIGIN);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    // Let the terminal catch handler's synchronous close()+delete() run
+    // Let the terminal catch handler's synchronous close+delete run
     // before "remounting" — mirrors a real unmount/remount tick.
     await Promise.resolve();
     await Promise.resolve();
@@ -106,7 +106,7 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
 });
 
 /**
- * station#1410 (D6) — pins the wire seam itself.
+ * archive#1410 — pins the wire seam itself.
  *
  * The server hangs the provenance envelope on a SIBLING key of the SSE
  * frame's JSON (`{ event, provenance }`) and this module is the only place
@@ -182,7 +182,7 @@ describe('ensureOrchestrationEventStream — turn provenance sibling (station#14
   });
 });
 
-// UX audit V3 (live-reproduced): a session killed mid-turn showed a red
+// V3 a session killed mid-turn showed a red
 // `Failed` chip (fed by this stream) beside a transcript that just stopped and
 // no reason at all — the dock's failure banner reads the SHARED session
 // read-model, whose cached copy still said `lifecycleState: 'running'` because
@@ -290,7 +290,7 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
           ),
         ),
     );
-    // ...and a DIFFERENT origin's stream, created with no client, still uses it.
+    //.and a DIFFERENT origin's stream, created with no client, still uses it.
     ensureOrchestrationEventStream(
       'https://ensure-orchestration-unbound.example.test',
     );

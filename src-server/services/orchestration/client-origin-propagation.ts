@@ -13,7 +13,7 @@ export function withClientOrigin<T extends { clientOrigin?: ClientOrigin }>(
 }
 
 /**
- * station#4075 stage 2: the same propagation rule as {@link withClientOrigin},
+ * archive#4075 stage 2: the same propagation rule as {@link withClientOrigin},
  * generalized to a second server-authenticated fact — the dispatching or
  * steering principal. Kept as a sibling function rather than folded into
  * `withClientOrigin` so a caller that only carries one of the two facts
@@ -45,7 +45,7 @@ function hasAttribution(attribution: TurnAttribution): boolean {
 /**
  * Private exact correlation between an accepted provider turn and its event.
  *
- * station#4075 stage 2: generalized from client-origin-only to also carry
+ * archive#4075 stage 2: generalized from client-origin-only to also carry
  * the dispatching/steering `PrincipalRef` through the SAME begin/settle/apply
  * lifecycle — the mechanism the stage-2 probe verified and asked to be
  * reused rather than duplicated. Every internal map now stores a

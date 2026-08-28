@@ -1,5 +1,5 @@
 /**
- * Clipboard arrangement shared by the station#3341 call-site tests.
+ * Clipboard arrangement shared by the archive#3341 call-site tests.
  *
  * These deliberately stub `navigator.clipboard` rather than mocking the
  * `copyToClipboard` seam: a site test that mocked the seam would still pass if

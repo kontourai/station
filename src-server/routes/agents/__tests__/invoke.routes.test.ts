@@ -482,7 +482,7 @@ describe('Invoke Routes', () => {
         },
         { agentSlug: 'default', conversationId: 'conv-1' },
       );
-      // Adapters execute only on a literal `true` (station#1834: a
+      // Adapters execute only on a literal `true` (archive#1834: a
       // ToolCallDenial result is truthy).
       if (allowed === true) {
         await (options.tools[0] as { execute(): Promise<unknown> }).execute();

@@ -1,5 +1,5 @@
 /**
- * #895 wave A: shared session.configured metadata merge for the
+ * archive#895 wave A: shared session.configured metadata merge for the
  * channel-delivery stage of capability delivery
  * (docs/design/agent-engine-unification.md §5/§6.2), used by both
  * `acp-adapter.ts` (tool servers) and `claude-adapter.ts` (skills).
@@ -46,7 +46,7 @@ export function mergeCapabilityDeliveryMetadata(
         source: existingReport?.source ?? channelReport.source,
         requested: existingReport?.requested ?? channelReport.requested,
         delivered: channelReport.delivered ?? [],
-        // station#1547 AC5. Union rather than `??`, and channel-stage first
+        // archive#1547 AC5. Union rather than `??`, and channel-stage first
         // only because that is where grants are made today: a runtime grant
         // is an addition by whichever stage made it, so a later stage adding
         // one must not erase an earlier stage's — unlike `source` and

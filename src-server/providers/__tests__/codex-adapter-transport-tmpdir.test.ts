@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#1908: proves the REAL Codex `app-server` spawn call site
+ * archive#1908: proves the REAL Codex `app-server` spawn call site
  * (`spawnCodexProcess`, reached via the exported `createCodexProcess` with
  * no `processFactory` override) hands the child a Station-owned TMPDIR --
  * covering the second of the three engine binaries named in the issue

@@ -97,7 +97,7 @@ export function registerPluginInstallRoutes(
         const pluginDir = join(pluginsDir, entry.name);
         const git = await getPluginGitInfo(pluginDir, logger);
         const declared = requiredPermissionsForManifest(manifest);
-        // station#4288: EFFECTIVE grants, plus the derived binding state and
+        // archive#4288: EFFECTIVE grants, plus the derived binding state and
         // the names it withheld. `missing` therefore includes anything the
         // content change took away — and `withheld` is what tells the reader
         // that it was taken away rather than never given.
@@ -136,7 +136,7 @@ export function registerPluginInstallRoutes(
         if (error instanceof PluginGrantsUnavailableError) {
           // The grants store is one file for every plugin: listing the
           // plugins with empty grant lists would render "nothing granted" as
-          // fact (#1835). Surface the unavailable state for the whole list.
+          // fact (archive#1835). Surface the unavailable state for the whole list.
           logger.error(
             'Plugin grants store unavailable while listing plugins',
             {
@@ -288,7 +288,7 @@ export function registerPluginInstallRoutes(
           pluginsDir,
           () => ({
             // A READ route, so it hands the resolver an installer that cannot
-            // install (station#4288, review LOW). `resolvePluginDependencies`
+            // install (archive#4288, review LOW). `resolvePluginDependencies`
             // only ever calls `listAvailable`, and this closure used to carry
             // a live provider install anyway — inert today, and a loaded gun
             // for whoever adds a call to it. The refusal names the route so
@@ -310,7 +310,7 @@ export function registerPluginInstallRoutes(
           logger,
         );
         const git = await getPluginGitInfo(tempDir, logger);
-        // station#4288: the preview already staged and validated everything a
+        // archive#4288: the preview already staged and validated everything a
         // consent decision needs, and then threw it away. It now RETURNS it,
         // so the operator can be asked before `POST /install` writes anything
         // — and so the answer can be bound to these exact bytes.
@@ -372,7 +372,7 @@ export function registerPluginInstallRoutes(
   app.post('/install', validate(pluginInstallSchema), async (c) => {
     try {
       const { source, skip, consent } = getBody(c);
-      // station#4288. Refused before the source is even staged: this route is
+      // archive#4288. Refused before the source is even staged: this route is
       // how an operator admits a plugin's code into the shell's own document,
       // and the permission derivation cannot see the contributions that run
       // there (`layout`, `workspacePanes`, `entrypoint`, `agents` — eight of

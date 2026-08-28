@@ -145,7 +145,7 @@ export function ProviderSettingsView({
   // refetch follows every Test Connection (a background one can also land
   // shortly after page load). Re-seeding wholesale therefore reset config to
   // the server copy — which still had no defaultModel, because the user had not
-  // saved yet — and Save then persisted the pre-edit config (#794).
+  // saved yet — and Save then persisted the pre-edit config (archive#794).
   //
   // Selection change: seed fresh and drop the dirty set. Same selection with
   // new data: merge, so untouched fields still track the server and edited
@@ -295,7 +295,7 @@ export function ProviderSettingsView({
   function handleSelect(id: string) {
     // SplitPaneLayout fires onSelect for the already-selected row too; a
     // same-row click is not navigation and must not trip the unsaved guard
-    // (review round 2 finding).
+    // ( 2 finding).
     if (id === selectedProviderId) return;
     guardedNavigate({ type: 'connections-provider-edit', id });
   }
@@ -487,8 +487,8 @@ export function ProviderSettingsView({
           ? 'Connections / Providers / Edit'
           : 'Connections / Providers'
       }
-      // FLAGGED FOR CLEANUP (station#4463 slice 1 fix round): `breadcrumbLinks`
-      // is looked up per SEGMENT (`seg.toLowerCase()` against one word from
+      // FLAGGED FOR CLEANUP (archive#4463): `breadcrumbLinks`
+      // is looked up per SEGMENT (`seg.toLowerCase` against one word from
       // the split trail), so this compound key ('connections / providers')
       // can never match any single segment and this handler is dead. Harmless
       // today — this view's live route always renders inside
@@ -522,17 +522,17 @@ export function ProviderSettingsView({
       listFilteredEmptyNoun="model connections"
       collectionEmpty={llmEmbeddingProviders.length === 0}
       searchPlaceholder="Search model connections…"
-      // station#4463 slice 2 fix round (H2a): the list's own genuinely-empty
+      // archive#4463: the list's own genuinely-empty
       // title, for when there are no connections at all (no filter involved
-      // — `searchValue` above routes a filtered-to-nothing search to
+      // `searchValue` above routes a filtered-to-nothing search to
       // FilteredEmpty instead of this). No listEmptyDescription: the detail
       // panel's overview (quickstart actions + provider stack) is the one
-      // owner of "what to do about it" (the H2b pattern below), so the list
+      // owner of "what to do about it" (the pattern below), so the list
       // states only the fact, not the fix.
       //
       // No emptyTitle/emptyDescription: `emptyContent` below is always
       // supplied, so SplitPaneLayout never reaches its own default Empty —
-      // these two props would be dead text (M2, delta review round 3).
+      // these two props would be dead text.
       listEmptyTitle="No model connections yet"
       emptyContent={
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -552,7 +552,7 @@ export function ProviderSettingsView({
             structurally redundant today — named explicitly so the two
             states being suppressed stay legible rather than implied by
             set inclusion a future reader has to re-derive.
-          */}
+*/}
           {llmEmbeddingProviders.length > 0 && items.length > 0 && (
             <Empty
               variant="compact"
@@ -714,7 +714,7 @@ export function ProviderSettingsView({
         RT-17: provider delete was a single unconfirmed click that removed the
         connection and its saved API key from disk immediately, while agent
         delete has always confirmed. Same shared modal, same danger variant.
-      */}
+*/}
       <ConfirmModal
         isOpen={showDeleteModal && !!selectedProviderId && !isNew}
         title="Delete provider"

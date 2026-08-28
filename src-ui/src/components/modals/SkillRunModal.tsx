@@ -33,7 +33,7 @@ export function SkillRunModal({
   const [agentSlug, setAgentSlug] = useState(defaultAgentSlug);
 
   // Entered values belong to THIS test of THIS skill: closing the modal or
-  // switching skills discards them (review M3 — they used to survive both).
+  // switching skills discards them (review — they used to survive both).
   // `defaultAgentSlug` is a string, so the effect re-runs only when the
   // default actually changes, not on a parent re-render.
   // biome-ignore lint/correctness/useExhaustiveDependencies: skill.name is the intentional reset signal (same idiom as ProviderSettingsView's selection reset).
@@ -82,7 +82,7 @@ export function SkillRunModal({
                     id={`skill-variable-${v.name}`}
                     className="editor-input"
                     // The placeholder IS the value a cleared field will use
-                    // (delta review): clearing a field falls back to its
+                    // clearing a field falls back to its
                     // declared default, so the preview and this hint agree.
                     placeholder={
                       v.default !== undefined ? `default: ${v.default}` : v.name

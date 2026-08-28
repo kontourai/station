@@ -28,7 +28,7 @@ import {
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 
 /**
- * station#4470 review round (H2/M1): removing the active connection is
+ * archive#4470: removing the active connection is
  * destructive and, unlike a rejected credential, this device has no way
  * back to the SAME host without re-pairing from scratch — so it takes two
  * deliberate taps, the same MECHANISM `PairedDeviceList.tsx`'s inline revoke
@@ -40,7 +40,7 @@ import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 const REMOVE_CONFIRM_TIMEOUT_MS = 5_000;
 
 /**
- * station#4470 micro-round (L1): a fast double-tap on the same pixel (the
+ * archive#4470: a fast double-tap on the same pixel (the
  * "Remove" button, before the arm/confirm swap has visually settled) must
  * arm on the first tap and land on the SECOND control ("Confirm") rather
  * than removing in one gesture — the swap is a genuine two-step confirm
@@ -85,9 +85,9 @@ export function ConnectionBannerSource() {
   // `reason` further down).
   const [removeArmed, setRemoveArmed] = useState(false);
   const disarmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // station#4470 micro-round (M2): a destructive confirm has to stay VISIBLE
+  // archive#4470: a destructive confirm has to stay VISIBLE
   // to be cancellable — a two-step control armed from a COLLAPSED banner
-  // (station#4470 H2 kept the collapsed card's actions live, not hidden)
+  // (archive#4470 kept the collapsed card's actions live, not hidden)
   // would otherwise sit one tap from removing a connection behind a 52px
   // bar with no way to see, let alone cancel, the pending confirm. Arming
   // force-expands the card if it was collapsed; this ref remembers whether
@@ -95,14 +95,14 @@ export function ConnectionBannerSource() {
   // only when arming is what changed it — a card the reader expanded
   // themselves stays expanded.
   const forcedExpandRef = useRef(false);
-  // station#4470 micro-round (L1): timestamp of the arming tap, so a
+  // archive#4470: timestamp of the arming tap, so a
   // near-simultaneous second tap on the same screen location — now hitting
   // "Confirm" where "Remove" used to be — can be told apart from a
   // deliberate, separate confirming tap. See ARM_DEBOUNCE_MS.
   const armedAtRef = useRef(0);
-  // station#4470 delta review (L2): hoisted so every disarm path — the
+  // archive#4470: hoisted so every disarm path — the
   // reason-change effect below, the armed actions' own onClick/onBlur, and
-  // the collapse-chevron interaction (M1, further down) — shares ONE
+  // the collapse-chevron interaction (further down) — shares ONE
   // definition instead of each restating "clear the timer, restore
   // collapsed if we forced it, clear armed" and drifting apart. Stable
   // across renders (only refs and the `setRemoveArmed` dispatch inside),
@@ -128,7 +128,7 @@ export function ConnectionBannerSource() {
     },
     [],
   );
-  // station#4512 review (M2): the hook now decides its own tick from
+  // archive#4512: the hook now decides its own tick from
   // whether a pending record exists, not from this component's `status`.
   const pendingApproval = usePendingPairingApproval(endpoint);
 
@@ -153,7 +153,7 @@ export function ConnectionBannerSource() {
     isLoopbackEndpoint(endpoint) && !isDesktop && failureStreak >= 3;
 
   /**
-   * station#3297 part 3 — a banner requires a decision.
+   * archive#3297 — a banner requires a decision.
    *
    * The previous rule was "every reachability failure banners, once it has
    * missed three probes". That put a paragraph of prose with an address in it
@@ -163,7 +163,7 @@ export function ConnectionBannerSource() {
    * as loud as it needs to be and costs no vertical space.
    *
    * The 3-probe streak has NOT been deleted, only narrowed to the one
-   * reachability case that is a decision (above): #2630's finding that load is
+   * reachability case that is a decision (above): archive#2630's finding that load is
    * this application's normal operating condition still holds.
    */
   const showDecision =
@@ -226,10 +226,10 @@ export function ConnectionBannerSource() {
       // stay non-dismissible for the original reason: dismissing one hides
       // the action needed to resume automatic reconnect.
       dismissible: !blocked,
-      // station#4470 delta review (M1): the collapse chevron is gated only
+      // archive#4470: the collapse chevron is gated only
       // on the exit animation (BannerHost.tsx), never on this banner's own
       // armed state — a reader can arm "Remove", then tap the chevron, and
-      // land the SAME H2 overflow this whole feature exists to avoid
+      // land the SAME overflow this whole feature exists to avoid
       // (message clipped to 0px, Cancel/dismiss pushed outside the clipped
       // card) for up to REMOVE_CONFIRM_TIMEOUT_MS. Collapsing while armed
       // now disarms — a reader collapsing a pending destructive confirm is
@@ -239,7 +239,7 @@ export function ConnectionBannerSource() {
       actions:
         reason === 'authentication-failed'
           ? [
-              // station#3297: the remedy, first. A rejected credential cannot
+              // archive#3297: the remedy, first. A rejected credential cannot
               // be rechecked into working — "Try now" was the only action
               // offered here, and it is the one thing that provably does not
               // help. It stays as the secondary, because a host that has since
@@ -257,14 +257,14 @@ export function ConnectionBannerSource() {
               },
             ]
           : reason === 'identity-mismatch'
-            ? // station#4470: the `detail` copy above this (from
+            ? // archive#4470: the `detail` copy above this (from
               // `connectionFailureCopy`) already tells the reader "Pair
               // again, or remove this connection" — the CTA used to offer
               // only "Try now", which cannot recover a host whose identity
               // has genuinely changed (a reset/reinstalled host, or a
               // different machine now answering at this address).
               //
-              // Review round (H2): a third action ("Try now") does not fit
+              // A third action ("Try now") does not fit
               // this banner collapsed at a phone viewport — measured with a
               // real Chromium page at 390px, three non-shrinkable
               // `.banner-host__action`s in the collapsed 52px bar clip the
@@ -295,7 +295,7 @@ export function ConnectionBannerSource() {
               // banner's own message, which already names what is being
               // removed.
               //
-              // Micro-round (M2): an armed confirm has to stay reachable
+              // An armed confirm has to stay reachable
               // AND cancellable, which a relabeled single button sitting
               // inside a possibly-collapsed 52px bar was neither — arming
               // force-expands the card (forcedExpandRef, above) so the
@@ -305,10 +305,10 @@ export function ConnectionBannerSource() {
               // `confirming ? <Confirm/Cancel> : <normal actions>` shape.
               // Three actions ("Pair again"/"Confirm"/"Cancel") measured
               // 262.6px of content in the 345px the expanded row has at
-              // 390px (31% headroom) — unlike H2's collapsed 52px bar,
+              // 390px (31% headroom) — unlike collapsed 52px bar,
               // this fits comfortably. That measurement is only ever taken
               // EXPANDED: arming force-expands a collapsed card, and
-              // delta review (M1) closed the other way in — collapsing
+              // closed the other way in — collapsing
               // the chevron while armed now disarms (`onCollapse: disarm`
               // above) instead of leaving the three-action row reachable
               // behind the collapsed 52px bar, so this row is never
@@ -352,7 +352,7 @@ export function ConnectionBannerSource() {
                     ariaLabel: 'Confirm removing this connection',
                     variant: 'danger' as const,
                     onClick: () => {
-                      // L1: a fast double-tap on the same pixel must arm,
+                      // a fast double-tap on the same pixel must arm,
                       // not arm-then-remove in one gesture.
                       if (Date.now() - armedAtRef.current < ARM_DEBOUNCE_MS) {
                         return;

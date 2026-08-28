@@ -74,11 +74,11 @@ import {
  * `station-control-agent-tools.ts`/`station-control-catalog-tools.ts`.
  * `apiBase` is resolved once at module load (station-control is a
  * long-lived MCP server process — see the matching note in
- * `station-control-agent-tools.ts` and #167 plan Risk 3).
+ * `station-control-agent-tools.ts` and archive#167 plan Risk 3).
  *
  * `system_status`, `list_models`, `navigate_to`, `send_message`,
- * `get_config`, `update_config` are untouched — none are in the #167
- * audit's triplication table (config is excluded per `#175`; `navigate_to`/
+ * `get_config`, `update_config` are untouched — none are in the archive#167
+ * audit's triplication table (config is excluded per `archive#175`; `navigate_to`/
  * `send_message` are station-control-only).
  *
  * `s201-knowledge-retrieval` Wave 4: `reindex_knowledge`/`migrate_knowledge`
@@ -93,7 +93,7 @@ import {
  * `POST /api/knowledge/migrate`) rather than re-implementing the HTTP call
  * inline, per this module family's DRY-layer contract.
  */
-// station#1195: resolved fresh on every call (see station-control-shared.ts's
+// archive#1195: resolved fresh on every call (see station-control-shared.ts's
 // `api()` doc comment) -- a module-load-time freeze here would be wrong once
 // these same tool registrations are reachable from Station's own long-lived
 // process (station-control-mcp-route.ts), not only a freshly-spawned stdio
@@ -146,7 +146,7 @@ const sshEnvironmentMcpSchema = fromJsonSchema<
 >(zodToJsonSchema(sshEnvironmentCreateSchema) as JsonSchemaType);
 
 /**
- * station#1136: environment MANAGEMENT verbs (create/get/connect/
+ * archive#1136: environment MANAGEMENT verbs (create/get/connect/
  * disconnect/remove), reusing the exact HTTP surface and
  * `SshEnvironmentService` the Connections hub UI drives
  * (`routes/operations/ssh-environments.ts`) — no parallel persistence or
@@ -168,7 +168,7 @@ const sshEnvironmentMcpSchema = fromJsonSchema<
  * pre-verification profile id would silently collide two different
  * concepts under one name across this same tool surface.
  *
- * Authorization posture (station#1136 AC4 — answered explicitly, not left
+ * Authorization posture (archive#1136 AC4 — answered explicitly, not left
  * silent): every `station-control-*-tools.ts` call, including every
  * existing *mutating* tool already in this file (`add_job`, `update_config`,
  * `delegate_task`'s downstream chat POST, `respond_to_task_request`, ...),
@@ -205,7 +205,7 @@ function sshConnectPollTimeoutMs(): number {
 }
 
 /**
- * station#1136 AC2 (the interesting constraint): `POST /:id/connect` awaits
+ * archive#1136 AC2 (the interesting constraint): `POST /:id/connect` awaits
  * `SshEnvironmentService#connect` to full completion — success, error, or
  * OpenSSH's own ~120s master-connection timeout
  * (`openssh-environment-adapter.ts`'s `waitForMaster`) — before the HTTP
@@ -605,7 +605,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       params.set('limit', String(limit ?? 500));
       // /monitoring/events, NOT a second reader under /api/insights: this
       // handler already applies the per-user filter and the tenant predicate
-      // that these rows require (station#3076). A parallel export would have
+      // that these rows require (archive#3076). A parallel export would have
       // to re-derive both authorization layers.
       params.set(
         'start',
@@ -620,7 +620,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
 
   server.tool(
     'navigate_to',
-    // station#3567 second fix round FIX 4: qualified rather than left
+    // archive#3567 second fix round FIX 4: qualified rather than left
     // unconditional — in a hosted multi-tenant deployment this command is
     // always refused (no destination identity to route it to one tenant).
     // Check the returned result: {success: false} means it did not navigate.
@@ -734,7 +734,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         ...(_delegation ? { delegation: _delegation } : {}),
         ...(_userId ? { userId: _userId } : {}),
       });
-      // station#3567 fix round FIX 1: `navigateTo`'s own result — `{success:
+      // archive#3567 fix round FIX 1: `navigateTo`'s own result — `{success:
       // true}` or `{success: false, error}` — was previously discarded, so a
       // hosted deployment (where `/events` denies UI_NAVIGATE by design,
       // since the payload carries no destination identity to route it to
@@ -786,8 +786,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
   server.toolWithSchema(
     'create_ssh_environment',
     "Register a new SSH-managed Station environment for later delegation — stores an OpenSSH-alias-backed profile via SshEnvironmentService without connecting it or exchanging any credentials. Returns the profile's `id`, which is NOT the verified `environmentId` used by list_delegation_environments/delegate_task (that is only assigned once connect_ssh_environment successfully verifies the remote Station). `hostAlias` is an OpenSSH alias, hostname, or IP; registering it stores a profile and nothing more. It does NOT make the host reachable: connect_ssh_environment verifies the presented host key against the operator's own ~/.ssh/known_hosts and fails closed on a host they have never confirmed, so a profile for an arbitrary host cannot become an outbound session without the operator having recorded that host key themselves. Mirrors POST /api/environments/ssh.",
-    // station#1136 constraint 4: reused as-is (not re-declared) so adding
-    // #1133's `launchMode` field there becomes a one-line change here too —
+    // archive#1136 constraint 4: reused as-is (not re-declared) so adding
+    // archive#1133's `launchMode` field there becomes a one-line change here too —
     // no second shape to keep in sync. Do not add `launchMode` ahead of
     // that landing; this slice must not depend on a sibling in-flight
     // worktree.
@@ -947,7 +947,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         delegation: _delegation,
         userId: _userId,
       });
-      // station#3567 fix round FIX 1: see the matching comment on
+      // archive#3567 fix round FIX 1: see the matching comment on
       // `send_message` above — report `navigateTo`'s real outcome instead of
       // assuming delivery.
       const navigation = input.navigate

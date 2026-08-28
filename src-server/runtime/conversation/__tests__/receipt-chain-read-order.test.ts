@@ -1,5 +1,5 @@
 /**
- * station#1398 security review round 2, M-2 — the anchor/log READ ORDER.
+ * archive#1398 security review round 2, M-2 — the anchor/log READ ORDER.
  *
  * `readChainedReceipts` performs two independent reads against a file another
  * turn may be appending to. Which one goes first decides what a concurrent

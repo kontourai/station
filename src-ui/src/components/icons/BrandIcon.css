@@ -33,7 +33,7 @@
   font-size: 70%;
 }
 .brand-icon__initials {
-  /* station#1424 review fix (round 3 NEW-4): a bare percentage font-size
+  /* archive#1424: a bare percentage font-size
      resolves against the INHERITED ambient text size, not this element's
      own icon box — the original `font-size: 42%` never actually scaled
      with the icon's `size` prop (a 48px "large" icon and a 20px avatar
@@ -61,7 +61,7 @@
 .brand-icon--opencode {
   color: var(--text-primary);
 }
-/* Deterministic identicon fallback (station#1424): a seed-derived hue swatch
+/* Deterministic identicon fallback (archive#1424): a seed-derived hue swatch
    for agents with no uploaded artwork and no recognized brand mark, so two
    different unbranded agents read as visually distinct rather than the same
    flat --bg-tertiary tile. Saturation/lightness are theme-scoped tokens

@@ -1,5 +1,5 @@
 /**
- * #3654 — AWS SDK errors classified into the vocabulary every other provider
+ * archive#3654 — AWS SDK errors classified into the vocabulary every other provider
  * already speaks, and stripped of the identity AWS echoes back.
  *
  * The shared `classifyCatalogFailure` reads `error.status`/`error.statusCode`,

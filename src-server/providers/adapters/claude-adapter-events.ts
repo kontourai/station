@@ -27,7 +27,7 @@ function tokenCount(value: unknown): number | undefined {
  * Claude's cache accounting, mapped to the canonical field names. Every
  * field is emitted only when the engine reported it: an absent cache figure
  * means "not reported", and turning that into `0` would claim a measurement
- * (station#3201).
+ * (archive#3201).
  */
 function claudeCacheUsageFields(usage: unknown): {
   cacheReadTokens?: number;
@@ -77,7 +77,7 @@ export interface ClaudeMessageState {
   dispatchedTurnId?: string;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   /**
-   * station#1182: the model reported by the most recent top-level
+   * archive#1182: the model reported by the most recent top-level
    * `assistant` SDK message's `message.model` (the actual Anthropic API
    * response field, not the `init` message's requested-model echo). Reset
    * to `undefined` at the start of each turn (`claude-adapter.ts`'s
@@ -98,7 +98,7 @@ export interface ClaudeMessageState {
    */
   activeToolCalls?: Map<string, string>;
   /**
-   * station#1827: set when a `result` message classified `terminal`
+   * archive#1827: set when a `result` message classified `terminal`
    * (`classifyClaudeResultOutcome`) has already been published as a
    * `runtime.error` for this record. The SDK re-throws the SAME failure a
    * moment later as a generic wrapped Error once the underlying `claude`
@@ -109,7 +109,7 @@ export interface ClaudeMessageState {
    */
   terminalResultObserved?: boolean;
   /**
-   * station#3457: the assistant message currently streaming content blocks,
+   * archive#3457: the assistant message currently streaming content blocks,
    * taken from the last `message_start` stream event's `message.id` (the
    * Anthropic message id, globally unique). Content-block `index` is only
    * unique WITHIN one message — index 0 recurs in every assistant message a
@@ -130,7 +130,7 @@ export interface ClaudeMessageState {
  * The value this replaced, `${session_id}:${message.uuid}`, was per-CHUNK:
  * each `stream_event` is its own SDK message with its own `uuid`, so no two
  * deltas of the same block ever shared an id and any consumer grouping by
- * `itemId` saw one item per token (station#3457).
+ * `itemId` saw one item per token (archive#3457).
  */
 function claudeContentItemId(
   record: ClaudeMessageState,
@@ -497,7 +497,7 @@ export function mapClaudeSdkMessage({
       // streaming-input session, so the LATEST one is current occupancy —
       // which is why the fold keeps the latest rather than summing.
       ...claudeContextOccupancyField(message.usage),
-      // station#1299 item 4: Claude reports what the query cost, so carry
+      // archive#1299 item 4: Claude reports what the query cost, so carry
       // it verbatim rather than recomputing it from tokens against a local
       // price table. NOTE the scope mismatch on this one message — the
       // usage fields above are per-turn, while `total_cost_usd` is the
@@ -513,7 +513,7 @@ export function mapClaudeSdkMessage({
         ? { reportedCostUsd: message.total_cost_usd }
         : {}),
     });
-    // station#1827: `is_error` is the SDK's own structured protocol flag on
+    // archive#1827: `is_error` is the SDK's own structured protocol flag on
     // this message — set from its message shape, never from parsing the
     // engine's English (see `classifyClaudeResultOutcome`'s doc comment).
     // Folding a `terminal` result into `turn.completed` (as this branch
@@ -576,7 +576,7 @@ export function mapClaudeSdkMessage({
           message.type === 'result' && 'result' in message
             ? message.result
             : undefined,
-        // station#1182: `record.lastReportedModel` is the SDK's own
+        // archive#1182: `record.lastReportedModel` is the SDK's own
         // `assistant` message's `message.model` (the Anthropic Messages API
         // response's resolved model, e.g. an alias like the "fable" family
         // resolves to its underlying snapshot) — a structured API field,
@@ -601,7 +601,7 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'assistant') {
-    // station#1182: capture the runtime-reported model off every top-level
+    // archive#1182: capture the runtime-reported model off every top-level
     // assistant message (the `init` system message's `model` merely echoes
     // what Station requested — see effective-model-metadata.ts's docblock
     // and the incident this ticket traces — but each assistant message's
@@ -803,7 +803,7 @@ const CLAUDE_TOOL_RESULT_OUTPUT_LIMIT = 2000;
 
 /**
  * The receipt for the head-slice {@link summarizeClaudeToolResult} performs,
- * or undefined when nothing was dropped (station#4237).
+ * or undefined when nothing was dropped (archive#4237).
  *
  * Without this, a consumer of `tool.completed` cannot tell a complete output
  * from the first 2000 characters of a long one — and the command-evidence

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3658: `MonitoringContext.fetchHistoricalEvents` caught a failed
+ * archive#3658: `MonitoringContext.fetchHistoricalEvents` caught a failed
  * `/monitoring/events` read, logged it, and dropped it — so a Station whose
  * event read had just been REFUSED rendered "No events yet · Waiting for
  * agent activity…", a confident claim about that Station's activity made on
@@ -45,7 +45,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
-  // Keep the real module (see MonitoringView.test.tsx's fix-round L-4 note):
+  // Keep the real module (see MonitoringView.test.tsx's fix-round note):
   // `StationHttpError` is imported as a runtime value elsewhere in this tree,
   // and this file deliberately throws one.
   const actual =

@@ -19,7 +19,7 @@ import { Button } from '../Button';
 /**
  * The sessions list's "Delegated work" intro card — the single
  * highest-priority delegated task, with its own inline follow-up composer
- * and controls. Split out of `SessionsView` per station#1204.
+ * and controls. Split out of `SessionsView` per archive#1204.
  */
 export function DelegatedTaskCoordinator({
   apiBase,
@@ -55,9 +55,9 @@ export function DelegatedTaskCoordinator({
     onSuccess: onTaskChanged,
   });
 
-  // station#3139: this card rendered `lifecycleState` verbatim, so the wire
+  // archive#3139: this card rendered `lifecycleState` verbatim, so the wire
   // identifier (`needs_input`, `review_pending`) was the status a user read.
-  // station#3227 A1: routing through `sessionLifecycleLabel` fixed the
+  // archive#3227 A1: routing through `sessionLifecycleLabel` fixed the
   // vocabulary but not the FACT — that helper knows nothing about
   // `hasActiveTurn`, `status: 'closed'` or answerability, so this card could
   // say "Running" for a task the Sessions list had already filed under
@@ -66,7 +66,7 @@ export function DelegatedTaskCoordinator({
   const state = sessionStatusWord(task);
   const isStreaming = isStreamingSession(task);
   const isTerminal = isTerminalSession(task);
-  // station#1781: `needsReview` is the raw fold, and since station#1791 it
+  // archive#1781: `needsReview` is the raw fold, and since archive#1791 it
   // stays true forever for a session nothing can answer. `liveReview` is the
   // one that may drive an affordance; `needsReview` still drives the copy,
   // because the request IS still open and saying otherwise would be the
@@ -114,7 +114,7 @@ export function DelegatedTaskCoordinator({
             named read as its bare task id here. `sessionTitle` is the one
             name a session is listed under, and the coordinator heading is
             now that same name.
-          */}
+*/}
           <h3 id="delegated-task-coordinator-title">{sessionTitle(task)}</h3>
         </div>
         <span className="sessions-coordinator__count">
@@ -153,7 +153,7 @@ export function DelegatedTaskCoordinator({
         </p>
       )}
 
-      {/* station#1781: gated on `liveReview`, not `needsReview`. A request
+      {/* archive#1781: gated on `liveReview`, not `needsReview`. A request
           nothing can answer no longer owns the response affordance, so
           suppressing the composer for it left the card with no way to act at
           all. Sending still round-trips and fails loudly server-side —
@@ -197,7 +197,7 @@ export function DelegatedTaskCoordinator({
             {stopTask.isPending ? 'Stopping…' : 'Stop active task'}
           </Button>
         )}
-        {/* station#1781 AC2: navigation stays available for an unanswerable
+        {/* archive#1781: navigation stays available for an unanswerable
             task — the annotation replaces the action, not the route to it. */}
         {!liveReview && (
           <Button variant="secondary" onClick={() => onOpen(task.threadId)}>

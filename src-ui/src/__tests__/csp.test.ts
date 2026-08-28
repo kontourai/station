@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe('resolveCspNonce', () => {
   test('ignores a page global claiming to hold the shell nonce', () => {
-    // station#4287: the HTTP shell no longer publishes its per-response nonce
+    // archive#4287: the HTTP shell no longer publishes its per-response nonce
     // to page code, and this resolver no longer reads such a global — a value
     // any plugin bundle could also read is not a nonce this shell will reuse.
     (

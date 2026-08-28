@@ -61,7 +61,7 @@ export const acpConnectionSchema = z.object({
     .optional(),
 });
 
-// App-home profiles (#896, docs/design/agent-engine-unification.md §6.1's
+// App-home profiles (archive#896, docs/design/agent-engine-unification.md §6.1's
 // overlay model). `includeCredentials` is the explicit opt-in checkbox —
 // absent/false ⇒ credentials are never copied (never inferred).
 export const appHomeImportRequestSchema = z.object({
@@ -198,7 +198,7 @@ export const integrationToolsApplySchema = z.object({
 // Agent tools
 export const addToolSchema = z.object({ toolId: z.string().min(1) });
 export const updateAllowedSchema = z.object({ allowed: z.array(z.string()) });
-// Unattended exact-tool grants (station#2037). The HTTP boundary rejects blank
+// Unattended exact-tool grants (archive#2037). The HTTP boundary rejects blank
 // values early; the store repeats the same validation for direct callers.
 export const unattendedGrantMutationSchema = z.object({
   principalKey: z.string().trim().min(1),
@@ -212,7 +212,7 @@ export const modelSelectorSchema = z
   .min(1)
   .max(MODEL_SELECTOR_MAX_LENGTH);
 
-// station#2807: the turn-starting text fields on the invoke routes derive
+// archive#2807: the turn-starting text fields on the invoke routes derive
 // their size bound from the same declared prompt maximum as chatSchema below.
 // Tool-carried text (a tool part's `input`/`output`) is sized against its own
 // declared budget, CHAT_INPUT_TOOL_PART_MAX_CHARS, inside chatSchema — two
@@ -246,7 +246,7 @@ export const globalInvokeSchema = z.object({
 
 // Chat
 export const chatSchema = z.object({
-  // station#2807: refuse an oversized prompt at the validate() boundary,
+  // archive#2807: refuse an oversized prompt at the validate() boundary,
   // before any provider/engine work. The message names the actual size AND
   // the limit so a client can compute the overage without guessing. Sizing
   // handles every accepted shape and FAILS CLOSED on unrecognized ones (see
@@ -274,7 +274,7 @@ export const chatSchema = z.object({
       });
       return;
     }
-    // station#2830: tool-carried text gets its own budget, not the authored
+    // archive#2830: tool-carried text gets its own budget, not the authored
     // limit — machine-generated payloads are legitimately larger than a
     // hand-typed prompt. Same fail-closed traversal, second declared
     // constant; without this check a recognized tool part measured zero.
@@ -288,7 +288,7 @@ export const chatSchema = z.object({
       });
       return;
     }
-    // station#2828: the size guard above deliberately excludes file-part
+    // archive#2828: the size guard above deliberately excludes file-part
     // `url`s, which left inline attachments on THIS route bounded only by the
     // 22 MiB whole-body cap — a 20 MB base64 data URL measured 0 characters
     // and was admitted. The orchestration seam already applied these limits;
@@ -421,7 +421,7 @@ export const connectionSchema = z
 // Conversation context
 export const contextActionSchema = z.object({
   action: z.string().min(1),
-  // station#2830 finding: `add-system-message` writes this into the
+  // archive#2830 finding: `add-system-message` writes this into the
   // transcript as a user message (`[SYSTEM_EVENT] …`), so the next turn
   // carries it as model-facing text — an unbounded `content` here was an
   // entry path into agent turns that bypassed every chat bound. Same

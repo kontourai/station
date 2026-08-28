@@ -112,7 +112,7 @@ interface UseChatInputOptions {
   onAuthError?: () => void;
   onOpenNewChat?: () => void;
   /**
-   * station#1294 review (SHOULD-FIX-4): whether the transcript this
+   * archive#1294: whether the transcript this
    * session's send-failure notice would render into is actually visible
    * right now — e.g. `ChatDock`'s `isDockOpen`. Defaults to `true` for
    * callers (like `ACPChatPanel`) that only ever mount while their own
@@ -241,18 +241,18 @@ export function useChatInput({
         onAuthError?.();
         return;
       }
-      // station#1294: a send failure renders its own transcript notice —
-      // the ephemeral "Retry" strip (station#1292) for a live session, or
+      // archive#1294: a send failure renders its own transcript notice —
+      // the ephemeral "Retry" strip (archive#1292) for a live session, or
       // the durable `[CHAT_ERROR]` block on reload — as the single owner of
       // this failure's presentation. Showing this toast on top of that
-      // notice was the exact "same failure text twice" overlap #1294
+      // notice was the exact "same failure text twice" overlap archive#1294
       // reported. Only fall back to the toast when that notice has no
       // visible surface to render into — the toast is then the only signal
       // left, so it must not be suppressed.
       const hasSessionContext = !!(
         sessionId && activeChatsStore.getSnapshot()[sessionId]
       );
-      // station#1294 review (SHOULD-FIX-4): `hasSessionContext` alone
+      // archive#1294: `hasSessionContext` alone
       // checks store *existence*, not visibility — a send failing while
       // the dock is collapsed still has a chat state to write the notice
       // into, but the notice renders nowhere on screen, and nothing else
@@ -276,7 +276,7 @@ export function useChatInput({
   // `agentDefaultModel` when `requestedModel === null` — but that is exactly
   // the case where no override is sent and the engine keeps the model it
   // already retained, which the client is holding in `activeChatState.model`.
-  // It displayed the default while running the retained one (station#3149).
+  // It displayed the default while running the retained one (archive#3149).
   //
   // When nothing is requested and nothing has been reported, there is no
   // model to name; `undefined` lets the chip say so instead of inventing one.
@@ -401,7 +401,7 @@ export function useChatInput({
       options?: {
         /**
          * Ambient, model-facing context (timezone, geolocation, …) delivered
-         * out-of-band (#685) — never spliced into the sent/persisted text.
+         * out-of-band (archive#685) — never spliced into the sent/persisted text.
          */
         ambientContext?: string;
       },
@@ -478,7 +478,7 @@ export function useChatInput({
       );
       return;
     }
-    // UX audit T1: the notice used to be written BEFORE anything was known —
+    // the notice used to be written BEFORE anything was known —
     // "User canceled the ongoing request" was posted whether the interrupt
     // succeeded, was refused, or never answered, and it described the user's
     // intent rather than the engine's outcome. Now it renders the outcome the
@@ -728,7 +728,7 @@ export function useChatInput({
     });
     // Resetting is choosing the default: forget the remembered choice so
     // the next New Chat opens on the default too, not the one the user
-    // just walked away from. Two exceptions (review findings):
+    // just walked away from. Two exceptions:
     // - Station-engine sessions never touch this memory (same live-state
     //   gate as the select path).
     // - When the session's default IS the remembered choice
@@ -751,7 +751,7 @@ export function useChatInput({
     // be. Clearing sends no override, so the engine keeps whatever model it
     // retained — which is frequently not `defaultModel`. The old wording
     // announced "Model reset to agent default <X>" while the session kept
-    // running <Y>, printing the falsehood into the transcript (station#3149).
+    // running <Y>, printing the falsehood into the transcript (archive#3149).
     addEphemeralMessage(sessionId, {
       role: 'system',
       content:

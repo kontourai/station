@@ -2,7 +2,7 @@ import type { RuntimeEventElisionReason } from '@kontourai/station-contracts/orc
 
 /**
  * How much of a bounded history read came back reduced, split by which budget
- * did it (station#3386).
+ * did it (archive#3386).
  *
  * Two surfaces render this — the chat dock and the sessions detail — off the
  * same `elided` markers, so the counting and the wording live here rather than

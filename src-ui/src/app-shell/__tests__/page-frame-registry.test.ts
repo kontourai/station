@@ -169,7 +169,7 @@ describe('page-frame registry', () => {
     }
   });
 
-  // station#4463 slice 1 (2026-08-26 shell audit): a top-level nav page gets
+  // archive#4463: a top-level nav page gets
   // NO eyebrow. Every one of these routes IS the surface the sidebar links
   // to (not reached under a parent), so a static eyebrow here could only ever
   // restate the route's own title — the retired `GUIDANCE`-over-**Guidance**

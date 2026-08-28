@@ -2,7 +2,7 @@
  * Pill geometry follows the existing chip precedents (`.sessions-detail__meta
  * span`, `.sessions-coordinator__count`): mono, small, bordered, tinted. The
  * one deliberate difference is that this pill is FULLY rounded and carries the
- * accent colour, because station#3027's whole point was that the project stops
+ * accent colour, because archive#3027's whole point was that the project stops
  * being a heading and has to be findable at a glance on a dense row.
  */
 .session-project-pill {

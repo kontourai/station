@@ -309,8 +309,8 @@ describe('ActiveWorkContextFrame', () => {
   });
 
   /**
-   * station#1206 gap 3. This sheet hand-rolled the same
-   * `if (returnFocus?.isConnected) returnFocus.focus()` as the shared frame and
+   * archive#1206 gap 3. This sheet hand-rolled the same
+   * `if (returnFocus?.isConnected) returnFocus.focus` as the shared frame and
    * imports only `ResponsiveDialogCloseButton`, so #1187's ancestor fallback
    * never reached it — a trigger removed while the sheet is open still dropped
    * focus to `<body>`. It now goes through `@kontourai/station-shared/return-focus`.

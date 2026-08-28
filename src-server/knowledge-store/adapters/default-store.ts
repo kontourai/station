@@ -16,7 +16,7 @@
  * **3.3.0** (Addendum H / §8.1 / non-MISSING_EVIDENCE error codes) — ahead of the `^2.2.0`
  * sidecar-tooling pin in this repo's `package.json`, which this adapter imports nothing
  * from and is therefore unaffected by. See `docs/design/knowledge-foundation.md`'s
- * "Contract version" note and #218 for the tracked upgrade of the sidecar pin.
+ * "Contract version" note and archive#218 for the tracked upgrade of the sidecar pin.
  */
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';

@@ -94,8 +94,8 @@ describe('useOnboardingSetupState', () => {
 
     expect(result.current.visible).toBe(false);
     expect(result.current.isBlockingFullScreen).toBe(false);
-    // Dismissal now persists through the device-settings store (station#
-    // settings-revamp slice 2) rather than its own raw localStorage key.
+    // Dismissal now persists through the device-settings store (archive#
+    // settings-revamp) rather than its own raw localStorage key.
     expect(deviceSettingsStore.get('onboardingSetupDismissed')).toBe(true);
   });
 
@@ -167,7 +167,7 @@ describe('useOnboardingSetupState', () => {
     expect(result.current.visible).toBe(false);
   });
 
-  // station#settings-revamp slice2 review finding 5: `dismissedState` used
+  // archive#settings-revamp: `dismissedState` used
   // to be copied out of the device store once at construction and never
   // read again, so an import (or a cross-tab change) that flipped
   // `onboardingSetupDismissed` never reached this store's subscribers.

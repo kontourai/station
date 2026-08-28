@@ -1,9 +1,9 @@
 /**
- * station#settings-revamp slice 3 (#1359 store convergence, epic #1269 /
- * #1272): model-picker preferences now live in the registry-driven
+ * archive#settings-revamp (archive#1359 store convergence, /
+ * archive#1272): model-picker preferences now live in the registry-driven
  * device-settings envelope (`deviceSettingsStore`, `modelPickerPreferences`
  * -- packages/contracts/src/device-settings.ts) instead of the parallel
- * `station.device-settings` root #1359 shipped. Every exported function's
+ * `station.device-settings` root archive#1359 shipped. Every exported function's
  * signature is unchanged from that era so consumers need no changes.
  */
 import { useSyncExternalStore } from 'react';
@@ -89,13 +89,13 @@ export function useModelPickerPreferences(): ModelPickerPreferences {
 
 /**
  * Test-only reset. The pre-convergence version reset a module-local read
- * cache that made a plain `localStorage.clear()` in a test's `beforeEach`
+ * cache that made a plain `localStorage.clear` in a test's `beforeEach`
  * sufficient for isolation. The envelope-backed store is a module
  * singleton whose in-memory snapshot does NOT automatically resync just
  * because a test cleared storage out from under it (device-settings-store.ts's
  * own doc comment on `reloadFromStorage` names exactly this hazard) — this
- * now delegates to that method so existing test call sites (`beforeEach(()
- * => { localStorage.clear(); resetModelPickerPreferencesCacheForTests();
+ * now delegates to that method so existing test call sites (`beforeEach(
+ * => { localStorage.clear; resetModelPickerPreferencesCacheForTests;
  * })`) keep working without every consumer test needing its own import of
  * `deviceSettingsStore`.
  */

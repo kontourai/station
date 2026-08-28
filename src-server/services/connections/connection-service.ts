@@ -982,14 +982,14 @@ export class ConnectionService {
    * The MODEL INVENTORY: the connections that can serve an LLM, plus the ones
    * that could not be read.
    *
-   * station#3747: this used to return every provider connection, vector stores
+   * archive#3747: this used to return every provider connection, vector stores
    * included, and left each consumer to re-derive `capabilities.includes('llm')`
    * for itself. The name is the contract now — `isLlmModelConnection` is the
    * one place that decides membership, and a vector store is read through
    * `listConnections()` (the full projection the Knowledge section already
    * uses), not through an inventory that says "models".
    *
-   * station#3748: `failures` travels with the rows so a caller can never mistake
+   * archive#3748: `failures` travels with the rows so a caller can never mistake
    * "could not read this" for "you have none of these".
    */
   async listModelConnectionInventory(): Promise<{
@@ -1010,7 +1010,7 @@ export class ConnectionService {
   }
 
   /**
-   * Per-row isolation (station#3748). One row that throws — a malformed
+   * Per-row isolation (archive#3748). One row that throws — a malformed
    * persisted config, a provider factory that rejects, a catalogue read that
    * blows up in a way `safeListModelCatalog` does not cover — used to abandon
    * the whole map, so BOTH `/api/connections/models` and
@@ -1143,7 +1143,7 @@ export class ConnectionService {
   }
 
   /**
-   * The AGENT/runtime inventory, carrying the same `failures` (station#3748).
+   * The AGENT/runtime inventory, carrying the same `failures` (archive#3748).
    * A model row that could not be read is exactly what used to empty this
    * route too, so the reason travels with it rather than being lost one seam
    * away from where it is rendered.
@@ -1532,7 +1532,7 @@ export class ConnectionService {
    * The current in-memory model-inventory snapshot, or `null` before the
    * first refresh has completed. Deliberately synchronous and read-only —
    * unlike `listLaunchableModelInventory()` it never triggers a refresh, so
-   * a caller on a hot per-request path (station#1299 slice 1: resolving a
+   * a caller on a hot per-request path (archive#1299: resolving a
    * model's real context-window size for the stats route) can consult
    * whatever is already cached without adding request latency or new I/O.
    * A caller that needs the freshest possible inventory should still use
@@ -1566,7 +1566,7 @@ export class ConnectionService {
   }
 
   /**
-   * station#1398 slice 1: the contributed-subset manifest this Station would
+   * archive#1398: the contributed-subset manifest this Station would
    * offer to its owner's fleet (`docs/design/inference-fleet.md` §4.2). No
    * route serves it yet — slice 2 owns the authenticated
    * `inference:invoke`-scoped surface, and exposing contributed model names
@@ -1586,7 +1586,7 @@ export class ConnectionService {
    *
    * Reads through `listLaunchableModelInventory()` (compute-on-demand with a
    * bounded stale snapshot), never `getCachedLaunchableModelInventory()`:
-   * station#1430's second finding is that the cached snapshot is populated
+   * archive#1430's second finding is that the cached snapshot is populated
    * as a side effect of the Connections route, so a manifest built from it
    * would be a function of whether this Station's operator opened a page.
    */
@@ -1621,7 +1621,7 @@ export class ConnectionService {
 
   /**
    * Live per-candidate tool-surface lookup for Dispatch's `structured-tools`
-   * capability derivation (station#1430, backs `DispatchEvidenceSource.getModelToolSurface`).
+   * capability derivation (archive#1430, backs `DispatchEvidenceSource.getModelToolSurface`).
    *
    * Reads through `listLaunchableModelInventory()` — the same deterministic,
    * compute-on-demand accessor `getFleetContributionManifest()` uses, and for
@@ -2926,7 +2926,7 @@ export class ConnectionService {
         signal: controller.signal,
       })) {
         // The ai-sdk path yields errors as chunks rather than throwing
-        // (station#3586), so a refusal arrives here, not in the catch.
+        // (archive#3586), so a refusal arrives here, not in the catch.
         if (chunk.type === 'error') {
           return {
             status: 'failed',
@@ -2987,7 +2987,7 @@ export class ConnectionService {
    * cannot. `redactProviderIdentifiers` scrubs identity the PROVIDER supplies:
    * an AWS refusal quotes the account, the principal and the resource, none of
    * which are in the config and all of which end up in a stored receipt and a
-   * rendered notice (#3654 review, H3).
+   * rendered notice (archive#3654 review, H3).
    *
    * Every reason a check records goes through here — catalogue and chat probe
    * alike. Redacting where each reason is built is what left the chat probe
@@ -3035,7 +3035,7 @@ export class ConnectionService {
    */
   /**
    * The standing check receipt for ONE model connection — read, never probed
-   * (#3654 review round 2).
+   * (archive#3654 review round 2).
    *
    * A caller that wants the classified state of a single connection had to go
    * through `listModelConnections()`, which runs catalogue discovery against

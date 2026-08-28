@@ -35,7 +35,7 @@ describe('knowledge-context helpers', () => {
     expect(result?.context).toContain('Useful chunk');
     expect(result?.context).not.toContain('Low value chunk');
     expect(result?.context).toContain('guide.md');
-    // station#2649: the receipt describes the SAME `relevant` array that
+    // archive#2649: the receipt describes the SAME `relevant` array that
     // built the string — the dropped chunk is named nowhere, and a repeated
     // filename is one distinct source across two chunks.
     expect(result?.chunkCount).toBe(2);

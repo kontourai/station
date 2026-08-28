@@ -92,7 +92,7 @@ async function mockTaskFirstHome(
     }),
   );
   /*
-   * station#3783: `firstRun.status` decides whether Home renders the first-run
+   * archive#3783: `firstRun.status` decides whether Home renders the first-run
    * setup CARD (`resolveFirstRunOffer`: 'pending'|'skipped' → offered).
    * Without the key the chapter returns null, so the card's
    * `.editor-btn--primary "Set up Station"` — 121x34 on a live instance at
@@ -514,7 +514,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: 'Expand sidebar' }).click();
 
-    // station#1629 removed the sidebar's "Project chats" pill (and its
+    // archive#1629 removed the sidebar's "Project chats" pill (and its
     // `station:open-project-chats` dispatch) — ChatDock's listener for that
     // event stays wired for other future callers, but nothing in the UI
     // dispatches it anymore. Reroute through the still-existing "Start
@@ -718,7 +718,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
   test('active project command launcher previews real context and cancels without sending', async ({
     page,
   }) => {
-    // station#3767: "a modal is open" is derived from `[aria-modal="true"]`
+    // archive#3767: "a modal is open" is derived from `[aria-modal="true"]`
     // again rather than claimed by the one surface that remembered to, so the
     // launcher — which hand-rolls its own overlay — suppresses global chords
     // like every other modal.
@@ -1028,7 +1028,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await expect(
         navigation.getByRole('button', { name: 'Agents' }),
       ).toBeVisible();
-      // station#3313 (Settings IA, option A): Settings holds the System slot;
+      // archive#3313 (Settings IA, option A): Settings holds the System slot;
       // Developer is settings-gated and hidden until enabled on this device.
       await expect(
         navigation.getByRole('button', { name: 'Settings' }),
@@ -1049,7 +1049,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     test('shows one task surface with composer, dock controls, reachable navigation, and safe geometry', async ({
       page,
     }) => {
-      // station#3768: the pulse-count links carry the same 44px floor every
+      // archive#3768: the pulse-count links carry the same 44px floor every
       // other Home control does, and the twelve-column activity chart — which
       // cannot hold twelve 44px targets in a phone-width row — renders as a
       // picture on a coarse pointer instead of as twelve unhittable buttons.
@@ -1058,7 +1058,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await page.goto('/');
 
       await expect(page.locator('.home-view')).toBeVisible();
-      // station#3783: the setup card must be ON SCREEN for the geometry scan
+      // archive#3783: the setup card must be ON SCREEN for the geometry scan
       // below to have seen it. Asserting its presence is what keeps this
       // coverage from silently reverting to the shape that missed a 121x34
       // control — a fixture that stops rendering the card would otherwise pass
@@ -1524,10 +1524,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
         .toBe('/projects/station');
       const projectUrl = new URL(page.url());
       expect(projectUrl.searchParams.get('dock')).toBe('open');
-      // #869/#939: a maximized dock is opaque and full-height, so navigating
+      // archive#869/#939: a maximized dock is opaque and full-height, so navigating
       // used to change the view *underneath* it and nothing moved. A real
       // pathname change now returns the dock to its docked size, which drops
-      // `maximize` from the URL — this spec asserted the pre-#939 behaviour of
+      // `maximize` from the URL — this spec asserted the pre-archive#939 behaviour of
       // carrying `maximize=true` across the navigation, and the dock control
       // it clicked next ('Restore chat dock') only exists while maximized.
       // Assert the restore itself instead: the destination is reached with the

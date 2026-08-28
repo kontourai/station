@@ -184,7 +184,7 @@ test.describe('Core Update Flow', () => {
       .getByRole('button', { name: /Update \(3 commits behind\)/ })
       .click();
 
-    // Should show restarting message — station#1903: the client no longer
+    // Should show restarting message — archive#1903: the client no longer
     // claims the update itself succeeded before the new server is verified.
     await expect(
       page.getByText('Restarting — verifying the new server…'),

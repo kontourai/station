@@ -58,12 +58,12 @@ export function resolvePluginProviders(
       manifest = readPluginManifestFileSync(manifestPath);
     } catch (e) {
       // WARN, not debug. This skip makes a plugin disappear -- its providers
-      // stop loading, with no user-facing signal anywhere -- and station#4307
+      // stop loading, with no user-facing signal anywhere -- and archive#4307
       // widened what gets rejected here: `manifest.name` is now held to
       // `isCanonicalPluginId` plus the reserved-key check, which nothing
       // enforced before. So a plugin installed under a name that was legal
       // then and is not now vanishes on upgrade, and at debug level nobody
-      // ever learns why (station#4322).
+      // ever learns why (archive#4322).
       const detail = e instanceof Error ? e.message : String(e);
       const message = `Skipped a plugin whose manifest could not be read, so nothing it contributes is loaded: ${manifestPath} (${detail})`;
       if (logger) logger.warn(message);

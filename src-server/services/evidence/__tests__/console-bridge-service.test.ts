@@ -561,7 +561,7 @@ describe('ConsoleBridgeService', () => {
     }
   });
 
-  // ── station#1093 Part B: KeyedCoalescingWorker integration ──
+  // ── archive#1093 Part B: KeyedCoalescingWorker integration ──
 
   test('AC1: a burst of N raw events for one thread coalesces into exactly one downstream read-model refetch', async () => {
     const fetchSpy = vi.fn(

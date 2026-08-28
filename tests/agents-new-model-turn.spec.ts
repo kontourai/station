@@ -135,7 +135,7 @@ async function provisionFixtureConnection(
  * Walk §4's "Chat with a model" beat to a created agent and return its slug.
  *
  * The System Instructions field is filled because a Station-engine agent must
- * author one. station#3741 landed the other half — the field says so, and
+ * author one. archive#3741 landed the other half — the field says so, and
  * Create is disabled until it is filled rather than refusing after submit — so
  * the enabled assertion below sits after the fields rather than before them.
  * This journey still covers the engine gate §4 rebuilt; the marker itself is
@@ -150,7 +150,7 @@ async function createModelAgent(page: Page, name: string): Promise<string> {
   await page.locator('#ae-name').fill(name);
   await page.locator('#ae-prompt').fill('Answer in one short sentence.');
 
-  // Asserted AFTER the required fields, not before: since station#3741 Create
+  // Asserted AFTER the required fields, not before: since archive#3741 Create
   // is disabled while the form is incomplete as well as while the engine is
   // unready, so an empty form is legitimately refused here.
   await expect(create).toBeEnabled({ timeout: 20_000 });
@@ -190,7 +190,7 @@ test.describe('New agent — Chat with a model', () => {
 
       // §4: "the fixing action is shown inline instead of a validation error
       // after submit". The repair is what makes the disabled button honest.
-      // station#4521 LOW-1: canonical copy is CONNECTION_SECTIONS' own
+      // archive#4521 LOW-1: canonical copy is CONNECTION_SECTIONS' own
       // `addLabel` ("Add model connection"), not this file's prior wording.
       await expect(
         page.getByRole('button', { name: 'Add model connection' }),

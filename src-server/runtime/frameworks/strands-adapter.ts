@@ -75,7 +75,7 @@ class StrandsAgentWrapper implements IAgent {
    * per-invocation context bound OUT-OF-BAND in a module-private WeakMap
    * keyed by this invocation's `invocationState` object identity — never
    * inside the bag itself, which the SDK lets tools mutate
-   * (station#1834 round 3): a shared mutable context let a second
+   * (archive#1834 round 3): a shared mutable context let a second
    * interleaved stream overwrite the first stream's identity before its
    * lazy generator executed, so conversation A's tool call could consult
    * conversation B's approval requester; truthy-only merges also leaked
@@ -119,7 +119,7 @@ class StrandsAgentWrapper implements IAgent {
 
   /**
    * Build a fresh, isolated per-invocation context and the strands
-   * InvokeOptions whose `invocationState` object IDENTIFIES it (station#1834
+   * InvokeOptions whose `invocationState` object IDENTIFIES it (archive#1834
    * rounds 3-4): a snapshot of agent identity plus exactly THIS request's
    * fields — a field absent on this request is absent in this invocation's
    * context (no truthy-merge retention), two interleaved streams each carry
@@ -144,7 +144,7 @@ class StrandsAgentWrapper implements IAgent {
     };
     // The bag itself stays EMPTY of trusted data: invocationState is the
     // SDK's tool-writable scratch space, so the context is bound out-of-band
-    // by the bag's object identity (station#1834 round 4) — nothing for a
+    // by the bag's object identity (archive#1834 round 4) — nothing for a
     // tool implementation to mutate or spoof.
     const invocationState: Record<string, unknown> = {};
     bindStrandsInvocationContext(invocationState, ctx);
@@ -190,7 +190,7 @@ class StrandsAgentWrapper implements IAgent {
   async streamText(input: string, _options?: any): Promise<IStreamResult> {
     // Per-request identity is WeakMap-bound to this invocation's state object
     // identity (never stored in the tool-writable bag, never a shared mutable
-    // object — station#1834 rounds 3-4); see invocationOptions.
+    // object — archive#1834 rounds 3-4); see invocationOptions.
     const invokeOptions = this.invocationOptions(_options);
     const agent = this.strandsAgent;
     let resolveUsage: (u: any) => void;
@@ -463,7 +463,7 @@ export class StrandsFramework {
     // giving tool implementations (which may write to the bag freely)
     // nothing to spoof.
     const invocationCtx: InvocationContext = { agentSlug: opts.name };
-    // station#1834: temp agents used to get NO tool gate at all — the
+    // archive#1834: temp agents used to get NO tool gate at all — the
     // default agent (and every scheduler//invoke/CLI call riding it)
     // executed tools without ever evaluating beforeToolCall. Only the gate
     // is wired here (not message-sync/usage): temp-agent persistence is
@@ -474,7 +474,7 @@ export class StrandsFramework {
       deniedToolCalls,
       invocationCtx,
     });
-    // #914: `createAgent` above passes the adapter into this slot "so
+    // archive#914: `createAgent` above passes the adapter into this slot "so
     // conversations persist"; passing null here gave temp agents no
     // conversation memory at all, the same gap the VoltAgent path had.
     return new StrandsAgentWrapper(

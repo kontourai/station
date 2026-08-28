@@ -15,7 +15,7 @@ import { modelDisplayLabel } from './modelCapabilities';
  *
  * Every `type` Station itself ships is listed. `muse-runtime` was not, so an
  * engine Station ships rendered as its raw slug on /connections/engines
- * (station#3739); `lancedb` was not, so the built-in vector store rendered as
+ * (archive#3739); `lancedb` was not, so the built-in vector store rendered as
  * an implementation name that ADR-0009 already retired. A slug is a name
  * nobody chose, so prefer {@link connectionDisplayLabel} wherever the
  * connection RECORD is in hand — it carries the name its owner gave it.
@@ -214,7 +214,7 @@ type AgentWithExecution = {
     mcpServers?: string[];
   };
   /**
-   * The backing connection's adapter type (station#954), e.g. 'acp' —
+   * The backing connection's adapter type (archive#954), e.g. 'acp' —
    * `resolveAgentExecution` uses it to route a promoted ACP default through
    * the `acp` provider, since `agentConnectionIdToProviderKind` can only
    * infer a provider from the `<id>-runtime` id convention native
@@ -354,7 +354,7 @@ export function resolveEffectiveModel({
   ) ?? [null, 'unknown'];
   return {
     id: id || null,
-    // station#3391: one derivation of an id's display name, shared with Home's
+    // archive#3391: one derivation of an id's display name, shared with Home's
     // work items and the model picker. Was `known?.name || id`, which printed
     // the raw id whenever the catalog did not know it.
     label: modelDisplayLabel(id, selectableModels),
@@ -434,7 +434,7 @@ export function runtimeCatalogVisibleModels(
 }
 
 /**
- * Station#1003 Phase B: reads a connection's canonical engine identity
+ * archive#1003: reads a connection's canonical engine identity
  * (`config.engineId`) with a `config.executionClass` read-compat fallback
  * (`'managed'` -> `'station'`, `'connected'`/`'external'` -> `'external'`)
  * so hand-built test-double connection views (still constructing the legacy
@@ -461,7 +461,7 @@ export function connectionEngineId(
  *
  * `runtimeCatalogSourceLabel` is the VALUE for a field labelled "Catalog";
  * pasted into a sentence it produced "None catalog", which is the enum read
- * aloud rather than the thing being said (station#3739).
+ * aloud rather than the thing being said (archive#3739).
  */
 export function runtimeCatalogSourceSentence(
   source: RuntimeCatalogSource,
@@ -660,7 +660,7 @@ export function isManagedRuntimeConnectionId(
   agentConnectionId?: string | null,
   agentConnections: ConnectionConfig[] = [],
 ): boolean {
-  // station#3662: an ABSENT binding is Station's own engine, not "no engine".
+  // archive#3662: an ABSENT binding is Station's own engine, not "no engine".
   // The one caller uses this to decide whether to offer the Model-connection
   // picker, and a Station-engine Agent is precisely the one that needs it.
   if (!agentConnectionId) {
@@ -678,7 +678,7 @@ export function isManagedRuntimeConnectionId(
 /**
  * Whether the session's bound adapter has declared the 'steering'
  * capability — i.e. it accepts a new user message mid-turn and folds it
- * into the current turn instead of waiting for the turn boundary (#613).
+ * into the current turn instead of waiting for the turn boundary (archive#613).
  * No built-in adapter declares this today, so this always resolves false
  * in production; it exists so the mid-turn send gate has an honest,
  * testable seam to branch on once an adapter can prove real interleaved
@@ -873,7 +873,7 @@ export function isAgentConnectionSelectable(
  * managed model resolves is the server's `available` verdict, checked
  * alongside this one in `selectChatReadyAgents`.
  *
- * station#3662: absent used to answer `false`, which is how a home whose only
+ * archive#3662: absent used to answer `false`, which is how a home whose only
  * Agent is the seeded Station one — `/api/system/status` reporting
  * `configuredChatReady: true`, a model connection tested Ready — still showed
  * "Nothing to chat with yet" in the new-chat picker.
@@ -942,7 +942,7 @@ function resolveProviderManagedExecution(
   },
   modelConnections: ConnectionConfig[],
 ): ChatExecutionMetadata | null {
-  // station#3747: `modelConnections` is the LLM-capable inventory; readiness
+  // archive#3747: `modelConnections` is the LLM-capable inventory; readiness
   // and enablement are the only facts this resolver still has to check.
   const enabledLlmConnections = modelConnections.filter(
     (connection) =>
@@ -1058,23 +1058,23 @@ type TurnStreamActivity = SessionExecutionActivity & {
 /**
  * Whether the transcript's LIVE STREAMING ROW should render for this chat —
  * the "is a turn live" question, distinct from `isSessionExecutionActive`'s
- * coarser "is this session doing anything" (station#3300).
+ * coarser "is this session doing anything" (archive#3300).
  *
  * For an orchestration-managed session the canonical answer is the TURN
  * FOLD: `orchestrationTurnOpen` is set by `turn.started`, cleared by every
  * terminal turn event, and reseeded from the snapshot's explicit
- * `hasActiveTurn` (#1076) — the same fold the transcript projection uses to
+ * `hasActiveTurn` (archive#1076) — the same fold the transcript projection uses to
  * suppress a live turn's settled row (`useActiveChatTranscript`). Deriving
  * the streaming row from the session-level flags instead is how a settled
  * turn flashed back to "Working…" after resume: `orchestrationStatus:
  * 'running'` survives a webview reload via sessionStorage while the fold
  * does not, so the flags claimed live work whose settled row the projection
- * was already rendering — one turn, two rows (#3300). Reading BOTH surfaces
+ * was already rendering — one turn, two rows (archive#3300). Reading BOTH surfaces
  * off one fold makes that disagreement unrepresentable.
  *
  * The one window the fold cannot know about yet is the optimistic local
  * send: `status === 'sending'` flips at submit, before the server's
- * `turn.started` arrives, and the shell must appear immediately (#1005).
+ * `turn.started` arrives, and the shell must appear immediately (archive#1005).
  * `status` is never persisted, so it cannot go stale across a reload the
  * way `orchestrationStatus` did.
  *

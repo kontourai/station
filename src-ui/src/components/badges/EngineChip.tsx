@@ -10,7 +10,7 @@ interface EngineChipProps {
  * The quiet engine-identity chip (docs/design/agent-engine-unification.md
  * §8.1): one pill naming the engine that executes an agent — "Station",
  * "Claude Code", "Codex", "OpenCode · GLM-4.7". `engine === null` means the
- * caller could not resolve the agent (LOW-1) — render nothing rather than
+ * caller could not resolve the agent — render nothing rather than
  * guess.
  *
  * Visually mirrors the Connections hub's `connections-page__status-badge`

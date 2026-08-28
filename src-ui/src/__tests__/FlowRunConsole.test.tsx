@@ -370,7 +370,7 @@ describe('FlowRunConsole', () => {
     ).toBeTruthy();
   });
 
-  // station#612: the deterministic /projects/:slug/flow-console route passes
+  // archive#612: the deterministic /projects/:slug/flow-console route passes
   // both props explicitly so a gate item's deep link works even when the
   // console is opened outside a project layout tab (no navigation context
   // selection to fall back to).
@@ -523,8 +523,8 @@ describe('FlowRunConsole', () => {
   });
 });
 
-// station#3341: the report path was copied through a module-level helper whose
-// `.catch(() => {})` swallowed the refusal and — behind `navigator.clipboard?.`
+// archive#3341: the report path was copied through a module-level helper whose
+// `.catch( => {})` swallowed the refusal and — behind `navigator.clipboard?.`
 // — could not even run on an origin with no clipboard. Nothing on screen ever
 // said whether the copy happened.
 describe('FlowRunConsole report path copy (station#3341)', () => {

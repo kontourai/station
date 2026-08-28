@@ -11,7 +11,7 @@ type CodexCredentials = {
 };
 
 /**
- * #896 wave 2: Codex's global config dir, mirroring the Codex CLI's own
+ * archive#896 wave 2: Codex's global config dir, mirroring the Codex CLI's own
  * resolution order (`CODEX_HOME` when set, else `~/.codex`).
  */
 export function defaultCodexGlobalConfigDir(
@@ -22,7 +22,7 @@ export function defaultCodexGlobalConfigDir(
 }
 
 /**
- * #896 wave 2: reads `<configDir>/auth.json` — the only per-config-dir
+ * archive#896 wave 2: reads `<configDir>/auth.json` — the only per-config-dir
  * signal Codex exposes (unlike Claude, there is no env-var shortcut: Codex's
  * `OPENAI_API_KEY` is read from that same file, not the process env, and a
  * `cli_auth_credentials_store = "keychain"` user reads as `unauthenticated`

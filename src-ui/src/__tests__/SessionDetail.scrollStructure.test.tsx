@@ -13,7 +13,7 @@ const receiptData = vi.hoisted(() => ({
 }));
 
 /**
- * station#3305 structural guard: the session detail pane clips instead of
+ * archive#3305 structural guard: the session detail pane clips instead of
  * scrolling when content lands outside the one flexible row a fixed grid
  * template happened to assign. The contract now: everything between the
  * pinned header and the pinned request/compose controls lives inside a
@@ -99,7 +99,7 @@ function withClient(node: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  // The real ToastProvider, not a stub: AttachedSessionDetail calls `useToast()`
+  // The real ToastProvider, not a stub: AttachedSessionDetail calls `useToast`
   // at its top and throws outside a provider, so a render without one fails
   // before this file's structural assertions ever run.
   return render(

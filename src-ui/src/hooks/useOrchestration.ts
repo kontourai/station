@@ -18,10 +18,10 @@ import { ensureOrchestrationEventStream } from './orchestration/ensureOrchestrat
 // Guardrailed by proof:repo-governance.
 // fallow-ignore-next-line unused-export
 export function useOrchestration(apiBase: string) {
-  // station#1225 review (MEDIUM fix): resolved HERE (a real hook boundary)
+  // archive#1225 resolved HERE (a real hook boundary)
   // and threaded through to the reconnect-fallback refetch — see
   // `rehydrateChatSession.ts`'s file-header note for why the module-level
-  // SSE stream can't call `useQueryClient()` itself.
+  // SSE stream can't call `useQueryClient` itself.
   const queryClient = useQueryClient();
   useEffect(() => {
     ensureOrchestrationEventStream(apiBase, queryClient);

@@ -1,6 +1,6 @@
 /**
  * ConsentTransaction — the server-side record behind every authority-bearing
- * approval (station#3677).
+ * approval (archive#3677).
  *
  * One transaction per pending decision. The decision itself is only reachable
  * through the distinct-origin consent listener
@@ -199,7 +199,7 @@ export type ConsentDecisionAuthority =
   | 'device-consent-scope'
   | 'consent-session'
   /**
-   * station#3677 PR 3: the native broker's arm — proven by the request
+   * archive#3677 PR 3: the native broker's arm — proven by the request
    * principal's mint-time `home-possession` locality stamp (the per-boot
    * owner-only local-grant secret was presented at mint), read through the
    * one bound predicate (`isBoundRuntimeLocalOperator`). Distinct from

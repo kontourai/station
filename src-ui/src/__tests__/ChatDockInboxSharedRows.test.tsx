@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * kontourai/station#3312 — one inbox, two chromes. The row/group anatomy in
+ * archive#3312 — one inbox, two chromes. The row/group anatomy in
  * `ChatDockInboxRows.tsx` must render identically rich rows inside BOTH
  * hosts: the desktop dock panel (`ChatDockInboxPanel`) and the mobile
  * portaled sheet (`MobileTaskSwitcher`). This suite renders the same item
@@ -232,7 +232,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
 });
 
 /**
- * station#2802 — the agent icon on an inbox row.
+ * archive#2802 — the agent icon on an inbox row.
  *
  * The rule these pin is not "an icon appears" but WHICH rows get one: only a
  * row whose own committed `agentSlug` resolves in the live catalog. A row
@@ -330,7 +330,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
   });
 
   it('adds no icon column at all for a host that supplies no catalog', () => {
-    // `SidebarOpenChats` (station#3314) renders these rows with no catalog;
+    // `SidebarOpenChats` (archive#3314) renders these rows with no catalog;
     // its layout must be untouched by this feature.
     const { container } = renderPanelHost(sessionItem({ agentSlug: 'codex' }));
     expect(avatarOf(container)).toBeNull();

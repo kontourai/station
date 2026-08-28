@@ -1,5 +1,5 @@
 /**
- * #2646 — the sync-seam stores were cut over to `acquireFileMutationLockAsync`.
+ * archive#2646 — the sync-seam stores were cut over to `acquireFileMutationLockAsync`.
  *
  * `packages/shared/src/__tests__/lifecycle-events-async-lock.test.ts` already
  * proves the PRIMITIVE yields the event loop. This file proves the property
@@ -177,7 +177,7 @@ const CASES: StoreSeamCase[] = [
   {
     label: 'plugin grants (GrantsFileStore seam)',
     lockPath: (root) => join(root, 'plugin-grants.json.mutation'),
-    // station#4288: a grant is bound to the plugin's installed bytes, so the
+    // archive#4288: a grant is bound to the plugin's installed bytes, so the
     // fixture needs a real tree to digest — as production always has.
     prepare: async (root) => {
       const pluginRoot = join(root, 'plugins', 'my-plugin');

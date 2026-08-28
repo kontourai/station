@@ -53,7 +53,7 @@ const PAIRED_ID_PREFIX = 'paired:';
 /**
  * Folds every source list together, manual entries first so a manual
  * label/id wins an identity merge. This is what makes the list one row per
- * COMPUTER rather than one row per record — and, since sol review finding 5,
+ * COMPUTER rather than one row per record — and, since,
  * the only place that answers how many computers there are.
  */
 export function foldKnownEnvironments(
@@ -90,7 +90,7 @@ export function computerKind(environment: KnownEnvironment): ComputerKind {
  * The SSH connection phases, each with the state word the SERVER's phase
  * supports and the sentence that says what to do about it. Moved verbatim
  * from `SshEnvironmentsSection` so the merged list keeps the phase-specific
- * copy station#1116's review put there — CI-R14 is about the `error` phase
+ * copy archive#1116's review put there — CI-R14 is about the `error` phase
  * being the one that says nothing, which the section now supplements with
  * the server's own action string.
  */
@@ -168,7 +168,7 @@ export function isSshBusy(state: SshEnvironmentState): boolean {
   );
 }
 
-/** Phase-aware "what this unlocks" line (station#1116 review round 1, HIGH). */
+/** Phase-aware "what this unlocks" line (archive#1116 1). */
 export function sshRelationship(
   state: SshEnvironmentState,
   machineName: string,

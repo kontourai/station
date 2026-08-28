@@ -15,11 +15,11 @@ import { ActivityWorkspacePaneBindingProvider } from './activity/ActivityWorkspa
 
 /**
  * `/activity`, the standalone placement of the Activity Workspace Pane
- * (epic station#4142 M3, following M2's route-as-placement shape for `/`).
+ * (archive#4142, following route-as-placement shape for `/`).
  *
  * A route is a placement, not an identity (`docs/design/pane-or-shell.md`):
  * this host mounts the pane renderer with the canonical occurrence directly
- * — no `WorkspacePaneHost`, because a standalone route placement has exactly
+ * no `WorkspacePaneHost`, because a standalone route placement has exactly
  * one code-determined occupant and no user-arrangeable document. The
  * built-in renders because `selectClientWorkspacePaneRenderer` admitted it
  * for this build's fixed Activity descriptor, not because this file names a
@@ -52,7 +52,7 @@ export function ActivityView({
   );
   // While Activity's canonical occurrence occupies the ambient dock, this
   // route renders the away state instead of a second live copy of the pane
-  // (station#4090 M5). Derived from the host's own published occupant state
+  // (archive#4090). Derived from the host's own published occupant state
   // through `isAmbientDockOccupant` — never a route-local flag — so choosing
   // another dock occupant clears this state without route-side bookkeeping.
   if (isAmbientDockOccupant(dock, WORKSPACE_ACTIVITY_PANE_INSTANCE)) {

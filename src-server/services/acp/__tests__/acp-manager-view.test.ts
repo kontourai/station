@@ -199,7 +199,7 @@ describe('acp-manager-view helpers', () => {
     }
 
     test('never-handshaked + probe in flight (even after a cold timeout stamped lastProbeAt) ⇒ PROBING', () => {
-      // The exact #3404 shape: the first (cold) probe timed out at the old
+      // The exact archive#3404 shape: the first (cold) probe timed out at the old
       // tight deadline, stamped lastProbeAt, and a re-probe is now in flight
       // while the slow engine is still starting. Old derivation read
       // UNAVAILABLE; the connection is being probed, not broken.

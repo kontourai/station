@@ -1,5 +1,5 @@
 /**
- * station#980 fix (HIGH, independent review): `getManagedChatOrchestrationEnabled`
+ * archive#980 fix (HIGH, independent review): `getManagedChatOrchestrationEnabled`
  * must survive a config reload. `this.appConfig` is wholesale reassigned from a
  * fresh disk load (which never carries the non-persisted
  * `managedChatOrchestration` field) on every `reloadAgentsFromDisk()`/

@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest';
 /**
  * Chrome stacking is one declared scale (tokens.css `--layer-*`), not a
  * per-surface arms race. When it was, the deferred-capability notice sat at a
- * literal 1200 over the chat dock's 100 (station#2213), and 45 chrome-scale
- * raw values had accumulated across 20 files (station#2558).
+ * literal 1200 over the chat dock's 100 (archive#2213), and 45 chrome-scale
+ * raw values had accumulated across 20 files (archive#2558).
  *
  * Small values (< 100) are local stacking inside a component and stay free.
  * Chrome-scale values (>= 100) must be tokens — except the checked-in

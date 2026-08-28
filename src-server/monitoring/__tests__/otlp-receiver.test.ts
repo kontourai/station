@@ -1,5 +1,5 @@
 /**
- * station#3078 — ingested tool INPUTS were declared by the schema and
+ * archive#3078 — ingested tool INPUTS were declared by the schema and
  * discarded by the mapping, so an externally-ingested agent's tool arguments
  * were absent rather than redacted-but-present, and a reader could not tell
  * "this tool takes no arguments" from "we threw them away".
@@ -73,7 +73,7 @@ describe('OTLP agent-event ingest', () => {
 });
 
 /**
- * station#3130. These assert the field is on the row a READER gets back, not
+ * archive#3130. These assert the field is on the row a READER gets back, not
  * merely on the object handed to the emitter: `queryEvents` is the predicate
  * that made 12,366 of the owner's 12,367 `execute_tool` rows invisible, and a
  * test that stops at the emitter cannot see it.
@@ -138,7 +138,7 @@ describe('ingested events carry the user the monitoring read scopes by', () => {
   });
 
   test('no id is written down when the instance cannot resolve one', async () => {
-    // `''` is not an id (station#3086): an unattributed row stays honestly
+    // `''` is not an id (archive#3086): an unattributed row stays honestly
     // unattributed rather than gaining an empty string that reads as a value
     // and matches nobody's query anyway.
     const { persisted, rows } = await readBackIngestedToolEvent(

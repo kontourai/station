@@ -417,7 +417,7 @@ describe('Flow Run Routes', () => {
   /**
    * Flow drops a run directory it cannot inspect, so without this the response
    * is a shorter list that looks complete. The diagnostics ride alongside the
-   * unchanged `data` array rather than replacing it (#290 review, M4).
+   * unchanged `data` array rather than replacing it (archive#290 review, M4).
    */
   test('GET /runs names the run directories it could not read', async () => {
     const { app } = createApp();

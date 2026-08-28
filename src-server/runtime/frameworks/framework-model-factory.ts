@@ -44,7 +44,7 @@ export interface AiSdkModelOptions {
   /** Bedrock-only: named AWS profile, used when authMode is 'profile'. */
   profile?: string;
   /**
-   * station#1994: provider-wire request-body defaults for completion calls,
+   * archive#1994: provider-wire request-body defaults for completion calls,
    * from the connection's `config.modelRequestOptions`. Each key is set on
    * the outgoing JSON body only when the request doesn't already carry it —
    * e.g. `{ "reasoning_effort": "low" }` for an OpenAI-compatible endpoint
@@ -77,7 +77,7 @@ export function buildAiSdkLanguageModel(
         baseURL,
         // Ollama ONLY: ask for `stream_options: { include_usage: true }`
         // so streamed turns carry usage even under strict OpenAI streaming
-        // semantics (station#4197). Deliberately NOT set for generic
+        // semantics (archive#4197). Deliberately NOT set for generic
         // 'openai-compat' connections — that type fronts a population of
         // gateways/proxies (OpenRouter, Groq, Azure-style, self-hosted)
         // where some reject unrecognized request params, and a 4xx on
@@ -105,7 +105,7 @@ export function buildAiSdkLanguageModel(
     }
     case 'bedrock': {
       return createAmazonBedrock({
-        // station#1557: the caller has already resolved through
+        // archive#1557: the caller has already resolved through
         // `resolveBedrockRegion`; a second default here would be a third
         // opinion about the region, reachable only when a caller forgets.
         region: resolveBedrockRegion({
@@ -149,7 +149,7 @@ function isCompletionEndpoint(url: string): boolean {
 }
 
 /**
- * station#1994: wrap `fetch` so connection-configured request-body defaults
+ * archive#1994: wrap `fetch` so connection-configured request-body defaults
  * reach the provider wire. Defaults fill only ABSENT keys — a body field the
  * SDK (or a future per-call option) already set always wins. Non-JSON and
  * non-completion requests pass through byte-identical.
@@ -236,7 +236,7 @@ export function createVoltAgentManagedModel(
     !options.providerConnection ||
     options.providerConnection.type === 'bedrock'
   ) {
-    // station#1557 review fix: pass the RAW scopes, not a pre-resolved value
+    // archive#1557 review fix: pass the RAW scopes, not a pre-resolved value
     // in both fields. Pre-resolving made `createBedrockProvider`'s own
     // resolution a no-op that always hit its first branch, so the env
     // fallback it advertises was unreachable from the only caller it has.
@@ -302,7 +302,7 @@ function createManagedLanguageModel(
 }
 
 /**
- * station#1994: read the connection's `modelRequestOptions` — a plain object
+ * archive#1994: read the connection's `modelRequestOptions` — a plain object
  * of provider-wire body defaults. Anything else (absent, null, array,
  * scalar) resolves to undefined rather than guessing.
  */
@@ -360,7 +360,7 @@ function resolveRawBaseUrl(
 }
 
 /**
- * station#1557 review fix. This used to be a second, independent copy of the
+ * archive#1557 review fix. This used to be a second, independent copy of the
  * region chain whose tail was `options.appConfig.region || 'us-east-1'` — no
  * `AWS_REGION`. It is the chain EVERY Station-agent execution path runs, so
  * unifying the other readers without it relocated the disagreement rather

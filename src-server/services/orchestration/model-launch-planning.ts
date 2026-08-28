@@ -83,7 +83,7 @@ export async function listLaunchableAdapterModels(
   );
   try {
     throwIfAborted(controller.signal);
-    // station#1430 review, H-2 enumeration: every caller of this helper
+    // archive#1430 review, H-2 enumeration: every caller of this helper
     // (`getProviderModels` — the model picker, and the CLI-model
     // launch/turn selector validators) projects the result down to
     // `{id, name, originalId}` (`boundedAdapterModels`,
@@ -134,7 +134,7 @@ export async function listLaunchableAdapterModels(
 
 /**
  * Projects an external engine's hand-curated `knownModels` metadata
- * (station#977) into the same catalog shape as a live/cached adapter
+ * (archive#977) into the same catalog shape as a live/cached adapter
  * catalog, so callers can treat both uniformly. `originalId` mirrors `id`
  * — these are the canonical short ids the engine accepts directly, not a
  * live catalog's dated wire-format ids.
@@ -175,7 +175,7 @@ export interface ModelLaunchPlanningDeps {
 }
 
 /**
- * Model launch plan & selector validation (epic #4024 slice 8, #4179): the
+ * Model launch plan & selector validation (epic archive#4024, archive#4179): the
  * C13 cluster from the seam map — the epic's strictest one-way seam: the
  * cluster calls NO service method and reads exactly one read-model cell
  * through its single named dep. Zero external callers (map §5b). The C12
@@ -197,7 +197,7 @@ export class ModelLaunchPlanning {
     if (adapter.provider !== 'claude' && adapter.provider !== 'codex') {
       return input;
     }
-    // station#977 ("local default + defer to engine"): no explicit
+    // archive#977 ("local default + defer to engine"): no explicit
     // selector falls back to the adapter's own default model, rather than
     // unconditionally requiring one — external engines like Claude Code
     // have a sensible engine-native default even when Station hasn't been
@@ -208,9 +208,9 @@ export class ModelLaunchPlanning {
       ''
     ).trim();
     if (!requested) {
-      // station#1154: an external engine with no local default (e.g. codex,
+      // archive#1154: an external engine with no local default (e.g. codex,
       // which deliberately carries no `metadata.defaultModel` — there is no
-      // verifiable one to hardcode) is not an error case. #977's whole
+      // verifiable one to hardcode) is not an error case. archive#977's whole
       // premise is defer-to-engine: pass the input through unchanged (no
       // modelId) and let the engine fall back to its own built-in default,
       // exactly as it does when launched with no --model at all.
@@ -220,7 +220,7 @@ export class ModelLaunchPlanning {
       operation: 'validation',
     });
     // Fall back to the adapter's hand-curated known-models list when the
-    // live/cached catalog is empty (a common steady state — see #977's
+    // live/cached catalog is empty (a common steady state — see archive#977's
     // problem statement) instead of treating an empty catalog as "nothing
     // is launchable".
     const catalog = liveModels.length
@@ -248,7 +248,7 @@ export class ModelLaunchPlanning {
     ) {
       return input;
     }
-    // station#977: mirror validateConnectedCliModelSelector's default
+    // archive#977: mirror validateConnectedCliModelSelector's default
     // fallback + defer-to-engine-on-miss behavior for a turn-level override.
     const requested = (
       input.modelId.trim() ||
@@ -256,7 +256,7 @@ export class ModelLaunchPlanning {
       ''
     ).trim();
     if (!requested) {
-      // station#1154: mirror validateConnectedCliModelSelector's
+      // archive#1154: mirror validateConnectedCliModelSelector's
       // pass-through — an explicit-but-blank turn override with no local
       // default is not an error for an external engine; defer to it.
       return input;

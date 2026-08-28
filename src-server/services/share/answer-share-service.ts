@@ -39,7 +39,7 @@ import {
 } from './answer-share-store.js';
 
 /**
- * Answer-share read/write service (station#1423).
+ * Answer-share read/write service (archive#1423).
  *
  * Sits between the store (which knows nothing about turns) and the routes
  * (which must not contain policy). Everything that decides *what a share
@@ -58,7 +58,7 @@ import {
  * operator's identity, and the answer is re-read as that user on every view.
  * A share therefore cannot outlive the sharer's own standing on the session
  * — the read is re-authorized at dereference time exactly like every other
- * reference in the envelope (#1410 R4).
+ * reference in the envelope (archive#1410 R4).
  */
 export interface AnswerShareSessionReader {
   readSessionMessages(
@@ -73,7 +73,7 @@ export interface AnswerShareSessionReader {
 }
 
 /**
- * What mint time asks about a turn's place in a channel log (station#1598).
+ * What mint time asks about a turn's place in a channel log (archive#1598).
  *
  * Total by contract: it returns a binding or it throws. There is deliberately
  * no "I could not tell" return value, because there is no stored state for
@@ -129,12 +129,12 @@ export interface AnswerShareServiceDeps {
   sessions: AnswerShareSessionReader;
   now?: () => number;
   /**
-   * station#1598. Required, and required on purpose — see
+   * archive#1598. Required, and required on purpose — see
    * {@link NO_CHANNEL_LOG_OBSERVER} for why a default here would record a
    * false affirmative claim the first time somebody forgets to wire one.
    */
   channelObserver: AnswerShareChannelObserver;
-  /** station#1598. Absent in production — see {@link AnswerShareChannelLogPort}. */
+  /** archive#1598. Absent in production — see {@link AnswerShareChannelLogPort}. */
   channelLog?: AnswerShareChannelLogPort;
 }
 
@@ -241,7 +241,7 @@ export class AnswerShareService {
       answerSharesMinted.add(1, { outcome: 'answer_not_found' });
       return { error: 'answer-not-found' };
     }
-    // Recorded at mint, never derived at read (station#1598). Derivation's
+    // Recorded at mint, never derived at read (archive#1598). Derivation's
     // failure mode — the session-to-channel mapping changes and the derived
     // address silently changes meaning — is undetectable by construction;
     // recording's failure mode is drift, and the digest detects that.
@@ -428,7 +428,7 @@ export class AnswerShareService {
   }
 
   /**
-   * The mint-time channel observation (station#1598).
+   * The mint-time channel observation (archive#1598).
    *
    * There is no fallback here, and the absence is the point: every binding
    * this service records is something an observer AFFIRMATIVELY said, and

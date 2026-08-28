@@ -50,7 +50,7 @@ export class ActiveChatsStore {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * Which chats have already been told about the CURRENT run of refused
-   * writes. UX audit T3 review round 3: this was one store-wide latch, so a
+   * writes. 3: this was one store-wide latch, so a
    * write that failed while no chat held a queue consumed it, and every queue
    * created afterwards stayed silent until some write happened to succeed. The
    * notice is per chat, so a chat that acquires a queue during a failure run
@@ -95,14 +95,14 @@ export class ActiveChatsStore {
       this.storageFailureReportedFor.clear();
     } catch (error) {
       log.api('Failed to save active chats to sessionStorage:', error);
-      // UX audit T3 review: this used to be console-only. A failed write means
+      // review: this used to be console-only. A failed write means
       // the follow-ups this chat is holding will NOT survive a reload, and the
       // one place that matters is the chat holding them — so say it there,
       // once per chat per failure run, rather than leaving the user to
       // believe their text is safe.
       let notified = false;
       for (const [sessionId, chat] of Object.entries(this.chats)) {
-        // station#3706 review (HIGH): unsent records are held on the same
+        // archive#3706: unsent records are held on the same
         // promise as queued follow-ups — a chat whose queue is empty but
         // whose "Not sent" rows are populated was the exact state a
         // permanent drop creates, and a refused write left those rows
@@ -180,10 +180,10 @@ export class ActiveChatsStore {
     if (this.chats[sessionId]) {
       return;
     }
-    // station#1795: stamp the real creation time through the store's own
+    // archive#1795: stamp the real creation time through the store's own
     // clock (already the single source of truth `now` used everywhere else
     // in this store) rather than letting `createDefaultChatState` fall back
-    // to its own `Date.now()` default — keeps every store-created chat on
+    // to its own `Date.now` default — keeps every store-created chat on
     // one clock, real or fake, including in tests that inject `now`.
     this.chats[sessionId] = createDefaultChatState(metadata, this.now());
     this.notify(true);
@@ -200,7 +200,7 @@ export class ActiveChatsStore {
       updates,
     );
     this.chats[targetSessionId!] = chat;
-    // UX audit T3 review: a bounded queue that discards silently is the same
+    // review: a bounded queue that discards silently is the same
     // loss the ceiling exists to make safe. Say what was dropped, with the
     // text, so it can be copied back out.
     if (droppedQueuedMessages.length > 0) {
@@ -326,7 +326,7 @@ export class ActiveChatsStore {
     // Persist it synchronously so an immediate reload/navigation cannot lose
     // the session while the ordinary 300 ms coalescing timer is still pending.
     this.saveToStorage();
-    // station#1311 review (MEDIUM fix): `HomeWorkItem.id` for this chat
+    // archive#1311 `HomeWorkItem.id` for this chat
     // reads as `sessionId` (the store key) until now and as `conversationId`
     // from this point on — a snooze set during that window was written
     // under the old id and would otherwise silently stop matching. Migrate
@@ -347,7 +347,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = removeQueuedMessageState(chat, index);
-    // UX audit T3 review: the queue is persisted content, so every edit to it
+    // review: the queue is persisted content, so every edit to it
     // has to schedule a write — reorder/edit/remove/clear included, or a
     // reload restores a queue the user has already changed.
     this.notify(true);
@@ -359,7 +359,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = editQueuedMessageState(chat, index, newContent);
-    // UX audit T3 review: the queue is persisted content, so every edit to it
+    // review: the queue is persisted content, so every edit to it
     // has to schedule a write — reorder/edit/remove/clear included, or a
     // reload restores a queue the user has already changed.
     this.notify(true);
@@ -371,7 +371,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = reorderQueuedMessageState(chat, fromIndex, toIndex);
-    // UX audit T3 review: the queue is persisted content, so every edit to it
+    // review: the queue is persisted content, so every edit to it
     // has to schedule a write — reorder/edit/remove/clear included, or a
     // reload restores a queue the user has already changed.
     this.notify(true);
@@ -383,7 +383,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = clearQueueState(chat);
-    // UX audit T3 review: the queue is persisted content, so every edit to it
+    // review: the queue is persisted content, so every edit to it
     // has to schedule a write — reorder/edit/remove/clear included, or a
     // reload restores a queue the user has already changed.
     this.notify(true);

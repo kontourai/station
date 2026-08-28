@@ -27,7 +27,7 @@ export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
   readonly id = 'openai-compat';
   readonly displayName = 'OpenAI-Compatible';
   /*
-   * station#3653: "OpenAI-compatible" is a family of servers, not one
+   * archive#3653: "OpenAI-compatible" is a family of servers, not one
    * product. A great many of them (llama.cpp, vLLM front-ends, LM Studio,
    * small self-hosted routers) answer `GET /models` with `{"data":[]}` while
    * serving chat perfectly well on a model id the operator names, and this
@@ -93,7 +93,7 @@ export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
         'OpenAI-compatible endpoint returned an invalid catalog.',
       );
     }
-    // station#1430: no `supportsTools` here — the OpenAI `GET /v1/models`
+    // archive#1430: no `supportsTools` here — the OpenAI `GET /v1/models`
     // response shape (and every OpenAI-compatible server this adapter
     // targets, since "OpenAI-compatible" means it mirrors this exact
     // envelope) is `{ id, object, created, owned_by }`. There is no

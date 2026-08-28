@@ -1,5 +1,5 @@
 /**
- * station#2802 slice 2 — turn-boundary capture coverage.
+ * archive#2802 — turn-boundary capture coverage.
  *
  * These tests drive the coordinator and the EventBus wiring with an in-memory
  * ref store double and a REAL CheckpointIndexStore over a temp directory, so
@@ -472,7 +472,7 @@ describe('wireTurnCheckpointCapture', () => {
     );
   });
 
-  // station#3451 finding 5: a turn that ends only in `runtime.error` never
+  // archive#3451 finding 5: a turn that ends only in `runtime.error` never
   // reached the settle arm — its baseline checkpoint was captured on
   // `turn.started` but no settle snapshot ever followed.
   it('captures settle on a genuine (non-deferred) runtime.error', async () => {

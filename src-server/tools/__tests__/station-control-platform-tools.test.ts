@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * #167 Wave 3: characterization tests for `station-control-platform-tools.ts`'s
+ * archive#167 Wave 3: characterization tests for `station-control-platform-tools.ts`'s
  * audited operations (`list_integrations`, `get_integration`,
  * `create_integration`, `delete_integration`, `list_registry_integrations`,
  * `install_registry_integration`), written *before* the migration to
@@ -354,7 +354,7 @@ describe('station-control platform tools (characterization)', () => {
   });
 
   /**
-   * station#4288. `install_plugin` used to POST `{ source }` to
+   * archive#4288. `install_plugin` used to POST `{ source }` to
    * `/api/plugins/install`, which now refuses without an operator's decision —
    * so the tool could never succeed while its description still advertised
    * installing. It does not call the route at all now, and says why.

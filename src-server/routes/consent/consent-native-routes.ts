@@ -1,5 +1,5 @@
 /**
- * The NATIVE consent broker's server half (station#3677 PR 3).
+ * The NATIVE consent broker's server half (archive#3677 PR 3).
  *
  * Why this exists: the distinct-origin consent listener is a browser
  * boundary — its decide chain proves a same-origin, user-activated form
@@ -17,7 +17,7 @@
  * pairs through the ordinary exchange, which stamps no mint, so it can
  * never satisfy the gate no matter which shell it runs. Reaching mobile
  * needs a different authority — an explicitly operator-granted consent
- * scope rather than a possession proof — which is station#3732, not
+ * scope rather than a possession proof — which is archive#3732, not
  * something this file should imply it already has.
  *
  * The authority, and what else is unchanged:
@@ -72,7 +72,7 @@
  * ORIGINATED on any surface today. Closing that means letting a
  * native-eligible caller create without a review URL, which is a change to
  * those routes, their clients, and the SDK shape — tracked separately
- * (station#3731), not smuggled into this slice.
+ * (archive#3731), not smuggled into this slice.
  */
 
 import { Hono } from 'hono';
@@ -103,7 +103,7 @@ export function registerConsentNativeRoutes(
   const requireChannel = () => deps.consentChannel ?? null;
 
   /**
-   * Whether THIS caller may use the native broker at all (station#3677 PR 3,
+   * Whether THIS caller may use the native broker at all (archive#3677 PR 3,
    * review round 1). The host capability answers "can this shell draw an OS
    * dialog"; only the server can answer "may this credential decide", and
    * the two are independent: a phone or a desktop app connected to a REMOTE

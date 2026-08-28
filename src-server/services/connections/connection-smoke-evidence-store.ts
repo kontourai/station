@@ -30,7 +30,7 @@ type ConnectionSmokeDocument = {
   evidenceVersion: typeof CONNECTION_SMOKE_STORE_VERSION;
   results: StoredConnectionSmokeResult[];
 };
-// Async-compatible seam (#2646): the default is the ASYNC cross-process lock
+// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
 // so a contended acquisition yields the event loop; sync test fakes remain
 // assignable (awaiting a non-promise is a no-op).
 type ConnectionSmokeMutationLock = (
@@ -87,7 +87,7 @@ export class MemoryConnectionSmokeEvidenceStore
     return this.results.get(connectionId) ?? null;
   }
 
-  // Async-compatible seam (#2646): the in-memory twin has nothing to await,
+  // Async-compatible seam (archive#2646): the in-memory twin has nothing to await,
   // but every ConnectionSmokeEvidenceStore implementation returns
   // Promise<void> so callers can await uniformly regardless of which one is
   // wired in.

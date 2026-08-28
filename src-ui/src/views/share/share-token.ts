@@ -4,14 +4,13 @@ import {
 } from '@kontourai/station-contracts/answer-share';
 
 /**
- * Capture-and-scrub for the permalink's share token (station#1423, security
- * review L-3 and N-2).
+ * Capture-and-scrub for the permalink's share token (archive#1423).
  *
- * L-3 wants the token out of the address bar the moment it has been read: a
+ * The token must be out of the address bar the moment it has been read: a
  * fragment is already never sent to a server, but it is still visible on
  * screen, kept in session history, and restored by session restore.
  *
- * N-2 is what that broke. Once scrubbed, the error boundary's Reload button
+ * Scrubbing is what that broke. Once scrubbed, the error boundary's Reload button
  * and any ordinary refresh reloaded a URL with no token — so the recovery
  * affordance was guaranteed to fail, under copy that blamed the recipient for
  * "copying only part of the link". So the token is kept in module state for
@@ -21,7 +20,7 @@ import {
  * that is the whole case it has to serve.
  *
  * Deliberately not `sessionStorage`: this is a capability, and persisting it
- * anywhere the browser keeps across a tab's lifetime is the thing L-3 is
+ * anywhere the browser keeps across a tab's lifetime is the thing this file is
  * reducing, not adding to.
  */
 
@@ -55,7 +54,7 @@ export function capturedShareToken(): string | undefined {
 
 /**
  * Restores the fragment and reloads. The only supported way to reload this
- * page: a bare `location.reload()` after {@link captureShareToken} has run
+ * page: a bare `location.reload` after {@link captureShareToken} has run
  * would drop the token and land on the missing-token state, which is a
  * recovery affordance that guarantees its own failure.
  */

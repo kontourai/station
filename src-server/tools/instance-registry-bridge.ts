@@ -214,7 +214,7 @@ export function readRegistryInstances(
     return {
       id,
       ...instance,
-      // Birth-aware (station#3064): Desktop decides whether a service
+      // Birth-aware (archive#3064): Desktop decides whether a service
       // owns this home from this field, and now that a supervisor
       // publishes a real pid, a REUSED pid would hand ownership to an
       // unrelated process — or, read the other way, keep Desktop from

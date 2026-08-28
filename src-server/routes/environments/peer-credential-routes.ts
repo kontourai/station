@@ -13,7 +13,7 @@ import {
 } from '../schemas/schemas.js';
 
 /**
- * Outbound peer-credential admin routes (station#1123 slice 2). Mounted at
+ * Outbound peer-credential admin routes (archive#1123). Mounted at
  * `/api/environments/peers`, gated to `access:manage` in
  * `src-server/security/pairing-route-scopes.ts` — the same tier
  * `/api/pairing/**` uses, so only the operator's own local/full credential
@@ -35,7 +35,7 @@ import {
 export function createPeerCredentialRoutes(
   store: PeerCredentialStore,
   /**
-   * station#1123 slice 2 review fix (MEDIUM, PR #1178): optional SSH-profile
+   * archive#1123 review fix (MEDIUM, PR archive#1178): optional SSH-profile
    * lookup, mirroring the CLI's `warnIfSshProfileTakesPrecedence`.
    * `resolveTarget` (`station-control-delegation.ts`) tries SSH first and
    * only ever falls back to this store's `'peer'`-kind target resolution
@@ -45,7 +45,7 @@ export function createPeerCredentialRoutes(
    * (SSH-then-peer precedence is a disclosed, deliberate ordering that may
    * change in slice 8).
    *
-   * station#1123 slice 3 update: this credential is NOT unenforced in that
+   * archive#1123 update: this credential is NOT unenforced in that
    * case anymore. `connectSshTarget` now also fetches this same store entry
    * and attaches its `Authorization: Bearer` header to requests over the SSH
    * tunnel, so the credential's scope IS what governs access there (see

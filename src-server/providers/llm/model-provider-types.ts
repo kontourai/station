@@ -15,7 +15,7 @@ export interface LLMModel {
   name: string;
   contextWindow?: number;
   /**
-   * station#1430: whether this specific model genuinely reports tool-call
+   * archive#1430: whether this specific model genuinely reports tool-call
    * (function-calling) support through the provider's own discovery API —
    * never a hardcoded per-model-family table. Each provider adapter's
    * `listModelCatalog`/`listModels` sets this only when its own catalog
@@ -35,7 +35,7 @@ export interface ModelCatalogRequest {
   maxEntries?: number;
   maxResponseBytes?: number;
   /**
-   * station#1430 (review, H-2): opts a caller OUT of any per-model
+   * archive#1430 (review, H-2): opts a caller OUT of any per-model
    * capability enrichment (currently: `OllamaLLMProvider`'s `/api/show`
    * `supportsTools` lookups) a provider adapter's `listModelCatalog` may do
    * beyond its base bulk listing call. Default is enrichment ON — every
@@ -100,7 +100,7 @@ export interface LLMStreamChunk {
   toolResult?: { id: string; result: unknown };
   finishReason?: string;
   /**
-   * station#4197: token usage as ai-sdk reported it for this call, populated
+   * archive#4197: token usage as ai-sdk reported it for this call, populated
    * on the `finish` chunk by `AiSdkLLMProvider.createStream` from
    * `result.usage` (`LanguageModelUsage` in the installed `ai` package —
    * `result.usage` and NOT `result.totalUsage`, because `totalUsage` is
@@ -108,7 +108,7 @@ export interface LLMStreamChunk {
    * this shape deliberately carries; with no `tools` option every
    * `createStream` call is single-step, so the two are numerically equal).
    *
-   * Every field is optional because absence is a real state (station#3201:
+   * Every field is optional because absence is a real state (archive#3201:
    * absent is not zero). A field the SDK resolved to `undefined`, `NaN`, or
    * a negative number is DROPPED, never coerced to `0`.
    *
@@ -159,7 +159,7 @@ export interface LLMStreamChunk {
    */
   errorStatus?: number;
   /**
-   * station#1182: ai-sdk's `StreamTextResult.response.modelId` — "the ID of
+   * archive#1182: ai-sdk's `StreamTextResult.response.modelId` — "the ID of
    * the response model that was used to generate the response," per the
    * `ai` package's own doc comment. Populated on `finish` ONLY by providers
    * whose adapter has verified this genuinely reflects the API response
@@ -179,7 +179,7 @@ export interface ILLMProvider {
   /** Whether configured selectors may substitute for unavailable discovery. */
   readonly configuredModelFallback?: 'allow' | 'deny';
   /**
-   * What an ANSWERED but empty catalogue means for this provider (station#3653
+   * What an ANSWERED but empty catalogue means for this provider (archive#3653
    * review, HIGH). Absent — the default — is `'no-models'`: the endpoint
    * enumerated, and enumerated nothing, which is an authoritative statement
    * that it serves no models. Anthropic's adapter pins exactly that

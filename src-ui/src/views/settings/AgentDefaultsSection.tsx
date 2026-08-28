@@ -13,9 +13,9 @@ import {
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
-// station#settings-revamp slice 3: promoted from a de-emphasized disclosure
+// archive#settings-revamp: promoted from a de-emphasized disclosure
 // to its own top-level "Defaults" scope (docs/design/settings-architecture.md
-// §3 S2) — still default values only used when a chat, project, or agent
+// §3) — still default values only used when a chat, project, or agent
 // has no override of its own, now with a persistence-tier caption
 // (`SettingsView.tsx`) instead of "de-emphasized" framing. The internal
 // progressive disclosure below is kept (a long form, not the scope's
@@ -43,8 +43,8 @@ export function AgentDefaultsSection({
   showRegion: boolean;
   onRegionChange: (value: string) => void;
   /**
-   * `SettingsView.tsx`'s own `useUnsavedGuard` guard — review finding
-   * (slice 5 HIGH 1): every navigation trigger from a page with dirty state
+   * `SettingsView.tsx`'s own `useUnsavedGuard` guard —
+   * ( 1): every navigation trigger from a page with dirty state
    * must route through it (CLAUDE.md's unsaved-guard standard), including
    * this section's own "Open Agents" cross-links.
    */

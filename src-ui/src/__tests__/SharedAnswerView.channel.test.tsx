@@ -3,11 +3,11 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The shared-answer page's channel panel and its version gate (station#1598).
+ * The shared-answer page's channel panel and its version gate (archive#1598).
  *
  * A sibling of `SharedAnswerView.test.tsx` rather than an addition to it: that
  * file drives the page through the real `share-token` module and asserts the
- * #1423 refusal ladder against rendered human text, while everything here
+ * archive#1423 refusal ladder against rendered human text, while everything here
  * needs a stubbed token capture and a payload shape it does not know about.
  * Both files render the same component; neither shares fixtures with the
  * other.
@@ -18,11 +18,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * reasons — is rendered by a test here, so the copy table cannot gain a
  * sentence nobody ever looked at.
  *
- * AC8's assertion is the L0 copy gate: the panel is producer-asserted
+ * assertion is the L0 copy gate: the panel is producer-asserted
  * ("this Station reports…"), and the words "verified" and "proven" must not
  * appear in it until the signing slice lands. It is asserted here rather than
  * as a repo-wide grep because `verified` is a legitimate identifier elsewhere
- * — `channel-assurance.ts` has a field by that name — and a blunt gate would
+ * `channel-assurance.ts` has a field by that name — and a blunt gate would
  * flag it.
  */
 
@@ -205,7 +205,7 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
   });
 
   it('an unrecognised reason still says something, and claims nothing', async () => {
-    // M-2. `reason` arrives off the wire, so a newer Station's reason must
+    //`reason` arrives off the wire, so a newer Station's reason must
     // not index a closed Record — and `constructor` must not return a
     // prototype member as a React child.
     for (const reason of ['invented-by-a-newer-station', 'constructor']) {
@@ -225,7 +225,7 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
   });
 
   it('renders no panel at all when the payload carries no channel field', async () => {
-    // A Station older than #1598. Inventing a status on the client would be
+    // A Station older than archive#1598. Inventing a status on the client would be
     // the read-time derivation this slice refuses.
     await renderShare(payload());
     expect(screen.queryByLabelText('Channel log')).toBeNull();

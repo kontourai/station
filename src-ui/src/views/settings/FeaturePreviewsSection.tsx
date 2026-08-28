@@ -8,7 +8,7 @@ import { Toggle } from '../../components/Toggle';
 import { SettingsSection } from './SettingsSection';
 
 /**
- * Feature previews as a Settings section (station#3313, IA option A) — the
+ * Feature previews as a Settings section (archive#3313, IA option A) — the
  * content of the retired standalone /feature-previews view. Previews are
  * server-persisted toggles: a preview appears here only while this Station
  * build offers it, and enabling one is what unlocks any surface gated on its

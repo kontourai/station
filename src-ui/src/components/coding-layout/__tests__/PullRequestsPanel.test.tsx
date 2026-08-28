@@ -287,7 +287,7 @@ describe('PullRequestsPanel', () => {
   });
   test('a context-level unavailability renders its own reason even with stale list data', () => {
     // Layered guards: the list layer also catches unavailability (proven by
-    // fault injection — bypassing the context guard still rendered an
+    // bypassing the context guard still rendered an
     // ErrorState), but only the CONTEXT guard carries the context's reason.
     // Pin it with the list still holding data, so this test discriminates
     // the context layer alone.
