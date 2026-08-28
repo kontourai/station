@@ -20,10 +20,7 @@ import {
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
-import {
-  quarantineLegacyServiceManifest,
-  quarantineLegacyServiceManifestAsync,
-} from './legacy-service-manifest-quarantine.js';
+import { quarantineLegacyServiceManifest } from './legacy-service-manifest-quarantine.js';
 
 type Operation =
   | 'read'
@@ -242,18 +239,11 @@ export function readRegistryInstances(
  * Compatibility entry point for the native bridge.  The transaction itself is
  * isolated so this protocol adapter cannot grow another filesystem authority.
  */
-export function prepareRuntime(
+export async function prepareRuntime(
   stationHome: string,
   stationRoot: string,
-): ReturnType<typeof quarantineLegacyServiceManifest> {
+): Promise<Awaited<ReturnType<typeof quarantineLegacyServiceManifest>>> {
   return quarantineLegacyServiceManifest(stationHome, stationRoot);
-}
-
-export async function prepareRuntimeAsync(
-  stationHome: string,
-  stationRoot: string,
-): Promise<ReturnType<typeof quarantineLegacyServiceManifest>> {
-  return quarantineLegacyServiceManifestAsync(stationHome, stationRoot);
 }
 
 export async function runInstanceRegistryBridge(): Promise<void> {
@@ -274,10 +264,7 @@ export async function runInstanceRegistryBridge(): Promise<void> {
     return;
   }
   if (operation === 'prepareRuntime') {
-    const result = await prepareRuntimeAsync(
-      stationHome!,
-      home(inputValue.root),
-    );
+    const result = await prepareRuntime(stationHome!, home(inputValue.root));
     if (result.kind === 'refused') {
       // Keep refusal structured and path-free while preserving the native
       // caller's current fail-closed nonzero-exit contract.

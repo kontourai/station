@@ -210,7 +210,7 @@ afterEach(() => {
     rmSync(value, { recursive: true, force: true });
 });
 
-describe('instance registry bridge legacy manifest transaction (station#4457)', () => {
+describe('instance registry bridge legacy manifest transaction (archive#4457)', () => {
   test('child bridge exposes exact prepare success/refusal output and redacts unexpected errors', () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
@@ -293,21 +293,27 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     maintenance.release();
   });
 
-  test('moves the exact Stable fixture to a digest-keyed quarantine with a committed receipt', () => {
+  test('moves the exact Stable fixture to a digest-keyed quarantine with a committed receipt', async () => {
     const stationRoot = root();
     const { home, manifest } = legacyFixture(stationRoot);
-    expect(prepareRuntime(home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     expect(existsSync(manifest)).toBe(false);
     const entries = readdirSync(legacyQuarantine(home));
     expect(entries).toHaveLength(3);
     expect(entries.some((entry) => entry.endsWith('.receipt.json'))).toBe(true);
-    expect(prepareRuntime(home, stationRoot)).toEqual({ kind: 'already' });
+    await expect(prepareRuntime(home, stationRoot)).resolves.toEqual({
+      kind: 'already',
+    });
   });
 
-  test('repeats committed preparation after a graceful stop reaps only the provably stale desktop sidecar', () => {
+  test('repeats committed preparation after a graceful stop reaps only the provably stale desktop sidecar', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     const receipt = readdirSync(legacyQuarantine(fixture.home)).find((entry) =>
       entry.endsWith('.committed.json'),
     )!;
@@ -355,10 +361,10 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     ['partial stopped owner', 'partial' as const],
   ])(
     'does not reap a %s sidecar claim during repeated preparation',
-    (_description, liveness) => {
+    async (_description, liveness) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'new',
       });
       const birth = lookupProcessBirthFingerprint(process.pid)!;
@@ -370,13 +376,13 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
         fixture.home,
       );
 
-      expect(
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           ...(liveness === 'ambiguous'
             ? { registryProcessProbe: unavailableProcessProbe('EPERM') }
             : {}),
         }),
-      ).toEqual({ kind: 'already' });
+      ).resolves.toEqual({ kind: 'already' });
       expect(
         readInstanceRegistry(fixture.home).instances[
           'desktop-sidecar-current-generation'
@@ -402,10 +408,10 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     ],
   ] as const)(
     'preserves a terminal stopped sidecar record byte-for-byte when its %s is no longer current',
-    (_description, identity, registryProcessProbe) => {
+    async (_description, identity, registryProcessProbe) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'new',
       });
       upsertInstance(
@@ -420,11 +426,11 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       );
       const before = readFileSync(resolveInstanceRegistryPath(fixture.home));
 
-      expect(
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           ...(registryProcessProbe ? { registryProcessProbe } : {}),
         }),
-      ).toEqual({ kind: 'already' });
+      ).resolves.toEqual({ kind: 'already' });
       expect(readFileSync(resolveInstanceRegistryPath(fixture.home))).toEqual(
         before,
       );
@@ -436,10 +442,12 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     },
   );
 
-  test('reaps a sidecar claim only when a successful liveness probe proves PID reuse', () => {
+  test('reaps a sidecar claim only when a successful liveness probe proves PID reuse', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     upsertInstance(
       'desktop-sidecar-reused-pid',
       {
@@ -451,7 +459,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       fixture.home,
     );
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'already',
     });
     expect(
@@ -461,7 +469,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     ).toBeUndefined();
   });
 
-  test('quarantines the redacted owner-preserved qualified-label/null-features legacy shape', () => {
+  test('quarantines the redacted owner-preserved qualified-label/null-features legacy shape', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot, '', {
       // The values that distinguish this historical shape are intentionally
@@ -471,7 +479,9 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       features: null,
     });
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     expect(existsSync(fixture.manifest)).toBe(false);
     expect(readdirSync(legacyQuarantine(fixture.home))).toHaveLength(3);
   });
@@ -488,28 +498,30 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     ],
   ] as const)(
     'refuses the qualified-label legacy near miss with %s',
-    (_description, manifestOverrides) => {
+    async (_description, manifestOverrides) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot, '', manifestOverrides);
 
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'refused',
       });
       expect(existsSync(fixture.manifest)).toBe(true);
     },
   );
 
-  test('uses the supplied shared root, not cwd, and leaves a different home untouched', () => {
+  test('uses the supplied shared root, not cwd, and leaves a different home untouched', async () => {
     const stationRoot = root();
     const { home } = legacyFixture(stationRoot);
     const other = legacyFixture(root());
-    expect(quarantineLegacyServiceManifest(home, stationRoot)).toEqual({
+    await expect(
+      quarantineLegacyServiceManifest(home, stationRoot),
+    ).resolves.toEqual({
       kind: 'new',
     });
     expect(existsSync(other.manifest)).toBe(true);
   });
 
-  test('refuses a current shared localService profile or a live service registry owner', () => {
+  test('refuses a current shared localService profile or a live service registry owner', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     mkdirSync(join(stationRoot, 'config'), { mode: 0o700 });
@@ -518,7 +530,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       JSON.stringify(profileStore(stationRoot)),
       { mode: 0o600 },
     );
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
     rmSync(join(stationRoot, 'config', 'profiles.json'));
@@ -531,7 +543,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
         { port: 3141, type: 'service', pid: process.pid, birth },
         fixture.home,
       );
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'refused',
       });
     } finally {
@@ -545,7 +557,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     ['unknown error', unavailableProcessProbe()],
   ] as const)(
     'refuses and leaves the source untouched when the registry probe returns %s',
-    (_outcome, registryProcessProbe) => {
+    async (_outcome, registryProcessProbe) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
       const sourceBefore = readFileSync(fixture.manifest);
@@ -562,17 +574,17 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
         fixture.home,
       );
 
-      expect(
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           registryProcessProbe,
         }),
-      ).toEqual({ kind: 'refused' });
+      ).resolves.toEqual({ kind: 'refused' });
       expect(readFileSync(fixture.manifest)).toEqual(sourceBefore);
       expect(existsSync(legacyQuarantine(fixture.home))).toBe(false);
     },
   );
 
-  test('quarantines the exact legacy source when the registry probe proves ESRCH', () => {
+  test('quarantines the exact legacy source when the registry probe proves ESRCH', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     upsertInstance(
@@ -581,45 +593,90 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       fixture.home,
     );
 
-    expect(
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         registryProcessProbe: unavailableProcessProbe('ESRCH'),
       }),
-    ).toEqual({ kind: 'new' });
+    ).resolves.toEqual({ kind: 'new' });
     expect(existsSync(fixture.manifest)).toBe(false);
     expect(existsSync(legacyQuarantine(fixture.home))).toBe(true);
   });
 
-  test('refuses while a live runtime holds the maintenance boundary, then releases after outcomes', () => {
+  test('refuses while a live runtime holds the maintenance boundary, then releases after outcomes', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const runtime = acquireStationHomeRuntimeLease(fixture.home);
     try {
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'refused',
       });
       expect(existsSync(fixture.manifest)).toBe(true);
     } finally {
       runtime.release();
     }
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     const afterSuccess = acquireStationHomeMaintenanceLease(fixture.home);
     afterSuccess.release();
 
     const refused = legacyFixture(root());
     chmodSync(refused.manifest, 0o644);
-    expect(prepareRuntime(refused.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(refused.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
     const afterRefusal = acquireStationHomeMaintenanceLease(refused.home);
     afterRefusal.release();
   });
 
-  test('refuses symlinks and loose modes without moving the source', () => {
+  test('bounds held maintenance, preserves state, then releases for a later preparation', async () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    const maintenance = acquireStationHomeMaintenanceLease(fixture.home);
+    try {
+      const started = Date.now();
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+        kind: 'refused',
+      });
+      expect(Date.now() - started).toBeLessThan(3_000);
+      expect(existsSync(fixture.manifest)).toBe(true);
+    } finally {
+      maintenance.release();
+    }
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
+    const reacquired = acquireStationHomeMaintenanceLease(fixture.home);
+    reacquired.release();
+  });
+
+  test('refuses a runtime home directory replacement while maintenance waits', async () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    const original = readFileSync(fixture.manifest);
+    const maintenance = acquireStationHomeMaintenanceLease(fixture.home);
+    const pending = prepareRuntime(fixture.home, stationRoot);
+    const replaced = `${fixture.home}.replaced`;
+    try {
+      renameSync(fixture.home, replaced);
+      mkdirSync(join(fixture.home, 'service'), {
+        recursive: true,
+        mode: 0o700,
+      });
+      writeFileSync(fixture.manifest, original, { mode: 0o600 });
+    } finally {
+      maintenance.release();
+    }
+    await expect(pending).resolves.toEqual({ kind: 'refused' });
+    expect(readFileSync(fixture.manifest)).toEqual(original);
+    expect(existsSync(join(fixture.home, 'quarantine'))).toBe(false);
+  });
+
+  test('refuses symlinks and loose modes without moving the source', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     chmodSync(fixture.manifest, 0o644);
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
     chmodSync(fixture.manifest, 0o600);
@@ -630,31 +687,31 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       join(fixture.home, 'service-real'),
     );
     symlinkSync(outside, join(fixture.home, 'service'));
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
   });
 
-  test('refuses a source swap immediately before rename', () => {
+  test('refuses a source swap immediately before rename', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         beforeRename: () =>
           writeFileSync(fixture.manifest, '{"changed":true}', { mode: 0o600 }),
       }),
-    ).toEqual({ kind: 'refused' });
+    ).resolves.toEqual({ kind: 'refused' });
     expect(existsSync(fixture.manifest)).toBe(true);
   });
 
   test.each(['service parent', 'home parent'] as const)(
     'refuses a %s pathname swap that preserves the observed manifest inode',
-    (parent) => {
+    async (parent) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
       const before = lstatSync(fixture.manifest);
       const originalHome = fixture.home;
-      expect(
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           afterPreparedBeforeRename: () => {
             if (parent === 'service parent') {
@@ -684,7 +741,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
             expect(after.ino).toBe(before.ino);
           },
         }),
-      ).toEqual({ kind: 'refused' });
+      ).resolves.toEqual({ kind: 'refused' });
       expect(existsSync(fixture.manifest)).toBe(true);
       expect(lstatSync(fixture.manifest).ino).toBe(before.ino);
       expect(
@@ -697,10 +754,10 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     },
   );
 
-  test('holds profile and registry decisions through rename, then revalidates direct mutations', () => {
+  test('holds profile and registry decisions through rename, then revalidates direct mutations', async () => {
     const stationRoot = root();
     const profile = legacyFixture(stationRoot);
-    expect(
+    await expect(
       quarantineLegacyServiceManifest(profile.home, stationRoot, {
         beforeRename: () => {
           mkdirSync(join(stationRoot, 'config'), {
@@ -714,13 +771,13 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
           );
         },
       }),
-    ).toEqual({ kind: 'refused' });
+    ).resolves.toEqual({ kind: 'refused' });
     expect(existsSync(profile.manifest)).toBe(true);
 
     const registryRoot = root();
     const registry = legacyFixture(registryRoot);
     const birth = lookupProcessBirthFingerprint(process.pid)!;
-    expect(
+    await expect(
       quarantineLegacyServiceManifest(registry.home, registryRoot, {
         beforeRename: () =>
           writeFileSync(
@@ -739,26 +796,30 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
             { mode: 0o600 },
           ),
       }),
-    ).toEqual({ kind: 'refused' });
+    ).resolves.toEqual({ kind: 'refused' });
     expect(existsSync(registry.manifest)).toBe(true);
   });
 
-  test('refuses a second valid legacy variant after singleton evidence exists', () => {
+  test('refuses a second valid legacy variant after singleton evidence exists', async () => {
     const stationRoot = root();
     const first = legacyFixture(stationRoot);
-    expect(prepareRuntime(first.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(first.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     const second = legacyFixture(stationRoot, 'second-variant');
-    expect(prepareRuntime(second.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(second.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(readdirSync(legacyQuarantine(second.home))).toHaveLength(3);
     expect(existsSync(second.manifest)).toBe(true);
   });
 
-  test('refuses corrupt singleton evidence even when the service directory is removed', () => {
+  test('refuses corrupt singleton evidence even when the service directory is removed', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     const receipt = readdirSync(legacyQuarantine(fixture.home)).find((entry) =>
       entry.endsWith('.receipt.json'),
     )!;
@@ -766,12 +827,12 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       mode: 0o600,
     });
     rmSync(join(fixture.home, 'service'), { recursive: true, force: true });
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
   });
 
-  test('refuses temporary evidence and prepared-only evidence without its source', () => {
+  test('refuses temporary evidence and prepared-only evidence without its source', async () => {
     const temporaryRoot = root();
     const temporary = legacyFixture(temporaryRoot);
     mkdirSync(legacyQuarantine(temporary.home), {
@@ -785,93 +846,99 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
         mode: 0o600,
       },
     );
-    expect(prepareRuntime(temporary.home, temporaryRoot)).toEqual({
+    await expect(
+      prepareRuntime(temporary.home, temporaryRoot),
+    ).resolves.toEqual({
       kind: 'refused',
     });
 
     const preparedRoot = root();
     const prepared = legacyFixture(preparedRoot);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(prepared.home, preparedRoot, {
         afterPreparedBeforeRename: () => {
           throw new Error('prepared only');
         },
       }),
-    ).toThrow('prepared only');
+    ).rejects.toThrow('prepared only');
     rmSync(join(prepared.home, 'service'), { recursive: true, force: true });
-    expect(prepareRuntime(prepared.home, preparedRoot)).toEqual({
+    await expect(prepareRuntime(prepared.home, preparedRoot)).resolves.toEqual({
       kind: 'refused',
     });
   });
 
-  test('refuses unknown entries in prepared and committed legacy evidence namespaces', () => {
+  test('refuses unknown entries in prepared and committed legacy evidence namespaces', async () => {
     const preparedRoot = root();
     const prepared = legacyFixture(preparedRoot);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(prepared.home, preparedRoot, {
         afterPreparedBeforeRename: () => {
           throw new Error('prepared event published');
         },
       }),
-    ).toThrow('prepared event published');
+    ).rejects.toThrow('prepared event published');
     writeFileSync(join(legacyQuarantine(prepared.home), 'unexpected'), 'x', {
       mode: 0o600,
     });
-    expect(prepareRuntime(prepared.home, preparedRoot)).toEqual({
+    await expect(prepareRuntime(prepared.home, preparedRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(prepared.manifest)).toBe(true);
-    expect(prepareRuntime(prepared.home, preparedRoot)).toEqual({
+    await expect(prepareRuntime(prepared.home, preparedRoot)).resolves.toEqual({
       kind: 'refused',
     });
 
     const committedRoot = root();
     const committed = legacyFixture(committedRoot);
-    expect(prepareRuntime(committed.home, committedRoot)).toEqual({
+    await expect(
+      prepareRuntime(committed.home, committedRoot),
+    ).resolves.toEqual({
       kind: 'new',
     });
     writeFileSync(join(legacyQuarantine(committed.home), '.unknown'), 'x', {
       mode: 0o600,
     });
-    expect(prepareRuntime(committed.home, committedRoot)).toEqual({
+    await expect(
+      prepareRuntime(committed.home, committedRoot),
+    ).resolves.toEqual({
       kind: 'refused',
     });
   });
 
-  test('refuses an identical-byte inode swap after final observation', () => {
+  test('refuses an identical-byte inode swap after final observation', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const raw = readFileSync(fixture.manifest);
-    expect(
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         afterFinalObservationBeforeRename: () => {
           renameSync(fixture.manifest, `${fixture.manifest}.prior`);
           writeFileSync(fixture.manifest, raw, { mode: 0o600 });
         },
       }),
-    ).toEqual({ kind: 'refused' });
+    ).resolves.toEqual({ kind: 'refused' });
     expect(existsSync(fixture.manifest)).toBe(true);
   });
 
-  test('refuses an extra source hard link created after the final observation', () => {
+  test('refuses an extra source hard link created after the final observation', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const digest = manifestDigest(fixture.manifest);
     const extra = `${fixture.manifest}.extra-link`;
-    expect(
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         afterFinalObservationBeforeRename: () => {
           linkSync(fixture.manifest, extra);
         },
       }),
-    ).toEqual({ kind: 'refused' });
+    ).resolves.toEqual({ kind: 'refused' });
     expect(existsSync(fixture.manifest)).toBe(true);
     expect(existsSync(extra)).toBe(true);
     expect(existsSync(quarantineTarget(fixture.home, digest))).toBe(false);
     expect(existsSync(committedReceiptPath(fixture.home, digest))).toBe(false);
   });
 
-  test('refuses a digest-keyed quarantine collision and exposes no paths in outcomes', () => {
+  test('refuses a digest-keyed quarantine collision and exposes no paths in outcomes', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const raw = readFileSync(fixture.manifest);
@@ -885,30 +952,34 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       'different bytes',
       { mode: 0o600 },
     );
-    const result = prepareRuntime(fixture.home, stationRoot);
+    const result = await prepareRuntime(fixture.home, stationRoot);
     expect(result).toEqual({ kind: 'refused' });
     expect(JSON.stringify(result)).not.toContain(stationRoot);
   });
 
-  test('recovers a rename-before-receipt crash and remains idempotent', () => {
+  test('recovers a rename-before-receipt crash and remains idempotent', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         afterRenameBeforeCommit: () => {
           throw new Error('simulated crash');
         },
       }),
-    ).toThrow('simulated crash');
-    expect(quarantineLegacyServiceManifest(fixture.home, stationRoot)).toEqual({
+    ).rejects.toThrow('simulated crash');
+    await expect(
+      quarantineLegacyServiceManifest(fixture.home, stationRoot),
+    ).resolves.toEqual({
       kind: 'recovered',
     });
-    expect(quarantineLegacyServiceManifest(fixture.home, stationRoot)).toEqual({
+    await expect(
+      quarantineLegacyServiceManifest(fixture.home, stationRoot),
+    ).resolves.toEqual({
       kind: 'already',
     });
   });
 
-  test('exercises every immutable prepared and committed receipt publication boundary', () => {
+  test('exercises every immutable prepared and committed receipt publication boundary', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const digest = manifestDigest(fixture.manifest);
@@ -916,7 +987,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     const committed = committedReceiptPath(fixture.home, digest);
     const observed: string[] = [];
 
-    expect(
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         beforePreparedFsync: () => {
           const entries = readdirSync(legacyQuarantine(fixture.home));
@@ -948,7 +1019,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
           observed.push('committed-after-link');
         },
       }),
-    ).toEqual({ kind: 'new' });
+    ).resolves.toEqual({ kind: 'new' });
     expect(observed).toEqual([
       'prepared-before-fsync',
       'prepared-after-fsync',
@@ -966,7 +1037,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     'afterCommittedLinkBeforeDirectoryFsync',
   ] as const)(
     'refuses a target hard link injected at %s and leaves fail-closed evidence',
-    (boundary) => {
+    async (boundary) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
       const digest = manifestDigest(fixture.manifest);
@@ -980,15 +1051,15 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
             ? { afterCommittedFsyncBeforeLink: mutateTarget }
             : { afterCommittedLinkBeforeDirectoryFsync: mutateTarget };
 
-      expect(
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, hooks),
-      ).toEqual({ kind: 'refused' });
+      ).resolves.toEqual({ kind: 'refused' });
       expect(lstatSync(target).nlink).toBeGreaterThan(1);
       expect(existsSync(extra)).toBe(true);
       // A retained prepared or committed marker cannot turn a later retry into
       // an `already`/`recovered` success because inspection re-opens the same
       // now-linked target.
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'refused',
       });
     },
@@ -999,7 +1070,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     ['complete owned temporary after fsync before link', undefined],
   ] as const)(
     'cleans %s and resumes the safe source-only state',
-    (_, content) => {
+    async (_, content) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
       const digest = manifestDigest(fixture.manifest);
@@ -1013,7 +1084,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
         { mode: 0o600 },
       );
 
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'new',
       });
       expect(existsSync(fixture.manifest)).toBe(false);
@@ -1024,7 +1095,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     },
   );
 
-  test('cleans an exact orphan temporary alongside a final prepared receipt', () => {
+  test('cleans an exact orphan temporary alongside a final prepared receipt', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const digest = manifestDigest(fixture.manifest);
@@ -1038,16 +1109,20 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     linkSync(preparedReceiptPath(fixture.home, digest), temporary);
     expect(lstatSync(temporary).nlink).toBe(2);
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     expect(existsSync(fixture.manifest)).toBe(false);
     expect(existsSync(temporary)).toBe(false);
     expect(existsSync(committedReceiptPath(fixture.home, digest))).toBe(true);
   });
 
-  test('cleans an exact orphan temporary alongside committed evidence without reopening it', () => {
+  test('cleans an exact orphan temporary alongside committed evidence without reopening it', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     const target = readdirSync(legacyQuarantine(fixture.home)).find(
       (entry) =>
         entry.endsWith('.json') &&
@@ -1062,30 +1137,30 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     linkSync(committedReceiptPath(fixture.home, digest), temporary);
     expect(lstatSync(temporary).nlink).toBe(2);
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'already',
     });
     expect(existsSync(temporary)).toBe(false);
     expect(existsSync(committedReceiptPath(fixture.home, digest))).toBe(true);
   });
 
-  test('cleans an exact prepared final/temp replay before recovering a target-only move', () => {
+  test('cleans an exact prepared final/temp replay before recovering a target-only move', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const digest = manifestDigest(fixture.manifest);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         afterRenameBeforeCommit: () => {
           throw new Error('target-only prepared replay');
         },
       }),
-    ).toThrow('target-only prepared replay');
+    ).rejects.toThrow('target-only prepared replay');
     const prepared = preparedReceiptPath(fixture.home, digest);
     const temporary = ownedTemporaryPath(fixture.home, digest, 'receipt');
     linkSync(prepared, temporary);
     expect(lstatSync(prepared).nlink).toBe(2);
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'recovered',
     });
     expect(existsSync(temporary)).toBe(false);
@@ -1093,7 +1168,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     expect(existsSync(committedReceiptPath(fixture.home, digest))).toBe(true);
   });
 
-  test('refuses separate or externally linked recognized receipt temporaries', () => {
+  test('refuses separate or externally linked recognized receipt temporaries', async () => {
     const mismatchRoot = root();
     const mismatch = legacyFixture(mismatchRoot);
     const mismatchDigest = manifestDigest(mismatch.manifest);
@@ -1112,7 +1187,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       'receipt',
     );
     writeFileSync(separate, '{separate inode}', { mode: 0o600 });
-    expect(prepareRuntime(mismatch.home, mismatchRoot)).toEqual({
+    await expect(prepareRuntime(mismatch.home, mismatchRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(mismatch.manifest)).toBe(true);
@@ -1129,24 +1204,26 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     writeFileSync(linked, '{external link}', { mode: 0o600 });
     linkSync(linked, join(external.home, 'outside-temporary-link'));
     expect(lstatSync(linked).nlink).toBe(2);
-    expect(prepareRuntime(external.home, externalRoot)).toEqual({
+    await expect(prepareRuntime(external.home, externalRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(external.manifest)).toBe(true);
     expect(existsSync(linked)).toBe(true);
   });
 
-  test('refuses committed evidence whose target retains an extra hard link', () => {
+  test('refuses committed evidence whose target retains an extra hard link', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const digest = manifestDigest(fixture.manifest);
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     const target = quarantineTarget(fixture.home, digest);
     const extra = `${target}.extra-link`;
     linkSync(target, extra);
     expect(lstatSync(target).nlink).toBe(2);
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(fixture.manifest)).toBe(false);
@@ -1154,23 +1231,23 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     expect(existsSync(committedReceiptPath(fixture.home, digest))).toBe(true);
   });
 
-  test('refuses a persistent prepared receipt with a hard link outside quarantine', () => {
+  test('refuses a persistent prepared receipt with a hard link outside quarantine', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         afterPreparedBeforeRename: () => {
           throw new Error('prepared receipt for hard-link refusal');
         },
       }),
-    ).toThrow('prepared receipt for hard-link refusal');
+    ).rejects.toThrow('prepared receipt for hard-link refusal');
     const digest = manifestDigest(fixture.manifest);
     const prepared = preparedReceiptPath(fixture.home, digest);
     const outside = join(fixture.home, 'prepared-receipt-outside-link');
     linkSync(prepared, outside);
     expect(lstatSync(prepared).nlink).toBe(2);
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(fixture.manifest)).toBe(true);
@@ -1180,11 +1257,11 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
 
   test.each(['prepared receipt', 'committed marker'] as const)(
     'refuses already evidence when its %s has an external hard link',
-    (record) => {
+    async (record) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
       const digest = manifestDigest(fixture.manifest);
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'new',
       });
       const persistent =
@@ -1195,7 +1272,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       linkSync(persistent, outside);
       expect(lstatSync(persistent).nlink).toBe(2);
 
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'refused',
       });
       expect(existsSync(fixture.manifest)).toBe(false);
@@ -1203,7 +1280,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     },
   );
 
-  test('refuses unknown or digest-mismatched temporary evidence without deleting it', () => {
+  test('refuses unknown or digest-mismatched temporary evidence without deleting it', async () => {
     const unknownRoot = root();
     const unknown = legacyFixture(unknownRoot);
     const unknownDigest = manifestDigest(unknown.manifest);
@@ -1213,7 +1290,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       `.legacy-service-default-${unknownDigest}.receipt.json.not-a-uuid.tmp`,
     );
     writeFileSync(invalidName, '{', { mode: 0o600 });
-    expect(prepareRuntime(unknown.home, unknownRoot)).toEqual({
+    await expect(prepareRuntime(unknown.home, unknownRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(invalidName)).toBe(true);
@@ -1231,36 +1308,36 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       'receipt',
     );
     writeFileSync(mismatched, '{', { mode: 0o600 });
-    expect(prepareRuntime(mismatch.home, mismatchRoot)).toEqual({
+    await expect(prepareRuntime(mismatch.home, mismatchRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(mismatched)).toBe(true);
     expect(existsSync(mismatch.manifest)).toBe(true);
   });
 
-  test('refuses oversized sparse manifests, receipts, and recognized temporaries before reading them', () => {
+  test('refuses oversized sparse manifests, receipts, and recognized temporaries before reading them', async () => {
     const manifestRoot = root();
     const manifest = legacyFixture(manifestRoot);
     truncateSync(manifest.manifest, 64 * 1024 + 1);
     expect(lstatSync(manifest.manifest).size).toBe(64 * 1024 + 1);
-    expect(prepareRuntime(manifest.home, manifestRoot)).toEqual({
+    await expect(prepareRuntime(manifest.home, manifestRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(manifest.manifest)).toBe(true);
 
     const receiptRoot = root();
     const receipt = legacyFixture(receiptRoot);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(receipt.home, receiptRoot, {
         afterPreparedBeforeRename: () => {
           throw new Error('prepared oversized receipt');
         },
       }),
-    ).toThrow('prepared oversized receipt');
+    ).rejects.toThrow('prepared oversized receipt');
     const receiptDigest = manifestDigest(receipt.manifest);
     const prepared = preparedReceiptPath(receipt.home, receiptDigest);
     truncateSync(prepared, 2 * 1024 + 1);
-    expect(prepareRuntime(receipt.home, receiptRoot)).toEqual({
+    await expect(prepareRuntime(receipt.home, receiptRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(receipt.manifest)).toBe(true);
@@ -1279,14 +1356,16 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     );
     writeFileSync(ownedTemporary, '{', { mode: 0o600 });
     truncateSync(ownedTemporary, 2 * 1024 + 1);
-    expect(prepareRuntime(temporary.home, temporaryRoot)).toEqual({
+    await expect(
+      prepareRuntime(temporary.home, temporaryRoot),
+    ).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(temporary.manifest)).toBe(true);
     expect(existsSync(ownedTemporary)).toBe(true);
   });
 
-  test('caps matching temporary evidence before inspecting its contents', () => {
+  test('caps matching temporary evidence before inspecting its contents', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const digest = manifestDigest(fixture.manifest);
@@ -1300,23 +1379,23 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       );
     }
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'refused',
     });
     expect(existsSync(fixture.manifest)).toBe(true);
     expect(readdirSync(legacyQuarantine(fixture.home))).toHaveLength(5);
   });
 
-  test('replays exactly one same-inode dual-name prepared move and commits it', () => {
+  test('replays exactly one same-inode dual-name prepared move and commits it', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         afterPreparedBeforeRename: () => {
           throw new Error('prepared for dual-name replay');
         },
       }),
-    ).toThrow('prepared for dual-name replay');
+    ).rejects.toThrow('prepared for dual-name replay');
     const digest = manifestDigest(fixture.manifest);
     const target = quarantineTarget(fixture.home, digest);
     linkSync(fixture.manifest, target);
@@ -1326,7 +1405,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     expect(sourceBefore.nlink).toBe(2);
     expect(manifestDigest(target)).toBe(digest);
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'recovered',
     });
     const targetAfter = lstatSync(target);
@@ -1339,23 +1418,23 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
 
   test.each(['profile', 'birth-live service'] as const)(
     'refuses a prepared dual-name recovery when a current %s authorizes it without unlinking',
-    (authority) => {
+    async (authority) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
-      expect(() =>
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           afterPreparedBeforeRename: () => {
             throw new Error('prepared dual-name authority check');
           },
         }),
-      ).toThrow('prepared dual-name authority check');
+      ).rejects.toThrow('prepared dual-name authority check');
       const digest = manifestDigest(fixture.manifest);
       const target = quarantineTarget(fixture.home, digest);
       linkSync(fixture.manifest, target);
       if (authority === 'profile') authorizeLegacyService(stationRoot);
       else publishLiveLegacyService(fixture.home);
 
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'refused',
       });
       expect(existsSync(fixture.manifest)).toBe(true);
@@ -1370,24 +1449,24 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
 
   test.each(['profile', 'birth-live service'] as const)(
     'refuses target-only recovery when a new %s authorizes it',
-    (authority) => {
+    async (authority) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
       const digest = manifestDigest(fixture.manifest);
-      expect(() =>
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           afterRenameBeforeCommit: () => {
             throw new Error('target-only authority check');
           },
         }),
-      ).toThrow('target-only authority check');
+      ).rejects.toThrow('target-only authority check');
       const target = quarantineTarget(fixture.home, digest);
       expect(existsSync(fixture.manifest)).toBe(false);
       expect(existsSync(target)).toBe(true);
       if (authority === 'profile') authorizeLegacyService(stationRoot);
       else publishLiveLegacyService(fixture.home);
 
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'refused',
       });
       expect(existsSync(target)).toBe(true);
@@ -1397,16 +1476,16 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     },
   );
 
-  test('recovers target-only evidence when no current authority owns it', () => {
+  test('recovers target-only evidence when no current authority owns it', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
-    expect(() =>
+    await expect(
       quarantineLegacyServiceManifest(fixture.home, stationRoot, {
         afterRenameBeforeCommit: () => {
           throw new Error('target-only normal recovery');
         },
       }),
-    ).toThrow('target-only normal recovery');
+    ).rejects.toThrow('target-only normal recovery');
     const target = readdirSync(legacyQuarantine(fixture.home)).find(
       (entry) =>
         entry.endsWith('.json') &&
@@ -1418,7 +1497,7 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
       -'.json'.length,
     );
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
       kind: 'recovered',
     });
     expect(existsSync(committedReceiptPath(fixture.home, digest))).toBe(true);
@@ -1428,51 +1507,54 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     'different digest',
     'same digest, different inode',
     'more than two links',
-  ] as const)('refuses a synthetic dual-name replay with %s', (variant) => {
-    const stationRoot = root();
-    const fixture = legacyFixture(stationRoot);
-    expect(() =>
-      quarantineLegacyServiceManifest(fixture.home, stationRoot, {
-        afterPreparedBeforeRename: () => {
-          throw new Error('prepared for invalid dual-name replay');
-        },
-      }),
-    ).toThrow('prepared for invalid dual-name replay');
-    const digest = manifestDigest(fixture.manifest);
-    const target = quarantineTarget(fixture.home, digest);
-    if (variant === 'different digest') {
-      writeFileSync(target, '{"different":true}', { mode: 0o600 });
-    } else if (variant === 'same digest, different inode') {
-      writeFileSync(target, readFileSync(fixture.manifest), { mode: 0o600 });
-      expect(lstatSync(target).ino).not.toBe(lstatSync(fixture.manifest).ino);
-    } else {
-      linkSync(fixture.manifest, target);
-      linkSync(fixture.manifest, `${fixture.manifest}.third-link`);
-      expect(lstatSync(fixture.manifest).nlink).toBe(3);
-    }
+  ] as const)(
+    'refuses a synthetic dual-name replay with %s',
+    async (variant) => {
+      const stationRoot = root();
+      const fixture = legacyFixture(stationRoot);
+      await expect(
+        quarantineLegacyServiceManifest(fixture.home, stationRoot, {
+          afterPreparedBeforeRename: () => {
+            throw new Error('prepared for invalid dual-name replay');
+          },
+        }),
+      ).rejects.toThrow('prepared for invalid dual-name replay');
+      const digest = manifestDigest(fixture.manifest);
+      const target = quarantineTarget(fixture.home, digest);
+      if (variant === 'different digest') {
+        writeFileSync(target, '{"different":true}', { mode: 0o600 });
+      } else if (variant === 'same digest, different inode') {
+        writeFileSync(target, readFileSync(fixture.manifest), { mode: 0o600 });
+        expect(lstatSync(target).ino).not.toBe(lstatSync(fixture.manifest).ino);
+      } else {
+        linkSync(fixture.manifest, target);
+        linkSync(fixture.manifest, `${fixture.manifest}.third-link`);
+        expect(lstatSync(fixture.manifest).nlink).toBe(3);
+      }
 
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
-      kind: 'refused',
-    });
-    expect(existsSync(fixture.manifest)).toBe(true);
-  });
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+        kind: 'refused',
+      });
+      expect(existsSync(fixture.manifest)).toBe(true);
+    },
+  );
 
   test.each(['beforePreparedFsync', 'afterPreparedBeforeRename'] as const)(
     'resumes exact source plus prepared event after %s interruption',
-    (hook) => {
+    async (hook) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
-      expect(() =>
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           [hook]: () => {
             throw new Error(`simulated ${hook}`);
           },
         }),
-      ).toThrow(`simulated ${hook}`);
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      ).rejects.toThrow(`simulated ${hook}`);
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'new',
       });
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'already',
       });
     },
@@ -1484,26 +1566,26 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     'afterRenameBeforeCommit',
   ] as const)(
     'recovers an exact prepared move after %s interruption',
-    (hook) => {
+    async (hook) => {
       const stationRoot = root();
       const fixture = legacyFixture(stationRoot);
-      expect(() =>
+      await expect(
         quarantineLegacyServiceManifest(fixture.home, stationRoot, {
           [hook]: () => {
             throw new Error(`simulated ${hook}`);
           },
         }),
-      ).toThrow(`simulated ${hook}`);
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      ).rejects.toThrow(`simulated ${hook}`);
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'recovered',
       });
-      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
         kind: 'already',
       });
     },
   );
 
-  test('allows unrelated validated orchestration quarantine siblings', () => {
+  test('allows unrelated validated orchestration quarantine siblings', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
     const orchestration = join(fixture.home, 'quarantine', 'orchestration');
@@ -1511,7 +1593,9 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     writeFileSync(join(orchestration, 'kept-event.json'), '{}', {
       mode: 0o600,
     });
-    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
     expect(existsSync(join(orchestration, 'kept-event.json'))).toBe(true);
   });
 

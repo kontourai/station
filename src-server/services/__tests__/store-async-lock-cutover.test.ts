@@ -299,7 +299,19 @@ it('keeps synchronous file-mutation lock acquisition out of server production', 
   expect(offenders).toEqual([]);
 });
 
-describe.each(CASES)('$label — #2646 async lock cutover', (seam) => {
+it('keeps synchronous Station-home maintenance out of server production', () => {
+  // Server boot may use the shared sync lifecycle APIs only through
+  // non-server CLI/archive callers. A direct import here would recreate the
+  // event-loop-blocking quarantine path even if no raw mutation lock appears.
+  const offenders = productionTypeScriptFiles(
+    join(process.cwd(), 'src-server'),
+  ).filter((path) =>
+    /\bacquireStationHomeMaintenanceLease\b/.test(readFileSync(path, 'utf8')),
+  );
+  expect(offenders).toEqual([]);
+});
+
+describe.each(CASES)('$label — archive#2646 async lock cutover', (seam) => {
   it('waits for a cross-process holder WITHOUT blocking the event loop', async () => {
     const root = makeRoot();
     const lock = seam.lockPath(root);

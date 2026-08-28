@@ -15,6 +15,7 @@ import { fsyncDirectorySync } from './fs-windows-compat.js';
 import {
   acquireFileMutationLock,
   acquireFileMutationLockAsync,
+  type FileMutationLockOptions,
 } from './lifecycle-events.js';
 import {
   exactProcessIdentity,
@@ -49,6 +50,8 @@ export interface StationHomeMaintenanceLease {
 
 export interface StationHomeAsyncLifecycleHooks {
   processIdentity?: ProcessIdentityDependencies;
+  /** Bounded caller-owned acquisition policy for async maintenance admission. */
+  mutationLockOptions?: FileMutationLockOptions;
   afterMaintenanceAcquired?: () => void | Promise<void>;
 }
 
@@ -320,7 +323,10 @@ export async function acquireStationHomeMaintenanceLeaseAsync(
   prepareCoordination(paths);
   let releaseMutation: (() => Promise<void>) | undefined;
   try {
-    releaseMutation = await acquireFileMutationLockAsync(paths.lock);
+    releaseMutation = await acquireFileMutationLockAsync(
+      paths.lock,
+      hooks.mutationLockOptions,
+    );
     if (listLiveLeases(paths.leases, hooks.processIdentity).length > 0) {
       throw new StationHomeActiveError();
     }
