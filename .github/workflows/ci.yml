@@ -7,6 +7,7 @@ on:
   # with a self-hosted job before these conditions are evaluated.
   pull_request_target:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
   # Manual trigger for bounded fast feedback and the completion gate on demand.
   workflow_dispatch:
 
@@ -87,14 +88,14 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fast-feedback]
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out base policy for pull-request title gate
+        if: ${{ github.event_name == 'pull_request_target' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Veritas binds evidence to the PR base/head diff; a depth-1 merge
-          # checkout cannot resolve those exact revisions.
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
-          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
 
       - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
 
@@ -107,6 +108,22 @@ jobs:
           lease-weight: "1"
           timeout-seconds: "300"
           owner-lifetime-seconds: "7800"
+
+      - name: Validate base-controlled pull-request title
+        if: ${{ github.event_name == 'pull_request_target' }}
+        env:
+          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Veritas binds evidence to the PR base/head diff; a depth-1 merge
+          # checkout cannot resolve those exact revisions.
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -201,6 +218,20 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
+      - name: Check out base policy for pull-request title gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Validate base-controlled pull-request title
+        env:
+          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

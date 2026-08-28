@@ -383,6 +383,95 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    [
+      'fast-checks base checkout ref',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        const base = (
+          job.steps as Array<{
+            name?: unknown;
+            with?: Record<string, unknown>;
+          }>
+        ).find(
+          (step) =>
+            step.name === 'Check out base policy for pull-request title gate',
+        );
+        if (!base?.with) throw new Error('Expected title-gate base checkout.');
+        base.with.ref = `\${{ github.event.pull_request.head.sha }}`;
+      },
+    ],
+    [
+      'fork-smoke candidate checkout before title gate',
+      'fork-smoke',
+      (job: Record<string, unknown>) => {
+        const steps = job.steps as Array<Record<string, unknown>>;
+        const titleIndex = steps.findIndex(
+          (step) => step.name === 'Validate base-controlled pull-request title',
+        );
+        const candidateIndex = steps.findIndex(
+          (step, index) =>
+            index > titleIndex &&
+            String(step.uses).startsWith('actions/checkout@'),
+        );
+        [steps[titleIndex], steps[candidateIndex]] = [
+          steps[candidateIndex],
+          steps[titleIndex],
+        ];
+      },
+    ],
+    [
+      'unquoted title shell interpolation',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        const titleGate = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Validate base-controlled pull-request title',
+        );
+        if (!titleGate) throw new Error('Expected title gate.');
+        titleGate.run =
+          'node scripts/commit-message-gate.mjs --pull-request-title $PULL_REQUEST_TITLE $PULL_REQUEST_NUMBER';
+      },
+    ],
+  ])('rejects pull-request title topology with %s', (_name, jobId, mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture(
+          jobId,
+          mutate as (job: Record<string, unknown>) => void,
+        ),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId,
+      message: `${jobId} must validate the pull-request title from exact base policy before candidate checkout`,
+    });
+  });
+
+  test('rejects a pull_request_target trigger that omits edited title routing', () => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/ci.yml',
+    );
+    if (!workflow)
+      throw new Error('Expected the checked-in primary CI workflow.');
+    const document = structuredClone(workflow.document) as {
+      on: { pull_request_target: { types: string[] } };
+      jobs: Record<string, Record<string, unknown>>;
+    };
+    document.on.pull_request_target.types = [
+      'opened',
+      'synchronize',
+      'reopened',
+    ];
+    expect(
+      persistentRunnerPolicyFindings([{ file: workflow.file, document }]),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'workflow',
+      message:
+        'ci.yml pull_request_target must retain main branches and the exact opened/synchronize/reopened/edited title-routing types',
+    });
+  });
+
   test('rejects every extra checkout in the fork router', () => {
     expect(
       persistentRunnerPolicyFindings(
@@ -401,7 +490,7 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
       message:
-        'fork-smoke must explicitly check out the pull-request head repository and SHA',
+        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
     });
   });
 
@@ -420,7 +509,7 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
       message:
-        'fork-smoke must explicitly check out the pull-request head repository and SHA',
+        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
     });
   });
 

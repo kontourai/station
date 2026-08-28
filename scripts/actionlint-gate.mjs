@@ -247,6 +247,12 @@ const FORK_SMOKE_JOB = Object.freeze({
 const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
 const FORK_SMOKE_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
+const CI_ROUTER_PR_TARGET_TYPES = [
+  'opened',
+  'synchronize',
+  'reopened',
+  'edited',
+];
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'fast-checks',
@@ -256,6 +262,18 @@ const PRIMARY_ROUTER_JOBS = new Set([
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
 const FAST_CHECKOUT_REF = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`;
+const PR_TITLE_BASE_CHECKOUT_NAME =
+  'Check out base policy for pull-request title gate';
+const PR_TITLE_BASE_CHECKOUT_REPOSITORY = `\${{ github.repository }}`;
+const PR_TITLE_BASE_CHECKOUT_REF = `\${{ github.event.pull_request.base.sha }}`;
+const PR_TITLE_GATE_NAME = 'Validate base-controlled pull-request title';
+const PR_TITLE_GATE_IF = `\${{ github.event_name == 'pull_request_target' }}`;
+const PR_TITLE_GATE_ENV = Object.freeze({
+  PULL_REQUEST_TITLE: `\${{ github.event.pull_request.title }}`,
+  PULL_REQUEST_NUMBER: `\${{ github.event.pull_request.number }}`,
+});
+const PR_TITLE_GATE_RUN =
+  'node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"';
 const SECURITY_ANALYSIS_WORKFLOW = '.github/workflows/security-analysis.yml';
 const SECURITY_ANALYSIS_CODEQL_JOB = 'codeql';
 const DEPENDENCY_REVIEW_JOB = 'dependency-review';
@@ -907,6 +925,50 @@ function hasExplicitCheckout(job, repository, ref) {
   );
 }
 
+function hasExactPullRequestTitleGateTopology(
+  job,
+  candidateRepository,
+  candidateRef,
+  titleGateIf,
+) {
+  const steps = job?.steps ?? [];
+  const checkouts = checkoutSteps(job);
+  if (checkouts.length !== 2) return false;
+  const [baseCheckout, candidateCheckout] = checkouts;
+  const baseIndex = steps.indexOf(baseCheckout);
+  const candidateIndex = steps.indexOf(candidateCheckout);
+  const titleIndex = steps.findIndex(
+    (step) => step?.name === PR_TITLE_GATE_NAME,
+  );
+  const titleGate = steps[titleIndex];
+  const titleGateKeys =
+    titleGateIf === undefined
+      ? ['env', 'name', 'run']
+      : ['env', 'if', 'name', 'run'];
+  return (
+    baseCheckout?.uses === CHECKOUT_ACTION &&
+    baseCheckout?.name === PR_TITLE_BASE_CHECKOUT_NAME &&
+    baseCheckout?.if === titleGateIf &&
+    baseCheckout?.with?.['fetch-depth'] === 1 &&
+    baseCheckout?.with?.['persist-credentials'] === false &&
+    baseCheckout.with.repository === PR_TITLE_BASE_CHECKOUT_REPOSITORY &&
+    baseCheckout.with.ref === PR_TITLE_BASE_CHECKOUT_REF &&
+    candidateCheckout?.uses === CHECKOUT_ACTION &&
+    candidateCheckout?.with?.['fetch-depth'] === 0 &&
+    candidateCheckout?.with?.['persist-credentials'] === false &&
+    candidateCheckout.with.repository === candidateRepository &&
+    candidateCheckout.with.ref === candidateRef &&
+    titleGate?.if === titleGateIf &&
+    titleGate?.run === PR_TITLE_GATE_RUN &&
+    JSON.stringify(titleGate?.env) === JSON.stringify(PR_TITLE_GATE_ENV) &&
+    Object.keys(titleGate ?? {}).length === titleGateKeys.length &&
+    titleGateKeys.every((key) => key in titleGate) &&
+    baseIndex >= 0 &&
+    titleIndex > baseIndex &&
+    candidateIndex > titleIndex
+  );
+}
+
 function hasExactSecurityAnalysisSteps(job) {
   const [base, setupNode, candidate, init, analyze, policy] = job?.steps ?? [];
   return (
@@ -1077,6 +1139,21 @@ function hasExactSecurityAnalysisPrTargetTrigger(document) {
   );
 }
 
+function hasExactCiRouterPrTargetTrigger(document) {
+  const trigger = document?.on?.[PULL_REQUEST_TARGET];
+  return (
+    trigger &&
+    typeof trigger === 'object' &&
+    !Array.isArray(trigger) &&
+    Object.keys(trigger).length === 2 &&
+    Array.isArray(trigger.branches) &&
+    trigger.branches.length === 1 &&
+    trigger.branches[0] === 'main' &&
+    Array.isArray(trigger.types) &&
+    JSON.stringify(trigger.types) === JSON.stringify(CI_ROUTER_PR_TARGET_TYPES)
+  );
+}
+
 function candidatePullRequestWorkflowFindings(file, document) {
   if (!workflowHasTrigger(document, 'pull_request')) return [];
   return [
@@ -1112,6 +1189,13 @@ function primaryCiRouterFindings(file, document) {
       jobId: 'workflow',
       message:
         'base-controlled PR workflows must declare only permissions: { contents: read }',
+    });
+  if (!hasExactCiRouterPrTargetTrigger(document))
+    findings.push({
+      file,
+      jobId: 'workflow',
+      message:
+        'ci.yml pull_request_target must retain main branches and the exact opened/synchronize/reopened/edited title-routing types',
     });
   for (const [jobId, job] of Object.entries(jobs)) {
     if (
@@ -1167,12 +1251,19 @@ function primaryCiRouterFindings(file, document) {
         message:
           'fast-checks must declare only permissions: { contents: read }',
       });
-    if (!hasExplicitCheckout(fast, FAST_CHECKOUT_REPOSITORY, FAST_CHECKOUT_REF))
+    if (
+      !hasExactPullRequestTitleGateTopology(
+        fast,
+        FAST_CHECKOUT_REPOSITORY,
+        FAST_CHECKOUT_REF,
+        PR_TITLE_GATE_IF,
+      )
+    )
       findings.push({
         file,
         jobId: 'fast-checks',
         message:
-          'fast-checks must explicitly check out the pull-request head repository and SHA',
+          'fast-checks must validate the pull-request title from exact base policy before candidate checkout',
       });
     if (!hasPinnedActionlintProvision(fast, 'Run fast CI lane'))
       findings.push({
@@ -1192,6 +1283,7 @@ function primaryCiRouterFindings(file, document) {
     );
     findings.push(
       ...unapprovedShellFindings(file, 'fast-checks', fast, [
+        { name: PR_TITLE_GATE_NAME, run: PR_TITLE_GATE_RUN },
         { name: undefined, run: 'npm run dependencies:ci' },
         {
           name: 'Install pinned actionlint',
@@ -1223,12 +1315,19 @@ function primaryCiRouterFindings(file, document) {
   }
   if (fork) {
     findings.push(...forkSmokeIsolationFindings(file, fork));
-    if (!hasExplicitCheckout(fork, FORK_CHECKOUT_REPOSITORY, FORK_CHECKOUT_REF))
+    if (
+      !hasExactPullRequestTitleGateTopology(
+        fork,
+        FORK_CHECKOUT_REPOSITORY,
+        FORK_CHECKOUT_REF,
+        undefined,
+      )
+    )
       findings.push({
         file,
         jobId: 'fork-smoke',
         message:
-          'fork-smoke must explicitly check out the pull-request head repository and SHA',
+          'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
       });
     if (!hasPinnedActionlintProvision(fork, 'Run isolated fork smoke'))
       findings.push({
@@ -1245,6 +1344,7 @@ function primaryCiRouterFindings(file, document) {
     );
     findings.push(
       ...unapprovedShellFindings(file, 'fork-smoke', fork, [
+        { name: PR_TITLE_GATE_NAME, run: PR_TITLE_GATE_RUN },
         { name: undefined, run: 'npm run dependencies:ci' },
         {
           name: 'Install pinned actionlint',

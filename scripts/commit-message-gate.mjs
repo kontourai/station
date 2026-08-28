@@ -116,6 +116,15 @@ export const FROZEN_IMMUTABLE_HISTORY_RECORDS = Object.freeze([
     reason:
       'published immutable service-manifest quarantine merge predating the subject gate',
   }),
+  Object.freeze({
+    sha: 'c7c9a598bfcd454ab1da692c139c36b96909efe5',
+    parents:
+      'ae2194f22c0e999bd7048f60453ae185d8e3e26c 52951fc015518742bbda8b83e65ba1bbdd985931',
+    subject:
+      'Reconcile stale desktop sidecar before runtime preparation (#635)',
+    reason:
+      'published immutable desktop-sidecar merge predating pull-request title enforcement',
+  }),
 ]);
 
 /** Exact immutable-history match; no subject-only or partial-record exception. */
@@ -208,6 +217,24 @@ export function validateSubject(subject) {
     };
   }
   return { ok: true, subject: line };
+}
+
+/**
+ * PR titles become the conventional subject `${title} (#${number})`.
+ * This deliberately delegates to validateSubject: title enforcement has no
+ * history exceptions and cannot widen the ordinary grammar.
+ */
+export function validatePullRequestTitle(title, number) {
+  const rawNumber = String(number ?? '');
+  const subject = `${String(title ?? '')} (#${rawNumber})`;
+  if (!/^[1-9]\d*$/.test(rawNumber)) {
+    return {
+      ok: false,
+      subject,
+      reason: 'the pull-request number must be a positive integer',
+    };
+  }
+  return validateSubject(subject);
 }
 
 /** Pure verdict for a full commit message (subject line extraction included). */
@@ -357,6 +384,14 @@ function runSubjectMode(subject) {
   }
 }
 
+function runPullRequestTitleMode(title, number) {
+  const verdict = validatePullRequestTitle(title, number);
+  if (!verdict.ok) {
+    console.error(teachingMessage(verdict));
+    process.exitCode = 1;
+  }
+}
+
 function runPrepushMode(stdin) {
   const { ref: baseRef, sha: baseSha } = resolveBaseRef();
   const pairs = parsePrepushLines(stdin);
@@ -396,13 +431,13 @@ function runPrepushMode(stdin) {
 
 function usage() {
   console.error(
-    'usage: commit-message-gate.mjs --file <commit-msg-file> | --subject <subject> | --prepush-stdin < prepush-ref-lines',
+    'usage: commit-message-gate.mjs --file <commit-msg-file> | --subject <subject> | --pull-request-title <title> <positive-number> | --prepush-stdin < prepush-ref-lines',
   );
   process.exitCode = 2;
 }
 
 function main() {
-  const [mode, value] = process.argv.slice(2);
+  const [mode, value, extra] = process.argv.slice(2);
   switch (mode) {
     case '--file':
       if (!value) return usage();
@@ -410,6 +445,9 @@ function main() {
     case '--subject':
       if (value === undefined) return usage();
       return runSubjectMode(value);
+    case '--pull-request-title':
+      if (value === undefined || extra === undefined) return usage();
+      return runPullRequestTitleMode(value, extra);
     case '--prepush-stdin':
       return runPrepushMode(readFileSync(0, 'utf8'));
     default:
