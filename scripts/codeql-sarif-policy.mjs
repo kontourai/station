@@ -72,11 +72,7 @@ function componentReference(
   const hasIndex = componentReference.index !== undefined;
   const hasName = componentReference.name !== undefined;
   const hasGuid = componentReference.guid !== undefined;
-  if (!hasIndex && !hasName && !hasGuid) {
-    findings.push(issue(path, 'has an empty rule.toolComponent reference.'));
-    return undefined;
-  }
-  let candidates = [driver, ...extensions];
+  let candidates = [driver];
   if (hasIndex) {
     if (
       !Number.isInteger(componentReference.index) ||
@@ -90,6 +86,10 @@ function componentReference(
     }
     candidates = [extensions[componentReference.index]];
   }
+  if (hasGuid && !hasIndex)
+    candidates = [driver, ...extensions].filter(
+      (component) => component?.guid === componentReference.guid,
+    );
   if (hasName) {
     if (!nonEmptyString(componentReference.name)) {
       findings.push(issue(path, 'has an invalid rule.toolComponent name.'));
@@ -129,7 +129,12 @@ function resultRule(result, components, path, findings) {
   const { driver, extensions } = components;
   const reference = result.rule;
   const hasReference = reference !== undefined;
-  if (hasReference && (typeof reference !== 'object' || reference === null)) {
+  if (
+    hasReference &&
+    (typeof reference !== 'object' ||
+      reference === null ||
+      Array.isArray(reference))
+  ) {
     findings.push(issue(path, 'has a malformed rule reference.'));
     return undefined;
   }
@@ -176,11 +181,16 @@ function resultRule(result, components, path, findings) {
   }
   const ruleIndex = reference?.index ?? result.ruleIndex;
   const ruleId = reference?.id ?? result.ruleId;
+  const ruleGuid = reference?.guid;
   const hasRuleIndex = ruleIndex !== undefined && ruleIndex !== null;
   const hasRuleId = nonEmptyString(ruleId);
-  if (!hasRuleIndex && !hasRuleId) {
+  const hasRuleGuid = nonEmptyString(ruleGuid);
+  if (!hasRuleIndex && !hasRuleId && !hasRuleGuid) {
     findings.push(
-      issue(path, 'must reference a rule with ruleIndex, ruleId, or rule.'),
+      issue(
+        path,
+        'must reference a rule with ruleIndex, ruleId, or rule guid.',
+      ),
     );
     return undefined;
   }
@@ -197,7 +207,19 @@ function resultRule(result, components, path, findings) {
     }
     rule = rules[ruleIndex];
   }
-  if (hasRuleId) {
+  if (hasRuleId || hasRuleGuid) {
+    if (rule) {
+      if (
+        (hasRuleId && rule.id !== ruleId) ||
+        (hasRuleGuid && rule.guid !== ruleGuid)
+      ) {
+        findings.push(
+          issue(path, 'rule id or guid does not match its resolved index.'),
+        );
+        return undefined;
+      }
+      return rule;
+    }
     // With an index resolved, the id is a cross-check within that component.
     // Without one, search the referenced component when the reference names
     // it, otherwise every component — requiring a globally unique id.
@@ -205,7 +227,11 @@ function resultRule(result, components, path, findings) {
       hasRuleIndex || (hasReference && reference.toolComponent !== undefined)
         ? componentRules(component)
         : [driver, ...extensions].flatMap(componentRules);
-    const matches = searchSpace.filter((candidate) => candidate?.id === ruleId);
+    const matches = searchSpace.filter(
+      (candidate) =>
+        (!hasRuleId || candidate?.id === ruleId) &&
+        (!hasRuleGuid || candidate?.guid === ruleGuid),
+    );
     if (matches.length !== 1) {
       findings.push(
         issue(path, 'has an unknown or ambiguous ruleId reference.'),
@@ -357,6 +383,15 @@ function validateRun(run, index, findings, verdicts, baseline) {
         `must identify tool.driver.name as one of: ${CODEQL_TOOL_NAMES.join(', ')}.`,
       ),
     );
+  for (const [extensionIndex, extension] of extensions.entries()) {
+    const extensionPath = `${path}.tool.extensions[${extensionIndex}]`;
+    if (!extension || typeof extension !== 'object' || Array.isArray(extension))
+      findings.push(issue(extensionPath, 'must be a tool component object.'));
+    else if (!nonEmptyString(extension.name))
+      findings.push(
+        issue(extensionPath, 'must contain a nonblank extension name.'),
+      );
+  }
   const components = { driver, extensions };
   const allRules = [driver, ...extensions].flatMap(componentRules);
   if (allRules.length === 0)
@@ -375,7 +410,11 @@ function validateRun(run, index, findings, verdicts, baseline) {
         componentIndex === 0
           ? `${path}.tool.driver`
           : `${path}.tool.extensions[${componentIndex - 1}]`;
-      if (!component || typeof component !== 'object') {
+      if (
+        !component ||
+        typeof component !== 'object' ||
+        Array.isArray(component)
+      ) {
         findings.push(issue(componentPath, 'must be a tool component object.'));
         continue;
       }
