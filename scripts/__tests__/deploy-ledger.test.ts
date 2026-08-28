@@ -315,21 +315,21 @@ describe('markdown regeneration', () => {
     expect(first).toBe(second);
   });
 
-  it('documents the JSON location and schema without unreadable-URL claims (MED-8)', () => {
+  it('documents the public raw JSON source and schema (MED-8)', () => {
     const markdown = renderLedgerMarkdown({
       entries: [entry()],
       githubRepo: 'kontourai/station',
     });
     expect(markdown).toContain(DEPLOY_LEDGER_JSON_PATH);
-    // The repository is private: an unauthenticated raw.githubusercontent
-    // fetch 404s, so the generated header must not CLAIM a readable raw
-    // URL. Naming the mechanism while declaring it unreadable is fine;
-    // printing a github.com .../raw/... URL as if fetchable is not.
-    expect(markdown).not.toMatch(/github\.com\/[^\s]*\/raw\//);
-    expect(markdown).toMatch(/repository is private/);
-    expect(markdown).toMatch(/404/);
-    // The consumption mechanism is explicitly undecided until the site PR.
-    expect(markdown).toMatch(/decided in the site PR/);
+    expect(markdown).toContain(
+      'https://raw.githubusercontent.com/kontourai/station/main/docs/reference/deploy-ledger.json',
+    );
+    expect(markdown).toMatch(/public repository/);
+    expect(markdown).toMatch(/without authentication/);
+    // The site controls its transport and presentation, while the ledger
+    // remains the source-generated input.
+    expect(markdown).toMatch(/site PR decides/);
+    expect(markdown).toMatch(/reads that URL directly or copies the JSON/);
     for (const channel of DEPLOY_LEDGER_CHANNELS) {
       expect(markdown).toContain(`\`${channel}\``);
     }
