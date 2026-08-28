@@ -12,6 +12,14 @@ export const E2E_CONTRACT_BOUNDARIES = Object.freeze([
   'playwright.config.ts',
 ]);
 
+export const TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY = Object.freeze({
+  pattern: 'src-server/services/tailscale/public-ingress-origin.ts',
+  tests: Object.freeze([
+    'src-server/services/tailscale/__tests__/public-ingress-origin.test.ts',
+    'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+  ]),
+});
+
 const SCOPED_INSTRUCTION_EDGES = Object.freeze(
   [
     'src-server',
@@ -654,11 +662,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'pairing-scope route leaf declaration',
   },
   {
-    pattern: 'src-server/services/tailscale/public-ingress-origin.ts',
-    tests: [
-      'src-server/services/tailscale/__tests__/public-ingress-origin.test.ts',
-      'src-server/runtime/__tests__/device-pairing-routes.test.ts',
-    ],
+    ...TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
     reason:
       'public Tailscale ingress resolver and device-pairing route contract',
   },
@@ -926,6 +930,26 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
     )
       errors.push(
         `required E2E contract edge must be exactly verify-e2e-full: ${pattern}`,
+      );
+  }
+  const tailscaleEdges = manifest.filter(
+    (edge) => edge.pattern === TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern,
+  );
+  if (tailscaleEdges.length !== 1) {
+    errors.push(
+      `required Tailscale ingress impact edge must be unique: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern} (found ${tailscaleEdges.length})`,
+    );
+  } else {
+    const [edge] = tailscaleEdges;
+    const expected = [...TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.tests].sort();
+    const actual = Array.isArray(edge.tests) ? [...edge.tests].sort() : [];
+    if (
+      edge.related ||
+      (edge.lanes?.length ?? 0) !== 0 ||
+      JSON.stringify(actual) !== JSON.stringify(expected)
+    )
+      errors.push(
+        `required Tailscale ingress impact edge must select exactly resolver and device-pairing route tests: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern}`,
       );
   }
   return errors;

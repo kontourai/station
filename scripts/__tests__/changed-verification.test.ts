@@ -14,6 +14,7 @@ import {
 } from '../run-changed-verification.mjs';
 import {
   E2E_CONTRACT_BOUNDARIES,
+  TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
@@ -1141,6 +1142,54 @@ describe('changed verification selection', () => {
       expect(validateTestImpactManifest(withoutBoundary)).toContain(
         `required impact edge missing: ${boundary}`,
       );
+    },
+  );
+  test.each([
+    [
+      'removal',
+      TEST_IMPACT_MANIFEST.filter(
+        (edge) =>
+          edge.pattern !== TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern,
+      ),
+      `required Tailscale ingress impact edge must be unique: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern} (found 0)`,
+    ],
+    [
+      'narrowing',
+      TEST_IMPACT_MANIFEST.map((edge) =>
+        edge.pattern === TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern
+          ? {
+              ...edge,
+              tests: [TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.tests[0]],
+            }
+          : edge,
+      ),
+      `required Tailscale ingress impact edge must select exactly resolver and device-pairing route tests: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern}`,
+    ],
+    [
+      'related-only',
+      TEST_IMPACT_MANIFEST.map((edge) =>
+        edge.pattern === TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern
+          ? { ...edge, tests: undefined, related: true }
+          : edge,
+      ),
+      `required Tailscale ingress impact edge must select exactly resolver and device-pairing route tests: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern}`,
+    ],
+    [
+      'conflicting duplicate',
+      [
+        ...TEST_IMPACT_MANIFEST,
+        {
+          pattern: TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern,
+          tests: ['scripts/__tests__/changed-verification.test.ts'],
+          reason: 'conflicting duplicate',
+        },
+      ],
+      `required Tailscale ingress impact edge must be unique: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern} (found 2)`,
+    ],
+  ] as const)(
+    'rejects Tailscale ingress boundary %s',
+    (_name, manifest, expected) => {
+      expect(validateTestImpactManifest(manifest)).toContain(expected);
     },
   );
   test.each(E2E_CONTRACT_BOUNDARIES)(
