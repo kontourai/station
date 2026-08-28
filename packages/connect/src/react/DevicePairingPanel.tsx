@@ -574,7 +574,7 @@ export function JoinDevicePairingPanel({
          * security design, not something the person reading it could act
          * on — deleted from this screen.
          */}
-        <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
+        <span>
           Approve “{deviceName}” on {target} to finish.
         </span>
         {pending.requestKind === 'direct' && (
@@ -659,27 +659,11 @@ export function JoinDevicePairingPanel({
     return (
       <div style={{ display: 'grid', gap: 12 }}>
         <strong>Review pairing offer</strong>
-        <dl
-          aria-label="Pairing offer details"
-          style={{
-            color: 'var(--text-secondary, #999)',
-            display: 'grid',
-            fontSize: 13,
-            gap: 4,
-            margin: 0,
-          }}
-        >
-          <dt>Backend environment identity</dt>
-          <dd style={{ margin: 0 }}>
-            <code>{reviewOffer.environmentId}</code>
-          </dd>
-          <dt>Endpoint</dt>
-          <dd style={{ margin: 0 }}>{reviewOffer.endpoint}</dd>
-          <dt>Expires at</dt>
-          <dd style={{ margin: 0 }}>
-            {new Date(reviewOffer.expiresAt).toLocaleTimeString()}
-          </dd>
-        </dl>
+        <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
+          Backend ID: {reviewOffer.environmentId}. Endpoint:{' '}
+          {reviewOffer.endpoint}. Expires:{' '}
+          {new Date(reviewOffer.expiresAt).toLocaleTimeString()}.
+        </span>
         <button
           type="button"
           onClick={() => void begin(reviewOffer)}
@@ -692,7 +676,7 @@ export function JoinDevicePairingPanel({
           onClick={() => setReviewOffer(null)}
           style={secondaryBtnStyle}
         >
-          Choose another method
+          Choose method
         </button>
         {error && <div role="alert">{error}</div>}
       </div>
