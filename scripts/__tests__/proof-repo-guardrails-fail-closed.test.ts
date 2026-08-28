@@ -42,6 +42,7 @@ function runProofCopy(
   mutate: (source: string) => string = (source) => source,
   mutateChatRequestPreparation?: (source: string) => string,
   mutateConfigContext?: (source: string) => string,
+  mutateAgentConnectionView?: (source: string) => string,
 ) {
   const root = join(repoRoot, `.proof-guardrails-negative-${process.pid}`);
   rmSync(root, { force: true, recursive: true });
@@ -121,6 +122,28 @@ function runProofCopy(
     source = sourcePathRewrite;
   }
 
+  if (mutateAgentConnectionView) {
+    writeFileSync(
+      join(root, 'AgentConnectionView.tsx'),
+      mutateAgentConnectionView(
+        readFileSync(
+          join(repoRoot, 'src-ui/src/views/AgentConnectionView.tsx'),
+          'utf8',
+        ),
+      ),
+    );
+    const sourcePathRewrite = source.replace(
+      "'../src-ui/src/views/AgentConnectionView.tsx'",
+      "'./AgentConnectionView.tsx'",
+    );
+    if (sourcePathRewrite === source) {
+      throw new Error(
+        'AgentConnectionView path rewrite did not match; update the anchor in this test',
+      );
+    }
+    source = sourcePathRewrite;
+  }
+
   const copy = join(root, 'proof-repo-guardrails.mjs');
   // The copy is ESM resolved from inside the repo, so node_modules is found by
   // the usual upward lookup; nothing else needs to be staged.
@@ -176,18 +199,27 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
   });
 
   test('distinguishes a raw fetch call from the SDK query refetch callback', () => {
-    const { status, output } = runProofCopy(undefined, undefined, (source) => {
-      const mutated = source.replace(
-        'retry: () => void refetch()',
-        "retry: () => void fetch('/api/config')",
-      );
-      if (mutated === source) {
-        throw new Error('negative mutation did not find the refetch callback');
-      }
-      return mutated;
-    });
+    const { status, output } = runProofCopy(
+      undefined,
+      undefined,
+      undefined,
+      (source) => {
+        const mutated = source.replace(
+          'onRetry={() => void refetchRuntimes()}',
+          "onRetry={() => void fetch('/api/connections')}",
+        );
+        if (mutated === source) {
+          throw new Error(
+            'negative mutation did not find the refetch callback',
+          );
+        }
+        return mutated;
+      },
+    );
 
-    expect(output).toContain('ConfigContext must not issue raw fetch() calls.');
+    expect(output).toContain(
+      'AgentConnectionView must not issue raw fetch() calls.',
+    );
     expect(output).toContain('Repo guardrail proof failed');
     expect(status).toBe(1);
   });
