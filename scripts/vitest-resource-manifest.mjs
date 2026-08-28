@@ -90,7 +90,7 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
   // they own durable state but can share the bounded two-worker pool.
-  'src-server/runtime/__tests__/runtime-service-bootstrap.test.ts',
+  'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',

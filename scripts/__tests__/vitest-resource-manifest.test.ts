@@ -21,7 +21,7 @@ import {
 
 const temporaryRoots: string[] = [];
 const REVIEWED_RESOURCE_HEAVY_VITEST_FILES = Object.freeze([
-  'src-server/runtime/__tests__/runtime-service-bootstrap.test.ts',
+  'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'packages/cli/src/__tests__/service.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',
@@ -137,7 +137,7 @@ describe('Vitest resource manifest', () => {
   }, 70_000);
 
   it('classifies runtime bootstrap exactly once as process heavy', () => {
-    const file = 'src-server/runtime/__tests__/runtime-service-bootstrap.test.ts';
+    const file = 'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts';
     const groups = discoverVitestResourceGroups();
     expect(groups.processHeavy.filter((entry) => entry === file)).toEqual([file]);
     expect(groups.ordinary).not.toContain(file);
