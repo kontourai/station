@@ -3084,7 +3084,7 @@ setInterval(() => {
     },
   );
 
-  test('uses ci:fast lane’s seven-minute deadline when no override is supplied', async () => {
+  test('uses ci:fast lane’s twelve-minute deadline when no override is supplied', async () => {
     const temp = fixture();
     const worktree = join(temp.root, 'fast');
     mkdirSync(worktree);
@@ -3109,7 +3109,7 @@ setInterval(() => {
       // `passed` is not earnable here — see the note on the first ci:fast
       // admission assertion in this file (#1727 / station#1738).
       expect(result.disposition).toBe('executed');
-      expect(deadlines).toContain(7 * 60_000);
+      expect(deadlines).toContain(12 * 60_000);
     } finally {
       timer.mockRestore();
       temp.remove();
