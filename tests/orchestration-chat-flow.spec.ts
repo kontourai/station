@@ -3,6 +3,7 @@ import { monitorBrowserHealth } from './helpers/browser-health';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
+  installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
   seedActiveChats,
@@ -63,7 +64,7 @@ test.describe('Orchestration Chat Flow', () => {
           reasoningEffort: 'high',
           fastMode: false,
         },
-        orchestrationSessionStarted: false,
+        orchestrationSessionStarted: true,
         ephemeralMessages: [],
         inputHistory: [],
       },
@@ -98,6 +99,10 @@ test.describe('Orchestration Chat Flow', () => {
         },
       ],
     });
+    await installMockOrchestrationConversationEventWindow(
+      page,
+      (conversationId) => (conversationId === 'conv-1' ? ['session-1'] : []),
+    );
     // Without this the dock reports "Session record missing." — the fixture
     // claims a started session that the live read-model has never heard of —
     // and that alert quotes the last known turn verbatim, which makes
@@ -269,7 +274,7 @@ test.describe('Orchestration Chat Flow', () => {
               reasoningEffort: 'high',
               fastMode: false,
             },
-            orchestrationSessionStarted: false,
+            orchestrationSessionStarted: true,
             ephemeralMessages: [],
             inputHistory: [],
           },
@@ -282,6 +287,7 @@ test.describe('Orchestration Chat Flow', () => {
       .getByRole('button', { name: 'Expand chat dock', exact: true })
       .click();
     await waitForMockOrchestrationSse(page);
+    await expect(page.getByText('Ready.', { exact: true })).toBeVisible();
 
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {

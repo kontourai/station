@@ -9,6 +9,10 @@ const emittedOrchestrationEvents = new WeakMap<
   Page,
   Array<Record<string, unknown>>
 >();
+const historicalOrchestrationEvents = new WeakMap<
+  Page,
+  Record<string, Record<string, unknown>[]>
+>();
 
 export const STATUS_READY = JSON.stringify({
   ready: true,
@@ -236,6 +240,7 @@ export async function installMockOrchestrationEventWindow(
   provider = 'codex',
   historicalEventsByThread: Record<string, Record<string, unknown>[]> = {},
 ): Promise<void> {
+  historicalOrchestrationEvents.set(page, historicalEventsByThread);
   await page.route(
     '**/api/orchestration/sessions/*/event-window**',
     (route) => {
@@ -275,8 +280,9 @@ export async function installMockOrchestrationEventWindow(
 
 /**
  * Conversation-owned lineage window for deterministic multi-Session browser
- * scenarios. Returning 404 for an unknown lineage deliberately exercises the
- * SDK's one-Session fallback instead of inventing a Conversation child.
+ * scenarios. A known one-Session Conversation still has a real lineage window:
+ * current clients may carry distinct Conversation and Session identities, so a
+ * synthetic 404 cannot safely fall back to the Session route.
  */
 export async function installMockOrchestrationConversationEventWindow(
   page: Page,
@@ -288,11 +294,7 @@ export async function installMockOrchestrationConversationEventWindow(
       const parts = new URL(route.request().url()).pathname.split('/');
       const conversationId = decodeURIComponent(parts.at(-2) ?? '');
       const sessionIds = readSessionIds(conversationId);
-      // One-Session conversations deliberately use the SDK's established
-      // session-window fallback. This route exists to prove lineage only once
-      // a replaceable child Session exists; intercepting the root-only case
-      // would hide scenario-owned historical session fixtures.
-      if (sessionIds.length <= 1)
+      if (sessionIds.length === 0)
         return route.fulfill({
           status: 404,
           contentType: 'application/json',
@@ -302,10 +304,16 @@ export async function installMockOrchestrationConversationEventWindow(
           }),
         });
       const sessionSet = new Set(sessionIds);
-      const events = (emittedOrchestrationEvents.get(page) ?? []).filter(
-        (event) =>
-          typeof event.threadId === 'string' && sessionSet.has(event.threadId),
-      );
+      const historical = historicalOrchestrationEvents.get(page) ?? {};
+      const events = [
+        ...sessionIds.flatMap((sessionId) => historical[sessionId] ?? []),
+        ...(emittedOrchestrationEvents.get(page) ?? []).filter(
+          (event) =>
+            typeof event.threadId === 'string' &&
+            (sessionSet.has(event.threadId) ||
+              event.threadId === conversationId),
+        ),
+      ];
       return route.fulfill({
         json: {
           success: true,
@@ -316,7 +324,10 @@ export async function installMockOrchestrationConversationEventWindow(
             handoffs: [],
             events: events.map((event, index) => ({
               sequence: index + 1,
-              event,
+              event: {
+                eventId: `e2e-orchestration-conversation-${index + 1}`,
+                ...event,
+              },
             })),
             hasMore: false,
             watermark: events.length,

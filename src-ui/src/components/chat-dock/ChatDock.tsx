@@ -1284,7 +1284,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ? (projects.find((project) => project.slug === projectSlug)?.name ??
           targetProjectName)
         : targetProjectName;
-      openChatForAgent(
+      const sessionId = openChatForAgent(
         agent,
         effectiveProjectSlug,
         effectiveProjectName,
@@ -1299,14 +1299,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         providerId,
         providerType,
       );
+      if (!hasImmutableProjectScope && effectiveProjectSlug) {
+        setActiveProjectSlug(effectiveProjectSlug);
+        setTimeout(() => focusSession(sessionId), 0);
+      }
     },
     [
       hasImmutableProjectScope,
+      focusSession,
       isFullscreenPlacement,
       openChatForAgent,
       projectSlug,
       projects,
       routeToScopedChatProject,
+      setActiveProjectSlug,
     ],
   );
   const handleStartNewChatWithMessage = useCallback(
@@ -2579,7 +2585,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             providerId,
             providerType,
           ) => {
-            if (routeToScopedChatProject(projectSlug)) return;
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
             // acceptance names an explicit picker change or deletion as the
@@ -2589,9 +2594,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // Never CLEARS the binding: a modal chat started with no project
             // chosen leaves it exactly where it was (the same "new chats
             // preserve the binding" contract `openNewChatDirect` follows).
-            if (!hasImmutableProjectScope && projectSlug) {
-              setActiveProjectSlug(projectSlug);
-            }
             openChatForAgentInScopedPane(
               agent,
               projectSlug,
