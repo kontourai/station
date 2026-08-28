@@ -8,6 +8,10 @@ import {
   type SessionWorkItemPresentation,
   type SessionWorkItemReadProjection,
 } from '@kontourai/station-contracts/session-work-item';
+import {
+  parseSessionWorkItemCandidate,
+  type SessionWorkItemCandidate,
+} from './session-work-item-candidate.js';
 
 export const SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS = 100;
 export const SESSION_WORK_ITEM_READ_MAX_ITEMS = 50;
@@ -42,10 +46,8 @@ export type WorkItemResultProjectorInput = {
   associationId: string;
   sessionId: string;
   conversationId: string;
-  eventId: string;
   turnId: string;
   toolCallId: string;
-  observedAt: string;
   terminalStatus: 'success' | 'error' | 'cancelled';
   provenance: WorkItemResultProjectorProvenance;
   /** Trusted, separately validated arguments from the reviewed loader seam. */
@@ -75,7 +77,7 @@ export type SessionWorkItemReadOutcome =
 type GithubMinimalCreateIssueResult = { id: string; url: string };
 type ResultProjector = (
   input: WorkItemResultProjectorInput,
-) => SessionWorkItemAssociation | null;
+) => SessionWorkItemCandidate | null;
 
 function exactRegistryKey(serverId: string, originalToolName: string): string {
   return JSON.stringify([serverId, originalToolName]);
@@ -202,18 +204,17 @@ export function deriveGithubIssueHttpsLink(
 
 function projectGithubCreateIssue(
   input: WorkItemResultProjectorInput,
-): SessionWorkItemAssociation | null {
+): SessionWorkItemCandidate | null {
   const repo = trustedArguments(input.githubArguments);
   const result = parseMinimalResponse(input.content);
   if (!repo || !result) return null;
   const number = issueNumberFromCanonicalUrl(result.url, repo);
   if (!number) return null;
-  return parseSessionWorkItemAssociation({
+  return parseSessionWorkItemCandidate({
     version: SESSION_WORK_ITEM_ASSOCIATION_V1,
     associationId: input.associationId,
     sessionId: input.sessionId,
     conversationId: input.conversationId,
-    eventId: input.eventId,
     turnId: input.turnId,
     toolCallId: input.toolCallId,
     relation: 'created',
@@ -221,7 +222,6 @@ function projectGithubCreateIssue(
     workItemRef: `github:${repo.owner}/${repo.name}#${number}`,
     repository: repo,
     nativeId: result.id,
-    observedAt: input.observedAt,
   });
 }
 
@@ -233,7 +233,7 @@ export class WorkItemResultProjector {
 
   project(
     input: WorkItemResultProjectorInput,
-  ): SessionWorkItemAssociation | null {
+  ): SessionWorkItemCandidate | null {
     try {
       if (
         input.terminalStatus !== 'success' ||

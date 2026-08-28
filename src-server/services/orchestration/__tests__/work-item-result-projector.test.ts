@@ -1,3 +1,7 @@
+import {
+  parseSessionWorkItemAssociation,
+  type SessionWorkItemAssociation,
+} from '@kontourai/station-contracts/session-work-item';
 import { describe, expect, test } from 'vitest';
 import {
   deriveGithubIssueHttpsLink,
@@ -31,10 +35,8 @@ function input(
     associationId: 'association-1',
     sessionId: 'session-1',
     conversationId: 'conversation-1',
-    eventId: 'event-1',
     turnId: 'turn-1',
     toolCallId: 'call-1',
-    observedAt: '2026-08-28T12:00:00.000Z',
     terminalStatus: 'success',
     provenance,
     githubArguments: {
@@ -47,19 +49,31 @@ function input(
   };
 }
 
+function durable(
+  candidate: NonNullable<ReturnType<WorkItemResultProjector['project']>>,
+  eventId = 'event-1',
+): SessionWorkItemAssociation {
+  const association = parseSessionWorkItemAssociation({
+    ...candidate,
+    eventId,
+    observedAt: '2026-08-28T12:00:00.000Z',
+  });
+  if (!association) throw new Error('expected durable association');
+  return association;
+}
+
 describe('WorkItemResultProjector', () => {
   test('projects the official MinimalResponse text block using trusted arguments', () => {
-    const association = new WorkItemResultProjector().project(input());
-    expect(association).toMatchObject({
+    const projected = new WorkItemResultProjector().project(input());
+    expect(projected).toMatchObject({
       version: 'station.session-work-item/v1',
       workItemRef: 'github:kontourai/station#235',
       nativeId: '1234567890',
     });
-    expect(association).not.toHaveProperty('url');
-    expect(association).not.toHaveProperty('title');
-    expect(association && deriveGithubIssueHttpsLink(association)).toBe(
-      'https://github.com/kontourai/station/issues/235',
-    );
+    expect(projected).not.toHaveProperty('eventId');
+    expect(projected).not.toHaveProperty('observedAt');
+    expect(projected).not.toHaveProperty('url');
+    expect(projected).not.toHaveProperty('title');
   });
 
   test.each([
@@ -138,7 +152,6 @@ describe('WorkItemResultProjector', () => {
         }),
         {
           associationId: 'association-mixed',
-          eventId: 'event-mixed',
           toolCallId: 'call-mixed',
           githubArguments: {
             owner: 'KontourAI',
@@ -151,14 +164,14 @@ describe('WorkItemResultProjector', () => {
     if (!mixed) throw new Error('expected mixed-case association');
     expect(mixed.repository).toEqual({ owner: 'kontourai', name: 'station' });
     expect(mixed.workItemRef).toBe('github:kontourai/station#235');
-    expect(deriveGithubIssueHttpsLink(mixed)).toBe(
+    expect(deriveGithubIssueHttpsLink(durable(mixed, 'event-mixed'))).toBe(
       'https://github.com/kontourai/station/issues/235',
     );
     const lowercase = projector.project(input());
     if (!lowercase) throw new Error('expected lowercase association');
     const read = projectSessionWorkItemRead(
       { sessionId: 'session-1', conversationId: 'conversation-1' },
-      [lowercase, mixed],
+      [durable(lowercase), durable(mixed, 'event-mixed')],
     );
     expect(read.kind).toBe('available');
     if (read.kind === 'available')
@@ -171,14 +184,13 @@ describe('WorkItemResultProjector', () => {
     const duplicate = projector.project(
       input(minimalContent(), {
         associationId: 'association-2',
-        eventId: 'event-2',
         toolCallId: 'call-2',
       }),
     );
     if (!first || !duplicate) throw new Error('expected associations');
     const available = projectSessionWorkItemRead(
       { sessionId: 'session-1', conversationId: 'conversation-1' },
-      [first, duplicate],
+      [durable(first), durable(duplicate, 'event-2')],
     );
     expect(available.kind).toBe('available');
     if (available.kind === 'available') {
@@ -193,30 +205,39 @@ describe('WorkItemResultProjector', () => {
     expect(
       projectSessionWorkItemRead(
         { sessionId: 'session-1', conversationId: 'conversation-1' },
-        [{ ...first, nativeId: '9876543210' }],
+        [{ ...durable(first), nativeId: '9876543210' }],
       ),
     ).toEqual({ kind: 'available', projection: expect.any(Object) });
     expect(
       projectSessionWorkItemRead(
         { sessionId: 'session-1', conversationId: 'conversation-1' },
-        [first, { ...duplicate, nativeId: '9876543210' }],
+        [
+          durable(first),
+          { ...durable(duplicate, 'event-2'), nativeId: '9876543210' },
+        ],
       ),
     ).toEqual({ kind: 'corrupt', code: 'identity-conflict' });
     expect(
       projectSessionWorkItemRead(
         { sessionId: 'session-1', conversationId: 'conversation-1' },
-        [first, { ...duplicate, associationId: first.associationId }],
+        [
+          durable(first),
+          {
+            ...durable(duplicate, 'event-2'),
+            associationId: first.associationId,
+          },
+        ],
       ),
     ).toEqual({ kind: 'corrupt', code: 'association-conflict' });
     expect(
       projectSessionWorkItemRead(
         { sessionId: 'session-1', conversationId: 'conversation-1' },
         [
-          first,
+          durable(first),
           {
-            ...duplicate,
+            ...durable(duplicate, 'event-2'),
             associationId: 'association-source-conflict',
-            eventId: first.eventId,
+            eventId: 'event-1',
             toolCallId: first.toolCallId,
           },
         ],
@@ -226,9 +247,9 @@ describe('WorkItemResultProjector', () => {
       projectSessionWorkItemRead(
         { sessionId: 'session-1', conversationId: 'conversation-1' },
         [
-          first,
+          durable(first),
           {
-            ...duplicate,
+            ...durable(duplicate, 'event-2'),
             associationId: 'association-3',
             eventId: 'event-3',
             toolCallId: 'call-3',
@@ -246,7 +267,7 @@ describe('WorkItemResultProjector', () => {
     expect(
       projectSessionWorkItemRead(
         { sessionId: 'session-1', conversationId: 'conversation-1' },
-        [{ ...observation, conversationId: 'conversation-2' }],
+        [{ ...durable(observation), conversationId: 'conversation-2' }],
       ),
     ).toEqual({ kind: 'corrupt', code: 'scope-mismatch' });
     expect(
@@ -254,7 +275,7 @@ describe('WorkItemResultProjector', () => {
         { sessionId: 'session-1', conversationId: 'conversation-1' },
         Array.from(
           { length: SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS + 1 },
-          () => observation,
+          () => durable(observation),
         ),
       ),
     ).toEqual({ kind: 'corrupt', code: 'bound-exceeded' });
