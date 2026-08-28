@@ -15,7 +15,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
+import {
+  ensureStationHomeSchemaSync,
+  STATION_HOME_SCHEMA_FILE,
+  STATION_HOME_SCHEMA_VERSION,
+} from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH = 'security/environment.json';
@@ -137,6 +141,10 @@ function seedExistingRecord(
   chmodSync(recordPath, 0o600);
 }
 
+function securityInventory(homeDir: string): string[] {
+  return readdirSync(join(homeDir, 'security')).sort();
+}
+
 function writeLock(
   homeDir: string,
   overrides: Partial<{
@@ -188,6 +196,11 @@ describe('EnvironmentSecurityService', () => {
     expect(readdirSync(join(homeDir, 'security'))).toEqual([
       'environment.json',
     ]);
+    expect(statSync(join(homeDir, 'security')).mode & 0o777).toBe(0o700);
+    expect(
+      statSync(join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH)).mode &
+        0o777,
+    ).toBe(0o600);
   });
 
   test('refuses a missing saved home without bootstrapping it', async () => {
@@ -230,6 +243,82 @@ describe('EnvironmentSecurityService', () => {
       expect(readdirSync(join(homeDir, 'security')).sort()).toEqual([
         'environment.json',
       ]);
+    },
+  );
+
+  test.each([
+    ['older', STATION_HOME_SCHEMA_VERSION - 1],
+    ['newer', STATION_HOME_SCHEMA_VERSION + 1],
+  ])(
+    'refuses an %s Station home schema without changing its record or inventory',
+    async (_, schemaVersion) => {
+      const homeDir = makeHome();
+      seedExistingRecord(homeDir);
+      const markerPath = join(homeDir, STATION_HOME_SCHEMA_FILE);
+      const recordPath = join(
+        homeDir,
+        ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH,
+      );
+      writeFileSync(
+        markerPath,
+        `${JSON.stringify({ version: schemaVersion })}\n`,
+      );
+      const beforeMarker = readFileSync(markerPath, 'utf8');
+      const beforeRecord = readFileSync(recordPath, 'utf8');
+      const beforeInventory = securityInventory(homeDir);
+      const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+      await expect(
+        new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+      ).rejects.toThrow(
+        `Unsupported Station home schema version ${schemaVersion}; expected ${STATION_HOME_SCHEMA_VERSION}`,
+      );
+
+      expect(readFileSync(markerPath, 'utf8')).toBe(beforeMarker);
+      expect(readFileSync(recordPath, 'utf8')).toBe(beforeRecord);
+      expect(securityInventory(homeDir)).toEqual(beforeInventory);
+    },
+  );
+
+  test.each([
+    [
+      'security directory',
+      'security',
+      0o755,
+      'Unsafe environment security directory permissions',
+    ],
+    [
+      'environment record',
+      ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH,
+      0o644,
+      'Unsafe environment security record permissions',
+    ],
+  ])(
+    'refuses a %s with non-private mode %o without repairing it',
+    async (_, relativePath, mode, expectedError) => {
+      const homeDir = makeHome();
+      seedExistingRecord(homeDir);
+      const target = join(homeDir, relativePath);
+      chmodSync(target, mode);
+      const beforeRecord = readFileSync(
+        join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH),
+        'utf8',
+      );
+      const beforeInventory = securityInventory(homeDir);
+      const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+
+      await expect(
+        new EnvironmentSecurityService({ homeDir }).readExistingRecord(),
+      ).rejects.toThrow(expectedError);
+
+      expect(statSync(target).mode & 0o777).toBe(mode);
+      expect(
+        readFileSync(
+          join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH),
+          'utf8',
+        ),
+      ).toBe(beforeRecord);
+      expect(securityInventory(homeDir)).toEqual(beforeInventory);
     },
   );
 

@@ -41,7 +41,10 @@ import {
   type StationCompatibility,
 } from '@kontourai/station-contracts';
 import { admitStationRuntimeHome } from '@kontourai/station-shared/runtime-path-resolver';
-import { readStationHomeSchemaVersion } from '@kontourai/station-shared/station-home-schema';
+import {
+  readStationHomeSchemaVersion,
+  STATION_HOME_SCHEMA_VERSION,
+} from '@kontourai/station-shared/station-home-schema';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
 import { DevicePairingService } from './device-pairing-service.js';
@@ -316,7 +319,12 @@ export class EnvironmentSecurityService {
     // This is the exact, read-only schema observation used by backup/export
     // admission. It refuses missing, malformed, or incompatible homes without
     // acquiring the bootstrap lock or writing a schema marker.
-    readStationHomeSchemaVersion(homeDir);
+    const schemaVersion = readStationHomeSchemaVersion(homeDir);
+    if (schemaVersion !== STATION_HOME_SCHEMA_VERSION) {
+      throw new EnvironmentSecurityRecordError(
+        `Unsupported Station home schema version ${schemaVersion}; expected ${STATION_HOME_SCHEMA_VERSION}`,
+      );
+    }
     const securityDir = join(homeDir, SECURITY_DIRECTORY);
     this.#assertExistingSecurityDirectory(securityDir);
     return this.#readRecord(join(securityDir, RECORD_FILE));
