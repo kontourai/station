@@ -8,6 +8,7 @@ import {
   PRIVACY_RENDERED_ARTIFACTS,
   renderPlayDataSafety,
   renderPrivacyInfo,
+  renderPrivacyPolicy,
 } from '../privacy-inventory.js';
 
 describe('privacy inventory', () => {
@@ -17,6 +18,14 @@ describe('privacy inventory', () => {
         readFileSync(join(process.cwd(), path), 'utf8'),
       ),
     ).not.toThrow();
+  });
+
+  test('renders the published policy as a public projection without private-repository framing', () => {
+    const policy = renderPrivacyPolicy();
+    expect(policy).toContain(
+      'The published page is a public projection of this inventory: it states the same facts without the contributor-oriented code-evidence paths.',
+    );
+    expect(policy).not.toContain('this repository is private');
   });
 
   test('covers the real telemetry inventory', () => {
