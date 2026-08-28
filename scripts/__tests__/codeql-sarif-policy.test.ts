@@ -252,7 +252,7 @@ describe('CodeQL SARIF policy', () => {
     );
   });
 
-  test('resolves a uniquely named SARIF tool component and rejects inconsistent references', () => {
+  test('treats name-only SARIF tool components as a driver cross-check and rejects inconsistent references', () => {
     const named = parseFixture('pinned-codeql-finding.sarif');
     named.runs[0].results = [
       {
@@ -263,7 +263,9 @@ describe('CodeQL SARIF policy', () => {
         },
       },
     ];
-    expect(evaluateCodeqlSarif(named).findings).toEqual([]);
+    expect(validateCodeqlSarif(named)).toContain(
+      'runs[0].results[0]: has an unknown or ambiguous rule.toolComponent reference.',
+    );
 
     const mismatch = parseFixture('pinned-codeql-finding.sarif');
     mismatch.runs[0].results = [
@@ -299,6 +301,41 @@ describe('CodeQL SARIF policy', () => {
       'runs[0]: tool.extensions must be an array when present.',
     );
   });
+
+  test('resolves driver GUID components and rejects ambiguous or mismatched selectors', () => {
+    const document = parseFixture('pinned-codeql-legacy-driver-rules.sarif');
+    document.runs[0].tool.driver.guid = 'driver-guid';
+    document.runs[0].results[0].rule = {
+      index: 0,
+      toolComponent: {
+        guid: 'driver-guid',
+        name: 'CodeQL command-line toolchain',
+      },
+    };
+    delete document.runs[0].results[0].ruleIndex;
+    expect(evaluateCodeqlSarif(document).findings).toEqual([]);
+
+    document.runs[0].results[0].rule.toolComponent.name = 'wrong';
+    expect(validateCodeqlSarif(document)).toContain(
+      'runs[0].results[0]: has an unknown or ambiguous rule.toolComponent reference.',
+    );
+  });
+
+  test.each([
+    ['array component', [[]], 'must be a tool component object'],
+    [
+      'blank extension name',
+      [{ name: ' ', rules: [] }],
+      'must contain a nonblank extension name',
+    ],
+  ])(
+    'rejects malformed extension entries: %s',
+    (_name, extensions, expected) => {
+      const document = parseFixture('pinned-codeql-clean.sarif');
+      document.runs[0].tool.extensions = extensions;
+      expect(validateCodeqlSarif(document).join('\n')).toContain(expected);
+    },
+  );
 
   test('bounds the blocked-result log when many findings are present', () => {
     const finding = parseFixture('pinned-codeql-finding.sarif');
@@ -430,7 +467,7 @@ describe('CodeQL SARIF policy', () => {
           },
         ],
       },
-      'ruleId and ruleIndex refer to different rules',
+      'rule id or guid does not match its resolved index',
     ],
   ])('fails closed for %s', (_name, document, expected) => {
     expect(validateCodeqlSarif(document).join('\n')).toContain(expected);
