@@ -4,6 +4,7 @@ import {
 } from '@kontourai/surface/basis';
 import { describe, expect, test } from 'vitest';
 import {
+  deriveSessionWorkItemGithubUrl,
   parseSessionInventoryProjection,
   SESSION_INVENTORY_V1,
   SESSION_INVENTORY_V1_GROUP_IDS,
@@ -358,6 +359,42 @@ describe('Session inventory v2', () => {
       (item: any) => item.id === 'work-items',
     ).items[0].sessionId = 'other-session';
     expect(parseSessionInventoryProjection(crossSession)).toBeNull();
+  });
+  test('derives a work-item URL only from its valid closed row locator', () => {
+    const value = v2Projection();
+    const group = value.groups.find((item: any) => item.id === 'work-items');
+    const row = {
+      kind: 'station-session-work-item',
+      key: 'work-item:association-a',
+      owner: { owner: 'station.session-work-items', id: 'v1' },
+      relations: ['observed-during', 'produced-by'],
+      sessionId: 'session-a',
+      conversationId: 'conversation-a',
+      eventId: 'event-a',
+      turnId: 'turn-a',
+      toolCallId: 'call-a',
+      provider: { id: 'github', host: 'github.com' },
+      workItemRef: 'github:kontourai/station#235',
+      repository: { owner: 'kontourai', name: 'station' },
+      nativeId: '1234567890',
+      associationIds: ['association-a'],
+      observedAt: '2026-08-28T12:00:00.000Z',
+    };
+    group.state = 'available';
+    group.count = { kind: 'exact', value: 1 };
+    group.items = [row];
+    expect(deriveSessionWorkItemGithubUrl(row)).toBe(
+      'https://github.com/kontourai/station/issues/235',
+    );
+    expect(
+      deriveSessionWorkItemGithubUrl({ ...row, key: 'work-item:attacker' }),
+    ).toBeNull();
+    expect(
+      deriveSessionWorkItemGithubUrl({
+        ...row,
+        workItemRef: 'github:kontourai/..#235',
+      }),
+    ).toBeNull();
   });
   test('keeps v1 MCP closed while v2 admits the work-items contract', () => {
     const value = v2Projection();

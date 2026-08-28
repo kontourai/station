@@ -43,6 +43,25 @@ export type SessionWorkItemReadProjection = {
   items: readonly SessionWorkItemPresentation[];
 };
 
+/**
+ * Produces the only outbound presentation URL supported by the closed GitHub
+ * work-item identity. Callers receive no provider URL and must not infer one
+ * from titles, paths, or tool output.
+ */
+export function deriveGithubWorkItemUrl(
+  value: unknown,
+): `https://github.com/${string}/${string}/issues/${number}` | null {
+  const association = parseSessionWorkItemAssociation(value);
+  if (!association) return null;
+  const match = /^github:([^/]+)\/([^#]+)#([1-9]\d*)$/.exec(
+    association.workItemRef,
+  );
+  if (!match) return null;
+  const issueNumber = Number(match[3]);
+  if (!Number.isSafeInteger(issueNumber)) return null;
+  return `https://github.com/${association.repository.owner.toLowerCase()}/${association.repository.name.toLowerCase()}/issues/${issueNumber}`;
+}
+
 const encoder = new TextEncoder();
 const githubOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?$/;
 const githubRepository = /^[A-Za-z0-9._-]{1,100}$/;

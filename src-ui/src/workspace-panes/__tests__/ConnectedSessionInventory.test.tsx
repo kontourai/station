@@ -1,8 +1,16 @@
 /** @vitest-environment jsdom */
 
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { SessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
+import { chromium, expect as expectPlaywright } from '@playwright/test';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../../tests/helpers/css-cascade-fixture';
 import { commitSessionInventorySelection } from '../sessionInventorySelection';
 
 const hooks = vi.hoisted(() => ({
@@ -104,6 +112,71 @@ const requestScope = {
   apiBase: 'http://station.test',
   authorityKey: 'epoch-a',
 };
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, '../../../../');
+const INDEX_CSS_PATH = resolve(HERE, '../../index.css');
+const INVENTORY_CSS_PATH = resolve(HERE, '../SessionInventory.css');
+const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
+
+function workItemInventory(nativeId = '1234567890') {
+  return {
+    version: 'station.session-inventory/v2',
+    scope: projection.scope,
+    groups: [
+      {
+        id: 'work-items',
+        owner: { owner: 'station.session-work-items', id: 'v1' },
+        state: 'available',
+        count: { kind: 'exact', value: 1 },
+        gaps: [],
+        items: [
+          {
+            kind: 'station-session-work-item',
+            key: 'work-item:association-235',
+            owner: { owner: 'station.session-work-items', id: 'v1' },
+            relations: ['observed-during', 'produced-by'],
+            sessionId: 'session',
+            conversationId: 'conversation',
+            eventId: 'event',
+            turnId: 'turn',
+            toolCallId: 'call',
+            provider: { id: 'github', host: 'github.com' },
+            workItemRef: 'github:kontourai/station#235',
+            repository: { owner: 'kontourai', name: 'station' },
+            nativeId,
+            associationIds: ['association-235'],
+            observedAt: '2026-08-28T12:00:00.000Z',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildInventoryFixtureCss(): string {
+  const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(INVENTORY_CSS_PATH)}`;
+  assertNoImportsSurvive(css);
+  return css;
+}
+
+function renderWorkItemMarkup(): string {
+  configure();
+  hooks.inventory.mockReturnValue({
+    data: workItemInventory() as never,
+    isLoading: false,
+    error: null,
+  });
+  const view = render(
+    <ConnectedSessionInventory
+      sessionId="session"
+      currentProjectId="project"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /^Work items1$/ }));
+  const markup = view.container.innerHTML;
+  view.unmount();
+  return markup;
+}
 
 function configure() {
   hooks.inventory.mockReturnValue({
@@ -136,6 +209,53 @@ const { ConnectedSessionInventory } = await import(
 );
 
 describe('ConnectedSessionInventory', () => {
+  test('renders only a valid structured work item as a safe keyboard link', () => {
+    configure();
+    hooks.inventory.mockReturnValue({
+      data: workItemInventory() as never,
+      isLoading: false,
+      error: null,
+    });
+    const view = render(
+      <ConnectedSessionInventory
+        sessionId="session"
+        currentProjectId="project"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Work items1$/ }));
+    const itemSelection = screen.getByRole('button', {
+      name: 'Select item 1 in Work items',
+    });
+    const link = screen.getByRole('link', {
+      name: 'Open work item github:kontourai/station#235 in github kontourai/station',
+    });
+    expect(link.getAttribute('href')).toBe(
+      'https://github.com/kontourai/station/issues/235',
+    );
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    // Both controls remain in normal keyboard order: selection first, then
+    // the semantic link, whose native Enter behavior follows its href.
+    itemSelection.focus();
+    expect(document.activeElement).toBe(itemSelection);
+    link.focus();
+    expect(document.activeElement).toBe(link);
+
+    view.unmount();
+    hooks.inventory.mockReturnValue({
+      data: workItemInventory('0') as never,
+      isLoading: false,
+      error: null,
+    });
+    render(
+      <ConnectedSessionInventory
+        sessionId="session"
+        currentProjectId="project"
+      />,
+    );
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
   test('defers inspection, paging, and Task reads until their explicit actions', async () => {
     configure();
     hooks.inspection.mockClear();
@@ -399,3 +519,69 @@ describe('ConnectedSessionInventory', () => {
     hooks.authority = requestScope;
   });
 });
+
+describe.skipIf(!chromiumAvailable)(
+  'ConnectedSessionInventory work-item link browser behavior',
+  () => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+    beforeAll(async () => {
+      browser = await chromium.launch();
+    });
+
+    afterAll(async () => {
+      await browser?.close();
+    });
+
+    test('keeps the derived GitHub link in keyboard tab order and activates it natively', async () => {
+      const page = await browser.newPage({
+        viewport: { width: 390, height: 844 },
+      });
+      try {
+        await page.route('https://github.com/**', (route) =>
+          route.fulfill({ status: 200, body: '<title>GitHub issue</title>' }),
+        );
+        await page.setContent(
+          `<!doctype html><style>${buildInventoryFixtureCss()}</style>${renderWorkItemMarkup()}`,
+        );
+        const selection = page.getByRole('button', {
+          name: 'Select item 1 in Work items',
+        });
+        const link = page.getByRole('link', {
+          name: 'Open work item github:kontourai/station#235 in github kontourai/station',
+        });
+        await expectPlaywright(link).toHaveAttribute(
+          'href',
+          'https://github.com/kontourai/station/issues/235',
+        );
+        await expectPlaywright(link).toHaveAttribute('target', '_blank');
+        await expectPlaywright(link).toHaveAttribute(
+          'rel',
+          'noopener noreferrer',
+        );
+        await selection.focus();
+        await page.keyboard.press('Tab');
+        await expectPlaywright(link).toBeFocused();
+        const popup = page.waitForEvent('popup');
+        await page.keyboard.press('Enter');
+        const popupPage = await popup;
+        await popupPage.waitForLoadState('domcontentloaded');
+        expectPlaywright(popupPage.url()).toBe(
+          'https://github.com/kontourai/station/issues/235',
+        );
+        await popupPage.close();
+      } finally {
+        await page.close();
+      }
+    });
+  },
+);
+
+test.skipIf(chromiumAvailable)(
+  'ConnectedSessionInventory work-item link browser behavior — Chromium not installed',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the work-item link keyboard behavior cannot be verified. Run npm run install:playwright and retry.',
+    );
+  },
+);

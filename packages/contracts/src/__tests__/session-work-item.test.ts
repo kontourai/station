@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  deriveGithubWorkItemUrl,
   parseSessionWorkItemAssociation,
   SESSION_WORK_ITEM_ASSOCIATION_V1,
 } from '../session-work-item.js';
@@ -63,5 +64,26 @@ describe('Session work-item association v1', () => {
     expect(parseSessionWorkItemAssociation(getter)).toBeNull();
     expect(() => parseSessionWorkItemAssociation(proxy)).not.toThrow();
     expect(parseSessionWorkItemAssociation(proxy)).toBeNull();
+  });
+
+  test('derives only the canonical lowercase GitHub issue URL', () => {
+    const value = association();
+    value.repository = { owner: 'KontourAI', name: 'Station' };
+    value.workItemRef = 'github:kontourai/station#235';
+    expect(deriveGithubWorkItemUrl(value)).toBe(
+      'https://github.com/kontourai/station/issues/235',
+    );
+    expect(
+      deriveGithubWorkItemUrl({
+        ...association(),
+        workItemRef: 'github:kontourai/station#235\u202e',
+      }),
+    ).toBeNull();
+    expect(
+      deriveGithubWorkItemUrl({
+        ...association(),
+        repository: { owner: 'kontourai', name: '../station' },
+      }),
+    ).toBeNull();
   });
 });

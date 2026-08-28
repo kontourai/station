@@ -7,12 +7,14 @@ import {
   type SessionInventoryViewItem,
 } from '@kontourai/station-basis-pane/session-inventory-view';
 import { BasisStandingAssessmentSummary } from '@kontourai/station-basis-pane/station-basis-pane';
-import type {
-  SessionInventoryGroupId,
-  SessionInventoryGroupPage,
-  SessionInventoryProjection,
-  SessionInventoryScope,
-  StationSessionOutputRow,
+import {
+  type AnySessionInventoryGroupPage,
+  type AnySessionInventoryProjection,
+  deriveSessionWorkItemGithubUrl,
+  type SessionInventoryScope,
+  type SessionInventoryV2GroupId,
+  type StationSessionOutputRow,
+  type StationSessionWorkItemRow,
 } from '@kontourai/station-contracts/session-inventory';
 import {
   useSessionInventoryGroupPage,
@@ -159,14 +161,14 @@ function ConnectedSessionInventorySurface({
     registryBinding?.chatStoreId,
   );
   const [nextPage, setNextPage] = useState<{
-    groupId: SessionInventoryGroupId;
+    groupId: SessionInventoryV2GroupId;
     continuation: string;
     scopeKey: string;
   } | null>(null);
   const selectedScopeKey = scopeKey(selection.scope);
   const previousScopeKey = useRef(selectedScopeKey);
   const [loadedPages, setLoadedPages] = useState<
-    readonly { key: string; page: SessionInventoryGroupPage }[]
+    readonly { key: string; page: AnySessionInventoryGroupPage }[]
   >([]);
   useEffect(() => {
     if (previousScopeKey.current === selectedScopeKey) return;
@@ -230,12 +232,14 @@ function ConnectedSessionInventorySurface({
     return <SkeletonBlock count={4} label="Loading Session inventory" />;
   return (
     <>
-      {model.scope.kind === 'current-answer' ? (
+      {model.scope.kind === 'current-answer' &&
+      projection?.scope.kind === 'current-answer' &&
+      projection.basis ? (
         <CurrentAnswerStanding
           key={currentAnswerStandingIdentity(model.scope, requestScope)}
           scope={model.scope}
           requestScope={requestScope}
-          basis={projection?.basis}
+          basis={projection.basis}
         />
       ) : null}
       <SessionInventory
@@ -255,7 +259,7 @@ function ConnectedSessionInventorySurface({
           setNextPage({ groupId, continuation, scopeKey: selectedScopeKey })
         }
         renderAction={({ action, item }) => (
-          <OutputAction
+          <InventoryAction
             action={action}
             item={item}
             scope={model.scope}
@@ -284,7 +288,10 @@ function CurrentAnswerStanding({
 }: {
   scope: Extract<SessionInventoryScope, { kind: 'current-answer' }>;
   requestScope: { apiBase: string; authorityKey: string };
-  basis: SessionInventoryProjection['basis'];
+  basis: Extract<
+    AnySessionInventoryProjection,
+    { scope: { kind: 'current-answer' } }
+  >['basis'];
 }) {
   const identity = currentAnswerStandingIdentity(scope, requestScope);
   const [assessmentOpen, setAssessmentOpen] = useState(false);
@@ -339,6 +346,27 @@ function availableScopes(
 
 function scopeKey(scope: SessionInventoryScope): string {
   return JSON.stringify(scope);
+}
+
+function InventoryAction(props: {
+  action: SessionInventoryAction;
+  item: SessionInventoryViewItem;
+  scope: SessionInventoryScope;
+  currentProjectId?: string;
+  requestScope: { apiBase: string; authorityKey: string };
+  onUnavailable(): void;
+}) {
+  if (props.action === 'open-work-item')
+    return (
+      <OpenWorkItem
+        row={
+          props.item.row?.kind === 'station-session-work-item'
+            ? props.item.row
+            : null
+        }
+      />
+    );
+  return <OutputAction {...props} />;
 }
 
 function OutputAction({
@@ -397,6 +425,22 @@ function OutputAction({
       requestScope={requestScope}
       label={action === 'keep-file' ? 'Keep file' : 'Keep PR'}
     />
+  );
+}
+
+function OpenWorkItem({ row }: { row: StationSessionWorkItemRow | null }) {
+  const href = row ? deriveSessionWorkItemGithubUrl(row) : null;
+  if (!row || !href) return null;
+  const providerContext = `${row.provider.id} ${row.repository.owner}/${row.repository.name}`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Open work item ${row.workItemRef} in ${providerContext}`}
+    >
+      Open work item
+    </a>
   );
 }
 

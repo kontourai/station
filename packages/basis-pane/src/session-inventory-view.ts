@@ -1,23 +1,49 @@
 import {
-  SESSION_INVENTORY_GROUP_IDS,
-  type SessionInventoryGroup,
-  type SessionInventoryGroupId,
+  type AnySessionInventoryGroupPage,
+  type AnySessionInventoryProjection,
+  deriveSessionWorkItemGithubUrl,
+  SESSION_INVENTORY_CURRENT_GROUP_IDS,
+  SESSION_INVENTORY_V1,
+  SESSION_INVENTORY_V1_GROUP_IDS,
   type SessionInventoryGroupPage,
+  type SessionInventoryGroupState,
   type SessionInventoryProjection,
-  type SessionInventoryRow,
   type SessionInventoryScope,
+  type SessionInventoryV2GroupId,
+  type SessionInventoryV2GroupPage,
+  type SessionInventoryV2Projection,
+  type SessionInventoryV2Row,
 } from '@kontourai/station-contracts/session-inventory';
 
 export function mergeSessionInventoryGroupPages(
   projection: SessionInventoryProjection | undefined,
   pages: readonly SessionInventoryGroupPage[],
   scope: SessionInventoryScope,
-): SessionInventoryProjection | undefined {
+): SessionInventoryProjection | undefined;
+export function mergeSessionInventoryGroupPages(
+  projection: SessionInventoryV2Projection | undefined,
+  pages: readonly SessionInventoryV2GroupPage[],
+  scope: SessionInventoryScope,
+): SessionInventoryV2Projection | undefined;
+export function mergeSessionInventoryGroupPages(
+  projection: AnySessionInventoryProjection | undefined,
+  pages: readonly AnySessionInventoryGroupPage[],
+  scope: SessionInventoryScope,
+): AnySessionInventoryProjection | undefined;
+export function mergeSessionInventoryGroupPages(
+  projection: AnySessionInventoryProjection | undefined,
+  pages: readonly AnySessionInventoryGroupPage[],
+  scope: SessionInventoryScope,
+): AnySessionInventoryProjection | undefined {
   if (!projection || JSON.stringify(projection.scope) !== JSON.stringify(scope))
     return undefined;
-  let current = projection;
+  let current: AnySessionInventoryProjection = projection;
   for (const page of pages) {
-    if (JSON.stringify(page.scope) !== JSON.stringify(scope)) return undefined;
+    if (
+      page.version !== current.version ||
+      JSON.stringify(page.scope) !== JSON.stringify(scope)
+    )
+      return undefined;
     if (
       scope.kind === 'current-answer' &&
       (JSON.stringify(page.basis) !== JSON.stringify(current.basis) ||
@@ -39,7 +65,7 @@ export function mergeSessionInventoryGroupPages(
       groups: current.groups.map((group) =>
         group.id === page.group.id ? { ...page.group, items: rows } : group,
       ),
-    };
+    } as AnySessionInventoryProjection;
   }
   return current;
 }
@@ -47,10 +73,14 @@ export function mergeSessionInventoryGroupPages(
 export type SessionInventoryDensity = 'compact' | 'full';
 export type SessionInventorySelection = {
   scope: SessionInventoryScope;
-  groupId: SessionInventoryGroupId;
+  groupId: SessionInventoryV2GroupId;
   itemKey?: string;
 };
-export type SessionInventoryAction = 'inspect-output' | 'keep-file' | 'keep-pr';
+export type SessionInventoryAction =
+  | 'inspect-output'
+  | 'keep-file'
+  | 'keep-pr'
+  | 'open-work-item';
 
 export type SessionInventoryViewItem = {
   key: string;
@@ -58,7 +88,7 @@ export type SessionInventoryViewItem = {
   relation: 'Contributed to this answer' | 'Context from this Session';
   classification: 'current' | 'kept';
   actions: readonly SessionInventoryAction[];
-  row?: SessionInventoryRow;
+  row?: SessionInventoryV2Row;
 };
 export type SessionInventoryLiveItem = {
   key: string;
@@ -66,11 +96,11 @@ export type SessionInventoryLiveItem = {
   label: string;
 };
 export type SessionInventoryViewGroup = {
-  id: SessionInventoryGroupId;
+  id: SessionInventoryV2GroupId;
   key: string;
   label: string;
   count: string | null;
-  state: SessionInventoryGroup['state'];
+  state: SessionInventoryGroupState;
   stateCopy: string;
   gaps: readonly string[];
   items: readonly SessionInventoryViewItem[];
@@ -88,9 +118,10 @@ export type SessionInventoryViewModel = {
   repairedSelection: boolean;
 };
 
-const labels: Readonly<Record<SessionInventoryGroupId, string>> = {
+const labels: Readonly<Record<SessionInventoryV2GroupId, string>> = {
   inputs: 'Inputs',
   sources: 'Sources',
+  'work-items': 'Work items',
   execution: 'Execution',
   decisions: 'Decisions',
   outputs: 'Outputs',
@@ -126,7 +157,10 @@ function sameScope(
   );
 }
 
-function stateCopy(group: SessionInventoryGroup, label: string): string {
+function stateCopy(
+  group: { state: SessionInventoryGroupState; items: readonly unknown[] },
+  label: string,
+): string {
   switch (group.state) {
     case 'available':
       return group.items.length
@@ -146,7 +180,14 @@ function stateCopy(group: SessionInventoryGroup, label: string): string {
       return 'This owner returned an invalid projection.';
   }
 }
-function gapCopy(kind: SessionInventoryGroup['gaps'][number]['kind']): string {
+function gapCopy(
+  kind:
+    | 'not-captured'
+    | 'restricted'
+    | 'unavailable'
+    | 'unsupported-version'
+    | 'corrupt',
+): string {
   switch (kind) {
     case 'not-captured':
       return 'Not captured by this owner.';
@@ -161,7 +202,7 @@ function gapCopy(kind: SessionInventoryGroup['gaps'][number]['kind']): string {
   }
 }
 
-function itemLabel(row: SessionInventoryRow): string {
+function itemLabel(row: SessionInventoryV2Row): string {
   switch (row.kind) {
     case 'thread-authored-input':
       return row.inputKind === 'attachment'
@@ -208,10 +249,16 @@ function itemLabel(row: SessionInventoryRow): string {
       return 'Kept pull request';
     case 'station-resource-summary':
       return 'Resource summary';
+    case 'station-session-work-item':
+      return `${row.repository.owner}/${row.repository.name}#${row.workItemRef.slice(row.workItemRef.lastIndexOf('#') + 1)}`;
   }
 }
 
-function actions(row: SessionInventoryRow): readonly SessionInventoryAction[] {
+function actions(
+  row: SessionInventoryV2Row,
+): readonly SessionInventoryAction[] {
+  if (row.kind === 'station-session-work-item')
+    return deriveSessionWorkItemGithubUrl(row) ? ['open-work-item'] : [];
   if (row.kind !== 'station-session-output') return [];
   return row.output.descriptor.kind === 'workspace-file'
     ? ['inspect-output', 'keep-file']
@@ -219,8 +266,8 @@ function actions(row: SessionInventoryRow): readonly SessionInventoryAction[] {
 }
 
 function toItem(
-  row: SessionInventoryRow,
-  groupId: SessionInventoryGroupId,
+  row: SessionInventoryV2Row,
+  groupId: SessionInventoryV2GroupId,
 ): SessionInventoryViewItem {
   return {
     key: row.key,
@@ -243,13 +290,17 @@ function toItem(
  * trust, completeness, or network decisions.
  */
 export function buildSessionInventoryViewModel(
-  projection: SessionInventoryProjection,
+  projection: AnySessionInventoryProjection,
   selection: SessionInventorySelection,
   density: SessionInventoryDensity = 'full',
   liveItems: readonly SessionInventoryLiveItem[] = [],
 ): SessionInventoryViewModel {
   const byId = new Map(projection.groups.map((group) => [group.id, group]));
-  const groups = SESSION_INVENTORY_GROUP_IDS.map((id) => {
+  const groupIds =
+    projection.version === SESSION_INVENTORY_V1
+      ? SESSION_INVENTORY_V1_GROUP_IDS
+      : SESSION_INVENTORY_CURRENT_GROUP_IDS;
+  const groups = groupIds.map((id) => {
     const group = byId.get(id) ?? {
       id,
       owner: { owner: 'station', id: 'missing-owner' },
@@ -314,18 +365,21 @@ export function buildSessionInventoryViewModel(
         .flatMap((group) => group.gaps),
     ),
   ];
-  const withAttention = groups.map((group) =>
-    group.id === 'attention' && ownerGaps.length
-      ? {
-          ...group,
-          gaps: [
-            ...group.gaps,
-            ...ownerGaps.filter((gap) => !group.gaps.includes(gap)),
-          ],
-          stateCopy: 'Some owner context needs attention.',
-        }
-      : group,
-  );
+  const withAttention =
+    projection.version === SESSION_INVENTORY_V1
+      ? groups
+      : groups.map((group) =>
+          group.id === 'attention' && ownerGaps.length
+            ? {
+                ...group,
+                gaps: [
+                  ...group.gaps,
+                  ...ownerGaps.filter((gap) => !group.gaps.includes(gap)),
+                ],
+                stateCopy: 'Some owner context needs attention.',
+              }
+            : group,
+        );
   return {
     density,
     scope: projection.scope,
@@ -346,7 +400,7 @@ export function buildSessionInventoryViewModel(
 
 /** Portable density is a local presentation choice; it never changes authority. */
 export function buildSessionInventoryCompactViewModel(
-  projection: SessionInventoryProjection,
+  projection: AnySessionInventoryProjection,
   selection: SessionInventorySelection,
 ): SessionInventoryViewModel {
   return buildSessionInventoryViewModel(projection, selection, 'compact');

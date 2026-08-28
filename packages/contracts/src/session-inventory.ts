@@ -1,5 +1,6 @@
 import type { SessionOutputItem } from './session-outputs.js';
 import {
+  deriveGithubWorkItemUrl,
   type GithubWorkItemRepository,
   parseSessionWorkItemAssociation,
   SESSION_WORK_ITEM_ASSOCIATION_V1,
@@ -349,6 +350,44 @@ export type SessionInventoryV2GroupPage =
 export type AnySessionInventoryGroupPage =
   | SessionInventoryGroupPage
   | SessionInventoryV2GroupPage;
+
+/**
+ * Derives a GitHub issue link only after the complete v2 row passes the same
+ * closed locator checks as the transport. This is portable presentation
+ * policy, not a server-side navigation decision.
+ */
+export function deriveSessionWorkItemGithubUrl(
+  value: unknown,
+): `https://github.com/${string}/${string}/issues/${number}` | null {
+  try {
+    if (!row(value) || value.kind !== 'station-session-work-item') return null;
+    if (
+      value.owner.owner !== 'station.session-work-items' ||
+      value.owner.id !== 'v1' ||
+      value.key !== `work-item:${value.associationIds[0]}` ||
+      !value.relations.includes('observed-during') ||
+      !value.relations.includes('produced-by')
+    )
+      return null;
+    return deriveGithubWorkItemUrl({
+      version: SESSION_WORK_ITEM_ASSOCIATION_V1,
+      associationId: value.associationIds[0],
+      sessionId: value.sessionId,
+      conversationId: value.conversationId,
+      eventId: value.eventId,
+      turnId: value.turnId,
+      toolCallId: value.toolCallId,
+      relation: 'created',
+      provider: value.provider,
+      workItemRef: value.workItemRef,
+      repository: value.repository,
+      nativeId: value.nativeId,
+      observedAt: value.observedAt,
+    });
+  } catch {
+    return null;
+  }
+}
 
 const encoder = new TextEncoder();
 const statesWithoutFields = new Set<SessionInventoryGroupState>([
