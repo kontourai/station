@@ -52,6 +52,45 @@ function componentRules(component) {
   return Array.isArray(component?.rules) ? component.rules : [];
 }
 
+function resolveComponent(reference, driver, extensions, path, findings) {
+  if (!reference || typeof reference !== 'object' || Array.isArray(reference)) {
+    findings.push(issue(path, 'has an invalid rule.toolComponent reference.'));
+    return undefined;
+  }
+  let candidates = [driver, ...extensions];
+  if (reference.index !== undefined) {
+    if (
+      !Number.isInteger(reference.index) ||
+      reference.index < 0 ||
+      reference.index >= extensions.length
+    ) {
+      findings.push(
+        issue(path, 'has an invalid rule.toolComponent reference.'),
+      );
+      return undefined;
+    }
+    candidates = [extensions[reference.index]];
+  }
+  for (const key of ['name', 'guid']) {
+    if (reference[key] !== undefined) {
+      if (!nonEmptyString(reference[key])) {
+        findings.push(issue(path, `has an invalid rule.toolComponent ${key}.`));
+        return undefined;
+      }
+      candidates = candidates.filter(
+        (component) => component?.[key] === reference[key],
+      );
+    }
+  }
+  if (candidates.length !== 1) {
+    findings.push(
+      issue(path, 'has an unknown or ambiguous rule.toolComponent reference.'),
+    );
+    return undefined;
+  }
+  return candidates[0];
+}
+
 function resultRule(result, { driver, extensions }, path, findings) {
   const reference = result.rule;
   if (
@@ -63,14 +102,14 @@ function resultRule(result, { driver, extensions }, path, findings) {
   }
   let component = driver;
   if (reference?.toolComponent !== undefined) {
-    const index = reference.toolComponent?.index;
-    if (!Number.isInteger(index) || index < 0 || index >= extensions.length) {
-      findings.push(
-        issue(path, 'has an invalid rule.toolComponent reference.'),
-      );
-      return undefined;
-    }
-    component = extensions[index];
+    component = resolveComponent(
+      reference.toolComponent,
+      driver,
+      extensions,
+      path,
+      findings,
+    );
+    if (!component) return undefined;
   }
   if (
     reference?.index !== undefined &&
@@ -129,6 +168,10 @@ function resultRule(result, { driver, extensions }, path, findings) {
       return undefined;
     }
     rule = matches[0];
+  }
+  if (reference?.guid !== undefined && rule?.guid !== reference.guid) {
+    findings.push(issue(path, 'rule.guid does not match its resolved rule.'));
+    return undefined;
   }
   return rule;
 }
@@ -197,6 +240,24 @@ function validateRun(run, index, findings, summaries) {
     );
   const components = { driver, extensions };
   const allRules = [driver, ...extensions].flatMap(componentRules);
+  for (const [componentIndex, component] of [driver, ...extensions].entries()) {
+    const label =
+      componentIndex === 0
+        ? `${path}.tool.driver`
+        : `${path}.tool.extensions[${componentIndex - 1}]`;
+    if (
+      !component ||
+      typeof component !== 'object' ||
+      Array.isArray(component)
+    ) {
+      findings.push(issue(label, 'must be a tool component object.'));
+      continue;
+    }
+    if (componentIndex > 0 && !nonEmptyString(component.name))
+      findings.push(issue(label, 'must contain a nonblank extension name.'));
+    if (component.rules !== undefined && !Array.isArray(component.rules))
+      findings.push(issue(label, 'rules must be an array when present.'));
+  }
   if (allRules.length === 0)
     findings.push(
       issue(
