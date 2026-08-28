@@ -4,7 +4,7 @@
  * Every method takes the project workspace path (cwd). Durable definitions and
  * config stay in Flow's contract-owned `<cwd>/.flow/`; GENERATED run state
  * lives only under `<cwd>/.kontourai/flow/runs/` — Flow 3's canonical runtime
- * root. There is no legacy `.flow/runs` read or write (#290).
+ * root. There is no legacy `.flow/runs` read or write (archive#290).
  */
 
 import { spawn } from 'node:child_process';
@@ -204,7 +204,7 @@ export interface CommandRunOutcome {
   /**
    * Wall-clock duration in milliseconds, or null when nothing measured one.
    * A command Station only observed has no duration; recording 0 would read
-   * as a measured instantaneous run (station#4237).
+   * as a measured instantaneous run (archive#4237).
    */
   durationMs: number | null;
   /** Whether `output` was truncated before capture. */
@@ -233,9 +233,9 @@ export function commandOutcomePassed(
 ): boolean {
   // A timeout fails regardless of how the outcome was sourced. Today no
   // observed producer can set this, but the predicate must be TOTAL: the
-  // natural follow-up to #4237 is plumbing a real observed timeout, and a
+  // natural follow-up to archive#4237 is plumbing a real observed timeout, and a
   // runtime that reports a timed-out call as `success` would otherwise pass
-  // it (#4237 review M2).
+  // it (archive#4237 review M2).
   if (result.timedOut) return false;
   if (result.exitCode === null) return result.observedStatus === 'success';
   return result.exitCode === 0 && !result.timedOut;
@@ -759,7 +759,7 @@ export class FlowRunService {
     const outputTail = lines.slice(-COMMAND_OUTPUT_TAIL_LINES);
     // Both null rather than omitted when unmeasured: an explicit null asserts
     // "unknown" to a reader, where a missing key is indistinguishable from a
-    // record written before the field existed (station#4237).
+    // record written before the field existed (archive#4237).
     const startedAt =
       result.durationMs === null
         ? null

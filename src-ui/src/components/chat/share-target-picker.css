@@ -21,7 +21,7 @@
 .share-target-picker__search {
   width: 100%;
   padding: 8px 12px;
-  /* station#1254: this file was written end to end against a token
+  /* archive#1254: this file was written end to end against a token
      vocabulary this app does not have — --border-color, --border, --input-bg,
      --surface, --text, --accent, --primary, --hover-bg, --surface-hover.
      Chaining one undefined name onto another as a fallback does not rescue

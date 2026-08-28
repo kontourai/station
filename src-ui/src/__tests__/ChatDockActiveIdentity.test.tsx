@@ -49,7 +49,7 @@ function copyButton() {
 }
 
 /**
- * station#3309: the header reads agent-first. These pin WHAT the row names and
+ * archive#3309: the header reads agent-first. These pin WHAT the row names and
  * in WHICH order — the owner's report was that the dock never showed the agent
  * answering in it, only the conversation's own title.
  */
@@ -213,7 +213,7 @@ describe('ChatDockActiveIdentity', () => {
     expect(screen.getByRole('status').textContent).toBe('Thread ID copied.');
   });
 
-  // station#3341: the two arms that used to render "Copied" for a write that
+  // archive#3341: the two arms that used to render "Copied" for a write that
   // never happened.
   test('a refused write never claims a copy and never buzzes', async () => {
     clipboardRefuses();

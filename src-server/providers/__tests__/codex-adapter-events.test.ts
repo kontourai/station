@@ -71,7 +71,7 @@ describe('codex-adapter-events', () => {
     expect(mapApprovalResolutionStatus('cancel')).toBe('cancelled');
   });
 
-  // station#1195: the app-server's own "may I invoke this MCP tool" gate
+  // archive#1195: the app-server's own "may I invoke this MCP tool" gate
   // (and any real MCP `elicitation/create` request) rides this method —
   // before this ticket Codex had no toolServers delivery at all, so this
   // was never reachable and an unhandled request would auto-error, which

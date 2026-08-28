@@ -80,7 +80,7 @@ const ALL_KIT_RECORD_TYPES: KitRecordType[] = [
   'person',
 ];
 
-// Mirrors event-store.ts's busy budget for shared-home contention (#3321).
+// Mirrors event-store.ts's busy budget for shared-home contention (archive#3321).
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 const VEC_TABLE = 'vec_items';
 const META_TABLE = 'index_meta';
@@ -152,8 +152,8 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
   private open(): Db {
     if (this.db) return this.db;
     mkdirSync(dirname(this.dbPath), { recursive: true });
-    // station#3321: this file lives under a shared STATION_HOME, so a second
-    // Station process can hold a write lock at any moment (the #2895/#3304
+    // archive#3321: this file lives under a shared STATION_HOME, so a second
+    // Station process can hold a write lock at any moment (the archive#2895/#3304
     // class). Same treatment as event-store.ts: constructor timeout AND the
     // PRAGMA (the option does not consistently govern explicit BEGIN
     // IMMEDIATE across supported builds), plus best-effort WAL before the
@@ -170,7 +170,7 @@ export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
     } catch {
       // Best-effort; a genuinely unreadable database fails truthfully below.
     }
-    // station#3661: bounded retry, because the conversion on a never-WAL
+    // archive#3661: bounded retry, because the conversion on a never-WAL
     // file does not wait out `busy_timeout`. Still advisory — the mode is
     // persistent in the file header, so a later uncontended open converts it.
     applyWalJournalMode(db, { store: 'knowledge index' });

@@ -1,6 +1,6 @@
 /**
  * E2E: the dock occupant picker and the routes' away state
- * (station#4090 design decision, epic station#4142 M5).
+ * (archive#4090 design decision, epic archive#4142 M5).
  *
  * Dock side: the dock-slot header's fixed "return to Chat" action is gone.
  * The header names the CURRENT occupant and opens a menu of every pane the

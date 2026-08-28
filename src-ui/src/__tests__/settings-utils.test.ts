@@ -178,7 +178,7 @@ describe('settings utils', () => {
       });
     });
 
-    // station#settings-revamp slice2 review finding 2.
+    // archive#settings-revamp.
     test('a device envelope from a newer Station (future version) is rejected, not imported unchanged', async () => {
       const futureFile = {
         version: 2,
@@ -269,7 +269,7 @@ describe('settings utils', () => {
     await parseImportedSettingsFile(file);
 
     expect(listener).toHaveBeenCalledTimes(1);
-    // station#settings-revamp slice 3 (#1359 convergence): the shared
+    // archive#settings-revamp (archive#1359 convergence): the shared
     // `station.device-settings` root is migrated into the envelope's own
     // `shortcutOverrides` entry rather than written back verbatim.
     expect(localStorage.getItem('station.device-settings')).toBeNull();

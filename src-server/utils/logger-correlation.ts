@@ -1,5 +1,5 @@
 /**
- * Canonical `logger.child({...})` correlation binding keys (station#1897,
+ * Canonical `logger.child({...})` correlation binding keys (archive#1897,
  * logging slice 2 -> slice 3: nothing bound a log line to a
  * conversation/session, agent, or run before this).
  *

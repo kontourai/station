@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3317 — the project header's working-directory affordances.
+ * archive#3317 — the project header's working-directory affordances.
  *
  * The defect was affordance, not data: the path rendered as one tail-ellipsized
  * line whose edit pencil only appeared on hover (invisible on touch), and no
@@ -21,7 +21,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 // The haptic is a second success channel: a confirmation buzz for a copy that
 // never happened is the same lie as the label. Pinned here the way the sibling
-// HighlightedCodeBlock suite pins it (station#3339 review) — without this mock
+// HighlightedCodeBlock suite pins it (archive#3339) — without this mock
 // restoring the unconditional `triggerHaptic('light')` kept every test green.
 const triggerHaptic = vi.fn();
 vi.mock('../platform/native/haptics', () => ({
@@ -72,7 +72,7 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     expect(parent.textContent).toBe('/Users/me/dev/github/');
     expect(leaf.textContent).toBe('station');
     // The bidi isolate that keeps `~`/`/` from reordering under the parent's
-    // rtl start-ellipsis (#304) — same contract as the chat dock split.
+    // rtl start-ellipsis (archive#304) — same contract as the chat dock split.
     expect(parent.getAttribute('dir')).toBe('ltr');
   });
 
@@ -115,7 +115,7 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
   // The two real failures: a rejected write (permission refused), and no
   // `navigator.clipboard` at all — which is every plain-http:// origin, i.e.
   // Station reached over the LAN from another device. Both used to render as
-  // "Copied" (station#3317 review).
+  // "Copied" (archive#3317).
   test('a rejected clipboard write never claims a copy', async () => {
     const writeText = vi.fn().mockRejectedValue(new Error('denied'));
     Object.assign(navigator, { clipboard: { writeText } });

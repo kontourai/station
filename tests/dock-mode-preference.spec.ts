@@ -488,7 +488,7 @@ test.describe('Dock Mode Preference', () => {
     const url = new URL(page.url());
     expect(url.searchParams.has('dockSlotPlacement')).toBe(true);
 
-    // #1989 keeps its documented Developer chord; the two global actions must
+    // archive#1989 keeps its documented Developer chord; the two global actions must
     // remain distinct instead of silently resolving by registration priority.
     await page.keyboard.press('Meta+Shift+D');
     await expect.poll(() => new URL(page.url()).pathname).toBe('/developer');
@@ -792,10 +792,10 @@ test.describe('Dock Mode — Mobile', () => {
     await page.waitForTimeout(2000);
     await dismissSetupLauncher(page);
 
-    // #972 collapsed the mobile chat chrome to the one-row
+    // archive#972 collapsed the mobile chat chrome to the one-row
     // ChatDockMobileHeader, and New/Open/history moved into the header's
-    // "Chat actions" overflow sheet (#985). The New/Open button row this test
-    // used to inspect (`ChatDockTabBar`) survived on desktop until #3309
+    // "Chat actions" overflow sheet (archive#985). The New/Open button row this test
+    // used to inspect (`ChatDockTabBar`) survived on desktop until archive#3309
     // folded it into the desktop header and deleted it. The original
     // intent — mobile favors icons over rendered text — still holds on the
     // header's own controls (drawer toggle, activity, chat actions): each is

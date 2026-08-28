@@ -1,5 +1,5 @@
 /**
- * station#1502 slice 4 — the project-level resolution view
+ * archive#1502 — the project-level resolution view
  * (`docs/design/portable-project-identity.md` §3.6 preamble, §4.1).
  *
  * `resolveProjectResource` answers "what happened when this Station tried to
@@ -17,7 +17,7 @@
  *
  * Everything else is `backing`.
  *
- * ### Why the record's EXISTENCE is not the test (station#1502 fix round)
+ * ### Why the record's EXISTENCE is not the test (archive#1502 fix round)
  *
  * An earlier revision read only whether a record existed, on the reasoning
  * that "a manifest record means this Station declared resources for the
@@ -71,7 +71,7 @@
  * ### THE HONEST LIMIT of this derivation
  *
  * **Membership does not exist in this codebase yet.** §4.1 is written for a
- * multi-member world — "a member whose Stations back nothing" — and #1392's
+ * multi-member world — "a member whose Stations back nothing" — and archive#1392's
  * membership model has not landed, so there is no "member", no set of that
  * member's Stations, and no way to ask whether ANY of them backs the project.
  * What is implemented here is therefore the **single-Station reading** of
@@ -212,7 +212,7 @@ function recordIsRealizedHere(
 
 /**
  * Every declared resource, resolved BY ID, plus which one a no-`resourceId`
- * caller gets (station#1503 slice 5).
+ * caller gets (archive#1503).
  *
  * ## Why this enumerates ids and is still not the `composeManifest` trap
  *

@@ -8,7 +8,7 @@ import { SkillCommandSection } from '../views/skills/SkillCommandSection';
 import { EMPTY_SKILL_FORM } from '../views/skills/skill-view-utils';
 
 /**
- * station#3737: `PUT /api/skills/<name>` refused `Ship It` with the rule it
+ * archive#3737: `PUT /api/skills/<name>` refused `Ship It` with the rule it
  * broke, nothing reached the screen, and the field went on promising
  * "Type /Ship It in chat." — a command that does not exist and cannot be
  * typed.

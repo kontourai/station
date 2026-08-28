@@ -174,7 +174,7 @@ describe('registry-backed enriched Agent routes', () => {
   test('retries past a transient runtime-generation change and serves a stable catalog', async () => {
     // Attempt 1 straddles a revision bump (7 → 8); attempt 2 reads under a
     // stable 8. The route must resolve this itself instead of telling the
-    // caller to retry (#1574).
+    // caller to retry (archive#1574).
     const getAgentConfigurationRevision = vi
       .fn()
       .mockReturnValueOnce(7)
@@ -337,7 +337,7 @@ describe('registry-backed enriched Agent routes', () => {
     const body = await json(await app.request('/codex'));
     expect(body.success).toBe(true);
     expect(body.data.slug).toBe('codex');
-    // #1574 review HIGH: the detail route briefly paid O(catalog) spec loads
+    // archive#1574 review HIGH: the detail route briefly paid O(catalog) spec loads
     // per request. The bound is what matters — AT MOST the requested slug,
     // never an unrelated authored agent like 'writer'.
     //
@@ -365,7 +365,7 @@ describe('registry-backed enriched Agent routes', () => {
   test('a listed slug whose spec load fails transiently keeps its retries', async () => {
     // Attempt 1: unstable AND the authored agent's file is mid-write
     // (loadAgent throws). Attempt 2: stable and readable. The early-exit
-    // for unknown slugs must not swallow this retry (#1574 delta review).
+    // for unknown slugs must not swallow this retry (archive#1574 delta review).
     const getAgentConfigurationRevision = vi
       .fn()
       .mockReturnValueOnce(7)
@@ -480,7 +480,7 @@ describe('registry-backed enriched Agent routes', () => {
       engineDisplayName: 'Codex',
       execution: { agentConnectionId: 'codex' },
       available: false,
-      // station#3027: the authored-spec gate outranks connection status —
+      // archive#3027: the authored-spec gate outranks connection status —
       // an engine default without an authored Agent is unavailable whether
       // or not its engine connection is up.
       unavailableReason: expect.stringMatching(
@@ -732,7 +732,7 @@ describe('registry-backed enriched Agent routes', () => {
     // enableable — enabling creates an Agent, which this row already is.
     expect(writer.enable).toBeUndefined();
     // The spec-less engine default is unavailable for the authored-spec
-    // reason regardless of adapter state (station#3027).
+    // reason regardless of adapter state (archive#3027).
     const codexAlias = body.data.find((agent: any) => agent.slug === 'codex');
     expect(codexAlias).toMatchObject({
       available: false,
@@ -799,7 +799,7 @@ describe('registry-backed enriched Agent routes', () => {
     ).toMatchObject({
       execution: { agentConnectionId: 'codex' },
       available: false,
-      // station#3742: a connection id is not a user noun. This branch fires
+      // archive#3742: a connection id is not a user noun. This branch fires
       // BECAUSE there is no connection record, so there is no name to use
       // either — the sentence says what is true without naming the thing that
       // is not there.
@@ -809,7 +809,7 @@ describe('registry-backed enriched Agent routes', () => {
   });
 
   /**
-   * station#3742: every other branch DOES hold the connection record, and the
+   * archive#3742: every other branch DOES hold the connection record, and the
    * record carries the name its owner gave it. None of them may print the id.
    */
   test('an unavailable engine is named, never identified by its id', () => {
@@ -872,7 +872,7 @@ describe('registry-backed enriched Agent routes', () => {
       expect(reason).not.toContain("'codex'");
     }
   });
-  // station#2845 review round: the readiness derivation asks for the adapter
+  // archive#2845 review round: the readiness derivation asks for the adapter
   // `provider`, and the agreement test supplies it by hand. That leaves the
   // one thing production actually depends on untested — the projection from a
   // live runtime connection to the summary this route consumes. The first fix
@@ -974,7 +974,7 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
           ['default', runtimeDefault],
         ]),
         storedMetadata: metadata,
-        // The persisted record: healed, unbound, exactly as #3662 leaves it.
+        // The persisted record: healed, unbound, exactly as archive#3662 leaves it.
         loadAgent: async (slug: string) => {
           if (slug === 'station') return { name: 'Station', prompt: '' };
           throw new Error(`no authored Agent for ${slug}`);

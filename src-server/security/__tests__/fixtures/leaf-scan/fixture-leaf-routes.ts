@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 
 /**
- * station#1131 AC1 fixture. `/status` mirrors a normal, already-declared
+ * archive#1131 AC1 fixture. `/status` mirrors a normal, already-declared
  * leaf; `/__leaf_guard_fixture_unmapped__` is deliberately never added to
  * `PAIRING_SCOPE_FAMILY_INHERITED_LEAVES` in `pairing-route-scopes.ts` — it
  * exists only to prove `pairing-route-leaf-scan.ts` discovers a new leaf

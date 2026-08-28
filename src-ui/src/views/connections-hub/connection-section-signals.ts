@@ -1,7 +1,7 @@
 /**
  * The two facts the Connections IA renders about a section — how many items
  * it holds, and whether it needs attention — derived ONCE (lane design P5;
- * sol review findings 5 and 6).
+ *).
  *
  * There used to be two attention derivations. The rail's
  * (`ConnectionsSectionFrame`) read the filtered model inventory, the agent
@@ -54,7 +54,7 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
    * beside a list of three engines (the count read `/api/connections`, the
    * list reads `/api/connections/agents`).
    *
-   * station#3747 closes the first half at its root: the count now reads the
+   * archive#3747 closes the first half at its root: the count now reads the
    * SAME route the Models list reads (`/api/connections/models`, LLM-capable
    * by contract) instead of reading the full projection and re-deriving
    * membership with a client-side filter. `filterModelProviders` with an empty

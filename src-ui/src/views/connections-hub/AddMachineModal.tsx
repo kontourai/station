@@ -1,5 +1,5 @@
 /**
- * Station#1134 ask 1 — one "Add a computer" entry point that asks the GOAL
+ * archive#1134 — one "Add a computer" entry point that asks the GOAL
  * first, then routes into the flow that serves it. Three branches, because
  * three mechanisms exist and the audit found all three reachable by
  * differently-shaped affordances within 300px of each other (CI-R9):
@@ -45,9 +45,9 @@ interface AddMachineGoalOption {
 }
 
 /**
- * The two goals, and the exact "what this unlocks" copy (station#1134 ask 3
- * — "the highest-value part of the whole issue"). Each line names the
- * direction (ask 2) and the capability it grants, never a liveness claim —
+ * The two goals, and the exact "what this unlocks" copy (archive#1134
+ * "the highest-value part of the whole issue"). Each line names the
+ * direction and the capability it grants, never a liveness claim —
  * both flows below still gate the real "ready"/"connected" state themselves.
  */
 export const ADD_MACHINE_GOAL_OPTIONS: readonly AddMachineGoalOption[] = [

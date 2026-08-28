@@ -147,7 +147,7 @@ export async function saveAppConfigFile(
     } finally {
       await temporary.close();
     }
-    // Async acquisition (#2646): a contended cross-process lock wait must not
+    // Async acquisition (archive#2646): a contended cross-process lock wait must not
     // freeze the server's event loop. The held section stays synchronous.
     const release = await acquireFileMutationLockAsync(`${path}.mutation`);
     try {

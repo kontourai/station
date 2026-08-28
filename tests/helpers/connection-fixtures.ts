@@ -6,15 +6,15 @@ import type {
 
 /**
  * The shape `/api/connections/agents` actually returns, built once
- * (station#3390).
+ * (archive#3390).
  *
  * Fifteen of seventeen e2e fixtures for that endpoint omitted `setup`, which
  * `AgentConnectionView` requires. The SDK's model-picker projection reads
  * `connection.setup.state`, so those fixtures put the app into a state a real
  * Station never serves: the projection threw, BOTH connection lists came back
  * empty, the composer fell back to raw model ids and the picker rendered
- * disabled. One spec spent a triage round on it (station#3345) and the rest
- * were quietly asserting against a broken app.
+ * disabled — specs then quietly assert against a broken app
+ * (archive#3345 records one such triage).
  *
  * The mechanism that stops it recurring is the return type, not this comment:
  * these are annotated with the contract types, and `tsconfig.e2e.json`

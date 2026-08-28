@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3300: a settled turn must not flash back to "Working…" after
+ * archive#3300: a settled turn must not flash back to "Working…" after
  * resume, and its answer must not render twice.
  *
  * The defect is two disagreeing derivations of "is this turn live":
@@ -129,7 +129,7 @@ describe('station#3300 — settled turn stays settled on resume', () => {
 
     // The settled answer renders exactly once…
     expect(screen.getAllByText(SETTLED_ANSWER)).toHaveLength(1);
-    // …and no live-work row is reconstructed for it (station#3300: the
+    // …and no live-work row is reconstructed for it (archive#3300: the
     // "Working…" flash and the bare duplicate are both this one element).
     expect(screen.queryByTestId('streaming-message')).toBeNull();
   });
@@ -188,7 +188,7 @@ describe('station#3300 — settled turn stays settled on resume', () => {
 
   test('a non-managed session keeps the session-level derivation', () => {
     // Direct-path chats never see turn events; their only liveness signal is
-    // the session-level flags, unchanged by station#3300.
+    // the session-level flags, unchanged by archive#3300.
     renderList(
       managedSession({
         orchestrationSessionStarted: false,

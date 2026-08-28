@@ -58,7 +58,7 @@ describe('portalled header menus stay reachable from the keyboard', () => {
 
     view.rerender(<Harness isOpen />);
 
-    // The menu's first item, whichever it is — Connections since station#3311
+    // The menu's first item, whichever it is — Connections since archive#3311
     // put the demoted Profile last.
     expect(document.activeElement).toBe(screen.getByLabelText('Connections'));
   });
@@ -235,9 +235,9 @@ describe('an open menu does not stay open behind the app', () => {
 });
 
 /**
- * station#1245. `useMenuFocus` hand-rolled
- * `if (previouslyFocused?.isConnected) previouslyFocused.focus()` — the exact
- * station#1126 shape — and was the only one of the four bypasses that needed a
+ * archive#1245. `useMenuFocus` hand-rolled
+ * `if (previouslyFocused?.isConnected) previouslyFocused.focus` — the exact
+ * archive#1126 shape — and was the only one of the four bypasses that needed a
  * semantics call rather than a mechanical swap, because a menu is not a modal:
  * it dismisses on focusout by design (#1138 rejected this hook for ConfirmModal
  * for the mirror-image reason).
@@ -265,7 +265,7 @@ describe('a menu whose trigger did not survive (station#1245)', () => {
     expect(document.activeElement).toBe(screen.getByTestId('empty-menu'));
 
     // A notification popover's trigger is a per-notification button, and the
-    // popover can dismiss the notification it belongs to. Pre-fix, `.focus()`
+    // popover can dismiss the notification it belongs to. Pre-fix, `.focus`
     // on the detached trigger was a silent no-op and focus stayed on <body>.
     row.remove();
     view.rerender(<EmptyMenu isOpen={false} />);

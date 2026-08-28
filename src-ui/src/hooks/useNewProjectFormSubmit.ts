@@ -29,8 +29,8 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
   // name at all, a slug a refreshed project list still says is taken
   // (4-HOME-007), or a directory the server refused (4-HOME-008).
   //
-  // The cached duplicate notice deliberately does NOT appear here (review
-  // HIGH). `['projects']` stays fresh for five minutes with refetch-on-mount
+  // The cached duplicate notice deliberately does NOT appear here.
+  // `['projects']` stays fresh for five minutes with refetch-on-mount
   // and refetch-on-focus disabled, so a project deleted elsewhere lingers in
   // it; vetoing on that would block a legitimate name for minutes without ever
   // attempting the POST, which is the only authority. The cached notice warns;

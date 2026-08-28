@@ -187,7 +187,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   });
 
   /**
-   * station#3202. The sidebar badge is attached to the PROJECT, so the project
+   * archive#3202. The sidebar badge is attached to the PROJECT, so the project
    * page has to be able to discharge it — the page used to surface none of the
    * sessions its own badge counted. "At the top" is the requirement, not a
    * preference: it is the first thing the reader was sent here for.

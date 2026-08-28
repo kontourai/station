@@ -224,7 +224,7 @@ describe('TrustPanel', () => {
     expect(screen.getByRole('alert').textContent).toContain('scan failed');
   });
 
-  // station#3092 — a project (or bundle) switch must not blank a populated
+  // archive#3092 — a project (or bundle) switch must not blank a populated
   // panel, and the held content must be unmistakably marked as belonging to
   // the OUTGOING subject while the new one loads.
   describe('key change: holding previous data honestly', () => {

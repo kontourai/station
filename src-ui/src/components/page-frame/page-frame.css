@@ -53,7 +53,7 @@
 }
 
 /* ── The canonical page header ──
- * Moved here from `page-layout.css` (station UX audit lane C1): these rules
+ * Moved here from `page-layout.css` (station lane): these rules
  * belong to the component that renders them, and `PageFrame` is loaded by
  * the shell rather than by a route chunk. Importing all of page-layout.css
  * eagerly for six selectors cost 1.6kB gzip of entry CSS; this is the same
@@ -184,7 +184,7 @@
  * in the always-loaded frame stylesheet is what makes "put your primary
  * action in the header" work from any route, styled the same way, rather than
  * depending on which chunk happened to import page-layout.css first
- * (station#3306's failure mode). Declarations are unchanged.
+ * (archive#3306's failure mode). Declarations are unchanged.
  */
 .page__btn-primary {
   font-family: var(--font-sans);

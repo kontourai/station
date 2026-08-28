@@ -2,7 +2,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { isDeferredRetriableTurnError } from './session-lifecycle-service.js';
 
 /**
- * station#3451 finding H2, corrected by fix round D4: matches `retriable &&
+ * archive#3451 finding H2, corrected by fix round D4: matches `retriable &&
  * no turnId` — a SHAPE, not a single publisher. Named for that shape, not
  * for the one call site that motivated it; the round-1 name
  * (`isDeferredStreamRestartError`) claimed a uniqueness this predicate does
@@ -44,7 +44,7 @@ function isSessionScopedRetriableError(
 }
 
 /**
- * station#2959: the layer above station#1207/#1256's shared
+ * archive#2959: the layer above archive#1207/#1256's shared
  * `readWithStallWatchdog` (`@kontourai/station-contracts/stall-watchdog`),
  * which only detects a stalled underlying stream READ. This watches the
  * canonical runtime-event stream `OrchestrationService` already projects for
@@ -69,7 +69,7 @@ const PROGRESS_METHODS: ReadonlySet<CanonicalRuntimeEvent['method']> = new Set([
 /**
  * Events that close a turn's watch outright — no further reset is possible.
  *
- * `runtime.error` is deliberately NOT listed here (station#3451 findings 4/6):
+ * `runtime.error` is deliberately NOT listed here (archive#3451 findings 4/6):
  * it needs conditional handling — see `observe()` — because a codex
  * deferred-retriable `runtime.error` (`willRetry`) is not proof the turn is
  * over (the same fact `turn-completion-notifications.ts` and
@@ -86,7 +86,7 @@ const TERMINAL_METHODS: ReadonlySet<CanonicalRuntimeEvent['method']> = new Set([
 ]);
 
 /**
- * Review HIGH 1 (#2959): a turn awaiting a HUMAN — an approval prompt, an
+ * Review HIGH 1 (archive#2959): a turn awaiting a HUMAN — an approval prompt, an
  * input request — is alive but deliberately silent, for as long as the human
  * takes. Deferred approval is a first-class feature (the approvals inbox and
  * CLI exist to answer later), so silence after `request.opened` is not a
@@ -146,7 +146,7 @@ export class TurnStallWatchdog {
   }
 
   /**
-   * station#3594: true when `turnId` names a turn other than the one
+   * archive#3594: true when `turnId` names a turn other than the one
    * `threadId` is currently tracking — i.e. this is a STALE terminal/error
    * for a turn the session has already moved past (a codex session runs
    * turn-1 then turn-2; turn-1's terminal arrives late, after turn-2 has
@@ -155,7 +155,7 @@ export class TurnStallWatchdog {
    * `start()`, always paired with the `turn.started` that names it), so
    * there is no "last known anchor after clearing" question to answer the
    * way `session-lifecycle-service.ts`'s `acceptsTurnTerminalEvent`/
-   * `nextTurnIdentityAnchor` do for the lifecycle folds (station#3581) — and
+   * `nextTurnIdentityAnchor` do for the lifecycle folds (archive#3581) — and
    * that predicate's type is narrowed to `turn.completed`/`turn.aborted`
    * only (it would also reject a no-`turnId` terminal outright, which
    * `session.exited` and a session-scoped `runtime.error` both are and must
@@ -163,7 +163,7 @@ export class TurnStallWatchdog {
    * other callers (`session.stop-settled`, `runtime.error`) without a second,
    * differently-shaped variant anyway.
    *
-   * Review HIGH 1 (station#3594): checks BOTH `this.watched` and
+   * Review HIGH 1 (archive#3594): checks BOTH `this.watched` and
    * `this.suspended`, not just `watched`. A turn awaiting a human
    * (`SUSPEND_METHODS`) has its entry moved out of `watched` entirely — an
    * earlier revision of this method read only `watched` and returned `false`
@@ -207,7 +207,7 @@ export class TurnStallWatchdog {
       // Keep the observation until the next progress or terminal event. The
       // old timer-only representation forgot this identity at fire time,
       // which made a later progress event unable to clear a user-visible
-      // silence observation (#4054).
+      // silence observation (archive#4054).
       watched.timer = undefined;
       lifecycle.onStall(threadId, turnId);
     }, windowMs);
@@ -243,11 +243,11 @@ export class TurnStallWatchdog {
     callbacks: TurnStallCallbacks,
   ): void {
     if (event.method === 'runtime.error') {
-      // station#3451 findings 4/6: a genuine (non-deferred) `runtime.error`
+      // archive#3451 findings 4/6: a genuine (non-deferred) `runtime.error`
       // is a terminal fact this watch must stop timing, exactly like the
       // methods in TERMINAL_METHODS — otherwise a turn that already ended
       // fires a spurious stall detection later, polluting the one metric
-      // this observe-only phase exists to collect (#2959). A codex
+      // this observe-only phase exists to collect (archive#2959). A codex
       // deferred-retriable one is not terminal and is not progress either
       // (unchanged from before this fix): the watch, if armed, keeps
       // counting down toward its existing deadline — the retry may still be
@@ -256,11 +256,11 @@ export class TurnStallWatchdog {
       if (
         !isDeferredRetriableTurnError(event) &&
         !isSessionScopedRetriableError(event) &&
-        // station#3594: a genuine, turn-scoped runtime.error naming a turn
+        // archive#3594: a genuine, turn-scoped runtime.error naming a turn
         // this thread has already moved past must not clear the watch for
         // the turn that is actually running — same identity gate as
         // TERMINAL_METHODS below, and the same defect shape (found auditing
-        // this file for #3594; not itself in the original issue's cited
+        // this file for archive#3594; not itself in the original issue's cited
         // lines, but the identical unconditional-clear mechanism).
         !this.isStaleForAnotherTurn(event.threadId, event.turnId)
       ) {
@@ -269,7 +269,7 @@ export class TurnStallWatchdog {
       return;
     }
     if (TERMINAL_METHODS.has(event.method)) {
-      // station#3594: gate the clear on turn identity. Before this fix, a
+      // archive#3594: gate the clear on turn identity. Before this fix, a
       // `turn.completed`/`turn.aborted`/`session.stop-settled` naming a
       // SUPERSEDED turn (one the thread has already moved past) cancelled
       // the watch for the turn that is genuinely still running — silently
@@ -304,7 +304,7 @@ export class TurnStallWatchdog {
       return;
     }
     if (SUSPEND_METHODS.has(event.method)) {
-      // Delta-review F1 (#4054 round 2): the same identity gate the terminal
+      // Delta-review F1 (archive#4054 round 2): the same identity gate the terminal
       // paths use. A DELAYED request.opened naming a superseded turn must not
       // suspend — and, since the fired-watch retention fix, must not clear —
       // the observation of the turn that is actually running. A no-turnId
@@ -318,7 +318,7 @@ export class TurnStallWatchdog {
         // A fired watch retains identity solely so a later progress or turn
         // end can clear its observation. Once an approval wait suspends the
         // watch, Station deliberately stops observing silence, so keeping a
-        // user-visible quiet marker would overclaim (#4054 fix round F2).
+        // user-visible quiet marker would overclaim (archive#4054 fix round F2).
         lifecycleCallbacks(callbacks).onClear?.({
           threadId: event.threadId,
           turnId: suspended.turnId,

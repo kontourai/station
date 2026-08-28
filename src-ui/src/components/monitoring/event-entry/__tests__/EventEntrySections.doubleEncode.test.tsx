@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3507 sibling sweep — `EventEntrySections.tsx`'s `ToolResultSection`
+ * archive#3507 sibling sweep — `EventEntrySections.tsx`'s `ToolResultSection`
  * had the identical double-encode defect `ToolCallDisplay.tsx` was fixed for:
  * `JSON.stringify(event[K.TOOL_CALL_RESULT], null, 2)` unconditionally, even
  * though the OTLP agent-telemetry ingest route (`otlp-receiver.ts`) and a
@@ -9,7 +9,7 @@
  * already-string `gen_ai.tool.call.result`. Re-stringifying a string wraps it
  * in an extra layer of quotes/escapes.
  *
- * Fix round: `resultPre()` originally picked "the only classless `<pre>` in
+ * Fix round: `resultPre` originally picked "the only classless `<pre>` in
  * the component," which was true of every fixture here (none set
  * `TOOL_CALL_ARGS`) and false of the component — `ToolInputSection` renders
  * an equally classless `<pre>` earlier in DOM order whenever args are

@@ -177,11 +177,11 @@ describe('recovery: a granted Home that throws (station#3122 constraint 3)', () 
     consoleError.mockRestore();
     // Never a blank root: the floor renders...
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
-    // ...with a truthful reason derived from the actual error...
+    //.with a truthful reason derived from the actual error...
     const notice = screen.getByRole('status');
     expect(notice.textContent).toContain('Third-party Home');
     expect(notice.textContent).toContain('exploded during mount');
-    // ...and a way to retry or step off the grant, instead of a reload that
+    //.and a way to retry or step off the grant, instead of a reload that
     // re-enters the same failure.
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     expect(
@@ -466,7 +466,7 @@ describe('recovery covers selection and resolution, not just the granted render 
 
   test('an adversarial thrown VALUE cannot break recovery inside the recovery path', () => {
     registry.trustedLayout = () => {
-      // A throw value whose String() itself throws — `describeThrow` must
+      // A throw value whose String itself throws — `describeThrow` must
       // still produce a bounded description rather than throwing out of
       // `getDerivedStateFromError`.
       throw {

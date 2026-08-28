@@ -149,7 +149,7 @@ function ledgerWithScriptedNotInvoked(
 
 // ── Cron Engine ──
 
-// nextCronTimes tests removed with cron.ts (station#1940) — the cron engine
+// nextCronTimes tests removed with cron.ts (archive#1940) — the cron engine
 // is now @kontourai/ephemeris's schedule core, tested in
 // src-server/services/scheduling/__tests__/builtin-scheduler-eval.test.ts.
 
@@ -1397,7 +1397,7 @@ describe('BuiltinScheduler', () => {
   });
 });
 
-// ── BuiltinScheduler job-run logger.child correlation (station#1897) ──
+// ── BuiltinScheduler job-run logger.child correlation (archive#1897) ──
 
 describe('BuiltinScheduler — job-run logger correlation', () => {
   let logDir: string;

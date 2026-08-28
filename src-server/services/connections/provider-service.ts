@@ -22,7 +22,7 @@ export interface ProviderLaunchabilitySnapshot {
 
 /**
  * Types whose "identity" is meaningfully a host:port endpoint rather than an
- * opaque credential blob. Ollama is the only one wired up today (#191 R5) —
+ * opaque credential blob. Ollama is the only one wired up today (archive#191 R5) —
  * Bedrock is a plausible future candidate (region + profile identity) but is
  * deliberately not implemented here; the issue scoped this to Ollama only.
  */
@@ -36,7 +36,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 
 /**
  * Human-readable label derived generically from a provider `type` string
- * (e.g. `'ollama'` -> `'Ollama'`), used in dedup-conflict messaging (#191
+ * (e.g. `'ollama'` -> `'Ollama'`), used in dedup-conflict messaging (archive#191
  * code-review M2). Must not hardcode any single provider name: this is what
  * `HOST_IDENTIFIED_PROVIDER_TYPES` above is explicitly designed to grow
  * beyond Ollama, and a hardcoded message would go stale for the next type
@@ -197,7 +197,7 @@ export class ProviderService {
     conversationModel?: string;
     projectSlug?: string;
     /**
-     * station#1288: a lone `conversationModel` (no `conversationProviderId`)
+     * archive#1288: a lone `conversationModel` (no `conversationProviderId`)
      * is normally a rejected partial override (see the pairing guard just
      * below) — that guard exists for the EXPLICIT-override caller, where a
      * model with no named connection is ambiguous. The managed-chat relay
@@ -331,7 +331,7 @@ export class ProviderService {
   }
 
   /**
-   * station#1288: the connection-selection half of the no-override cascade
+   * archive#1288: the connection-selection half of the no-override cascade
    * in `resolveProvider` above (project default -> app default -> sole
    * enabled LLM connection). The APP-DEFAULT and SOLE-CONNECTION legs are
    * deliberately decoupled from that cascade's requirement that a default

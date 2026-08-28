@@ -139,7 +139,7 @@ export async function scanKnowledgeDirectories({
   storageAdapter?: IStorageAdapter;
   /**
    * How the project's own directory is resolved when the namespace declares
-   * no `storageDir` (station#1501 slice 3b). Omitted, the resolver reads the
+   * no `storageDir` (archive#1501). Omitted, the resolver reads the
    * ambient Station home.
    */
   workspacePathOptions?: ProjectWorkspacePathOptions;

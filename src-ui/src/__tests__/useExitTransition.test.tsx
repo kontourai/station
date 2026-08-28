@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { useExitTransition } from '../hooks/useExitTransition';
 
 /**
- * station#3309. The dock's inbox panel stays mounted for its exit beat, and
+ * archive#3309. The dock's inbox panel stays mounted for its exit beat, and
  * the ONE branch that cannot live in CSS is reduced motion: a stylesheet can
  * hide an exiting element, it cannot decline to keep it in the tree. These
  * exercise the hook's real timers against a real `matchMedia`.

@@ -60,7 +60,7 @@ export interface MemoryConversationStore {
   persistConversation(conversation: Conversation): Promise<void>;
   /**
    * Serialized read-compute-write update, closing the TOCTOU class a plain
-   * "read outside, write inside" `updateConversation` has (station#1566
+   * "read outside, write inside" `updateConversation` has (archive#1566
    * review HIGH): `updater` runs INSIDE the same per-conversation queue
    * `persistConversation` already uses, so it always observes the latest
    * committed state — including a write from a concurrent
@@ -93,7 +93,7 @@ export function createMemoryConversationStore(options: {
   const { paths, logger } = options;
   const conversationCache = new Map<string, Conversation>();
   const conversationResourceCache = new Map<string, string>();
-  // station#1566: shared by both `persistConversation` and
+  // archive#1566: shared by both `persistConversation` and
   // `updateConversation` (same map, same per-conversation-id queue slot) —
   // the mixed value type (`Promise<void>` writes, `Promise<Conversation>`
   // read-compute-writes) is exactly what lets the two interleave safely: an
@@ -232,7 +232,7 @@ export function createMemoryConversationStore(options: {
     conversationId: string,
     updater: (current: Conversation) => Partial<Conversation> | null,
   ): Promise<Conversation> {
-    // station#1566 review HIGH: the read (`loadConversationFromDisk`) and the
+    // archive#1566 review HIGH: the read (`loadConversationFromDisk`) and the
     // `updater` decision both run INSIDE this queued turn, chained onto the
     // same per-conversation predecessor `persistConversation` uses — so a
     // concurrent write queued just before this one (whether a plain

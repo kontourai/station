@@ -41,7 +41,7 @@ const cleanupDirs: string[] = [];
 beforeEach(() => {
   // The installer mock is module-scoped, so a test asserting it was NEVER
   // called is asserting against every test that ran before it unless the
-  // record is cleared here (station#4288).
+  // record is cleared here (archive#4288).
   installPluginFromSource.mockReset();
 });
 
@@ -267,7 +267,7 @@ describe('plugin-install-routes', () => {
         pluginsDir: join(root, 'plugins'),
         projectHomeDir: root,
       }),
-      // station#4288: the operator's decision reaches the installer verbatim.
+      // archive#4288: the operator's decision reaches the installer verbatim.
       // The installer is what checks it against its own staged copy; this
       // route's job is to refuse to call without one, and to forward it
       // unchanged when it has one.
@@ -283,7 +283,7 @@ describe('plugin-install-routes', () => {
   });
 
   /**
-   * station#4288, acceptance 2. The strongest form of "consent precedes the
+   * archive#4288, acceptance 2. The strongest form of "consent precedes the
    * mutation" this route can state: with no approval in the request the
    * installer is never CALLED, so nothing is fetched, staged or written.
    */
@@ -341,7 +341,7 @@ describe('plugin-install-routes', () => {
   });
 
   /**
-   * station#4309 follow-up, defect 1. The refusal reaches this route wrapped
+   * archive#4309 follow-up, defect 1. The refusal reaches this route wrapped
    * exactly as the install path wraps it: the dependency loop's `Error` with
    * the typed refusal as its `cause`, and — when the rollback fails too — an
    * `AggregateError` around that. A route reading `instanceof` on the outer
@@ -430,7 +430,7 @@ describe('plugin-install-routes', () => {
   });
 
   /**
-   * station#4288. The preview already staged and validated everything a
+   * archive#4288. The preview already staged and validated everything a
    * consent decision needs and then deleted it. It now returns the derived
    * permission set and the digest of what it staged, which is what lets the
    * operator be asked BEFORE `POST /install` writes anything.
@@ -475,7 +475,7 @@ describe('plugin-install-routes', () => {
   });
 
   /**
-   * station#4288, acceptance 4. Preview refuses exactly what the installer
+   * archive#4288, acceptance 4. Preview refuses exactly what the installer
    * refuses, through the same scan, and the consent basis is derived AFTER
    * that refusal — a preview that answered a digest for a plugin the
    * installer will reject would be worse than refusing late, because the

@@ -94,7 +94,7 @@ describe('FlowCommandEvidenceBridge', () => {
   });
 
   /**
-   * station#4237: a command Station only OBSERVED carries no exit code and no
+   * archive#4237: a command Station only OBSERVED carries no exit code and no
    * duration. The bridge must forward the runtime's status (the one measured
    * fact) rather than let the null exit code read as a failure — and its
    * telemetry verdict must agree with the durable claim the attach writes.

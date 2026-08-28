@@ -57,7 +57,7 @@ describe('findPrecedingUserTurn (#797)', () => {
     expect(findPrecedingUserTurn(messages, 0)).toBeNull();
   });
 
-  // station#1292: the writer (active-chats-state.ts) sets `ephemeral`, and
+  // archive#1292: the writer (active-chats-state.ts) sets `ephemeral`, and
   // this reader must check the SAME field — it used to check the dead
   // `isEphemeral` field, which nothing ever wrote, so this skip never fired.
   it('skips an ephemeral notice stored with a user role', () => {
@@ -72,7 +72,7 @@ describe('findPrecedingUserTurn (#797)', () => {
 
   // The server persists the failed turn's `file` parts, so a resend that
   // carried only the text would silently drop an attachment the user had
-  // added — recovering less than the button claims (#797 review).
+  // added — recovering less than the button claims (archive#797).
   it('recovers attachments alongside the text', () => {
     const messages = [
       {

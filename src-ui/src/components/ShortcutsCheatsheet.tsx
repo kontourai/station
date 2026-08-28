@@ -31,7 +31,7 @@ export function ShortcutsCheatsheet({
 
   return (
     /*
-     * station#3759: this was the one dialog surface in the app that hand-rolled
+     * archive#3759: this was the one dialog surface in the app that hand-rolled
      * its own frame — its own backdrop, its own `role="dialog" aria-modal`, and
      * its own `window` keydown listener for Escape. Two window listeners for
      * one key is a race with no owner: the registry's route-level "go up one

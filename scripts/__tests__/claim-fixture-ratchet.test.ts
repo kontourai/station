@@ -421,7 +421,7 @@ test('lists a paired connection with a source badge', () => {
   // only through `.not.` as positive coverage. This reconstruction re-injects the same
   // provenance-as-liveness defect into the current pure computer-row model, then proves the
   // current ComputersSection fixture has no positive assertion for that wrong `ready` value.
-  describe('fix round 2 (#1196 review) reconstruction — same-member negative-assertion shadowing', () => {
+  describe('same-member negative-assertion shadowing reconstruction', () => {
     it('re-injecting the paired authorized tone defect into the real current row model finds ready only inside a `.not.` chain in the real current fixture', () => {
       const realSource = readFileSync(
         'src-ui/src/views/connections-hub/computer-rows.ts',

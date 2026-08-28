@@ -73,7 +73,7 @@ export interface AppConfig {
    */
   knowledgeStores?: boolean;
   /**
-   * station#980: whether the interactive managed-chat callers (CLI `station
+   * archive#980: whether the interactive managed-chat callers (CLI `station
    * chat`, the UI managed branch) start a `station-agent` orchestration
    * session (mirroring `delegateTask`) instead of calling
    * `POST /api/agents/:slug/chat` directly — so managed chats land in
@@ -86,7 +86,7 @@ export interface AppConfig {
    */
   managedChatOrchestration?: boolean;
   /**
-   * station#2802: capture workspace checkpoints at turn boundaries — a
+   * archive#2802: capture workspace checkpoints at turn boundaries — a
    * git snapshot (hidden `STATION_CHECKPOINTS/…` pseudo-ref + reflog) of
    * the session's bound project working directory at `turn.started` and
    * `turn.completed`/`turn.aborted`, indexed per thread in the Station
@@ -96,14 +96,14 @@ export interface AppConfig {
    * pinned against `git gc` by their reflogs (reclaimable after
    * `gc.reflogExpire`, default 90 days, or via `station checkpoints
    * prune`), so turning capture on is a disk-spending decision the owner
-   * makes per Station (the station#980 ship-dormant pattern). Read once at
+   * makes per Station (the archive#980 ship-dormant pattern). Read once at
    * boot wiring time — a flip applies on the next Station start.
    */
   workspaceCheckpoints?: boolean;
   /** Distribution defaults for starter layouts and registry sources. */
   distributionProfile?: DistributionProfileSelection;
   /**
-   * station#1194 (epic #1191, slice B): the user's engine choice for the
+   * archive#1194: the user's engine choice for the
    * built-in agents (Station's own default agent, `station-voice`) from the
    * first-run onboarding engine picker — see
    * `resolveBuiltinAgentEngineBinding` (`engine-capability-matrix.ts`), the
@@ -119,15 +119,15 @@ export interface AppConfig {
    */
   builtinAgentEngineConnectionId?: EngineConnectionId | null;
   /**
-   * station#1398 slice 1: which local model connections this Station offers
+   * Which local model connections this Station offers
    * to its owner's inference fleet. **Default off** — absent means this
    * Station contributes nothing, which is byte-identical to today's
    * behavior. See `fleet-contribution.ts` for the shape and
-   * `docs/design/inference-fleet.md` §11 slice 1 for the scope.
+   * `docs/design/inference-fleet.md` §11 for the scope.
    */
   fleetContribution?: FleetContributionConfig;
   /**
-   * station#1500 slice 2.5: what this Station offers, PER SPACE — keyed by
+   * What this Station offers, PER SPACE — keyed by
    * scope key (`"fleet"`, `"project:prj_…"`; see `contribution.ts`'s
    * `contributionScopeKey`). **Default off** — an absent map, an absent entry,
    * an absent `enabled`, and an empty axis list all offer nothing, and no value
@@ -136,13 +136,14 @@ export interface AppConfig {
    * The `"fleet"` key is deliberately NOT the fleet scope's authority:
    * `fleetContribution` above is, and `resolveScopedContribution` refuses a
    * shadowing entry by name rather than merging it. One writable home per scope
-   * — a second copy of one consent is the drift this arc exists to prevent.
+   * — a second copy of one consent is the drift this contract exists to prevent.
    *
-   * No consumer reads this yet: slice 6 owns the authenticated projection route.
+   * No consumer reads this yet; the authenticated projection route is future
+   * work.
    */
   contribution?: Record<string, ContributionConfig>;
   /**
-   * station#2652 (first-run chapter 2): the two things the person using this
+   * archive#2652: the two things the person using this
    * Station told it about themselves — their role and how much technical
    * detail they want back.
    *
@@ -160,7 +161,7 @@ export interface AppConfig {
   userProfile?: UserProfileSettings;
   /**
    * Whether the guided first run has been offered on THIS HOME, and what the
-   * person did with it (station#3591 / UX audit RT-02, SHELL-12).
+   * person did with it (archive#3591 / UX audit RT-02, SHELL-12).
    *
    * The durable fact the first-run gate reads. It replaces the old rule —
    * "only a session that saw the connect launcher is a first run" — which

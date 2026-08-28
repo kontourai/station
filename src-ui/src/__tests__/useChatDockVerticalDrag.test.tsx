@@ -11,7 +11,7 @@ import { useChatDockVerticalDrag } from '../hooks/useChatDockVerticalDrag';
  * The click a pointer gesture produces. `detail` is the click count, so the
  * browser's own (including a touch compatibility) click always carries at
  * least 1 — jsdom's `fireEvent.click` default of 0 is the shape a KEYBOARD
- * activation has, which the hook must never suppress (station#3345).
+ * activation has, which the hook must never suppress (archive#3345).
  */
 function pointerClick(element: Element) {
   fireEvent.click(element, { detail: 1 });
@@ -105,7 +105,7 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     expect(onSnap).not.toHaveBeenCalled();
   });
 
-  // #795 review: the original input released at clientY 260 — a 584px body,
+  // archive#795: the original input released at clientY 260 — a 584px body,
   // which is *exactly* the Half/Full midpoint. Keeping that input and
   // asserting the corrected outcome is the honest regression guard, so it has
   // its own test below; this one keeps the same gesture but releases somewhere
@@ -131,7 +131,7 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     expect(onSnap).toHaveBeenCalledWith('full');
   });
 
-  // #795 review: the exact-midpoint release the original assertion used. A tie
+  // archive#795: the exact-midpoint release the original assertion used. A tie
   // in `nearestDockSnap` favours the smaller state, so this is Half — the
   // behaviour that replaced "any upward drag means Full".
   test('a release exactly on the Half/Full midpoint resolves to Half, not Full', () => {
@@ -154,7 +154,7 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     expect(onSnap).toHaveBeenCalledWith('half');
   });
 
-  // #751: the gesture that opens the dock must also be able to put it away —
+  // archive#751: the gesture that opens the dock must also be able to put it away —
   // dragging the header down clearly past Half no longer dead-ends there.
   test('dragging the header down clearly below the Half band collapses the dock', () => {
     const onSnap = vi.fn<(snap: DockSnap) => void>();
@@ -208,7 +208,7 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     // Collapsed pixel height, so even a realistic, modest thumb swipe up
     // (~120px total, well short of the Half band) must still OPEN — it must
     // never be reinterpreted as "collapse" just because the final height is
-    // numerically below that midpoint. Since #795 it opens to Half rather
+    // numerically below that midpoint. Since archive#795 it opens to Half rather
     // than jumping to Full: a modest drag gets a modest result, and the
     // never-collapse invariant this test exists for is unchanged.
     fireEvent.pointerDown(screen.getByTestId('drag-space'), {
@@ -310,7 +310,7 @@ describe('drag passthrough (data-dock-drag-passthrough)', () => {
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 300 });
 
     // Native context-menu behavior stays the browser's; the hook synthesizes
-    // nothing from a non-primary button (sol review HIGH).
+    // nothing from a non-primary button.
     expect(onClick).not.toHaveBeenCalled();
     expect(onDragStateChange).not.toHaveBeenCalled();
     expect(onSnap).not.toHaveBeenCalled();

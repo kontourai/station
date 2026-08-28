@@ -75,7 +75,7 @@
 //     `paired` row will also mark `manual` "covered" even if no test ever renders a manual row and
 //     checks its tone. This is a deliberate, disclosed tradeoff (same blunt-regex class as
 //     noun-consistency-gate.mjs), not a guarantee of true per-member assertion.
-//   - Record value-coverage is now polarity-aware (fix round 2, PR #1196 independent review) — it
+//   - Record value-coverage is polarity-aware — it
 //     requires some occurrence of the value to sit in a non-`.not.` assertion chain (see
 //     `testFileHasSubstring`'s own doc comment for the exact heuristic and its scope) — but it is
 //     still only scoped to the NEAREST preceding `expect(` call per occurrence, not proof that the
@@ -376,8 +376,8 @@ export function testFileHasQuotedToken(testContent, token) {
  * .test.tsx` — that file asserts `expect(badge.className).not.toContain('...--ready')` as a
  * regression guard, and the old bare search matched the `'ready'` token inside that string with no
  * regard for the surrounding `.not.`, i.e. it treated a test asserting the OPPOSITE of a value as
- * proof the value was covered. See the reconstruction test below ("fix round 2 (#1196 review)
- * reconstruction") for the red-then-green proof.
+ * proof the value was covered. See the reconstruction test ("same-member
+ * negative-assertion shadowing reconstruction") for the red-then-green proof.
  *
  * Heuristic: for each occurrence of `value`, look back to the nearest preceding `expect(` call (the
  * enclosing assertion chain, on the reasonable assumption assertions are sequential and

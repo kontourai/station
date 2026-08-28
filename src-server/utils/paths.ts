@@ -26,7 +26,7 @@ export function expandTilde(p: string): string {
 /**
  * `homedir()` that never throws and only reports a directory that exists.
  *
- * #1011/#1023: the last-resort working directory for an engine session that
+ * archive#1011/#1023: the last-resort working directory for an engine session that
  * has no explicit and no project-supplied one. It must be a directory the
  * user would recognise (`$HOME`, which is what Station's UI promises for an
  * unbound chat) rather than whatever the SERVER process happens to be sitting

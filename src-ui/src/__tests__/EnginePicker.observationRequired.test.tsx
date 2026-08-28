@@ -1,12 +1,12 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1549 slice 1 — the `observation-required` picker state.
+ * archive#1549 — the `observation-required` picker state.
  *
- * THIS FILE NO LONGER MOCKS THE MATRIX (station#1684). Slice 1 had to: no
+ * THIS FILE NO LONGER MOCKS THE MATRIX (archive#1684). Slice 1 had to: no
  * shipped cell carried a `runtime_observation` basis, so no real connection
  * could reach this state, and a `resolveEngineCapabilityMatrix` mock
- * supplied the one thing slice 2 would later ship. Slice 2 shipped it — the
+ * supplied the one thing would later ship. Slice 2 shipped it — the
  * real `acp` cell now declares `mechanism: 'http-header-token'` with
  * `basis: 'runtime_observation'` — so the mock became a SHADOW of production
  * data, which is worse than no test at all: with it in place, reverting the
@@ -299,7 +299,7 @@ describe('station#1549: the observation-required picker state', () => {
   });
 
   test('Settings does not report an unobserved saved choice as incapable', () => {
-    // The pre-#1549 copy ("Your saved choice (Kiro) can't run the built-in
+    // The pre-archive#1549 copy ("Your saved choice (Kiro) can't run the built-in
     // assistant.") is a verdict. Applied to a connection Station has never
     // met it is simply false, and it would push the user to change a setting
     // that is about to start working on its own.

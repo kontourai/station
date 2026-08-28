@@ -162,7 +162,7 @@ describe('SkillsView', () => {
     expect(screen.queryByLabelText('Loading list')).toBeNull();
   });
 
-  // Review H1. The pending fix above left the other half of SHELL-09 open: a
+  // The pending fix above left the other half of SHELL-09 open: a
   // FAILED read also settles with no data, so `isPending === false` plus the
   // `= []` default rendered the same definitive "No installed skills yet" over
   // a 500. Error is not empty.
@@ -440,8 +440,8 @@ describe('SkillsView', () => {
       expect(screen.getByText('/release-check')).toBeTruthy();
     });
 
-    // station#4463 slice 2 fix round (M3, delta review round 3 — "the
-    // reviewer's misattribution LOW"): the Commands tab is itself empty here
+    // archive#4463 ("the
+    // reviewer's misattribution "): the Commands tab is itself empty here
     // (no skill is a command), independent of any search. A typed query on
     // top of that must not read as "your search matched nothing" — the tab
     // is what's empty, not the query, so `collectionEmpty` is derived from
@@ -483,7 +483,7 @@ describe('SkillsView', () => {
       );
     });
 
-    // Review M2: `selected` changes the moment skill B is clicked, but the
+    // `selected` changes the moment skill B is clicked, but the
     // form used to keep skill A's body until B's DETAIL arrived — so Test and
     // Export could operate on A's body under B's header, and a failed B read
     // left the mismatch standing forever. While B's detail is pending the
@@ -530,7 +530,7 @@ describe('SkillsView', () => {
       ).toBe(true);
     });
 
-    // Review M2's failure half: a detail read that FAILS must render the
+    // Review failure half: a detail read that FAILS must render the
     // failure with a retry, not A's form under B's header indefinitely.
     test('a failed detail read renders the error with retry and keeps actions disabled', () => {
       selectionState.selectedId = 'skill-b';

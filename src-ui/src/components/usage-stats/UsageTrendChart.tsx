@@ -2,13 +2,13 @@ import type { CSSProperties } from 'react';
 import { type TrendDay, trendMetric } from './period';
 
 /**
- * Daily bars over the selected window (station#3093) — hand-rolled CSS bars
+ * Daily bars over the selected window (archive#3093) — hand-rolled CSS bars
  * in the repo's own style (see `views/home/blocks/activity-bars.tsx`), no
  * charting dependency.
  *
  * Honesty rules it renders under:
  * - A date with no stored row is "No activity recorded" — its tick carries
- *   that label, never a fabricated `$0.00 · 0 messages` (station#3201's
+ *   that label, never a fabricated `$0.00 · 0 messages` (archive#3201's
  *   unreported-vs-zero rule applied to days).
  * - A recorded day's tooltip states both measures the row actually holds,
  *   including an honest measured `$0.00`.

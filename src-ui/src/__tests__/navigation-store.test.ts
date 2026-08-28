@@ -211,9 +211,9 @@ describe('normalizeDockMode (legacy persisted-value migration, #1043)', () => {
 });
 
 /**
- * station#settings-revamp slice 4 (docs/design/settings-architecture.md §3
- * S4 "Chat/session", §6 slice 4): `parseUrl()`'s `dockMode` resolution gains
- * a device-scope fallback, and `setDockMode()` (the convergence point for
+ * archive#settings-revamp (docs/design/settings-architecture.md §3
+ * "Chat/session", §6): `parseUrl`'s `dockMode` resolution gains
+ * a device-scope fallback, and `setDockMode` (the convergence point for
  * both ⌘⇧M and the chat settings panel) writes it on every explicit choice.
  * Precedence pinned here: URL param > device setting > registry default.
  */
@@ -287,7 +287,7 @@ describe('navigationStore dockMode device-scope fallback', () => {
 });
 
 /**
- * station#settings-revamp slice 4 review finding 1: `parseUrl()` only ran
+ * archive#settings-revamp: `parseUrl` only ran
  * at navigation time, so an external device-store change (Settings →
  * Import, or a cross-tab write) never reached a mounted view's `dockMode`
  * until the next unrelated navigation happened to re-run it. `navigationStore`
@@ -360,7 +360,7 @@ describe('navigationStore dockMode subscribes to live device-store changes (slic
   });
 
   test('a same-value device-store change does not notify subscribers (no-op propagates from the store)', () => {
-    // Registry default is already 'bottom' — set() is a true no-op.
+    // Registry default is already 'bottom' — set is a true no-op.
     const listener = vi.fn();
     const unsubscribe = navigationStore.subscribe(listener);
 

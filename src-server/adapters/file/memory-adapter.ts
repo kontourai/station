@@ -251,7 +251,7 @@ export class FileMemoryAdapter implements StorageAdapter {
    * ENTIRE read-compute-write through `this.conversations.updateConversation`
    * — the same serialized per-conversation queue `persistConversation` uses
    * — closing the TOCTOU a separate outer `getConversation` read used to
-   * leave open (station#1566 review HIGH): a concurrent write queued in
+   * leave open (archive#1566 review HIGH): a concurrent write queued in
    * between could be silently overwritten by this one computing from a
    * stale snapshot. The object form is wrapped in an updater that ignores
    * `current` and returns the same static patch every time — it never

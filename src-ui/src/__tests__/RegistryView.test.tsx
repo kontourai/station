@@ -329,7 +329,7 @@ describe('RegistryView', () => {
   test('granted consent with a stale refusal keeps the override row below the catalog', () => {
     // Right after consent is granted, the 'remote-isolation' status lingers
     // until the reload completes; the enabled row must not jump above the
-    // catalog during that window (#2539 sol review).
+    // catalog during that window (archive#2539).
     remotePluginBundleConsent.setRemotePluginBundlesAllowed(
       'local-station',
       'http://127.0.0.1:3141',

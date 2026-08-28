@@ -172,7 +172,7 @@ export function useOpenChats(
   agents: AgentSummary[],
   sessions: OrchestrationSessionSummary[] = [],
   /**
-   * station#3391: supplied by a caller that holds the model catalog, so the
+   * archive#3391: supplied by a caller that holds the model catalog, so the
    * rows it renders name a model the same way the New Chat surfaces do.
    * Omitted by callers with no catalog (the store's own `select`), which then
    * take `buildActiveChatTaskItems`'s catalog-free default.

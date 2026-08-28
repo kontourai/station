@@ -71,7 +71,7 @@ describe('startRuntimeACPConnections', () => {
       logger: logger as any,
       listProvidersFn: (() => []) as any,
     });
-    // station#3404: boot is the `'background'` probe path — nothing awaits
+    // archive#3404: boot is the `'background'` probe path — nothing awaits
     // this chain, so first contact with a cold engine may take the long
     // budget. Asserted here because it is the ONE call site that opts in.
     await vi.waitFor(() =>

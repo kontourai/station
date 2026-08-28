@@ -1,8 +1,8 @@
 /**
- * station#4080 slice 1 — the honest interrupted-turn banner.
+ * archive#4080 — the honest interrupted-turn banner.
  *
  * Probes `InterruptedTurnRecovery.consume()` — reached through the service's
- * private `interruptedTurns` field (epic #4024 slice 13 moved the body out of
+ * private `interruptedTurns` field (epic archive#4024 moved the body out of
  * `OrchestrationService`), called directly, matching the established
  * `(service as any).projectAndPublishEvent(...)` pattern elsewhere in this
  * suite.
@@ -41,7 +41,7 @@ import {
   OrchestrationService,
 } from '../orchestration-service.js';
 
-// station#4080 slice 1 follow-up (review round 2, finding 1): spy-wrap the
+// archive#4080 follow-up (review round 2, finding 1): spy-wrap the
 // REAL implementation so every other test's behavior is unchanged — this
 // exists only to pin that `InterruptedTurnRecovery.consume` actually calls
 // through the shared resolver `readConversationMessages` also uses, not a

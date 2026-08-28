@@ -97,7 +97,7 @@ export const USAGE_TELEMETRY_EVENTS = {
         ] as const,
       },
       outcome: {
-        // station#3451 finding 5: 'failed' added alongside the existing pair
+        // archive#3451 finding 5: 'failed' added alongside the existing pair
         // — a genuine turn-scoped failure (a non-deferred `runtime.error`
         // carrying a `turnId`) is a terminal outcome the description already
         // claims to cover and previously was not.

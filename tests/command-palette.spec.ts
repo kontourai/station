@@ -34,7 +34,7 @@ async function openPalette(page: Page) {
 }
 
 /**
- * station#3313: the Developer surfaces (Developer, Monitoring) advertise in
+ * archive#3313: the Developer surfaces (Developer, Monitoring) advertise in
  * the sidebar and palette only while this DEVICE has developer tools enabled
  * — `developerToolsEnabled`, a device setting stored in the one
  * device-settings envelope. Seeded here so Monitoring stays the palette's

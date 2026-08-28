@@ -263,11 +263,11 @@ const interruptTurnCommandSchema = z.object({
 const steerTurnCommandSchema = z.object({
   type: z.literal('steerTurn'),
   threadId: z.string().min(1),
-  // station#2831: this carries a composer draft verbatim (the queued-message
+  // archive#2831: this carries a composer draft verbatim (the queued-message
   // steer path sends the same string the composer's 200k courtesy check
   // gates), so it derives from the same declared maximum — the hardcoded
   // 100_000 that lived here refused at half the composer's limit with a
-  // generic zod message, exactly the divergence #2807 unified away.
+  // generic zod message, exactly the divergence archive#2807 unified away.
   input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   turnId: z.string().optional(),
 });
@@ -298,7 +298,7 @@ const sessionTransitionSchema = z.object({
   message: z.string().min(1).optional(),
 });
 
-// Exported (station#2831) for the structural derivation pin in
+// Exported (archive#2831) for the structural derivation pin in
 // __tests__/orchestration-chat-input-limits.test.ts, which walks EVERY
 // string field reachable in this union — a new command's text fields are
 // seen by that walker without anyone remembering to enumerate them.
@@ -357,10 +357,10 @@ function normalizeExecutionTarget(
   };
 }
 
-// station#2807: the turn-starting text bounds below derive from the same
+// archive#2807: the turn-starting text bounds below derive from the same
 // declared prompt maximum the UI composer and `/chat`'s chatSchema use — a
 // hardcoded literal here would make the composer's courtesy check lie the
-// moment the constant moves. station#2831 closed the last known gap on this
+// moment the constant moves. archive#2831 closed the last known gap on this
 // seam: `steerTurnCommandSchema.input` (a composer draft, above) now derives
 // too. These schemas are exported for the derivation pin (behavioral, for
 // the message-shaped fields) and the structural walker (every string field
@@ -458,7 +458,7 @@ const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
   requireMessageOrAttachment,
 );
 
-// Exported (station#2831) for the structural derivation pin in
+// Exported (archive#2831) for the structural derivation pin in
 // __tests__/orchestration-chat-input-limits.test.ts: this continuation body
 // starts turns too, so its string fields must be walked like every other
 // turn-entry schema on this seam.
@@ -523,7 +523,7 @@ export const continueDelegatedTaskBodySchema = z.object({
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
   environmentId: z.string().min(1).max(512).optional(),
   model: z.string().min(1).max(512).optional(),
-  // station#978: per-invocation settings passthrough on a follow-up turn.
+  // archive#978: per-invocation settings passthrough on a follow-up turn.
   modelOptions: z.record(z.unknown()).optional(),
 });
 
@@ -568,7 +568,7 @@ interface ForegroundMessageRequest {
   clientTurnId?: string;
   userId: string;
   /**
-   * station#4075 stage 2: the dispatching caller's resolved `PrincipalRef`,
+   * archive#4075 stage 2: the dispatching caller's resolved `PrincipalRef`,
    * additive alongside `userId` — carried to `sendTurn`'s dispatch context
    * so the resulting `turn.started` is attributed at emit time. `undefined`
    * on the legacy test-only `getUserId` path (see `resolveActorPrincipal`).
@@ -586,7 +586,7 @@ interface ContinueForegroundMessageRequest {
   ambientContext?: string;
   clientTurnId?: string;
   userId: string;
-  /** station#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
+  /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
   clientOrigin?: ClientOrigin;
 }
@@ -600,7 +600,7 @@ interface ConversationHandoffRequest
   attachments?: ChatAttachmentInput[];
   conversationId: string;
   userId: string;
-  /** station#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
+  /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
   clientOrigin?: ClientOrigin;
 }
@@ -669,7 +669,7 @@ export function orchestrationEventMatchesThread(
 
 /**
  * Parses an incoming `Last-Event-ID` header into a valid resume cursor
- * (station#1092). Anything that isn't a plain non-negative integer —
+ * (archive#1092). Anything that isn't a plain non-negative integer —
  * missing, malformed, a foreign format from some other stream — is treated
  * as "no cursor" (fail-closed to the snapshot path) rather than thrown.
  * Exported for unit coverage without standing up an SSE stream.
@@ -684,7 +684,7 @@ export function parseResumeCursor(
 
 /**
  * Decides replay-vs-snapshot for a reconnecting `/events` client
- * (station#1092, R1/R2). No cursor, or a cursor ahead of the current head
+ * (archive#1092, R1/R2). No cursor, or a cursor ahead of the current head
  * (stale/foreign/post-wipe), always falls to snapshot; a gap within
  * {@link ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD} replays. Exported for
  * unit coverage of the boundary without standing up an SSE stream.
@@ -724,7 +724,7 @@ export function resolveStreamResumePlan(
 }
 
 /**
- * station#4075 stage 2: the minimal per-request shape `resolvePrincipal`
+ * archive#4075 stage 2: the minimal per-request shape `resolvePrincipal`
  * needs — a duck-typed subset of Hono's `Context`, not the Hono type itself,
  * so this route module stays decoupled from Hono internals. Every route
  * handler below satisfies it with its own `c` (a real Hono `Context` has
@@ -740,7 +740,7 @@ export interface PrincipalResolutionContext {
 }
 
 /**
- * station#4075 stage 2: the ONE place this route module turns "who is
+ * archive#4075 stage 2: the ONE place this route module turns "who is
  * calling" into a `PrincipalRef` (+ the wire `userId` string every existing
  * join already keys on, derived from `principal.id`). Fail-closed by
  * construction — never a default:
@@ -751,7 +751,7 @@ export interface PrincipalResolutionContext {
  *   THROWS {@link PrincipalUnresolvedError}, which propagates to the
  *   caller's own try/catch (or, for a route with none, Hono's default error
  *   response) — never a silent `getCachedUser().alias` default. This was
- *   the "one implicit principal" defect (station#4075 architecture map,
+ *   the "one implicit principal" defect (archive#4075 architecture map,
  *   stage-2 probe finding 2): production never wired anything into the
  *   `getUserId` seam, so every one of this file's call sites fell through
  *   to the OS-account alias for every caller and device.
@@ -800,7 +800,7 @@ export function createOrchestrationRoutes(
       debug(message: string, meta?: Record<string, unknown>): void;
       warn?(message: string, meta?: Record<string, unknown>): void;
       /**
-       * Optional (station#1897 logging slice 3): binds a `conversationId`
+       * Optional (archive#1897 logging slice 3): binds a `conversationId`
        * (+ `agentSlug`/`userId` when known) child logger for the
        * `POST /chat` dispatch line below, so a `read_logs?q=<conversationId>`
        * query and a `MonitoringEmitter` event correlate on the same field
@@ -872,7 +872,7 @@ export function createOrchestrationRoutes(
       input: InterruptDelegatedTaskRequest,
     ) => Promise<unknown>;
     /**
-     * station#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
+     * archive#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
      * wired by production runtime composition (production sets
      * `resolvePrincipal` below instead) — see `resolveActorPrincipal`'s
      * doc comment for the full contract. Kept only so this file's existing
@@ -881,7 +881,7 @@ export function createOrchestrationRoutes(
      */
     getUserId?: () => string;
     /**
-     * station#4075 stage 2: resolves the calling request's `PrincipalRef`,
+     * archive#4075 stage 2: resolves the calling request's `PrincipalRef`,
      * fail-closed (throws `PrincipalUnresolvedError` rather than ever
      * defaulting) — see `resolveActorPrincipal`. Wired once, in production,
      * at `runtime-routes.ts`'s single `createOrchestrationRoutes` call
@@ -905,7 +905,7 @@ export function createOrchestrationRoutes(
      */
     hostedTenantRegistry?: HostedTenantRegistry;
     /**
-     * station#1225: per-user live-subscriber presence for the `/events`
+     * archive#1225: per-user live-subscriber presence for the `/events`
      * stream, shared with the push-on-completion gate
      * (`turn-completion-notifications.ts`) so it knows whether the owning
      * user is actually watching before scheduling a push. Optional and
@@ -917,7 +917,7 @@ export function createOrchestrationRoutes(
      */
     presence?: OrchestrationStreamPresence;
     /**
-     * station#2802 slice 1/2 + fix round: read-only list of a thread's
+     * archive#2802/2 + fix round: read-only list of a thread's
      * recorded turn checkpoint outcomes. Optional — omitted in tests that
      * don't wire the checkpoint layer, where the route answers 503 rather
      * than pretending a thread has no checkpoints. Async by design (fix
@@ -1056,7 +1056,7 @@ export function createOrchestrationRoutes(
             : undefined,
         ),
         userId,
-        // station#4075 stage 2: rides alongside `userId` to the ONE
+        // archive#4075 stage 2: rides alongside `userId` to the ONE
         // production `sendTurn` implementation (station-control-delegation.ts),
         // which stamps it into the dispatch context so the resulting
         // `turn.started` carries the dispatching principal at emit time.
@@ -1084,7 +1084,7 @@ export function createOrchestrationRoutes(
           stagedBinding,
         );
       }
-      // station#1897 logging slice 3: bind conversationId/agentSlug/userId
+      // archive#1897 logging slice 3: bind conversationId/agentSlug/userId
       // on the handle THIS dispatch actually resolved (never the request
       // body's optional `conversationId`, which is absent for a brand-new
       // conversation) so `read_logs?q=<conversationId>` and a
@@ -1141,7 +1141,7 @@ export function createOrchestrationRoutes(
         );
       }
       // A stalled/unreachable server-side mount is temporary infrastructure
-      // unavailability, not malformed client input (station#2552).
+      // unavailability, not malformed client input (archive#2552).
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
@@ -1177,7 +1177,7 @@ export function createOrchestrationRoutes(
             : {}),
           conversationId: param(c, 'conversationId'),
           userId,
-          // station#4075 stage 2 review round 1 (F1): dropped here originally
+          // archive#4075 stage 2 review round 1 (F1): dropped here originally
           // — threaded exactly like /chat above, through
           // executeForegroundMessage/executeExecutionTargetMessage's existing
           // `input.principal` seam, so an explicit engine/Agent handoff's
@@ -1357,7 +1357,7 @@ export function createOrchestrationRoutes(
             : {}),
           conversationId: param(c, 'conversationId'),
           userId,
-          // station#4075 stage 2 review round 1 (F1, HIGH): this is the
+          // archive#4075 stage 2 review round 1 (F1, HIGH): this is the
           // PRIMARY send path after session start (the composer's own
           // mutation) — dropped here originally, meaning most ordinary
           // turns got no attribution. Threaded exactly like /chat above,
@@ -1723,7 +1723,7 @@ export function createOrchestrationRoutes(
     }
   });
 
-  // station#2802: a thread's recorded turn checkpoints (read-only; the only
+  // archive#2802: a thread's recorded turn checkpoints (read-only; the only
   // route this slice ships). Serves the Station-home index annotated with
   // live object verification (checkpoint-read.ts) — it reads the recorded
   // repo only to verify checkpoint objects exist, never to enumerate
@@ -1817,7 +1817,7 @@ export function createOrchestrationRoutes(
     });
   });
 
-  // Session -> Builder run join (station#189 S4). A separate route from
+  // Session -> Builder run join (archive#189 S4). A separate route from
   // `/flow-run` on purpose: the two runs have independent lifecycles, and a
   // session commonly has one and not the other. 404 means "no Builder run
   // could be joined AND there was nothing to disclose about why" — the
@@ -2536,7 +2536,7 @@ export function createOrchestrationRoutes(
       // Resolved once and reused for both the read authority below and the
       // dispatch context further down, rather than calling
       // `readAuthorityFor(c)` a second time — `resolveActorPrincipal` is the
-      // single fail-closed resolution point (station#4075 stage 2).
+      // single fail-closed resolution point (archive#4075 stage 2).
       const { principal, userId: actorUserId } = resolveActorPrincipal(deps, c);
       const readAuthority = sessionReadAuthorityFromRequest(
         actorUserId,
@@ -2594,7 +2594,7 @@ export function createOrchestrationRoutes(
         });
         const result = await orchestrationService.dispatchWithReceipt(command, {
           userId: actorUserId,
-          // station#4075 stage 2: this is the STEER path's attribution
+          // archive#4075 stage 2: this is the STEER path's attribution
           // seam — `dispatchWithReceipt`'s `steerTurn` case wraps
           // `adapter.steerTurn` in the same begin/settle propagation
           // `sendTurn` uses, so the steering caller's principal lands on
@@ -2698,7 +2698,7 @@ export function createOrchestrationRoutes(
     },
   );
 
-  // station#1205: this is the ownership-gated orchestration event stream —
+  // archive#1205: this is the ownership-gated orchestration event stream —
   // every frame (live and replay) passes through
   // `orchestrationService.canUserReadSession` below. There is a sibling,
   // UNGATED broadcast route at the bare `/events` mount
@@ -2712,7 +2712,7 @@ export function createOrchestrationRoutes(
     // session's events for a focused live feed (e.g. the Sessions view).
     // Absent, the stream stays the all-sessions feed the app already consumes.
     const threadId = c.req.query('threadId');
-    // station#4075 stage 3 slice 2: resolved directly here (not via
+    // archive#4075 stage 3 slice 2: resolved directly here (not via
     // `readAuthorityFor(c)`, which discards the `principal` half) so the
     // ALREADY-resolved stage-2 `PrincipalRef` can be retained on the
     // presence registration below — never re-resolved. Same
@@ -2724,7 +2724,7 @@ export function createOrchestrationRoutes(
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
-    // station#1092: a reconnecting `fetchSSE` client already retains and
+    // archive#1092: a reconnecting `fetchSSE` client already retains and
     // resends this header. A cursor-less connect (the only case pre-#1092
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
@@ -2733,12 +2733,12 @@ export function createOrchestrationRoutes(
       sseOps.add(1, {
         op: threadId ? 'orchestration_connect_thread' : 'orchestration_connect',
       });
-      // station#1848: taken before anything can `await`, and paired with the
+      // archive#1848: taken before anything can `await`, and paired with the
       // record in `finally` below, so the recorded span always covers this
       // connection's whole life — including a setup-time throw, which is
       // exactly the short-lived case a rate problem looks like.
       const connectedAt = Date.now();
-      // station#1225: register this connection with the presence tracker
+      // archive#1225: register this connection with the presence tracker
       // BEFORE anything else can `await` — the push-on-completion gate
       // (`turn-completion-notifications.ts`) must never see a window where
       // a client that is in fact connecting is reported as absent.
@@ -2749,7 +2749,7 @@ export function createOrchestrationRoutes(
         : () => {};
       orchestrationStreamPresenceOps.add(1, { op: 'connect' });
 
-      // station#1225 review (HIGH): `unsub`/`keepAlive` are declared here
+      // archive#1225 review (HIGH): `unsub`/`keepAlive` are declared here
       // (not `const` at their original call sites) and the whole setup below
       // through the abort-wait runs inside the `try` below, so `finally` can
       // always release this connection's presence/subscription/timer no
@@ -2800,7 +2800,7 @@ export function createOrchestrationRoutes(
               )
             )
               return;
-            // station#4054: a watchdog observation is deliberately not a
+            // archive#4054: a watchdog observation is deliberately not a
             // synthetic canonical event. Its owner still wakes the same
             // session query reactively so Home clears the indicator on the
             // next watchdog progress event without polling or re-deriving.
@@ -2845,7 +2845,7 @@ export function createOrchestrationRoutes(
         // second query.
         let threadReplayCandidateCount: number | undefined;
         if (threadId !== undefined && cursor !== undefined && cursor <= head) {
-          // station#1197: `userId` gates each candidate the same way the live
+          // archive#1197: `userId` gates each candidate the same way the live
           // path's `canUserReadSession` call does (below) — a reconnecting
           // client must not replay another user's thread history.
           threadReplayCandidateCount =
@@ -2917,7 +2917,7 @@ export function createOrchestrationRoutes(
               });
               await stream.writeSSE({
                 event: SERVER_EVENTS.ORCHESTRATION_EVENT,
-                // station#1410 (D2): a turn that completed while this client
+                // archive#1410 (D2): a turn that completed while this client
                 // was disconnected is delivered ONLY here — the live publish
                 // already happened, and nothing on this path triggers a REST
                 // refetch — so the replayed frame must carry the same
@@ -2973,7 +2973,7 @@ export function createOrchestrationRoutes(
           });
         }
       } finally {
-        // station#1225 review (HIGH): this ALWAYS runs — a throw anywhere
+        // archive#1225 review (HIGH): this ALWAYS runs — a throw anywhere
         // above (setup, replay/snapshot writes, the abort-wait) still
         // releases this connection's timer/subscription/presence exactly
         // once, instead of leaking them only on the happy path. `unsub`
@@ -2993,9 +2993,9 @@ export function createOrchestrationRoutes(
   });
 
   /**
-   * station#4075 stage 3 slice 2: the session-agnostic "who's connected"
+   * archive#4075 stage 3 slice 2: the session-agnostic "who's connected"
    * roster — the piece the stage-3 pre-implementation map identified as
-   * genuinely missing (Task-scoped room presence can't supply it; #2892
+   * genuinely missing (Task-scoped room presence can't supply it; archive#2892
    * remains a separate open AC). Reads the SAME `presence` registry the
    * `/events` route above registers into, so it is derived only from
    * genuinely open SSE connections — no client heartbeat, no self-report,

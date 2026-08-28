@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3347 — `copySessionId` used `navigator.clipboard.writeText(id).then(ok, err)`.
+ * archive#3347 — `copySessionId` used `navigator.clipboard.writeText(id).then(ok, err)`.
  * That handles a *refusal*, but on an insecure origin (`navigator.clipboard`
  * undefined) the member access throws SYNCHRONOUSLY, past the rejection
  * handler: neither toast fired and the click died as an unhandled error.
@@ -72,7 +72,7 @@ function renderCopy() {
           answerability: { answerable: true },
           // Minimal summary: this file exercises only the copy path.
           //
-          // station#3565: this fixture was `as unknown as
+          // archive#3565: this fixture was `as unknown as
           // OrchestrationSessionSummary`, which absorbed four type violations
           // — an `agentSlug` member the shape does not have, and `'idle'` for
           // both `status` and `lifecycleState`, which neither union admits.

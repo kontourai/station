@@ -11,7 +11,7 @@ export { useIsMobile };
 
 export function useProjectSidebarState() {
   const isMobile = useIsMobile();
-  // Persisted via the device-settings store (station#settings-revamp slice
+  // Persisted via the device-settings store (archive#settings-revamp slice
   // 2 — previously its own raw `station-sidebar-collapsed` localStorage
   // key). Defaults to expanded so the labels are visible on first run — an
   // unlabeled icon-only rail is hard to navigate.

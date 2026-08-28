@@ -1,6 +1,6 @@
 /**
  * Local ambient typing for `@kontourai/console-server`'s `buildCurrentOperatingState`
- * (roadmap #586, epic #580, S6).
+ * (roadmap archive#586, epic archive#580, S6).
  *
  * This is NOT a version-gap situation like `intent-binding-mirror.ts` used
  * to be: `buildCurrentOperatingState` genuinely runs at runtime in the

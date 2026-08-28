@@ -243,7 +243,7 @@ describe('resolveAcpPassthroughMcpServers', () => {
 });
 
 /**
- * station#1684 — the built-in station-control server over ACP's HTTP MCP
+ * archive#1684 — the built-in station-control server over ACP's HTTP MCP
  * transport. The ONE http entry this module emits, on its own reviewed
  * mechanism (`builtinStationControlDelivery: 'http-header-token'`); authored
  * passthrough above is unchanged and still stdio-only.
@@ -451,7 +451,7 @@ describe('station#1684: the built-in station-control http entry', () => {
   });
 
   /**
-   * station#1684 review fix (M1): the caller mints on the ID
+   * archive#1684 review fix (M1): the caller mints on the ID
    * `'station-control'` appearing in the requested list; this module delivers
    * on the IDENTITY `isBuiltinStationControl`. `stationControlDelivered` is
    * how the caller learns those disagreed — it is stated by the branch that

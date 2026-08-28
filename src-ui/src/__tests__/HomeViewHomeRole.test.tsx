@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 /**
- * station#3122 stage 3, route wiring. `HomeRolePane.test.tsx` proves the
+ * archive#3122, route wiring. `HomeRolePane.test.tsx` proves the
  * granted Pane's mounting and recovery machinery; these prove the route:
  * with no grant — the state every Station without plugins is in — the render
  * is the stage-2 one; the role component mounts ONLY for a server-derived
@@ -56,7 +56,7 @@ vi.mock('../views/home/HomeWorkspacePane', () => ({
 
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => null }));
 
-// Route chrome from #3636, not part of the Home role; it unconditionally
+// Route chrome from archive#3636, not part of the Home role; it unconditionally
 // calls `useConfigActions`, which the minimal ConfigContext mock above
 // deliberately does not provide.
 vi.mock('../components/first-run/FirstRunHomeChapter', () => ({

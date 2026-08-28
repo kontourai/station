@@ -82,7 +82,7 @@ export interface TaskDispatchAssociation {
  * it does not expose a raw store or arbitrary mutation callbacks.
  */
 export interface TaskDispatchGraphState {
-  // Every member returns a Promise since #2646: the graph's durable
+  // Every member returns a Promise since archive#2646: the graph's durable
   // transitions take a cross-process file lock, and that acquisition is now
   // awaited rather than busy-waited so a contended dispatch yields the event
   // loop instead of freezing the listener. Sibling seams (`TaskDispatchClaims`,
@@ -359,7 +359,7 @@ class TaskDispatcherImplementation implements TaskDispatcher {
   }
 
   // `await` sits INSIDE the try on purpose: the graph transition is a promise
-  // since #2646, and returning it unawaited would route a rejection past this
+  // since archive#2646, and returning it unawaited would route a rejection past this
   // catch and out as an unhandled rejection instead of the indeterminate
   // outcome the caller is entitled to.
   private async markIndeterminate(

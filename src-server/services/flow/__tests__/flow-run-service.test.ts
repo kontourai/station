@@ -269,7 +269,7 @@ describe('FlowRunService', () => {
     });
 
     /**
-     * #290 forbids a legacy fallback, dual read, or dual write for generated
+     * archive#290 forbids a legacy fallback, dual read, or dual write for generated
      * run state: a run present only under `.flow/runs` must not be discovered.
      * The pre-Flow-3 service mirrored every mutation into `.flow/runs` and
      * fell back to reading it, so this is the pinned proof that both halves
@@ -874,7 +874,7 @@ describe('FlowRunService', () => {
     });
 
     /**
-     * station#4237: Station only OBSERVED these commands — a connected/ACP
+     * archive#4237: Station only OBSERVED these commands — a connected/ACP
      * agent dispatched them. The durable evidence must not state execution
      * facts nobody measured, and the pass/fail claim must be derived from the
      * one fact that was measured: the runtime's own status.
@@ -1011,7 +1011,7 @@ describe('FlowRunService', () => {
 
   describe('commandOutcomePassed', () => {
     // The predicate both the durable claim and the bridge's telemetry read,
-    // exported so the two cannot drift (station#4237).
+    // exported so the two cannot drift (archive#4237).
     test.each([
       // [exitCode, timedOut, observedStatus, expected]
       [0, false, undefined, true],
@@ -1025,7 +1025,7 @@ describe('FlowRunService', () => {
       // A real exit code always decides; an observed status never overrides it.
       [1, false, 'success', false],
       [0, false, 'error', true],
-      // The row the predicate was missing (#4237 review M2): a timeout must
+      // The row the predicate was missing (archive#4237 review M2): a timeout must
       // fail even when the observed status says success. No producer can
       // construct this today — which is exactly why it needed pinning before
       // someone plumbs a real observed timeout and a runtime reports the
@@ -1817,7 +1817,7 @@ describe('FlowRunService', () => {
      * Flow 3 splits the layout: durable definitions and config stay in the
      * contract-owned `.flow/`, generated run state moves to
      * `.kontourai/flow/runs`. The old assertion demanded `.flow/runs` — the
-     * exact directory #290 exists to retire.
+     * exact directory archive#290 exists to retire.
      */
     test('creates durable .flow config and the canonical generated run root', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'station-flow-layout-'));

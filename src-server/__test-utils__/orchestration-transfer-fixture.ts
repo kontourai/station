@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
- * Deterministic, provider-neutral transport input for station#4294.  The
+ * Deterministic, provider-neutral transport input for archive#4294.  The
  * payload is deliberately varied: a compressor-friendly repeated fixture
  * would make a transport regression look cheaper than users' real tool work.
  */

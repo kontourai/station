@@ -87,7 +87,7 @@ export function SkillsView({
   // fact and threw it away. `isPending` is the initial-read signal (a
   // background refetch must NOT blank a populated list back to skeletons).
   //
-  // The `= []` default is the second half of the same defect (review H1): a
+  // The `= []` default is the second half of the same defect: a
   // FAILED read also settles with no data, so `isPending === false` plus an
   // empty array rendered "No installed skills yet" over a 500 — a definitive
   // claim about the user's Guidance that Station had not measured. `error` is
@@ -117,7 +117,7 @@ export function SkillsView({
 
   const items = useMemo(() => buildSkillListItems(filtered), [filtered]);
 
-  // M3 (delta review round 3): the CURRENT TAB's collection with no query
+  // the CURRENT TAB's collection with no query
   // applied — so a tab that itself has zero matches (e.g. no skill is a
   // command yet) reads as genuinely empty, never as "your search matched
   // nothing" the moment a stale query also happens to be typed. Search
@@ -147,7 +147,7 @@ export function SkillsView({
   const detailFailed = !!selectedSkillName && !!detailError;
   // No action may operate on a body that is not the selected skill's: while
   // the detail is in flight or failed, Test/Export/Duplicate/Save/Remove are
-  // all gated on this (review M2).
+  // all gated on this
   const detailBusy = detailLoading || detailFailed;
 
   // A skill created from the commands list — or from Commands' "+ New
@@ -207,7 +207,7 @@ export function SkillsView({
       showToast('Name and body are required');
       return;
     }
-    // station#3737: the same rule the field shows and the HTTP schema
+    // archive#3737: the same rule the field shows and the HTTP schema
     // enforces. Pressing Save on a word the server will refuse used to be the
     // only way to find out, and the refusal was silent.
     const commandWord = formCommandWord(form);

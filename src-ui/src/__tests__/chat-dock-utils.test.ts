@@ -66,7 +66,7 @@ describe('first-run dock nudge', () => {
 });
 
 /**
- * kontourai/station#3314 review SF-1: the sidebar's "N more" and its "Open
+ * archive#3314: the sidebar's "N more" and its "Open
  * chats" heading promised the dock inbox from every chrome. The panel mounts
  * only on desktop, and there only in bottom mode or a fullscreen placement, so
  * on mobile the drawer closed and the dock snapped to half showing the CURRENT
@@ -146,9 +146,9 @@ describe('routeToOpenChatsCollection (#3314 SF-1)', () => {
 });
 
 /**
- * station#3309: one expression for the model the dock header names and the
+ * archive#3309: one expression for the model the dock header names and the
  * delegation launcher inherits. Two surfaces reading one fact must not
- * compute it twice (station#3391 is that defect one layer up).
+ * compute it twice (archive#3391 is that defect one layer up).
  */
 describe('effectiveChatModelId (#3309)', () => {
   test('the live session override wins over what the session reports', () => {
@@ -219,7 +219,7 @@ describe('effectiveChatModelId (#3309)', () => {
 });
 
 /**
- * station#3309. The header names a model beside a composer pill that names the
+ * archive#3309. The header names a model beside a composer pill that names the
  * same model; the ONE way that becomes a lie is asking a different question.
  * Caught live: without the resolved-alias arm the header read "Default
  * (recommended)" while the pill read "Opus 5".
@@ -475,7 +475,7 @@ describe('resolveDirectNewChatProjectSlug (station#4525 review HIGH-3)', () => {
     ).toBeUndefined();
   });
 
-  // The exact HIGH-3 repro: New Chat inside a project's own Coding layout
+  // The exact repro: New Chat inside a project's own Coding layout
   // must target THAT project, never the ambient device-global binding —
   // passing the binding here trips `shouldRouteScopedChatProject` into
   // navigating away instead of creating a chat.
@@ -527,7 +527,7 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
     ).toBe('bound-project');
   });
 
-  // MED-3: an unbound user gets the pre-station#4525 behavior back —
+  // an unbound user gets the pre-archive#4525 behavior back —
   // navigating to a project and opening New Chat preselects that project.
   test('the ambient dock with NO binding falls back to the route-level currently-viewed project (pre-fix behavior restored)', () => {
     expect(

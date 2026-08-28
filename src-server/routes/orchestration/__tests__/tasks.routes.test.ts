@@ -1062,7 +1062,7 @@ describe('Task routes', () => {
     });
   });
 
-  // Roadmap #584, part of epic #580, S4, review finding #6.
+  // Roadmap archive#584, part of epic archive#580, S4, review finding #6.
   test('POST / round-trips sourceProvider and workItemRef so a provider-backed create enters dispatch-as-claim', async () => {
     const app = createTaskRoutes(
       createRouteService({
@@ -1102,7 +1102,7 @@ describe('Task routes', () => {
     });
   });
 
-  // Roadmap #584, part of epic #580, S4.
+  // Roadmap archive#584, part of epic archive#580, S4.
   test('GET /:taskId/claim reports claim status, 400s for an unknown task', async () => {
     const service = createRouteService();
     const app = createTaskRoutes(service);
@@ -1130,7 +1130,7 @@ describe('Task routes', () => {
     });
   });
 
-  // #593: an independently-versioned client sending the pre-#581 status
+  // archive#593: an independently-versioned client sending the pre-#581 status
   // vocabulary must be normalized at the HTTP boundary, not 400ed.
   describe('PATCH /:taskId/status normalizes legacy status aliases (#593)', () => {
     async function createTask(app: ReturnType<typeof createTaskRoutes>) {
@@ -1186,7 +1186,7 @@ describe('Task routes', () => {
       expect(res.status).toBe(400);
     });
 
-    // #593 finding 2: review/verification can now transition directly to
+    // archive#593 finding 2: review/verification can now transition directly to
     // blocked (and resume directly back) without an in_progress detour.
     test('a task in review can transition directly to blocked and resume to review', async () => {
       const app = createTaskRoutes(createRouteService());

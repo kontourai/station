@@ -98,7 +98,7 @@ function stableSerialize(value: unknown): string {
 }
 
 /**
- * Canonicalized once per event OBJECT, ever (delta2 review MEDIUM-4). The
+ * Canonicalized once per event OBJECT, ever. The
  * same instance flows from the store into the view, so the reconciliation and
  * the new-event highlight both read a cached string instead of re-walking a
  * payload that can carry sizable nested tool results. Weak, so an event that
@@ -108,14 +108,14 @@ const identityCache = new WeakMap<object, string>();
 
 /**
  * The one identity two copies of the same monitoring event share
- * (station#3658 review, MEDIUM-4).
+ * (archive#3658).
  *
  * The live SSE transport and the historical read deliver the SAME events by
  * different routes, so reconciling them needs a key. The emitter's own event
  * id is used when it has one. Otherwise the key is the event's own
  * canonicalized content — not a hash of it.
  *
- * Delta2 review, still-open MEDIUM-2: this used to be a 32-bit FNV-1a digest
+ * Still-open: this used to be a 32-bit FNV-1a digest
  * of that canonical form, and a 32-bit digest used as an EQUALITY key is a
  * claim that two payloads are the same event when all that matched is 4 bytes
  * of hash. The review's probe found a real pair —
@@ -143,7 +143,7 @@ const MAX_RETAINED_EVENTS = 1000;
 
 /**
  * When a row happened, derived exactly as the `/monitoring/events` route
- * derives it (see its own note): `typeof`, not `Number()`, because
+ * derives it (see its own note): `typeof`, not `Number`, because
  * `Number(null)` is a finite 0 and would sort a row with a good ISO
  * `timestamp` as 1970; and an untimed row sorts oldest rather than being
  * dropped.
@@ -156,8 +156,8 @@ function monitoringEventTime(event: MonitoringEvent): number {
 }
 
 /**
- * The store's one ordering rule (station#3658 delta review, MEDIUM-3 and
- * MEDIUM-4): chronological, oldest first, and capped to the MOST RECENT
+ * The store's one ordering rule (archive#3658): chronological, oldest
+ * first, and capped to the MOST RECENT
  * `MAX_RETAINED_EVENTS`.
  *
  * ORDER. Historical rows arrive oldest-first — the route says so in its own
@@ -211,7 +211,7 @@ class MonitoringStore {
     'disconnected';
   isLoading: boolean = false;
   /**
-   * station#3658: the historical read's own failure, kept rather than logged
+   * archive#3658: the historical read's own failure, kept rather than logged
    * and dropped. This store is outside React Query, so nothing else holds it —
    * and without it the view has no way to tell "this Station recorded no
    * events" from "this Station could not be asked", and drew the first over
@@ -221,7 +221,7 @@ class MonitoringStore {
   readError: unknown = null;
   /**
    * The bounds the read that produced `readError` actually asked for
-   * (station#3653/#3658 review, MEDIUM-3). Retry must re-ask THAT interval:
+   * (archive#3653/archive#3658). Retry must re-ask THAT interval:
    * re-deriving the live default at click time asks for `now - 5m`, so a
    * hydration of 11:55–12:00 that failed and is retried at 12:08 would fetch
    * 12:03–12:08 and skip the failed window forever. Cleared on success and
@@ -231,7 +231,7 @@ class MonitoringStore {
   private failedWindow: { start?: Date; end?: Date } | null = null;
   /**
    * SSE-delivered events no hydration snapshot has confirmed yet
-   * (station#3658 review, MEDIUM-4). A successful hydration used to ASSIGN
+   * (archive#3658). A successful hydration used to ASSIGN
    * its snapshot over the shared list, so an event the live stream had
    * already shown the operator — including one that arrived under a rendered
    * read failure — vanished the moment a lagging disk snapshot came back, and
@@ -246,7 +246,7 @@ class MonitoringStore {
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
-    // Reference-counted lifecycle (#1989): the live monitoring SSE + its
+    // Reference-counted lifecycle (archive#1989): the live monitoring SSE + its
     // heartbeat exist only while at least one view is mounted. The first
     // subscriber (re)connects in the store's current mode; the last one to
     // leave tears the stream down. Leaving /developer/telemetry therefore
@@ -364,14 +364,14 @@ class MonitoringStore {
    * up, so the buffer converges to empty rather than pinning events forever.
    */
   private mergeHydratedEvents(hydrated: MonitoringEvent[]): MonitoringEvent[] {
-    // Delta2 review MEDIUM-4: cap FIRST, then reconcile. `/monitoring/events`
+    // cap FIRST, then reconcile. `/monitoring/events`
     // has no default result limit and a monitoring event has no per-event byte
     // ceiling, so a wide window full of nested tool results used to be
     // canonicalized row by row on the UI thread — including every row the very
     // next line was about to discard. Rows that cannot survive the cap are
     // never canonicalized at all.
     const recent = orderedRecentEvents(hydrated);
-    // ...and when nothing is awaiting reconciliation there is no identity work
+    //.and when nothing is awaiting reconciliation there is no identity work
     // to do in the first place, which is the ordinary case: a hydration with a
     // healthy stream and no unconfirmed arrivals hashes nothing.
     if (this.liveArrivals.length === 0) {
@@ -448,7 +448,7 @@ class MonitoringStore {
 
     this.eventSource = fetchSSE(`${this.apiBase}/monitoring/events`, {
       authentication: 'required',
-      // station#1848: see `ensureOrchestrationEventStream.ts` — a ceiling
+      // archive#1848: see `ensureOrchestrationEventStream.ts` — a ceiling
       // equal to the initial delay is a fixed poll, not a ladder.
       retryDelayMs: 5000,
       maxRetryDelayMs: 30_000,
@@ -525,7 +525,7 @@ class MonitoringStore {
   }
 
   /**
-   * Re-run the historical read the view is currently showing (station#3658).
+   * Re-run the historical read the view is currently showing (archive#3658).
    * Deliberately does not touch the SSE stream: the live transport has its
    * own reconnect ladder and its own status, and a failed history read is no
    * reason to tear a healthy stream down.
@@ -533,8 +533,8 @@ class MonitoringStore {
   retryHistoricalRead = () => {
     // Re-ask the interval that failed. The END may widen to now — anything
     // recorded since is legitimately part of what the operator is looking at
-    // — but the START never advances, or the failed window is skipped
-    // (review MEDIUM-3). With no recorded failure this is an ordinary
+    // but the START never advances, or the failed window is skipped
+    //  With no recorded failure this is an ordinary
     // refresh of the current mode's window.
     const failed = this.failedWindow;
     if (!failed) {

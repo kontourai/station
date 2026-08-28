@@ -24,7 +24,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   resetSessionEventWindowCapabilityRecovery: vi.fn(),
   SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS: 30_000,
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`, which
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`, which
   // reads system status to decide between the guided rescue and the normal copy.
   useSystemStatusForApiBaseQuery: () => ({ data: undefined }),
 }));
@@ -33,7 +33,7 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -205,7 +205,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
   test('dismissing the refused turn returns the composer to normal', async () => {
     // Recovery is the same derivation running over the remaining turns:
     // once the durable refused row is gone, workspaceRefused re-derives
-    // false and ordinary Send returns (review finding — the transition
+    // false and ordinary Send returns (the transition
     // itself was previously untested).
     const refused = session(0);
     refused.outboundQueuedTurns = [

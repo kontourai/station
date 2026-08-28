@@ -156,7 +156,7 @@ export class ApprovalGuardianService {
  * decisions — leaving e.g. "Always defer git pushes to a human" as the
  * guardian's whole system prompt. The Settings copy (and the field's own
  * pre-existing "Extra instructions" wording) has always promised additive
- * behavior, so the composition is fixed to match the promise (station#1831
+ * behavior, so the composition is fixed to match the promise (archive#1831
  * delivery review).
  */
 export function composeGuardianInstructions(
@@ -168,7 +168,7 @@ export function composeGuardianInstructions(
 }
 
 /**
- * station#3577 review round 3 (HIGH-4, reopening HIGH-1/HIGH-3): `toolName`
+ * archive#3577 review round 3 (HIGH-4, reopening HIGH-1/HIGH-3): `toolName`
  * and `toolDescription` are model/tool-authored exactly like `toolArgs` —
  * `acp-adapter.ts:1648,1654` sets `toolName = params.toolCall?.name` and
  * `toolDescription = params.toolCall.title`, under that file's own comment
@@ -216,10 +216,10 @@ function buildGuardianPrompt(input: ApprovalGuardianReviewInput): string {
 }
 
 /**
- * station#3577: `toolArgs` is `unknown` and can arrive already serialized as
+ * archive#3577: `toolArgs` is `unknown` and can arrive already serialized as
  * a string — `acp-adapter.ts` feeds `preToolPolicy` with
- * `params.toolCall.rawInput`, the same ACP `rawInput` source #3542 fixed for
- * the thread export path and #3559 fixed again for `ToolCallDisplay.tsx`'s
+ * `params.toolCall.rawInput`, the same ACP `rawInput` source archive#3542 fixed for
+ * the thread export path and archive#3559 fixed again for `ToolCallDisplay.tsx`'s
  * collapsed header. `JSON.stringify` on an already-string value double-
  * encodes it (`"git commit -m \"fix\""` instead of `git commit -m "fix"`),
  * degrading the guardian's review prompt. Pass a string through unchanged;

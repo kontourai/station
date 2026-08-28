@@ -21,7 +21,7 @@ export type PrivacyInventoryEntry = {
   evidence: readonly string[];
   // One inventory entry can cover several telemetry events — they share a
   // destination, a purpose and a consent gate, so they are one disclosure to
-  // a reader. It was a single event until station#2486 added two more and the
+  // a reader. It was a single event until archive#2486 added two more and the
   // coverage assertion caught the omission.
   usageTelemetry?: readonly { event: string; properties: readonly string[] }[];
 };
@@ -58,7 +58,7 @@ export const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
   {
     id: 'otel-observability',
     storeDataType: 'Performance and Diagnostics',
-    // station#2484 landed: the identifier is now the SHA-256 of a random UUID
+    // archive#2484 landed: the identifier is now the SHA-256 of a random UUID
     // created once per install under STATION_HOME, independent of hostname and
     // username. It is a stable PSEUDONYMOUS installation id — consistent within
     // whatever collector the operator points it at, so per-install grouping
@@ -152,7 +152,7 @@ function inventoryRows(): string {
  * `inventory` is a parameter so the linkage/tracking propagation can be proven
  * for BOTH values regardless of what the real inventory happens to contain
  * today. It was previously provable only while some real entry was linked,
- * which made the guard evaporate the moment station#2484 made them all false —
+ * which made the guard evaporate the moment archive#2484 made them all false —
  * exactly when a silent regression would stop being visible.
  */
 export function renderPrivacyInfo(

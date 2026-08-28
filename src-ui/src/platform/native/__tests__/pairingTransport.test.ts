@@ -61,7 +61,7 @@ describe('native pairing transport', () => {
   });
 
   /**
-   * station#1818 R3 — the parity gap the owner's follow-up flagged: a
+   * archive#1818 — the parity gap the owner's follow-up flagged: a
    * rejected `invoke('station_native_pairing_exchange')` (Rust's
    * `NativeCommandError`, thrown before any `{ ok:false }` server envelope
    * exists) used to reach here as an unconverted `String(error)` /
@@ -83,7 +83,7 @@ describe('native pairing transport', () => {
   });
 
   /**
-   * station#1818 R3 — the actual behavioral parity fix: the HTTP pairing
+   * archive#1818 — the actual behavioral parity fix: the HTTP pairing
    * path's `pairingFetch` marks a request that never reached the Station
    * with `transport: true`, and `JoinDevicePairingPanel` uses
    * `isTransportFailure` to retry-with-backoff instead of failing fatally.
@@ -110,7 +110,7 @@ describe('native pairing transport', () => {
   });
 
   /**
-   * station#1818 review round 1 (LOW): a legacy/uncoded rejection's raw
+   * archive#1818: a legacy/uncoded rejection's raw
    * prose must NOT become `.code` — that would let a future `.code`
    * consumer accidentally match on a sentence, reopening the FFI-boundary
    * prose-matching this mechanism replaced. The message itself is still

@@ -14,7 +14,7 @@ const css = readFileSync(
 );
 
 /**
- * sol review, MEDIUM: the sticky mobile Save bar offset itself by the chat
+ *the sticky mobile Save bar offset itself by the chat
  * dock's height and the safe-area inset, but not by the VISIBLE viewport's
  * bottom inset — the number the dock itself re-anchors to when the software
  * keyboard opens. The dock published that inset onto its own element, where a
@@ -41,7 +41,7 @@ function declaration(name: string): string {
 }
 
 /**
- * station#3902 folded the three terms this file used to read here into one
+ * archive#3902 folded the three terms this file used to read here into one
  * shell-owned token, `--dock-bottom-clearance` (index.css) — because the SHELL
  * was reserving a strictly smaller number than this bar offset itself by, and
  * a route that reserved nothing of its own sat under the dock. The property

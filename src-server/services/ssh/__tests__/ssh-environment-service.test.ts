@@ -67,7 +67,7 @@ describe('SshEnvironmentService', () => {
     const counter = { add: vi.fn() };
     const duration = { record: vi.fn() };
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: {
         createTunnel: vi.fn(() => tunnel),
@@ -111,7 +111,7 @@ describe('SshEnvironmentService', () => {
       .mockReturnValueOnce(first)
       .mockReturnValueOnce(second);
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: { createTunnel } as unknown as OpenSshEnvironmentAdapter,
     });
@@ -134,7 +134,7 @@ describe('SshEnvironmentService', () => {
   test('serializes concurrent connect calls for one environment', async () => {
     const tunnel = fakeTunnel();
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: {
         createTunnel: vi.fn(() => tunnel),
@@ -155,7 +155,7 @@ describe('SshEnvironmentService', () => {
   });
 });
 
-// station#1133 R3/AC1-AC6: managed-launch connect-flow integration, using a
+// archive#1133 R3/AC1-AC6: managed-launch connect-flow integration, using a
 // stubbed tunnel (the bootstrap script's own logic is covered end-to-end,
 // through a real local shell, in openssh-launch-bootstrap.test.ts).
 describe('SshEnvironmentService managed launch', () => {
@@ -185,7 +185,7 @@ describe('SshEnvironmentService managed launch', () => {
       retarget,
     };
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: {
         createTunnel: vi.fn((options) => {
@@ -224,7 +224,7 @@ describe('SshEnvironmentService managed launch', () => {
     const runLaunchBootstrap = vi.fn();
     const tunnel = { ...fakeTunnel(), runLaunchBootstrap };
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: {
         createTunnel: vi.fn(() => tunnel),
@@ -263,7 +263,7 @@ describe('SshEnvironmentService managed launch', () => {
       retarget,
     };
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: {
         createTunnel: vi.fn(() => tunnel),
@@ -291,7 +291,7 @@ describe('SshEnvironmentService managed launch', () => {
     const runLaunchBootstrap = vi.fn();
     const tunnel = { ...fakeTunnel(), probeWorker, runLaunchBootstrap };
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: {
         createTunnel: vi.fn(() => tunnel),
@@ -335,7 +335,7 @@ describe('SshEnvironmentService managed launch', () => {
       });
       const tunnel = { ...fakeTunnel(), probeWorker, runLaunchBootstrap };
       const service = new SshEnvironmentService(home(), {
-        // station#1144: pin a known alias so add()'s new known-alias gate
+        // archive#1144: pin a known alias so add()'s new known-alias gate
         // doesn't depend on this machine's real ~/.ssh/config.
         adapter: {
           createTunnel: vi.fn(() => tunnel),
@@ -369,7 +369,7 @@ describe('SshEnvironmentService managed launch', () => {
     }));
     const tunnel = { ...fakeTunnel(), probeWorker, runLaunchBootstrap };
     const service = new SshEnvironmentService(home(), {
-      // station#1144: pin a known alias so add()'s new known-alias gate
+      // archive#1144: pin a known alias so add()'s new known-alias gate
       // doesn't depend on this machine's real ~/.ssh/config.
       adapter: {
         createTunnel: vi.fn(() => tunnel),
@@ -402,7 +402,7 @@ describe('SshEnvironmentService managed launch', () => {
   });
 });
 
-// station#1144's two-tier "is this alias configured?" gate is GONE (sol
+// archive#1144's two-tier "is this alias configured?" gate is GONE (sol
 // review finding 2). It was a caller-set boolean (`allowUnknownHost`) in
 // front of a proxy signal: an SSH-config Host stanza is not a trust
 // decision about a machine, and the flag turned the whole gate off for any

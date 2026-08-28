@@ -97,7 +97,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
       ),
     ).resolves.toMatchObject({
       behavior: 'deny',
-      // station#3091: every denial this evaluator produces carries
+      // archive#3091: every denial this evaluator produces carries
       // `policyDenied: true` — the client's policy-denied badge derives
       // from this field, so it must actually be present at the source.
       denial: {
@@ -194,7 +194,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
 });
 
 /**
- * station#3210. `policyDenied` derives PROVENANCE — "the policy evaluator
+ * archive#3210. `policyDenied` derives PROVENANCE — "the policy evaluator
  * produced this" — and both engine adapters were using it to answer a
  * different question, "may this text reach the user verbatim?". Two of these
  * eight denials embed text Station did not write, and all ten embed a tool
@@ -204,7 +204,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
 describe('station#3210: denial text a user can trust', () => {
   beforeEach(() => vi.mocked(toolDenials.add).mockClear());
 
-  /** The measured hostile shape from station#3210's second comment. */
+  /** The measured hostile shape from archive#3210's second comment. */
   const hostileTool = {
     toolName: [
       'read',
@@ -415,9 +415,9 @@ describe('station#3210: denial text a user can trust', () => {
       denial: { policyDenied?: true; stationComposedReason?: true };
     };
 
-    // #3091's badge derivation is unchanged…
+    // archive#3091's badge derivation is unchanged…
     expect(decision.denial.policyDenied).toBe(true);
-    // …and #3210's separate authorship marker is what licenses the text.
+    // …and archive#3210's separate authorship marker is what licenses the text.
     expect(decision.denial.stationComposedReason).toBe(true);
   });
 });

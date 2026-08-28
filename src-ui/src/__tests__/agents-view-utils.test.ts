@@ -135,7 +135,7 @@ describe('agents view utils', () => {
       },
       // The spec's tools object verbatim, so a save can tell an ABSENT key
       // from an authored-empty one and can carry through fields the form does
-      // not model (station#2693 review, H1/H2/M2).
+      // not model (archive#2693).
       toolsOriginal: {
         mcpServers: ['server-1'],
         available: ['server-1_tool-a'],
@@ -264,7 +264,7 @@ describe('agents view utils', () => {
         },
         // The spec's tools object verbatim, so a save can tell an ABSENT key
         // from an authored-empty one and can carry through fields the form
-        // does not model (station#2693 review, H1/H2/M2).
+        // does not model (archive#2693).
         toolsOriginal: { mcpServers: ['server-1'] },
         execution: {
           agentConnectionId: 'runtime-1',
@@ -287,7 +287,7 @@ describe('agents view utils', () => {
       // `available: []`, which PINNED a defect: the runtime reads
       // `available || ['*']` and [] is truthy, so persisting an empty
       // allow-list where the key was absent turns "all tools" into "no tools"
-      // (station#2693 review, H1).
+      // (archive#2693).
       tools: {
         mcpServers: ['server-1'],
       },
@@ -346,7 +346,7 @@ describe('agents view utils', () => {
     expect(global.project).toBe('');
     // Update: an empty select is the explicit ownership-clearing signal.
     // `execution: null` is the same shape for the engine binding since
-    // station#3662 — this Agent carries no execution state at all, and an
+    // archive#3662 — this Agent carries no execution state at all, and an
     // omitted block would mean "leave whatever is persisted alone".
     expect(buildAgentPayload(global)).toMatchObject({
       project: null,
@@ -440,7 +440,7 @@ describe('agents view utils', () => {
   });
 
   test('persists clearing the last integration, because the key was authored', () => {
-    // Review M1: emptying the form previously produced `tools: undefined`,
+    // emptying the form previously produced `tools: undefined`,
     // which means "no change" server-side — the integration came back on the
     // next load while the editor reported the save as successful. An emptied
     // key that the spec HAD authored is now sent as empty, so the clear sticks.
@@ -544,7 +544,7 @@ describe('the Station Agent round-trips as UNBOUND (#3662 review HIGH-2)', () =>
 });
 
 /**
- * station#3743 (and the misattributed half of station#3740): the Create gate
+ * archive#3743 (and the misattributed half of archive#3740): the Create gate
  * and the §3.3 model picker have to be one answer. Every case below is a case
  * where they used to give two.
  */
@@ -598,7 +598,7 @@ describe('station model binding', () => {
     );
   });
 
-  // station#3740 was reported as "disabling the built-in vector store stops
+  // archive#3740 was reported as "disabling the built-in vector store stops
   // Station's engine chatting". A vector store is not a chat model, and the
   // binding must not change when one is toggled either way.
   test('a vector store is never the engine, present or absent', () => {

@@ -2,7 +2,7 @@
 
 /**
  * The reserved Station identity's engine binding: one authority, one write
- * boundary, one read projection (station#3662 delta H2/H3/M2;
+ * boundary, one read projection (archive#3662 delta H2/H3/M2;
  * `docs/design/agent-engine-unification.md` §7.1.1).
  *
  * These tests run against a REAL temp home through the real

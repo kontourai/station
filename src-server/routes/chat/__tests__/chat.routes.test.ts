@@ -29,7 +29,7 @@ const { createChatRoutes, externalEngineChatRedirectMessage } = await import(
 const { prepareChatRequest } = await import('../chat-request-preparation.js');
 
 describe('Chat Routes', () => {
-  // station#1426 fix round 3 (M-1): launchPersistedAgentWithOverride is the
+  // archive#1426 fix round 3 (M-1): launchPersistedAgentWithOverride is the
   // rescue path for a persisted agent that failed to register at boot (its
   // default model didn't resolve) but the chat picker sent a model override.
   // It spreads the loaded spec (any configured Dispatch policy included)
@@ -206,7 +206,7 @@ describe('Chat Routes', () => {
         getLaunchabilityRevision: () => 0,
         listProviderConnections: vi.fn(() => []),
       },
-      // station#977: the reload lifecycle (runtime-agent-lifecycle.ts) never
+      // archive#977: the reload lifecycle (runtime-agent-lifecycle.ts) never
       // builds a Station-engine agent for an external-engine-bound record —
       // this agent is deliberately never in `activeAgents`, exactly mirroring
       // production for a real 'engine-lab' agent bound to claude-runtime.
@@ -709,7 +709,7 @@ describe('Chat Routes: prompt size guard (station#2807)', () => {
     expect(streamPrimaryAgentChat).toHaveBeenCalledTimes(1);
   });
 
-  // station#2807 H1 reproduction: text in the AI SDK ModelMessage shape
+  // archive#2807 H1 reproduction: text in the AI SDK ModelMessage shape
   // (`content`) was measured as ZERO by the parts-only sizer this replaces —
   // a 500k-character prompt was accepted unmeasured. The route accepts the
   // shape (Agent.streamText takes string | UIMessage[] | ModelMessage[]), so

@@ -42,7 +42,7 @@ export class WebPushService {
    *
    * `ttlSeconds` sets the Web Push protocol TTL header (RFC 8030) — how long
    * the push service should hold the message for an offline device before
-   * giving up — sized per notification outcome (station#1100 AC2,
+   * giving up — sized per notification outcome (archive#1100 AC2,
    * `push-payload-composer.ts`). Omitted entirely when not provided so the
    * `web-push` library's own default applies.
    */

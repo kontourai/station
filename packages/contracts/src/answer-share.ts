@@ -395,9 +395,10 @@ export type AnswerShareChannelUnavailableReason =
  * What a viewer is shown about the channel binding — **a derivation computed
  * at read time from a verification, never a stored label echoed back.**
  *
- * This is the anti-defect requirement of station#1598, and it names a real
- * defect class: slice 1's review found `authorized` being rendered from the
- * mere PRESENCE of an `authorizationId`, which reports a check that never
+ * This is the anti-defect requirement of the channel binding's read side
+ * (archive#1598), and it names a real
+ * defect class: `authorized` rendered from the
+ * mere PRESENCE of an `authorizationId` reports a check that never
  * ran. Presenting "committed at (epoch, seq)" from
  * {@link AnswerShareChannelBinding} alone is the same defect with different
  * nouns. The stored binding is an observation; this is the checked result,

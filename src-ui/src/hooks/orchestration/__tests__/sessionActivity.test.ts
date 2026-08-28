@@ -339,9 +339,9 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     ]);
   });
 
-  // #1076: `to` is the provider's coarse PROCESS status — 'running' means the
+  // archive#1076: `to` is the provider's coarse PROCESS status — 'running' means the
   // runtime attached, not that a turn is open. The snapshot path already
-  // gates this (#1034); the live-event path must agree or a mere attach
+  // gates this (archive#1034); the live-event path must agree or a mere attach
   // (service restart re-attach, reconnect) strands the chat as active for
   // every orchestrationStatus consumer (home labels via the lifecycle merge,
   // the streaming-shell engagement in isSessionExecutionActive).
@@ -414,7 +414,7 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     ).toBe(true);
   });
 
-  // #1076 review HIGH: an in-turn approval drops UI status to 'idle', so
+  // archive#1076: an in-turn approval drops UI status to 'idle', so
   // status alone must not be the turn authority — the post-approval
   // 'running' state-change has to re-engage the shell for the still-open
   // turn.
@@ -525,14 +525,14 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.orchestrationStatus).toBe('idle');
   });
 
-  // station#1207 review round 1, HIGH 2: a silent stall on the
+  // archive#1207 1, 2: a silent stall on the
   // station-agent adapter's inner /chat bridge has no dedicated
   // `turn.failed` event — `runtime.error` IS the terminal-failure signal
   // for this path (server-side proof: `station-agent-adapter.test.ts`'s
   // "a silently stalled inner /chat stream publishes runtime.error..."
   // test). This pins the client maps it to error state + a real Retry
   // affordance, reusing the EXISTING `[SYSTEM_EVENT] [CHAT_ERROR]` +
-  // `findPrecedingUserTurn` "Send again" mechanism (#797,
+  // `findPrecedingUserTurn` "Send again" mechanism (archive#797,
   // `chat-dock-failed-turn-retry.test.ts` proves that mechanism generically
   // resolves ANY correctly-shaped marker) rather than inventing a second
   // retry path this module has no hook access to build.
@@ -636,7 +636,7 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     } as any);
 
     chat = activeChatsStore.getSnapshot()[threadId];
-    // UX audit V3 review round 3: this used to assert TWO cards, which is the
+    // this used to assert TWO cards, which is the
     // defect that review names — the previous turn's failure card survived
     // beside the new turn's, both claiming the conversation. A card is a
     // statement about one turn, so the earlier turn's is pruned and the new

@@ -6,7 +6,7 @@ import {
 } from './engine-capability-matrix.js';
 
 /**
- * Station#1003 (unification slice 6): matrix-driven replacement for the
+ * archive#1003: matrix-driven replacement for the
  * retired `resolveAgentTypeFromRuntimeConnection(...) === 'managed'` check
  * (equivalence proven in `__tests__/agent-validation.test.ts` before the old
  * resolver was deleted) — a prompt is required exactly when the bound
@@ -57,7 +57,7 @@ export function requiresAuthoredAgentPrompt(
 }
 
 /**
- * Station#975 (unification slice 5) §5 — a capability surface the agent has
+ * archive#975 §5 — a capability surface the agent has
  * authored content for, but the bound engine cannot deliver. One pure
  * function shared by the editor's read-only banner and the save-response
  * `validation.findings` array (agents.ts) so the message strings are

@@ -16,7 +16,7 @@ interface ComposerAttachmentStripProps {
 
 /**
  * What the composer will send, when that is not what the user handed it
- * (station#3375). Both numbers are chip text, not a tooltip: a title attribute
+ * (archive#3375). Both numbers are chip text, not a tooltip: a title attribute
  * reaches neither a touch user nor a screen reader, so a bare "Resized" there
  * would leave the size change unreadable to exactly the readers most likely to
  * be pasting a phone screenshot. The title adds only the pixel dimensions,
@@ -30,7 +30,7 @@ function resizedLabel(
 }
 
 /**
- * The attached files, visible in the composer itself (station#3344).
+ * The attached files, visible in the composer itself (archive#3344).
  *
  * Before this, a pasted screenshot's only trace was a count badge on the
  * paperclip button, and the thumbnail lived behind a popover the user had to

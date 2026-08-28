@@ -41,7 +41,7 @@ describe('ModelSelector', () => {
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: 'claude-opus-4-9' } });
 
-    // A "Use ..." option is offered for the typed id, and selecting it commits it.
+    // A "Use..." option is offered for the typed id, and selecting it commits it.
     fireEvent.mouseDown(screen.getByText(/Use .claude-opus-4-9./));
     expect(onChange).toHaveBeenCalledWith('claude-opus-4-9');
   });

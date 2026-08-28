@@ -7,7 +7,7 @@ import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { paneCloseConfirmationProps } from '../workspace-panes/workspacePaneCloseConfirmation';
 
 /**
- * station#3157. The pane's unsaved-changes prompt was hand-rolled markup
+ * archive#3157. The pane's unsaved-changes prompt was hand-rolled markup
  * under `.workspace-pane-host__close-confirmation` — a class with no CSS rule
  * anywhere in the repo. It rendered with no dialog surface at all, and
  * "Close pane", which discards unsaved work, was visually IDENTICAL to
@@ -49,7 +49,7 @@ describe('the pane close confirmation marks its destructive choice', () => {
     // `alertdialog` interrupts to guard something the user must act on.
     // The hand-rolled markup had this right; reusing ConfirmModal silently
     // downgraded it to `dialog`, and only the pane host's own suite caught
-    // it — after this file had already passed (station#3157).
+    // it — after this file had already passed (archive#3157).
     renderDialog();
     expect(screen.getByRole('alertdialog')).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();

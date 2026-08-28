@@ -34,13 +34,13 @@ function baseSession(overrides: Record<string, unknown> = {}) {
 }
 
 /**
- * station#1779: the attention projection now reads `session.answerability`
+ * archive#1779: the attention projection now reads `session.answerability`
  * off the summaries `listSessionReadModel` hands it — the decoration the
  * server computes once at emission (ADR 0012) — instead of calling a private
  * service channel. These fixtures therefore decorate through the REAL
  * derivation rather than pinning a constant: a stub that always answered
  * `answerable` would silently contradict production for every past-resuming
- * session, which is exactly the class of case the station#1284 block below
+ * session, which is exactly the class of case the archive#1284 block below
  * exists to pin.
  *
  * The two process-local facts the pure function cannot know are supplied
@@ -77,9 +77,9 @@ function makeService(opts: {
     canRead?: (approvalId: string, authority: unknown) => boolean;
   };
   sessionEvents?: Record<string, unknown[]>;
-  /** threadIds the read-time projection reports as unanswerable (#1745). */
+  /** threadIds the read-time projection reports as unanswerable (archive#1745). */
   unanswerable?: string[];
-  /** station#1914: the acknowledgement store, and the identity that scopes it. */
+  /** archive#1914: the acknowledgement store, and the identity that scopes it. */
   acknowledgementStore?: {
     get(userId: string, conversationId: string): string | undefined;
     acknowledge(input: {
@@ -320,7 +320,7 @@ describe('AttentionProjectionService', () => {
       items: [
         expect.objectContaining({
           kind: 'review_pending',
-          // station#1284 AC4: the project-scoped href now carries dock=open.
+          // archive#1284 AC4: the project-scoped href now carries dock=open.
           openHref: '/projects/my%20project?chat=thread&dock=open',
         }),
       ],
@@ -789,7 +789,7 @@ describe('AttentionProjectionService', () => {
     expect(result.pendingCount).toBe(2);
   });
 
-  // station#1185: needs_input/review_pending items project from the open
+  // archive#1185: needs_input/review_pending items project from the open
   // request.opened event's requestType — the real evidence the owner asked
   // for — instead of a hardcoded "Input needed"/"Review pending" constant.
   describe('request evidence (station#1185)', () => {
@@ -1098,7 +1098,7 @@ describe('AttentionProjectionService', () => {
     });
   });
 
-  // station#1185 fix round: the verifier's scratch harness proved
+  // archive#1185 fix round: the verifier's scratch harness proved
   // `wireApprovalInboxNotifications` (approval-inbox.ts, unmodified by this
   // PR) creates a live `category: 'approval-request'` notification for
   // every `request.opened`, and this projection's own suppression (list()
@@ -1107,7 +1107,7 @@ describe('AttentionProjectionService', () => {
   // approval, `presentOpenRequest`'s detailed copy was never reached; the
   // item stayed on the old coarse notification-title/body presentation
   // (`{"title":"Allow bash","body":"test wants approval to use bash."}`).
-  // This describe proves the two paths now converge (issue #1185 Ask #4).
+  // This describe proves the two paths now converge (issue archive#1185 Ask #4).
   describe('live approval presentation convergence (station#1185 fix round, Ask #4)', () => {
     test('a live orchestration-kind approval notification converges onto the same evidenced presentation as the lifecycle path', async () => {
       // Mirrors exactly what wireApprovalInboxNotifications
@@ -1244,7 +1244,7 @@ describe('AttentionProjectionService', () => {
     });
   });
 
-  // station#1185 fix round, review finding: projectLifecycle became async
+  // archive#1185 fix round, review finding: projectLifecycle became async
   // (readSession per session, batched via Promise.all) with no per-session
   // catch — one session's readSession rejection used to take down the
   // whole list() call, approvals and gate items included.
@@ -1310,7 +1310,7 @@ describe('AttentionProjectionService', () => {
     });
   });
 
-  // station#1548. #1296's own test asserted, in a comment, that a failed
+  // archive#1548. archive#1296's own test asserted, in a comment, that a failed
   // session "still shows attention via lifecycleState === 'failed' itself" —
   // and nothing here implemented it. That unchecked premise is what made
   // zeroing `pendingReview` on a failed session read as safe, and the result
@@ -1334,10 +1334,10 @@ describe('AttentionProjectionService', () => {
         expect.objectContaining({
           id: 'session-failed:thread-boom',
           kind: 'session-failed',
-          // station#3203: the SESSION's name, not a second copy of the kind
+          // archive#3203: the SESSION's name, not a second copy of the kind
           // the UI already renders as the row's eyebrow. This fixture has no
           // `displayTitle`, so it reads the honest absence — never the
-          // thread id (#3139).
+          // thread id (archive#3139).
           title: 'Untitled session',
           body: 'Engine exited with code 1',
           sessionId: 'thread-boom',
@@ -1348,8 +1348,8 @@ describe('AttentionProjectionService', () => {
 
     // THE POWER TEST for this whole change: the item is derived from the
     // lifecycle state alone. `pendingReview: false` is exactly the shape
-    // #1314's guard produced, so this stays true even if a producer zeroes
-    // the flag again — which is the compensating path #1296 claimed and did
+    // archive#1314's guard produced, so this stays true even if a producer zeroes
+    // the flag again — which is the compensating path archive#1296 claimed and did
     // not have.
     test('the item does not depend on pendingReview — an explicitly false flag still surfaces it', async () => {
       const service = makeService({
@@ -1369,7 +1369,7 @@ describe('AttentionProjectionService', () => {
       expect(result.items[0]).not.toHaveProperty('body');
     });
 
-    // End to end across the two positions #1548 named: the producer now
+    // End to end across the two positions archive#1548 named: the producer now
     // keeps `pendingReview` on a retryable failure, and the more specific
     // request outranks the coarser lifecycle state here, exactly as an open
     // approval already outranks every other lifecycle shadow.
@@ -1407,7 +1407,7 @@ describe('AttentionProjectionService', () => {
     });
 
     /*
-     * station#3203. The reported tray showed FOUR and three rows that were
+     * archive#3203. The reported tray showed FOUR and three rows that were
      * byte-identical: title "Session failed", body "Session failed", eyebrow
      * "Session failed", nothing naming which session was which. These four
      * tests are the payload half of that fix.
@@ -1613,9 +1613,9 @@ describe('AttentionProjectionService', () => {
         expect(result.items).toEqual([]);
       });
 
-      // station#1827/#1904: `error` stays retryable and must keep surfacing —
+      // archive#1827/#1904: `error` stays retryable and must keep surfacing —
       // collapsing it into `dead`'s suppression would reintroduce the
-      // station#1090 regression this distinction exists to prevent.
+      // archive#1090 regression this distinction exists to prevent.
       test('a session whose binding merely errored (not dead) still projects session-failed', async () => {
         const service = makeService({
           sessions: [
@@ -1687,7 +1687,7 @@ describe('AttentionProjectionService', () => {
         );
       });
 
-      // station#1914 AC: "A test that the bell count returns to zero after
+      // archive#1914 AC: "A test that the bell count returns to zero after
       // acking every item, with the sessions still failed."
       test('the bell count returns to zero after acking every item, with the sessions still failed', async () => {
         const acknowledgementStore = memoryAckStore();
@@ -1717,7 +1717,7 @@ describe('AttentionProjectionService', () => {
       });
 
       /*
-       * station#3203: the owner's complaint was that the count stayed at 4
+       * archive#3203: the owner's complaint was that the count stayed at 4
        * after acting on ONE entry. The all-at-once case above proves the
        * count can reach zero; this proves the PARTIAL step — the one the
        * user actually performs — decrements by exactly one and leaves every
@@ -1788,7 +1788,7 @@ describe('AttentionProjectionService', () => {
       });
 
       // "a fresh failure is a real fact worth surfacing; the defect is that
-      // a seen or hopeless one never clears" (station#1914) — a later
+      // a seen or hopeless one never clears" (archive#1914) — a later
       // failure on the SAME thread (newer `updatedAt`) must not stay hidden
       // behind an ack recorded against an OLDER version.
       test('a fresh failure after acknowledgement surfaces again', async () => {
@@ -1870,7 +1870,7 @@ describe('AttentionProjectionService', () => {
      *
      * The filter must use `canSessionLifecycleStateResume` negated
      * (`{completed, canceled}`), never the name-alike
-     * `isSessionLifecycleStateTerminal` (`{completed}`). station#1284 was
+     * `isSessionLifecycleStateTerminal` (`{completed}`). archive#1284 was
      * reported against a CANCELED session's card, so swapping in the
      * narrower predicate silently restores the original bug. The `canceled`
      * case below is what turns that swap red; `completed` alone would pass
@@ -1879,7 +1879,7 @@ describe('AttentionProjectionService', () => {
      * `failed` is the opposite guard: it is stopped but RESUMABLE
      * (`failed -> queued | running`), so widening to
      * `isSessionLifecycleStateStopped` would hide a retriable session's
-     * genuinely outstanding approval — the defect station#1548 was filed
+     * genuinely outstanding approval — the defect archive#1548 was filed
      * for. Its card must survive.
      */
     test.each([
@@ -1919,7 +1919,7 @@ describe('AttentionProjectionService', () => {
     });
 
     /**
-     * station#1779 delta review, M2 — THE BROADENED POPULATION, PINNED.
+     * archive#1779 delta review, M2 — THE BROADENED POPULATION, PINNED.
      *
      * The deleted boot pass short-circuited on `openRequests.size === 0`, so
      * a session with no open request was never touched by it. The read-time
@@ -2013,7 +2013,7 @@ describe('AttentionProjectionService', () => {
 });
 
 /*
- * station#3203: the payload builder is pure — every field is a projection of
+ * archive#3203: the payload builder is pure — every field is a projection of
  * one session summary — so it is asserted directly rather than only through
  * `list()`. A field the summary did not record must be ABSENT from the
  * payload, not present-and-empty: the UI branches on absence to say "no
@@ -2056,7 +2056,7 @@ describe('buildSessionFailedItem (#3203)', () => {
 
   test('never returns the thread id as the title (#3139)', () => {
     // The precedence has two branches and neither may fall through to an
-    // identifier — that regression is exactly what #3139 was.
+    // identifier — that regression is exactly what archive#3139 was.
     for (const session of [
       baseSession({ threadId: 'external:claude:5dfa0c9e' }),
       baseSession({
@@ -2072,7 +2072,7 @@ describe('buildSessionFailedItem (#3203)', () => {
 });
 
 /*
- * station#3227 B1. The predicate deciding WHETHER a session needs the user is
+ * archive#3227 B1. The predicate deciding WHETHER a session needs the user is
  * now the shared `sessionAttentionDisposition` fold — the same derivation the
  * client's canonical `orchestrationLifecycleLabel` renders lanes and badges
  * from. Before the extraction the two had drifted three probe-confirmed ways:
@@ -2132,7 +2132,7 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
 
     test('a blocked session with a resolvable open request presents the request itself', async () => {
       // Same request-evidence precedence as needs_input/review_pending
-      // (station#1185): a concrete request outranks the coarser state.
+      // (archive#1185): a concrete request outranks the coarser state.
       const service = makeService({
         sessions: [
           baseSession({
@@ -2219,8 +2219,8 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
    * THE AGREEMENT MATRIX. For every lifecycleState × status × pendingReview ×
    * answerability shape, what this projection emits must be the shared
    * disposition's rendering plus exactly the three documented local rules:
-   * the `answerable` suppression on awaiting items (#1745), the `dead`-binding
-   * suppression on failures (#1914), and request-outranks-failure (#1548).
+   * the `answerable` suppression on awaiting items (archive#1745), the `dead`-binding
+   * suppression on failures (archive#1914), and request-outranks-failure (archive#1548).
    * The client fold's own matrix test asserts its labels against the SAME
    * shared fold, so the two surfaces agreeing is transitive through these two
    * pins — a predicate that stops consulting the fold reds here with the
@@ -2286,7 +2286,7 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
 
       for (const shape of cases) {
         // The same real answerability derivation the fixtures decorate with —
-        // never a stubbed constant (station#1779).
+        // never a stubbed constant (archive#1779).
         const { answerable } = projectRequestAnswerability({
           threadAttachment: 'detached',
           lifecycleState: shape.lifecycleState,
@@ -2299,14 +2299,14 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
         if (disposition.state === 'failed') {
           expected =
             answerable && shape.pendingReview
-              ? ['review_pending'] // #1548: the open request outranks the bare failure
+              ? ['review_pending'] // archive#1548: the open request outranks the bare failure
               : shape.status !== 'dead'
                 ? ['session-failed']
-                : []; // #1914: a dead binding is hopeless
+                : []; // archive#1914: a dead binding is hopeless
         } else if (disposition.state === 'awaiting') {
           expected = answerable
             ? [disposition.via === 'blocked' ? 'needs_input' : disposition.via]
-            : []; // #1745: the bell counts actionable items only
+            : []; // archive#1745: the bell counts actionable items only
         }
         expect({
           shape: shape.threadId,

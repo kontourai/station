@@ -47,7 +47,7 @@ function MonitoringView() {
     status: orchestrationSessionsStatus,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
-  // audit 6-OPS-26 review (MEDIUM): `data` is `undefined` while the read is
+  // audit 6-OPS-26: `data` is `undefined` while the read is
   // pending and while it has failed, and defaulting that to `[]` reported an
   // authoritative `0 / 0` — a transient (and, on a failed read, permanent)
   // false zero, which is the same discrepancy in a new costume. Counts are
@@ -173,7 +173,7 @@ function MonitoringView() {
   ]);
 
   /*
-   * Delta2 review MEDIUM-3: this highlighted indices from the previous length
+   * this highlighted indices from the previous length
    * to the new one, which only identifies arrivals if events are appended and
    * the list never drops any. Neither holds since events are placed by
    * timestamp and capped: a late 10:02 inserted before an existing 10:03
@@ -256,7 +256,7 @@ function MonitoringView() {
   );
 
   /*
-   * Delta2 review MEDIUM-2: this depended on `autoFollow` alone, so it fired
+   * this depended on `autoFollow` alone, so it fired
    * when the toggle changed and never again. That was survivable while
    * arrivals were PREPENDED (they landed in view at the top); now that events
    * are placed chronologically and the newest sits at the bottom, an arrival
@@ -382,7 +382,7 @@ function MonitoringView() {
             onScrollToBottom={scrollToBottom}
           />
           <MetricsPanel />
-          {/* station#1398 slice 4: the routing receipt is the differentiator,
+          {/* archive#1398: the routing receipt is the differentiator,
               so it lives on the surface an operator already opens to ask
               what this Station has been doing. */}
           <FleetReceipts />

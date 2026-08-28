@@ -58,7 +58,7 @@ export function MonitoringSidebar({
             // conversation controls below, and a button's descendants are
             // flattened to presentational in accessibility APIs — a screen
             // reader user would never discover "Active Chats" inside it
-            // (review HIGH, PR #1277 round 2). The card stays a mouse
+            //  The card stays a mouse
             // convenience surface for the whole area; the real keyboard
             // control is the agent-header row, a SIBLING of the
             // conversation list.

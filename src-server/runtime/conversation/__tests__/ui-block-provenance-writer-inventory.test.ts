@@ -1,5 +1,5 @@
 /**
- * station#1399 fix round 2, B3 (independent review) — a writer-inventory
+ * archive#1399 fix round 2, B3 (independent review) — a writer-inventory
  * ratchet for UI-block provenance sanitization, in the shape of this repo's
  * existing pinned-list-plus-discovery-sweep inventory tests (e.g.
  * `src-ui/src/__tests__/authenticated-stream-inventory.test.ts`).
@@ -192,8 +192,8 @@ describe('UI-block provenance — writer/server inventory ratchet (station#1399 
       emitCalls: 1,
     },
     'src-server/services/orchestration/conversation-lineage.ts': {
-      // appendConversationFork (moved from the service by epic #4024
-      // slice 5, #4155) and appendConversationForkIfAbsent, the retry-safe
+      // appendConversationFork (moved from the service by epic archive#4024
+      // slice 5, archive#4155) and appendConversationForkIfAbsent, the retry-safe
       // twin. Both route through safeSanitizeUIBlockEventProvenance, which
       // is the property this ratchet exists to hold; the pattern counts
       // `.appendEventIfAbsent(` deliberately, so the second writer is a

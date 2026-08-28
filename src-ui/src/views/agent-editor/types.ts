@@ -27,7 +27,7 @@ export interface AgentFormData {
    * Every contract tool field, all present. Deriving this instead of listing
    * it means a field added to `AgentTools` becomes a COMPILE ERROR here until
    * the form models it — rather than being silently dropped on save, which is
-   * exactly how `aliases` was lost (station#2693).
+   * exactly how `aliases` was lost (archive#2693).
    */
   tools: Required<AgentTools>;
   /**
@@ -51,11 +51,11 @@ export interface AgentFormData {
     runtimeOptions: Record<string, unknown>;
     modelOptions?: Record<string, unknown>;
     /**
-     * station#3530: which credential profile (account) of the bound engine
+     * archive#3530: which credential profile (account) of the bound engine
      * this agent runs on. Preserved and displayed in the Engine tab; not
      * editable in this UI yet (same contract as `delegation` above) — an
      * account picker needs a way to enrol more than one account per engine
-     * first (#3532).
+     * first (archive#3532).
      *
      * It must round-trip even though nothing here edits it: the save payload
      * builds `execution` as an explicit whitelist, so a field absent from
@@ -69,16 +69,16 @@ export interface AgentFormData {
   skills: string[];
   /**
    * Owning project slug; `''` = global (agent-engine-unification.md §3.3,
-   * station#1004 unification slice 7). Rendered by the Basic tab's Project
+   * archive#1004 unification). Rendered by the Basic tab's Project
    * `<select>`.
    */
   project: string;
 }
 
-/** The editor's active-tab key — station#975 D-1: derived per-agent from
+/** The editor's active-tab key — archive#975: derived per-agent from
  * `deriveAgentEditorTabs` (packages/contracts/src/agent-capability-profile.ts)
- * instead of a fixed per-type set (`AgentType` itself retired in slice 6,
- * station#1003). */
+ * instead of a fixed per-type set (`AgentType` itself retired in,
+ * archive#1003). */
 export type AgentEditorTab = AgentEditorTabKey;
 
 export interface AgentEditorFormProps {
@@ -93,7 +93,7 @@ export interface AgentEditorFormProps {
    * Whether this agent must author its own system prompt — the engine's
    * `systemPrompt.state` combined with the reserved-`station` exemption, the
    * SAME predicate the save validates against. The field's required marker
-   * and the Create gate both read it (station#3741).
+   * and the Create gate both read it (archive#3741).
    */
   promptIsRequired: boolean;
   availableTools: Tool[];

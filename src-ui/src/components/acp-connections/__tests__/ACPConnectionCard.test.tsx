@@ -44,7 +44,7 @@ function renderCard() {
 }
 
 /**
- * station#1111: the card puts `onClick` on its root `<div>` and renders the
+ * archive#1111: the card puts `onClick` on its root `<div>` and renders the
  * confirm dialog inside it. The dialog portals to `document.body`, but React
  * synthetic events follow the React tree, so backing out of "remove this
  * connection" used to select the connection the user had just decided to keep.

@@ -1,5 +1,5 @@
 /**
- * station#3344: pins each engine's `imageInput` matrix cell to the SAME
+ * archive#3344: pins each engine's `imageInput` matrix cell to the SAME
  * declaration the server actually enforces.
  *
  * There are two places the answer "can a pasted image reach this model?" is
@@ -17,7 +17,7 @@
  * Two writings of one fact drift. This test is the join: for every engine that
  * has both, the cell and the adapter must agree in both directions. If a new
  * engine gains image support in its adapter and nobody updates the cell, the
- * composer keeps refusing pastes it should accept — the exact defect #3344 was
+ * composer keeps refusing pastes it should accept — the exact defect archive#3344 was
  * filed for. If a cell claims support the adapter does not declare, the paste
  * is accepted and the dispatch throws.
  */
@@ -52,7 +52,7 @@ function stationAgentApprovalDeps() {
  * `bedrock-adapter` and `ollama-adapter` also declare `engineId('station')`,
  * but `execution-target-resolver.ts` routes an unbound Station agent — every
  * ordinary Station chat — to `station-agent`, whose relay is what carries the
- * image (station#1885). Naming the mapping here rather than deriving it from
+ * image (archive#1885). Naming the mapping here rather than deriving it from
  * `engineId` keeps that distinction visible instead of averaging three
  * adapters into one wrong answer.
  */

@@ -259,7 +259,7 @@ describe('BackgroundTasksSheet', () => {
     expect(screen.getByText('Audit the release workflow')).not.toBeNull();
   });
 
-  // station#4196: "N tokens" must not present a cache-exclusive figure as
+  // archive#4196: "N tokens" must not present a cache-exclusive figure as
   // the task's tokens when the provider's declared inclusivity ('disjoint'
   // — claude) backs including cache.
   test('delegate usage includes cache tokens when the provider declares disjoint inclusivity', () => {

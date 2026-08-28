@@ -2,7 +2,7 @@ import { createLogger } from './logger.js';
 
 /**
  * Turning a SQLite database's journal mode to WAL at open — the one place
- * that knows this pragma is special (station#3661).
+ * that knows this pragma is special (archive#3661).
  *
  * `PRAGMA journal_mode = WAL` on a database that is still in rollback-journal
  * mode is a mode CONVERSION, and a conversion needs an exclusive lock on the
@@ -19,7 +19,7 @@ import { createLogger } from './logger.js';
  * The exposure is therefore exactly first boot with a concurrent second
  * instance — a brand-new home opened by the desktop app and `station start`
  * at once, or two agent instances sharing a home. It was reproduced in
- * station#3646's three-process upgrade test at roughly one run in two.
+ * archive#3646's three-process upgrade test at roughly one run in two.
  *
  * A short bounded retry is the whole fix, and it belongs here rather than in
  * each store: five call sites set WAL at open, four of them swallowed the
@@ -34,13 +34,13 @@ import { createLogger } from './logger.js';
  * header property the next uncontended open will set anyway.
  *
  * Callers do not use it directly. `applyWalJournalMode` is the wrapper every
- * store shares (station#3661 review MEDIUM-1): it names the store, reads the
+ * store shares (archive#3661 review MEDIUM-1): it names the store, reads the
  * journal mode actually in effect afterwards, and logs a failure once — so a
  * database left in rollback-journal mode is an observable event rather than a
  * silence six call sites each chose independently. It also carries the one
  * knob that differs between them: `onUnavailable: 'throw'` restores the
  * fail-closed startup two stores had before this change, for NON-contention
- * failures only. Contention is exactly what #3661 says must not kill a boot.
+ * failures only. Contention is exactly what archive#3661 says must not kill a boot.
  */
 
 /** Just enough of `node:sqlite`'s DatabaseSync for this pragma. */
@@ -178,7 +178,7 @@ export interface ApplyWalJournalModeOptions
   readonly store: string;
   /**
    * `'throw'` restores the fail-closed open two stores had before
-   * station#3661, for NON-contention failures only: a store that cannot be
+   * archive#3661, for NON-contention failures only: a store that cannot be
    * opened because of I/O or a read-only home should not come up pretending
    * to be healthy, but a boot that merely lost a race must.
    */

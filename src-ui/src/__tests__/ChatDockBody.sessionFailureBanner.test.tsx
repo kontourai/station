@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3213. The chat dock had NO failure surface. Its only failure
+ * archive#3213. The chat dock had NO failure surface. Its only failure
  * rendering was `turnHandlers.ts`'s append of a LIVE `runtime.error` into the
  * streaming bubble, so a user who reached an already-failed session any way
  * other than watching it die — a project deep link, a tab switch, resuming
@@ -32,7 +32,7 @@ vi.mock('@kontourai/station-connect', () => ({
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agentsMock.current,
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 
@@ -383,7 +383,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     );
   });
 
-  // UX audit T5 (live): `orchestrationSessionStarted` IS rehydrated from
+  // `orchestrationSessionStarted` IS rehydrated from
   // storage, and the sessions query's `data` defaults to `[]` until it
   // resolves — so a healthy session claimed "Session record missing" on EVERY
   // reload for about a second. Absence is only established once the read has

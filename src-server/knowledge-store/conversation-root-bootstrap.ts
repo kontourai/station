@@ -1,5 +1,5 @@
 /**
- * Boot-time wiring for the `root:conversations` K2 root (station#1879). Two
+ * Boot-time wiring for the `root:conversations` K2 root (archive#1879). Two
  * distinct actions, deliberately gated differently:
  *
  *   1. `provider.registerAdapter(...)` — ALWAYS runs, unconditionally. This is

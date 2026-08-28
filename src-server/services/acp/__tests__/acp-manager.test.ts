@@ -26,7 +26,7 @@ vi.mock('../acp-probe.js', () => ({
 import { ACPManager } from '../acp-manager.js';
 
 /**
- * station#1908: end-to-end proof, through the real `ACPManager` and its
+ * archive#1908: end-to-end proof, through the real `ACPManager` and its
  * real 60-second `setInterval`, that the periodic probe loop no longer
  * re-spawns an already-fresh connection on every single tick forever.
  */
@@ -58,7 +58,7 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
     expect(probe.probe).toHaveBeenCalledTimes(1);
 
     // Advance 30 minutes of the manager's real 60s timer -- the exact
-    // cadence station#1908 measured spawning the engine binary forever,
+    // cadence archive#1908 measured spawning the engine binary forever,
     // roughly 2x/minute once codex/claude connections are counted too.
     for (let i = 0; i < 30; i++) {
       await vi.advanceTimersByTimeAsync(60_000);

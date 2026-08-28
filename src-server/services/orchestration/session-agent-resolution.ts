@@ -1,5 +1,5 @@
 /**
- * #895 wave A/B: per-agent capability delivery, resolution stage
+ * archive#895 wave A/B: per-agent capability delivery, resolution stage
  * (docs/design/agent-engine-unification.md §3.2/§5/§6.2).
  *
  * Enriches a `startSession` command's input with a `ResolvedAgentDefinition`
@@ -20,7 +20,7 @@
  * three injected callbacks. The resolver itself never throws — resolution is
  * defensive enrichment, matching the same defensive-isolation contract as
  * `acp-adapter.ts`'s passthrough resolution. Its OUTPUT is load-bearing,
- * though (station#3027): whether a definition was attached feeds
+ * though (archive#3027): whether a definition was attached feeds
  * `sessionAgentStartUnavailableReason` below, which
  * `resolveSessionAgentForStart` (orchestration-service.ts) enforces as a
  * fail-closed authored-spec gate at session start for every
@@ -70,7 +70,7 @@ export type ResolveSessionAgent = (
  * resolution found the same Agent definition the session resolver would
  * attach.
  *
- * station#3027: provider-INDEPENDENT by design. The original claude-only
+ * archive#3027: provider-INDEPENDENT by design. The original claude-only
  * check left every other engine default (codex, kiro, opencode, muse)
  * starting spec-less, and any provider name-list here would silently miss
  * kiro/opencode — they dispatch at runtime with provider 'acp'. So this
@@ -119,7 +119,7 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
   return {
     name: 'Station',
     prompt: '',
-    // station#1547: `station-docs` sits beside `station-control` here, and the
+    // archive#1547: `station-docs` sits beside `station-control` here, and the
     // pairing is deliberate rather than symmetrical. `station-control` is the
     // control-plane capability the comment above guards — it carries env
     // (`STATION_API_BASE`/`STATION_PORT`) and is delivered only where the
@@ -140,7 +140,7 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
 }
 
 /**
- * Station#975 (unification slice 5) D-2: derived from the single-source
+ * Station#975 (unification) D-2: derived from the single-source
  * `ENGINE_CAPABILITY_MATRICES` (packages/contracts/src/engine-capability-matrix.ts)
  * instead of a locally-owned map, so the editor's capability truth and this
  * resolver's session-delivery truth cannot diverge. A provider absent from
@@ -150,11 +150,11 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
  * still author it, but this engine has no channel for it this wave — that
  * is receipted `engine-unsupported`, never silently dropped.
  *
- * #895 wave B: codex has NO channels — an authored capability on a
+ * archive#895 wave B: codex has NO channels — an authored capability on a
  * codex-bound agent is receipted engine-unsupported (before that wave
  * codex authored fields were dropped with no receipt at all).
  *
- * #896 wave 2 evidence gate (docs/design/agent-engine-unification.md
+ * archive#896 wave 2 evidence gate (docs/design/agent-engine-unification.md
  * §4.1/§6.1): `codex app-server generate-json-schema` against the installed
  * codex-cli 0.145.0 CONFIRMS `developerInstructions` as a wire param on
  * `ThreadStartParams`, `ThreadResumeParams`, and `ThreadForkParams` — the
@@ -253,7 +253,7 @@ export function createSessionAgentResolver(
 
       const authoredToolServers = spec.tools?.mcpServers;
       if (authoredToolServers !== undefined) {
-        // Station#1157 (extended station#1195): the canonical built-in
+        // Station#1157 (extended archive#1195): the canonical built-in
         // station-control server is the ONE exemption from the blanket
         // secret-boundary-env filter below, and ONLY when this engine's
         // matrix names a `builtinStationControlDelivery` substitution
@@ -263,12 +263,12 @@ export function createSessionAgentResolver(
         // (`STATION_API_BASE`/`STATION_PORT`) never actually reaching this
         // engine: 'env' for Claude's 'subprocess' channel (the Agent SDK
         // spawns the MCP child itself, inside STATION'S OWN PROCESS) and
-        // 'url-token' for Codex's 'wire' channel (station#1195:
+        // 'url-token' for Codex's 'wire' channel (archive#1195:
         // codex-mcp-passthrough.ts substitutes a per-session, short-lived,
         // station-control-scoped bearer token riding a URL query string —
         // never env — because `codex app-server` independently manages its
         // own outbound MCP connections and can never safely receive env).
-        // ACP is ALSO 'wire' and, since station#1684, names its own
+        // ACP is ALSO 'wire' and, since archive#1684, names its own
         // 'http-header-token' mechanism — so it too is exempt HERE. What
         // that does NOT mean is that every ACP session gets
         // station-control: ACP's mechanism carries
@@ -279,7 +279,7 @@ export function createSessionAgentResolver(
         // rejecting station-control here — this keys on the matrix (single
         // source of truth), never a hardcoded per-engine id check.
         //
-        // station#1549 — DOC CONTRACT, read before flagging drift: this
+        // archive#1549 — DOC CONTRACT, read before flagging drift: this
         // exemption and `engineControlPlaneCapability` (the picker/binding
         // predicate) used to be documented as the SAME predicate. They are
         // now intentionally different questions over the same cell:
@@ -407,7 +407,7 @@ export function createSessionAgentResolver(
         definition.autoApprove = spec.tools.autoApprove;
       }
 
-      // #895 wave B: the prompt is on the spec, not a resolved id — no
+      // archive#895 wave B: the prompt is on the spec, not a resolved id — no
       // resolveOne I/O, unlike toolServers/skills above. There is no
       // connection-level prompt default anywhere in the codebase, so
       // `source` is always 'agent' (never 'connection-default').

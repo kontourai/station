@@ -1,5 +1,5 @@
 /**
- * Coachmark — one anchored first-run popover (station#2652 chapter 3).
+ * Coachmark — one anchored first-run popover (archive#2652 chapter 3).
  *
  * Placement follows `InfoTip`'s proven approach (measure the anchor, clamp to a
  * viewport gutter, flip above/below, reposition on resize and capture-phase
@@ -188,7 +188,7 @@ export function Coachmark({
   useEffect(() => {
     if (place()) return bindReposition(place);
     // Coalesce into one measurement per frame: this observes the whole document
-    // during a route change plus its data load, and `place()` runs a
+    // during a route change plus its data load, and `place` runs a
     // `querySelectorAll` — running it per mutation would be a full-document
     // scan on every DOM write for up to ANCHOR_WAIT_MS.
     let pending: number | null = null;

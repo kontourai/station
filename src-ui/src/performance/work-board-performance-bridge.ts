@@ -1,5 +1,5 @@
 /**
- * Board-owned performance seam for station#3806.
+ * Board-owned performance seam for archive#3806.
  *
  * The SpatialBoard pane registers this driver only after it can perform the
  * real restore, resolver and pointer actions. Keeping this interface here

@@ -10,7 +10,7 @@ interface PermissionPostureBadgeProps {
 }
 
 /**
- * Row-level permission-posture badge (station#1424): flags a read-only
+ * Row-level permission-posture badge (archive#1424): flags a read-only
  * -attached row so a reader never mistakes it for an ordinary station-owned
  * turn. `posture` absent/null renders nothing — the common case (an
  * ordinary session has no posture to flag).

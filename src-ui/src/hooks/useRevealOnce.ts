@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 
 /**
- * Identity-keyed reveal-once entrances (station#2651).
+ * Identity-keyed reveal-once entrances (archive#2651).
  *
  * A transcript block gets its entrance animation the FIRST time its stable
  * identity (tool call id, message id) is ever rendered — and never again.

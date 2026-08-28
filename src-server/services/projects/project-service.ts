@@ -125,7 +125,7 @@ async function checkWorktreeDirectory(
       // below as reason 'missing' — producing "configured working directory
       // '~/dev/x' does not exist", a false statement about a directory that
       // does exist. Worktree isolation was therefore unavailable for every
-      // project created through the UI (station#3155).
+      // project created through the UI (archive#3155).
       [
         '-C',
         resolve(expandTilde(workingDirectory)),
@@ -189,10 +189,10 @@ export class ProjectService {
   /**
    * `manifests` is optional so a caller that only needs project CRUD (tests,
    * migrations) is not forced to construct a manifest store. Production wires
-   * it in `runtime-service-bootstrap.ts`: station#1499 writes a manifest
+   * it in `runtime-service-bootstrap.ts`: archive#1499 writes a manifest
    * sidecar for every NEW project so the legacy `workingDirectory`-only path
    * shrinks monotonically instead of persisting as a permanent second mode
-   * (`docs/design/portable-project-identity.md` §5, and its #1302
+   * (`docs/design/portable-project-identity.md` §5, and its archive#1302
    * "designed but dead" precedent).
    */
   constructor(
@@ -222,7 +222,7 @@ export class ProjectService {
     name = name || config.name;
 
     // Derive slug from name when the caller omits it — the storage layer
-    // requires a slug for the on-disk project path (#597).
+    // requires a slug for the on-disk project path (archive#597).
     let slug = config.slug?.trim();
     if (!slug) {
       const base = slugifyProjectName(name);
@@ -320,7 +320,7 @@ export class ProjectService {
   }
 
   /**
-   * Persists the explicit sidebar order (station#3315): `order` is the WHOLE
+   * Persists the explicit sidebar order (archive#3315): `order` is the WHOLE
    * project set, and each slug gets `position` = its index.
    *
    * A partial payload is refused, by cardinality and membership against the

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3354 — the highlight worker pool: result resolution, the wedge
+ * archive#3354 — the highlight worker pool: result resolution, the wedge
  * timeout that recycles a hung worker, and the two properties the pool's
  * docstring claims and the first cut did not have — a wedge takes down only
  * its own request (no cascade through co-scheduled work), and the deadline
@@ -282,7 +282,7 @@ describe('withWorkerErrorFallback (station#3354 review MEDIUM-3)', () => {
     // the queue. The worker then emits `error` (CSP `worker-src`, an offline
     // chunk fetch) and `onWorkerError` disposes the pool. If `dispose` did
     // not drain the queue, blocks 2 and 3 would never settle at all —
-    // `pump()` early-returns on `disposed` and nothing re-pumps — so they
+    // `pump` early-returns on `disposed` and nothing re-pumps — so they
     // would render plain <pre> forever, leak their promises, and never reach
     // the main-thread fallback this wrapper exists to route them to.
     const { factory, workers } = fakeWorkerFactory();

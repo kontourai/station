@@ -21,7 +21,7 @@ export function useModelCapabilities(): ModelCapability[] {
 
 /**
  * What this catalog actually knows about `modelId`'s image input, kept as
- * three states (station#3344).
+ * three states (archive#3344).
  *
  * The catalog is Bedrock-only (`GET /api/models/capabilities` projects
  * `ListFoundationModels`), so a Claude Code, Codex, ACP or Ollama model id has

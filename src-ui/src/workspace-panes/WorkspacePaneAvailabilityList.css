@@ -1,9 +1,9 @@
 /*
- * station#1868: this stylesheet did not exist — the catalog rendered with
+ * archive#1868: this stylesheet did not exist — the catalog rendered with
  * browser-default list chrome. A test asserts every class the component emits
  * has a rule here; keep that contract when adding classes.
  *
- * station#3318: the flat status-row list became a visual card grid. Visual
+ * archive#3318: the flat status-row list became a visual card grid. Visual
  * language is still borrowed from `views/ProjectPage.css`'s `project-page__*`
  * cards, because both render sites (`ProjectWorkspacePaneCatalog.tsx` and
  * `WorkspacePaneRouteView.tsx`) sit in project-page contexts.
@@ -225,7 +225,7 @@
   color: var(--text-secondary, #9aa0a6);
 }
 
-/* station#3348: the card's second tap target. The Open and remediation buttons
+/* archive#3348: the card's second tap target. The Open and remediation buttons
    sit in `__actions` and take index.css's shared mobile floor from it; this one
    is the state badge, which belongs beside the name in `__heading` and cannot
    move into that row without ceasing to be a badge — so it declares the floor

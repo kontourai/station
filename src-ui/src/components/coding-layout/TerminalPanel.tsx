@@ -376,7 +376,7 @@ function CommandExecutor({ workingDir }: { workingDir: string }) {
   const [input, setInput] = useState('');
   // Mirror of the composer's unmount guard: blur never fires for an
   // unmounted terminal, and a stuck terminalFocused would suppress every
-  // {not:'terminalFocused'} shortcut globally (sol review finding).
+  // {not:'terminalFocused'} shortcut globally.
   useEffect(() => () => setShortcutContext('terminalFocused', false), []);
 
   const [history, setHistory] = useState<string[]>([]);

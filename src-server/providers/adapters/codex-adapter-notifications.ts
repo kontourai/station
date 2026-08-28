@@ -182,7 +182,7 @@ export function handleCodexNotification(
       const turnId = extractString(turn.id);
       if (!turnId) return;
       const outputText = record.turnOutput.get(turnId);
-      // station#3451 fix round D8 / station#3572(a) (widened): only touch
+      // archive#3451 fix round D8 / archive#3572(a) (widened): only touch
       // the CURRENTLY active turn's bookkeeping — `activeTurnId`,
       // `activeTurnStartedAt`, AND the duration metric that reads it — when
       // this notification actually names that turn. Mirrors the
@@ -211,7 +211,7 @@ export function handleCodexNotification(
         record.activeTurnId = undefined;
         record.activeTurnStartedAt = undefined;
       }
-      // station#3473 fix round: this notification ALWAYS publishes a real
+      // archive#3473 fix round: this notification ALWAYS publishes a real
       // terminal below (turn.completed, or runtime.error for the failed
       // branch) — mark it before either publish path so a concurrent
       // `stopSession`/process-exit synthesis (`publishOrphanedTurnFailure`)
@@ -223,7 +223,7 @@ export function handleCodexNotification(
         updatedAt: nowIso(),
         resumeCursor: { codexThreadId: record.codexThreadId, turnId },
       };
-      // station#3442: Codex reports a genuinely failed turn (e.g. a
+      // archive#3442: Codex reports a genuinely failed turn (e.g. a
       // usage-limit or context-window exhaustion mid-turn) through the SAME
       // `turn/completed` notification as a success — `turn.status` is the
       // real signal (app-server protocol: completed | interrupted | failed |
@@ -246,7 +246,7 @@ export function handleCodexNotification(
           severity: 'error',
           turnId,
           message: extractString(turnError?.message) ?? 'Codex turn failed.',
-          // station#3451 finding 3: `turn.status === 'failed'` is codex's own
+          // archive#3451 finding 3: `turn.status === 'failed'` is codex's own
           // final word on this turn — the opposite of the `'error'`
           // notification's `willRetry` signal below, so `retriable: false`
           // is a real fact, not a guess. `code` is a plain passthrough of
@@ -291,7 +291,7 @@ export function handleCodexNotification(
       }
       const errorTurnId = extractString(notification.params.turnId);
       const willRetry = Boolean(notification.params.willRetry);
-      // station#3451 finding B2: when `willRetry` is falsy this event IS a
+      // archive#3451 finding B2: when `willRetry` is falsy this event IS a
       // genuine terminal for the turn it names — every consumer downstream
       // (the lifecycle fold, the stall watchdog, the trackEngineTurn
       // telemetry gate, turn-checkpoint-capture's settle capture) already

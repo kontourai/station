@@ -1,5 +1,5 @@
 /**
- * station#2802 fix round (M3) — the read path must observe the retention
+ * archive#2802 fix round (M3) — the read path must observe the retention
  * bound. Served `captured` records carry a computed objectStatus derived
  * from the LIVE git object store, so an index record whose checkpoint
  * commit was pruned (post `gc.reflogExpire`) can never present as an

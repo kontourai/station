@@ -1,7 +1,7 @@
 /**
  * device-settings-store — the unified, versioned, device-scope client-
  * settings store (docs/design/settings-architecture.md §3 "S3. Device",
- * §6 slice 2). Module-singleton pattern modeled on
+ * §6). Module-singleton pattern modeled on
  * `src-ui/src/contexts/onboarding-setup-store.ts` (subscribe/getSnapshot/
  * notify for `useSyncExternalStore`).
  *
@@ -15,11 +15,11 @@
  * localStorage key, it parses that raw value per the setting's descriptor,
  * folds the result into the new envelope, writes the envelope, and removes
  * the prior key — but ONLY once the envelope write is confirmed to have
- * landed (station#settings-revamp slice2 review finding 1; see
+ * landed (archive#settings-revamp; see
  * `migrateFromPriorStorage` below). This is a single-writer-per-tab app, but two
  * tabs of the same origin ARE two independent writers of this one
  * localStorage key — every mutator does a read-merge-write against the
- * freshly-read persisted envelope (finding 3), and a `storage` event
+ * freshly-read persisted envelope, and a `storage` event
  * listener live-syncs an out-of-band change from another tab (or a second
  * concurrent migration) into this tab's snapshot.
  */
@@ -38,7 +38,7 @@ import type { SettingValueDescriptor } from '@kontourai/station-contracts/settin
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
-/** See the doc comment on `notify()` below. */
+/** See the doc comment on `notify` below. */
 const PRIOR_DEVICE_SETTINGS_EVENT = 'station-device-settings-changed';
 
 /**
@@ -47,14 +47,14 @@ const PRIOR_DEVICE_SETTINGS_EVENT = 'station-device-settings-changed';
  * renamed, restructured, or split). `runMigrationLadder` below is the
  * scaffold that future slices extend.
  *
- * v1 -> v2 (station#settings-revamp slice 3 review finding 1): backfills
+ * v1 -> v2 (archive#settings-revamp): backfills
  * any `priorRead`-bearing key (`shortcutOverrides`, `modelPickerPreferences`)
- * missing from an ALREADY-EXISTING v1 envelope from the shared #1359 root —
+ * missing from an ALREADY-EXISTING v1 envelope from the shared archive#1359 root —
  * see `migrateEnvelopeV1ToV2` below. This closes a real reachability gap:
  * `migrateFromPriorStorage` (the store's other prior-setting import path) only runs when
  * the envelope key is entirely ABSENT, but slice 2 (already live on main
  * before this slice) writes an empty v1 envelope on every device's first
- * boot — so the exact devices with real #1359 customizations never hit that
+ * boot — so the exact devices with real archive#1359 customizations never hit that
  * path at all, and without this ladder step their `station.device-settings`
  * root would silently orphan and their customizations would read back as
  * registry defaults.
@@ -69,8 +69,7 @@ export interface DeviceSettingsEnvelope {
 export interface DeviceSettingsImportResult {
   /**
    * Registered keys present in the imported file whose value failed
-   * descriptor validation (station#settings-revamp slice2 review finding
-   * 2) — dropped rather than merged. Every other present, valid key was
+   * descriptor validation (archive#settings-revamp) — dropped rather than merged. Every other present, valid key was
    * merged into the store.
    */
   droppedKeys: (keyof DeviceSettings)[];
@@ -78,7 +77,7 @@ export interface DeviceSettingsImportResult {
 
 /**
  * Thrown by `importEnvelope` when the file's envelope version is newer than
- * this app understands (finding 2) — surfaced by the import flow
+ * this app understands — surfaced by the import flow
  * (`views/settings/utils.ts` → `SettingsView.tsx`) as a specific message
  * instead of a generic "Invalid settings file".
  */
@@ -153,8 +152,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Parses a raw prior shared-root string (station#settings-revamp slice 3
- * #1359 convergence) into a plain object, or `null` when the raw value is
+ * Parses a raw prior shared-root string (archive#settings-revamp slice 3
+ * archive#1359 convergence) into a plain object, or `null` when the raw value is
  * absent, malformed JSON, or not an object — the caller then just skips a
  * `null` root rather than crashing app boot on a corrupt prior value.
  */
@@ -196,7 +195,7 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
     case 'string':
       return raw as DeviceSettings[K];
     case 'number': {
-      // station#settings-revamp slice 4 review note: `Number('')` and
+      // archive#settings-revamp note: `Number('')` and
       // `Number('   ')` both coerce to `0`, not NaN — an empty/whitespace
       // raw value must fall back to `defaultValue` explicitly rather than
       // silently landing on 0 for a setting whose real default is
@@ -231,7 +230,7 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
 
 /**
  * The known boolean-field shape of each composite device setting — used
- * only to validate an IMPORTED composite value's structure (finding 2: a
+ * only to validate an IMPORTED composite value's structure (a
  * `{version:1, values:{inboxSections:null}}` file, or one with a non-
  * boolean field, must be dropped rather than accepted and later crash a
  * consumer that dereferences it). A field missing from the imported object
@@ -240,14 +239,13 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
  *
  * `shortcutOverrides`/`modelPickerPreferences` are validated by their own
  * dedicated checks below (`validateShortcutOverrides`/
- * `validateModelPickerPreferences`) instead of this table — station#
- * settings-revamp slice 3 review finding 2: neither had a shape entry here
+ * `validateModelPickerPreferences`) instead of this table — archive#settings-revamp: neither had a shape entry here
  * at all, so `structurallyValid` silently defaulted to `true` for ANY
  * plain object, letting a malformed import (e.g. `modelPickerPreferences.
  * order` as a string, or a `shortcutOverrides` binding with a non-string
  * `key`) persist and later crash a real consumer
  * (`SessionModelPicker.tsx`'s `preferences.order.map`,
- * `KeyboardShortcutsSection.tsx`'s `shortcut.key.toUpperCase()`).
+ * `KeyboardShortcutsSection.tsx`'s `shortcut.key.toUpperCase`).
  */
 const COMPOSITE_BOOLEAN_FIELDS: Readonly<Record<string, readonly string[]>> = {
   featureSettings: [
@@ -300,8 +298,8 @@ function validateFeatureSettings(
 /**
  * Validates an imported `shortcutOverrides` composite: EVERY entry must be
  * a valid binding or `null` (`normalizePriorShortcutBinding` — shared with
- * the prior-root migration reader, station#settings-revamp slice 3 review
- * finding 2) or the whole value is rejected, matching the field-level
+ * the prior-root migration reader, archive#settings-revamp) or the whole
+ * value is rejected, matching the field-level
  * (not per-entry) drop granularity every other composite in this module
  * uses. Valid imports are re-normalized (modifier de-dup) rather than
  * passed through raw.
@@ -331,7 +329,7 @@ const MODEL_PICKER_LIST_FIELDS = [
  * wrong-TYPE field (e.g. `order: "not-an-array"`) fails the whole value
  * rather than being silently coerced to `[]` by `priorStringList` (which
  * is a lenient coercer for a value already known to be an array — see its
- * own doc comment, station#settings-revamp slice 3 review finding 2).
+ * own doc comment, archive#settings-revamp).
  * A structurally-valid array is then sanitized through `priorStringList`
  * (shared with the prior-root migration reader), matching
  * `updateModelPickerPreferences`'s own 20-item `recents` cap.
@@ -379,7 +377,7 @@ function validateImportedValue<K extends keyof DeviceSettings>(
       if (candidate === null) {
         // `accentColor` and `chatDockProjectSlug` are the nullable
         // string-kind device settings — `null` is each one's legitimate
-        // "no override"/"no project bound" value (station#4525).
+        // "no override"/"no project bound" value (archive#4525).
         return definition.key === 'accentColor' ||
           definition.key === 'chatDockProjectSlug'
           ? { valid: true, value: null as DeviceSettings[K] }
@@ -400,7 +398,7 @@ function validateImportedValue<K extends keyof DeviceSettings>(
       if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
         return { valid: false };
       }
-      // station#settings-revamp slice 4 review finding 2: an in-bounds
+      // archive#settings-revamp: an in-bounds
       // check was missing entirely — an imported `chatFontSize: 5000` (or
       // `-12`, or `3.7` against an `integer: true` descriptor) landed
       // unclamped into an inline `fontSize` style (ChatSettingsPanel's A−/A+
@@ -515,7 +513,7 @@ function isPlainEnvelopeShape(value: unknown): value is DeviceSettingsEnvelope {
   );
 }
 
-/** Compares two resolved device-setting values (primitives or the small composite objects) for the same-value no-op check in `set()`. */
+/** Compares two resolved device-setting values (primitives or the small composite objects) for the same-value no-op check in `set`. */
 function valuesEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (
@@ -534,7 +532,7 @@ function valuesEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * v1 -> v2 (station#settings-revamp slice 3 review finding 1): for every
+ * v1 -> v2 (archive#settings-revamp): for every
  * `priorRead`-bearing registry entry MISSING from an existing v1 envelope,
  * read its shared prior settings root, extract the value, and fold it in — the
  * targeted backfill for devices that already have a (slice-2, pre-slice-3)
@@ -567,7 +565,7 @@ function migrateEnvelopeV1ToV2(
   for (const definition of missingPriorReadDefinitions) {
     // Every `priorRead`-bearing entry declares its shared `priorStorageKey`
     // (see that field's doc comment) — this guard is only for the type
-    // (station#settings-revamp slice 4 made the field optional for the
+    // (archive#settings-revamp made the field optional for the
     // no-prior-key entries added that slice, none of which declare
     // `priorRead`).
     const priorStorageKey = definition.priorStorageKey;
@@ -608,7 +606,7 @@ function migrateEnvelopeV1ToV2(
  * or with an unrecognized/malformed shape, is treated conservatively rather
  * than thrown away wholesale: unrecognized shapes fall back to an empty,
  * current-version envelope. (`importEnvelope` rejects a genuinely-future
- * version with a thrown error BEFORE calling this — see finding 2 — so by
+ * version with a thrown error BEFORE calling this — so by
  * the time a future version reaches this loop it is only ever from the
  * general boot-time load path, which must never throw.)
  */
@@ -651,7 +649,7 @@ class DeviceSettingsStore {
     this.snapshot = this.resolve();
     this.hydratedState = true;
 
-    // Cross-tab live sync + migration self-heal (finding 3). Per spec (and
+    // Cross-tab live sync + migration self-heal. Per spec (and
     // MDN), the `storage` event never fires in the document that made the
     // write — only in OTHER same-origin tabs/windows/iframes — so this
     // cannot loop on our own writes; no self-write guard is needed.
@@ -675,7 +673,7 @@ class DeviceSettingsStore {
   /**
    * One-time: fold every present prior key into a new envelope. Prior
    * keys are removed ONLY once the envelope write is confirmed to have
-   * landed (station#settings-revamp slice2 review finding 1) — `writeRaw`
+   * landed (archive#settings-revamp) — `writeRaw`
    * used to be called and its result ignored, so a quota-full browser lost
    * every migrated setting permanently the moment this ran: the envelope
    * silently failed to persist, then the prior keys were deleted anyway.
@@ -687,8 +685,8 @@ class DeviceSettingsStore {
    */
   private migrateFromPriorStorage(): DeviceSettingsEnvelope {
     const values: Partial<DeviceSettings> = {};
-    // A Set: entries sharing one priorStorageKey (station#settings-revamp
-    // slice 3 #1359 convergence — `shortcutOverrides`/`modelPickerPreferences`
+    // A Set: entries sharing one priorStorageKey (archive#settings-revamp
+    // slice 3 archive#1359 convergence — `shortcutOverrides`/`modelPickerPreferences`
     // both read `station.device-settings`) must only queue that key once.
     const migratedPriorKeys = new Set<string>();
     // Parsed-once cache for shared-root (`priorRead`) keys, keyed by
@@ -697,7 +695,7 @@ class DeviceSettingsStore {
     const sharedRootCache = new Map<string, Record<string, unknown> | null>();
 
     for (const definition of DEVICE_SETTINGS_REGISTRY) {
-      // station#settings-revamp slice 4: a setting with neither `priorRead`
+      // archive#settings-revamp: a setting with neither `priorRead`
       // nor `priorStorageKey` was never persisted pre-unification (e.g.
       // `chatShowReasoning`, `chatFontSize`) — nothing to migrate for it.
       if (!definition.priorRead && !definition.priorStorageKey) continue;
@@ -742,7 +740,7 @@ class DeviceSettingsStore {
     return envelope;
   }
 
-  /** Re-reads the persisted envelope fresh (finding 3's read-merge-write basis); falls back to the in-memory envelope when storage has nothing (or nothing readable) yet — e.g. a still-failing quota-full write from `migrateFromPriorStorage`. */
+  /** Re-reads the persisted envelope fresh (this store's read-merge-write basis); falls back to the in-memory envelope when storage has nothing (or nothing readable) yet — e.g. a still-failing quota-full write from `migrateFromPriorStorage`. */
   private readPersistedEnvelope(): DeviceSettingsEnvelope {
     const raw = readRaw(ENVELOPE_STORAGE_KEY);
     if (raw === null) return this.envelope;
@@ -776,7 +774,7 @@ class DeviceSettingsStore {
 
   private notify(): void {
     this.listeners.forEach((listener) => listener());
-    // station#settings-revamp slice 3 (#1359 convergence): #1359's own
+    // archive#settings-revamp (archive#1359 convergence): archive#1359's own
     // window-event name, kept as a generic "envelope changed" broadcast so
     // pre-convergence consumers that still listen for it directly
     // (`KeyboardShortcutsContext.tsx`, `modelPickerPreferences.ts`'s
@@ -817,11 +815,11 @@ class DeviceSettingsStore {
    * envelope is absent), replace the in-memory state, and notify. This is
    * the same refresh the cross-tab `storage` listener performs, exposed for
    * callers that mutate localStorage outside the store's own API — chiefly
-   * consumer TESTS that isolate with `localStorage.clear()` in beforeEach:
+   * consumer TESTS that isolate with `localStorage.clear` in beforeEach:
    * the old per-key readers re-read localStorage on every mount, so
-   * `clear()` alone reset them, but this module-singleton's in-memory state
+   * `clear` alone reset them, but this module-singleton's in-memory state
    * survives across tests unless explicitly reloaded (found via
-   * ChatDockInboxPanel.test.tsx after the #1311 snooze tests landed).
+   * ChatDockInboxPanel.test.tsx after the archive#1311 snooze tests landed).
    */
   reloadFromStorage = (): void => {
     this.envelope = this.loadOrMigrate();
@@ -841,7 +839,7 @@ class DeviceSettingsStore {
   getEnvelope = (): DeviceSettingsEnvelope => this.envelope;
 
   /**
-   * Adopts an imported envelope wholesale (finding 2): throws
+   * Adopts an imported envelope wholesale: throws
    * `DeviceSettingsImportVersionError` for a version newer than this app
    * understands rather than importing it unchanged; every present,
    * registry-known value is validated against its descriptor — invalid
@@ -863,7 +861,7 @@ class DeviceSettingsStore {
     return { droppedKeys };
   };
 
-  /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (finding 3: read-merge-write, not a blind overwrite from this tab's stale snapshot). */
+  /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (read-merge-write, not a blind overwrite from this tab's stale snapshot). */
   merge = (partial: Partial<DeviceSettings>): void => {
     const fresh = this.readPersistedEnvelope();
     this.applyEnvelope({
@@ -875,7 +873,7 @@ class DeviceSettingsStore {
   get = <K extends keyof DeviceSettings>(key: K): DeviceSettings[K] =>
     this.snapshot[key];
 
-  /** Read-merge-write (finding 3); a value equal to the current FRESH value is a true no-op — no snapshot replacement, no persist, no notify. */
+  /** Read-merge-write; a value equal to the current FRESH value is a true no-op — no snapshot replacement, no persist, no notify. */
   set = <K extends keyof DeviceSettings>(
     key: K,
     value: DeviceSettings[K],
@@ -890,7 +888,7 @@ class DeviceSettingsStore {
     });
   };
 
-  /** Clears an explicit override, falling back to the registry default. Read-merge-write (finding 3). */
+  /** Clears an explicit override, falling back to the registry default. Read-merge-write. */
   reset = <K extends keyof DeviceSettings>(key: K): void => {
     const fresh = this.readPersistedEnvelope();
     if (!Object.hasOwn(fresh.values, key)) return;

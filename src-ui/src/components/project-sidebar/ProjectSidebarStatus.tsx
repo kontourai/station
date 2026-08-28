@@ -22,9 +22,9 @@ import './ProjectSidebarStatus.css';
  * Hidden entirely when the sidebar is collapsed (shared
  * `.sidebar--collapsed` rules).
  *
- * station#1300: the count used to render as an inert "N active" span with
+ * archive#1300: the count used to render as an inert "N active" span with
  * only a tooltip explaining it. It is what the WORK list's rows already are
- * (open chat sessions, station#1097/#1053 sessionStorage-backed store), so
+ * (open chat sessions, archive#1097/#1053 sessionStorage-backed store), so
  * the popover uses the shared open-chat navigation action.
  */
 export function ProjectSidebarStatus() {

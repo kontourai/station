@@ -3,7 +3,7 @@
  *
  * Agent workflow routes are live (`/agents/:slug/workflows/*`) and the CLI
  * exposes them, but no UI does — the management view was removed by the
- * #2677 dead-surface sweep because nothing navigated to it (station#2693).
+ * #2677 dead-surface sweep because nothing navigated to it (archive#2693).
  * The editor points operators at this command rather than leaving the
  * capability invisible.
  *

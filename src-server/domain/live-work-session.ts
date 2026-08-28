@@ -1,4 +1,4 @@
-/** #2914: bounded live work with recoverable, exact-once material history. */
+/** archive#2914: bounded live work with recoverable, exact-once material history. */
 import { createHash } from 'node:crypto';
 import type {
   CommittedRevision,

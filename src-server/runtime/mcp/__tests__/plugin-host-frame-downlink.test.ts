@@ -8,7 +8,7 @@ import { buildPluginHostFrameDocument } from '../mcp-ui-frame-server.js';
  * Its only coverage was `tests/plugin-host-security.spec.ts`, which is red on
  * main for an unrelated pane-binding regression, so the most
  * security-sensitive line in the bridge had no green evidence behind it at
- * all (station#4201 review).
+ * all (archive#4201 review).
  *
  * These tests run the REAL emitted script in a VM with the browser globals it
  * expects, and drive real messages through the handler it registers. What

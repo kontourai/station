@@ -1,6 +1,6 @@
 /**
  * The words this page uses for its two dismissal mechanisms, decided once
- * (station#3779).
+ * (archive#3779).
  *
  * The issue reported that a row's own Dismiss DELETES the notification while
  * the bulk action merely acknowledges — "one hides a fact and one destroys a
@@ -22,7 +22,7 @@
  * So BOTH are dismissals, and one word for both is not the lie the issue
  * describes. What genuinely differs is the SUBJECT (a derived attention item
  * vs a stored notification) and terminality: a notification dismissal is
- * recorded as "a real, terminal user decision" — `schedule()` refuses to
+ * recorded as "a real, terminal user decision" — `schedule` refuses to
  * re-raise a dismissed notification for the same dedupe tag, and the source
  * provider is told via `handleDismiss`. An attention acknowledgement makes no
  * such claim.

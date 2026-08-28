@@ -114,7 +114,7 @@ describe('probeServerConnection', () => {
   });
 
   /**
-   * station#3297, the reported defect. A phone measured, at the moment of
+   * archive#3297, the reported defect. A phone measured, at the moment of
    * failure: handshake 200, `/api/system/status` 401, `/health` 403 — and was
    * told "Can't reach station. It may be off, asleep, or on another network."
    *
@@ -171,7 +171,7 @@ describe('probeServerConnection', () => {
     });
 
     it('reads a 200 whose body is not JSON as something else answering', async () => {
-      // A captive portal or proxy. This used to throw out of `.json()` into
+      // A captive portal or proxy. This used to throw out of `.json` into
       // the catch block and be reported as a transport failure.
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         new Response('<html>Sign in to the network</html>', {
@@ -344,7 +344,7 @@ describe('probeServerConnection', () => {
   });
 
   /**
-   * station#1713 — same recognition as `checkServerHealthDetailed` below,
+   * archive#1713 — same recognition as `checkServerHealthDetailed` below,
    * proven against this probe's own catch block: a native invoke-layer
    * refusal must not collapse into 'unreachable' or 'timeout' here either.
    */
@@ -387,7 +387,7 @@ describe('probeServerConnection', () => {
   });
 
   /**
-   * The coordinator's review round-1 correction: a profile that was never
+   * The coordinator's -1 correction: a profile that was never
    * configured here at all (nothing pending, no approval was ever
    * requested) must not read as `awaiting-approval` — that would leave the
    * UI saying "Waiting for approval…" forever with nothing on its way.
@@ -447,7 +447,7 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
   });
 
   /**
-   * station#3297 — the correction to this probe's own comment. It asserted
+   * archive#3297 — the correction to this probe's own comment. It asserted
    * this server returns 403 "never for a rejected credential"; `runtime-http.ts`
    * answers 403 `insufficient_scope` for a credential it recognized and will
    * not accept, at four separate sites.
@@ -493,7 +493,7 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
   });
 
   /**
-   * station#1713 — the miscategorization that cost hours of debugging: the
+   * archive#1713 — the miscategorization that cost hours of debugging: the
    * desktop native transport's invoke-layer refusal (an ordinary thrown
    * `Error`, indistinguishable by shape from a real transport failure) used
    * to collapse into 'unreachable' here. It must not — the host is fine.

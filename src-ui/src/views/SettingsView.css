@@ -559,7 +559,7 @@
   margin-bottom: 1.25rem;
 }
 
-/* station#4463 slice 2: the scope-grouped nav (Station / Defaults / This
+/* archive#4463: the scope-grouped nav (Station / Defaults / This
    device) used to wrap each group in its own `.settings__nav-group` flex row
    with an all-caps `.settings__nav-group-title` label sharing the tab row —
    the shell audit's named bug. `SectionNav`'s `dividerAfter` now draws a real
@@ -580,7 +580,7 @@
   color: var(--text-muted);
 }
 
-/* The dock is reserved once, by the shell's route outlet (station#3902).
+/* The dock is reserved once, by the shell's route outlet (archive#3902).
    This is the page's own bottom gutter and nothing else. */
 .settings.page {
   padding-bottom: 2rem;
@@ -654,7 +654,7 @@
 }
 
 /* ── Range Slider ── */
-/* #3314: stacked per-section sidebar toggles in one Appearance row. */
+/* archive#3314: stacked per-section sidebar toggles in one Appearance row. */
 .settings__toggle-column {
   display: flex;
   flex-direction: column;
@@ -1017,7 +1017,7 @@
 /* ── Floating Save Pill ── */
 .settings__save-pill {
   position: fixed;
-  /* station#1831: the pill must clear the chat dock at ANY dock height — the
+  /* archive#1831: the pill must clear the chat dock at ANY dock height — the
      dock is resizable, so a fixed offset cannot work. `--dock-slot-size` is
      the live dock footprint (kept current by useChatDockState, including
      per-frame during a drag; 0px when the dock is a desktop side panel), so
@@ -1093,7 +1093,7 @@
 }
 
 /* ── Approval Guardian ── */
-/* The instructions textarea holds a prompt (station#1831). Shared form-control
+/* The instructions textarea holds a prompt (archive#1831). Shared form-control
    styling comes from editor-textarea; this class only owns prompt geometry. */
 .settings__guardian-instructions {
   margin-top: 0.5rem;
@@ -1289,7 +1289,7 @@
 
 .settings__connections-link {
   padding: 12px;
-  /* --border-subtle until station#1254 (re-seeded here by station#1359) — a
+  /* --border-subtle until archive#1254 (re-seeded here by archive#1359) — a
      token that does not exist, so these cards had no outline.
      --border-primary is the subtle line. */
   border: 1px solid var(--border-primary);

@@ -1,4 +1,4 @@
-/* Shared-answer permalink page (station#1423). A Kontour-facing trust
+/* Shared-answer permalink page (archive#1423). A Kontour-facing trust
    surface — it exists to present an answer with its receipts — so it uses
    Console Kit --k-* tokens, like the provenance card it embeds. See the
    token-scoping rule at the top of src-ui/src/index.css. */
@@ -62,7 +62,7 @@
   font-style: italic;
 }
 
-/* station#1598. Deliberately styled like the notice rather than like a badge:
+/* archive#1598. Deliberately styled like the notice rather than like a badge:
    the panel reports what this Station says about its own log, and a badge
    reads as a seal. Nothing here is signed. */
 .shared-answer__channel {

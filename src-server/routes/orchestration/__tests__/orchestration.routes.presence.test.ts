@@ -18,7 +18,7 @@ import {
 } from '../../../utils/internal-api-token.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
-// station#1848: only `orchestrationStreamDuration` is replaced; every other
+// archive#1848: only `orchestrationStreamDuration` is replaced; every other
 // instrument the route touches keeps its real (no-op) implementation, which is
 // what this package's earlier partial `vi.mock` of this module got wrong (see
 // `events.routes.test.ts`'s header).
@@ -28,7 +28,7 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
 }));
 
 /**
- * station#1225: proves `createOrchestrationRoutes`'s `/events` handler
+ * archive#1225: proves `createOrchestrationRoutes`'s `/events` handler
  * actually registers a connection against the SHARED
  * `OrchestrationStreamPresence` instance the push-on-completion gate reads
  * — not just that the class works in isolation
@@ -43,7 +43,7 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
  * this route entirely (it hangs waiting for the abort callback that never
  * fires). This is a pre-existing harness limitation, not something this
  * change introduces: no test anywhere in this suite (including the
- * station#1092/#1197/#1205 resume/replay suites, which rely on the exact
+ * archive#1092/#1197/#1205 resume/replay suites, which rely on the exact
  * SAME `stream.onAbort()` mechanism for their own `unsub()` cleanup)
  * exercises the disconnect path this way either. The disconnect code itself
  * (`releasePresence()`, right alongside the pre-existing `unsub()` it
@@ -311,7 +311,7 @@ describe('GET /events registers connections with the shared presence tracker (st
 });
 
 /**
- * station#4075 stage 3 slice 2: `GET /presence/summary` reads the SAME
+ * archive#4075 stage 3 slice 2: `GET /presence/summary` reads the SAME
  * shared `OrchestrationStreamPresence` `/events` registers into above, and
  * must retain the stage-2 resolved `PrincipalRef` — not a re-resolution,
  * and not the test-only `getUserId` string. These tests wire

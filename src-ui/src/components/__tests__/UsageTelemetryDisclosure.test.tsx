@@ -145,7 +145,7 @@ test('a persistently failing acknowledgement does not trap the user behind the f
   // connection-recovery UI. Its acknowledgement can fail persistently — a
   // revoked session, a 403, an unwritable receipt path — so the acknowledgement
   // must not be the only way out, or the app becomes unusable with no recourse
-  // (delta review, HIGH). Dismissal is for this page only; the receipt is still
+  //Dismissal is for this page only; the receipt is still
   // what stops the disclosure coming back.
   resetUsageTelemetryDisclosureDismissal();
   authenticatedFetch.mockReset();

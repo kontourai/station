@@ -10,7 +10,7 @@ describe('TurnStallWatchdog', () => {
     vi.useRealTimers();
   });
 
-  // Delta-review F1 (#4054 round 2): the suspension path honors the same
+  // Delta-review F1 (archive#4054 round 2): the suspension path honors the same
   // stale-turn identity gate as the terminal paths. A delayed request.opened
   // naming a SUPERSEDED turn must neither suspend nor clear the observation
   // of the turn actually running.
@@ -90,7 +90,7 @@ describe('TurnStallWatchdog', () => {
     vi.advanceTimersByTime(1_000);
     expect(onStall).toHaveBeenCalledWith('t1', 'turn-1');
     // A fired watch owns no live timer, but retains turn identity so the
-    // next real progress can clear the process-local projection (#4054).
+    // next real progress can clear the process-local projection (archive#4054).
     expect(watchdog.size).toBe(0);
 
     watchdog.observe(
@@ -303,10 +303,10 @@ describe('TurnStallWatchdog', () => {
     vi.advanceTimersByTime(10_000);
     expect(onStall).not.toHaveBeenCalled();
   });
-  // station#3451 findings 4/6: a genuine (non-deferred) runtime.error must
+  // archive#3451 findings 4/6: a genuine (non-deferred) runtime.error must
   // clear the watch outright, exactly like TERMINAL_METHODS — otherwise a
   // turn that already ended fires a spurious stall detection later,
-  // polluting the metric #2959's observe-only phase exists to collect.
+  // polluting the metric archive#2959's observe-only phase exists to collect.
   test('a non-retriable runtime.error clears the watch outright, never resets it', () => {
     const watchdog = new TurnStallWatchdog();
     const onStall = vi.fn();
@@ -384,7 +384,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).toHaveBeenCalledWith('t1', 'turn-1');
   });
 
-  // station#3451 finding H2: the SECOND documented non-terminal runtime.error
+  // archive#3451 finding H2: the SECOND documented non-terminal runtime.error
   // publisher — orchestration-service's adapter-stream-restart error — is
   // provider-agnostic (any adapter) and carries NO turnId (session-scoped).
   // Before this fix, isDeferredRetriableTurnError's codex-only scoping meant
@@ -439,7 +439,7 @@ describe('TurnStallWatchdog', () => {
     expect(watchdog.size).toBe(0);
   });
 
-  // station#3594: a terminal naming the turn currently watched must still
+  // archive#3594: a terminal naming the turn currently watched must still
   // clear it (the direction that was never broken — proving the identity
   // gate does not over-reject the normal case).
   test.each([
@@ -464,7 +464,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
-  // station#3594 — THE defect this issue is about, and the direction with
+  // archive#3594 — THE defect this issue is about, and the direction with
   // power: a terminal naming a SUPERSEDED turn (one the thread has already
   // moved past — a codex session runs turn-1 then turn-2; turn-1's terminal
   // arrives late) must NOT clear the watch for the turn that is genuinely
@@ -508,7 +508,7 @@ describe('TurnStallWatchdog', () => {
     },
   );
 
-  // station#3594: `session.exited` never carries a turnId (audited every
+  // archive#3594: `session.exited` never carries a turnId (audited every
   // publisher) — it is a genuinely session-scoped fact, not a stale terminal
   // for one specific other turn, so it must keep clearing unconditionally
   // regardless of which turn is currently watched.
@@ -569,7 +569,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
-  // station#3594: the identical identity-blind-clear defect also lived in the
+  // archive#3594: the identical identity-blind-clear defect also lived in the
   // `runtime.error` branch (not itself named by the issue's cited lines, but
   // the same unconditional `this.clear(threadId)` mechanism) — a genuine,
   // turn-scoped, non-retriable runtime.error naming a superseded turn must
@@ -603,7 +603,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).toHaveBeenCalledWith('t1', 'turn-2');
   });
 
-  // Review HIGH 1 (station#3594): the issue's own scenario, reachable through
+  // Review HIGH 1 (archive#3594): the issue's own scenario, reachable through
   // the SUSPENDED state specifically. A turn awaiting a human moves its entry
   // out of `watched` into `suspended` (see `:264-271`), so an
   // `isStaleForAnotherTurn` that consulted only `watched` found nothing to
@@ -756,7 +756,7 @@ describe('TurnStallWatchdog', () => {
     });
   });
 
-  // Review HIGH 1 (#2959): a turn awaiting a human (approval prompt, input
+  // Review HIGH 1 (archive#2959): a turn awaiting a human (approval prompt, input
   // request) is alive but deliberately silent for as long as the human takes.
   // The watch suspends on request.opened — no expiry however long the human
   // is away — and re-arms only on request.resolved.

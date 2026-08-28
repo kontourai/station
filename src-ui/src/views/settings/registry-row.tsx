@@ -1,5 +1,5 @@
 /**
- * station#settings-revamp slice 3 (docs/design/settings-architecture.md §4:
+ * archive#settings-revamp (docs/design/settings-architecture.md §4:
  * "the Settings UI rows for scalar settings (form-from-schema; composite
  * editors like the guardian config opt out with a custom component)").
  *
@@ -26,7 +26,7 @@ import {
 } from './settings-catalog';
 
 /**
- * station#1840: a control must show the EFFECTIVE value, never the raw stored
+ * archive#1840: a control must show the EFFECTIVE value, never the raw stored
  * one. An un-overridden setting has `value === undefined` while the runtime
  * applies `definition.defaultValue` — rendering the raw value made two
  * default-on toggles read "off" beside copy describing an active feature. The

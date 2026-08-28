@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
- * Epic station#4142 (M4a): the Board surface lives in
+ * Epic archive#4142: the Board surface lives in
  * `@kontourai/station-board-pane` and core imports it in exactly one place —
  * the pane renderer that supplies its shell bindings. A second importer is
  * how the extraction erodes: a host that mounts `ConsoleBoardPane` directly

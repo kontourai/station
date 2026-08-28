@@ -25,7 +25,7 @@ export interface AiSdkProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   /**
-   * station#1994: provider-wire request-body defaults for completion calls
+   * archive#1994: provider-wire request-body defaults for completion calls
    * (see `AiSdkModelOptions.requestBodyDefaults`). Persisted on the
    * connection as `config.modelRequestOptions`.
    */
@@ -33,7 +33,7 @@ export interface AiSdkProviderConfig {
 }
 
 /**
- * station#3545 review HIGH: `AiSdkLLMProvider.createStream` used to omit
+ * archive#3545 review HIGH: `AiSdkLLMProvider.createStream` used to omit
  * `finishReason` from its `finish` chunk unconditionally, even though
  * ai-sdk's `StreamTextResult.finishReason` (`Promise<FinishReason>`,
  * `'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other'`
@@ -52,17 +52,17 @@ export interface AiSdkProviderConfig {
  * reads it (that is this issue's actual subject), but as of this change
  * `OllamaAdapter.sendTurn` still does not — it never reads
  * `chunk.finishReason` and always defaults to `'stop'` regardless of what
- * the producer now supplies (tracked separately as station#3588).
+ * the producer now supplies (tracked separately as archive#3588).
  *
  * `'length'` maps to our `'max-tokens'`; `'content-filter'`, `'error'`, and
  * any future/unrecognized string map to `'other'` — station's vocabulary has
  * no error-shaped terminal `finishReason`, so `'other'` is the only honest
  * target at this layer for any of them. `undefined` (the promise rejected,
  * or ai-sdk itself never resolved a value) stays `undefined` — absence must
- * still stay absence, exactly as station#3545's original fix established one
+ * still stay absence, exactly as archive#3545's original fix established one
  * layer up.
  *
- * station#3586 (was station#3545 review round 2 MEDIUM, corrected here): a
+ * archive#3586 (was archive#3545 review round 2 MEDIUM, corrected here): a
  * genuine mid-stream failure IS now guaranteed to surface as a thrown
  * `{ type: 'error' }` chunk rather than landing here as `reason: 'error'`.
  * `createStream` used to consume only `result.textStream` (whose transform
@@ -100,18 +100,18 @@ function mapAiSdkFinishReason(
 }
 
 /**
- * station#4197: a reported token figure is usable only when it is a finite,
+ * archive#4197: a reported token figure is usable only when it is a finite,
  * non-negative number — the same convention the fold's consumers enforce
  * (`reportedTokenFigureIsBroken` in `conversation-manager.ts`). A `NaN` or
  * negative value is a broken observation and is dropped per-field, never
- * coerced to `0` (station#3201: absent is not zero).
+ * coerced to `0` (archive#3201: absent is not zero).
  */
 function usableTokenFigure(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 /**
- * station#4197: maps ai-sdk's `LanguageModelUsage` (the installed `ai`
+ * archive#4197: maps ai-sdk's `LanguageModelUsage` (the installed `ai`
  * package's shape: flat `inputTokens`/`outputTokens`/`totalTokens` plus
  * `inputTokenDetails.{noCacheTokens,cacheReadTokens,cacheWriteTokens}` and
  * `raw`) onto `LLMStreamChunk['usage']`. Structural rather than typed
@@ -182,7 +182,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
 
   async *createStream(opts: LLMStreamOpts): AsyncIterable<LLMStreamChunk> {
     try {
-      // station#3598: this object is built with a typed base literal plus
+      // archive#3598: this object is built with a typed base literal plus
       // plain `if`-guarded property ASSIGNMENT for the optional fields,
       // deliberately NOT the conditional-spread idiom
       // (`...(x !== undefined ? { field: x } : {})`) the previous code used.
@@ -216,7 +216,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
       }
       const result = streamText(streamTextOptions);
 
-      // station#3586: consume `result.fullStream`, not `result.textStream`.
+      // archive#3586: consume `result.fullStream`, not `result.textStream`.
       // `textStream`'s own transform (`node_modules/ai/dist/index.mjs`)
       // enqueues ONLY `text-delta` parts — an `error` part is enqueued like
       // any other stream part (never thrown), so an ai-sdk failure used to
@@ -267,8 +267,8 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
       //     `OllamaAdapter`, `FleetInferenceService` — throws (or sets a
       //     failure flag and breaks) on `chunk.type === 'error'`; this makes
       //     that path reachable for the first time rather than inventing a
-      //     new one. (station#3596: `OllamaAdapter` did NOT have this path
-      //     when station#3586 first landed — an omission that made this
+      //     new one. (archive#3596: `OllamaAdapter` did NOT have this path
+      //     when archive#3586 first landed — an omission that made this
       //     producer change actively harmful for Ollama specifically, since
       //     `return` guarantees no `finish` chunk follows an error, so the
       //     adapter's `finishReason` stayed `undefined` and
@@ -276,7 +276,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
       //     truthful-looking `'stop'` for a FAILED turn — and `'stop'` has
       //     clear authority, so a failed turn would have erased its own
       //     recorded auth failure. Closed in the same change as
-      //     station#3586, not left as a follow-up.)
+      //     archive#3586, not left as a follow-up.)
       // Every other part type is silently dropped, exactly as `textStream`
       // silently dropped everything but `text-delta` before this change —
       // in particular `tool-call`/`tool-result`, though already members of
@@ -303,7 +303,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
           return;
         }
       }
-      // station#1182: surfaced unconditionally here — see
+      // archive#1182: surfaced unconditionally here — see
       // `LLMStreamChunk.reportedModel`'s docblock. Whether this value is
       // trustworthy as a genuine runtime observation (vs. the provider's
       // ai-sdk implementation just echoing the request) is a per-provider
@@ -316,7 +316,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
         typeof response?.modelId === 'string' && response.modelId.trim()
           ? response.modelId.trim()
           : undefined;
-      // station#3545: if ai-sdk's own `finishReason` promise rejects (e.g.
+      // archive#3545: if ai-sdk's own `finishReason` promise rejects (e.g.
       // an abort tore down the stream before it settled), treat that
       // identically to a stream that never reported one — `undefined`, not a
       // thrown error and not a guessed vocabulary member. This mirrors
@@ -333,7 +333,7 @@ export abstract class AiSdkLLMProvider implements ILLMProvider {
         .then((value) => (typeof value === 'string' ? value : undefined))
         .catch(() => undefined);
       const finishReason = mapAiSdkFinishReason(rawFinishReason);
-      // station#4197: ai-sdk resolves the call's token usage on
+      // archive#4197: ai-sdk resolves the call's token usage on
       // `result.usage` (the final step's `LanguageModelUsage`) — awaited
       // with the same reject-to-undefined handling as `response` and
       // `finishReason` above. `result.usage` rather than

@@ -121,7 +121,7 @@ describe('resolveCodexMcpServers', () => {
     ]);
   });
 
-  // station#1195 (Codex analog of #1157's station-control token-injection
+  // archive#1195 (Codex analog of archive#1157's station-control token-injection
   // boundary): the ONE behavioral difference from every other tool server
   // this module handles, and safe ONLY because the substitution is a
   // per-session URL+token (never env) — see this module's header comment.

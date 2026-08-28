@@ -16,7 +16,7 @@ const { DatabaseSync } = require('node:sqlite') as {
   DatabaseSync: new (path: string, options?: { timeout?: number }) => any;
 };
 const db = new DatabaseSync(workerData.databasePath, { timeout: 5_000 });
-// station#3661: unguarded before, so a first-open race with another instance
+// archive#3661: unguarded before, so a first-open race with another instance
 // killed this worker at startup on `database is locked`. Review MEDIUM-1: the
 // race no longer kills it, and every other failure still does — this worker
 // serialises shared-document edits, and coming up silently without WAL is not

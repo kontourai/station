@@ -33,7 +33,7 @@ import {
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 /**
  * The operator approving from a session that presented a credential — what
- * every pre-station#1490 `confirmRequest()` call implicitly assumed it was.
+ * every pre-archive#1490 `confirmRequest()` call implicitly assumed it was.
  */
 const OPERATOR_APPROVAL: PairingApproval = { kind: 'presented-credential' };
 const FLOOR_APPROVAL: PairingApproval = { kind: 'unauthenticated' };
@@ -1053,7 +1053,7 @@ describe('DevicePairingService', () => {
   // the security directory, which some hosts cannot express: on Windows,
   // chmod maps to the read-only attribute, which does not block creating or
   // renaming files inside a directory, and root bypasses modes entirely, so
-  // the injection never fires there (station#3259). The restart round-trips
+  // the injection never fires there (archive#3259). The restart round-trips
   // those hosts would otherwise lose run unconditionally below.
   describe.skipIf(skipIfCannotChmod)('chmod-induced persistence faults', () => {
     test('a persistence fault leaves a same-instance replacement entirely unapplied', () => {
@@ -1963,7 +1963,7 @@ describe('DevicePairingService', () => {
       const credentialHash = createHash('sha256')
         .update(legacyCredential)
         .digest('base64url');
-      // A registry exactly as station#1098-shipped scoped pairing wrote it —
+      // A registry exactly as archive#1098-shipped scoped pairing wrote it —
       // scope present, `kind` not yet invented, so no such key at all.
       writeFileSync(
         registryPath,
@@ -1998,7 +1998,7 @@ describe('DevicePairingService', () => {
   });
 
   /**
-   * station#1878 slice 1 — the pairing request already carries `source` and
+   * archive#1878 — the pairing request already carries `source` and
    * (for a tailnet request) a verified `requester`; `confirmRequest` weighs
    * both before approval and `exchange()` used to drop them on the floor.
    * These prove the exact record `exchange()` writes, not an imagined shape.
@@ -2103,7 +2103,7 @@ describe('DevicePairingService', () => {
       const credentialHash = createHash('sha256')
         .update(legacyCredential)
         .digest('base64url');
-      // A registry exactly as station#1123 slice 1 shipped it — `kind`
+      // A registry exactly as archive#1123 shipped it — `kind`
       // present, `source`/`requester` not yet invented, so no such keys at
       // all.
       writeFileSync(
@@ -2183,7 +2183,7 @@ describe('DevicePairingService', () => {
 });
 
 /**
- * station#1490 — approval is the step that converts a position into durable
+ * archive#1490 — approval is the step that converts a position into durable
  * authority, so `confirmRequest` (not the HTTP boundary alone) decides what a
  * caller who presented no credential may approve. The rule it enforces: such a
  * caller may approve only a request this host could PROVE came from another
@@ -2330,10 +2330,10 @@ describe('confirmRequest approval guard (station#1490)', () => {
     );
   });
 
-  // station#1887: `access:approve` is grantable ONLY by an operator promoting
+  // archive#1887: `access:approve` is grantable ONLY by an operator promoting
   // an already-paired device. These pin both directions — that the promotion
   // works, and that the authority it confers cannot be self-granted from the
-  // historical loopback compatibility floor, which station#2051 retired for
+  // historical loopback compatibility floor, which archive#2051 retired for
   // ordinary callers; the service-level guard remains defense in depth.
   describe('device approval authority (station#1887)', () => {
     test('an operator can promote a paired device, and the token is not granted at pairing time', () => {

@@ -63,7 +63,7 @@ interface DispatchPolicyConfig {
   requiredCapabilities?: string[];
   minimumEvidence?: EvidenceLevel;
   /**
-   * Dispatch 0.5.0's second eligibility axis (station#1398 slice 5.5). The
+   * Dispatch 0.5.0's second eligibility axis (archive#1398). The
    * whole `policy` object is handed to the engine verbatim, so this reached
    * `eligible()` whether or not Station declared it; declaring it is what
    * makes it validated at config-read time and replicated by
@@ -81,7 +81,7 @@ interface DispatchPolicyConfig {
 }
 
 /**
- * The agent's fleet opt-in (station#1398 slice 3). Default OFF in every
+ * The agent's fleet opt-in (archive#1398). Default OFF in every
  * direction, symmetric with the serving side's opt-in
  * (`fleet-contribution.ts`): a Station never routes an agent's turn to
  * another machine because a peer credential happens to exist.
@@ -110,20 +110,20 @@ interface DispatchModelConfig {
 const EVIDENCE_SOURCE_ID = 'station:connection-readiness/v1';
 
 /**
- * TTL for re-grading Dispatch candidate evidence (#1431).
+ * TTL for re-grading Dispatch candidate evidence (archive#1431).
  *
  * `@kontourai/dispatch/ai-sdk`'s `createAiSdkDispatchModel` accepts `plan` as
  * either a static object or a function resolved per invocation
  * (`(request) => DispatchRuntimePlan | Promise<DispatchRuntimePlan>`).
  * `createConfiguredDispatchModel` uses the function form and re-grades
  * candidate evidence behind this TTL instead of baking a grade into a static
- * plan for the lifetime of the built agent model (the #1426 follow-up this
+ * plan for the lifetime of the built agent model (the archive#1426 follow-up this
  * closes): within the window a Dispatch invocation reuses the last grade;
  * once the window elapses, the next invocation re-resolves live evidence
  * through the same batched `fetchReadinessEvidenceMap` path (one
- * `listConnections()` call per window — #1426 SF-5 — never one per request).
+ * `listConnections()` call per window — archive#1426 SF-5 — never one per request).
  *
- * This bounds both directions of #1431's staleness bug within one TTL
+ * This bounds both directions of archive#1431's staleness bug within one TTL
  * window instead of "until the next agent rebuild": an evidence over-claim
  * (a smoke result that has gone stale) stops being asserted, and an
  * evidence under-claim (an operator who just ran a smoke) starts being
@@ -164,7 +164,7 @@ const UNAVAILABLE_EVIDENCE: CapabilityEvidence = {
  * (`packages/contracts/src/tool.ts` `ConnectionEvidenceLevel`, computed by
  * `connection-readiness-evidence.ts`) onto Dispatch's three-level
  * `EvidenceLevel` (`@kontourai/dispatch` 0.2.0: `unavailable | declared |
- * confirmed`). station#1426 (slice 0 of the inference-fleet design, #1398):
+ * confirmed`). archive#1426 (slice 0 of the inference-fleet design, archive#1398):
  * a Dispatch candidate must never claim more than the connection has
  * actually earned.
  *
@@ -204,7 +204,7 @@ const EVIDENCE_RANK: Record<EvidenceLevel, number> = {
 };
 
 /**
- * Dispatch 0.5.0's second eligibility axis, mirrored (station#1398 slice
+ * Dispatch 0.5.0's second eligibility axis, mirrored (archive#1398 slice
  * 5.5). `engine.js`'s `fidelityRank`, verbatim.
  */
 const FIDELITY_RANK: Record<StructuredToolsFidelity, number> = {
@@ -269,7 +269,7 @@ const TOOL_SURFACE_TOOL_CALLS = 'tool-calls';
 
 /**
  * Derives the candidate's capability strings from its Dispatch evidence
- * level plus (station#1430) the candidate's own model tool-surface. A
+ * level plus (archive#1430) the candidate's own model tool-surface. A
  * candidate with no live evidence (`level === 'unavailable'`) asserts no
  * capabilities at all — an unearned capability claim on top of an unearned
  * evidence level would be the same self-assertion defect twice over.
@@ -281,14 +281,14 @@ const TOOL_SURFACE_TOOL_CALLS = 'tool-calls';
  * containing `'tool-calls'` — the exact shape
  * `launchable-model-inventory.ts`'s `groupModels()` writes when a provider
  * adapter's `supportsTools` unanimously resolved `true` for this model
- * (station#1430 closed the producer gap #1426 found: bedrock/ollama/openai-
+ * (archive#1430 closed the producer gap archive#1426 found: bedrock/ollama/openai-
  * compat/anthropic/google now set `supportsTools` only where their own
  * catalog API genuinely reports it, leaving it `undefined` — "unknown" —
  * everywhere else). `toolSurface: null` (unknown) and `toolSurface: []`
  * (known: does not support tools) both correctly fall through to no
  * `structured-tools` claim; only an affirmative signal derives it. A
  * candidate with no wired tool-surface source (`toolSurface` argument
- * omitted entirely) behaves exactly as this function did before #1430 —
+ * omitted entirely) behaves exactly as this function did before archive#1430 —
  * `abort`/`usage` only — so every call site that hasn't been updated to pass
  * one keeps its prior, honest behavior rather than silently regressing.
  */
@@ -306,7 +306,7 @@ const STRUCTURED_TOOLS_CAPABILITY = 'structured-tools';
 
 /**
  * Dispatch 0.5.0's companion to the `structured-tools` capability string
- * (station#1398 slice 5.5).
+ * (archive#1398).
  *
  * ### Why this exists at all, and why it takes the capability LIST
  *
@@ -314,7 +314,7 @@ const STRUCTURED_TOOLS_CAPABILITY = 'structured-tools';
  * self-inconsistent on this axis: a `capabilities` list naming
  * `structured-tools` alongside an absent (therefore `'unavailable'`)
  * `structuredToolsFidelity` is ineligible for EVERY plan — including one
- * with no policy at all. That is exactly the shape station#1430's derivation
+ * with no policy at all. That is exactly the shape archive#1430's derivation
  * produced, so at 0.2.0→0.5.0 every Station candidate whose model catalog
  * genuinely reported native tool calling would have silently stopped
  * routing. The conformance tripwire's R3-a hardening is what caught it.
@@ -329,7 +329,7 @@ const STRUCTURED_TOOLS_CAPABILITY = 'structured-tools';
  * The only signal behind `structured-tools` is a provider's own catalog
  * reporting native tool calling (today: Ollama's `/api/show` `capabilities`
  * containing `tools`; every other adapter deliberately leaves
- * `supportsTools` unset per station#1430). Station never emulates tool use
+ * `supportsTools` unset per archive#1430). Station never emulates tool use
  * through prompt scaffolding, so `'prompted'` would name a mechanism that
  * does not exist here. It would also be actively harmful rather than merely
  * conservative: Dispatch defaults `minimumStructuredToolsFidelity` to
@@ -369,7 +369,7 @@ function capabilityShape(
  * Derives one candidate's `CapabilityEvidence` from its connection's
  * readiness evidence, or the honest `unavailable` floor when there is none
  * (connection unknown to the evidence source, or the source itself
- * unavailable — see `fetchReadinessEvidenceMap`). `toolSurface` (station#1430)
+ * unavailable — see `fetchReadinessEvidenceMap`). `toolSurface` (archive#1430)
  * is this candidate's own bound model's `LaunchableModelRecord.toolSurface`,
  * resolved by `fetchModelToolSurfaceList` — omitted (not just empty) when no
  * tool-surface source is wired at all.
@@ -389,7 +389,7 @@ export function candidateEvidenceFromReadiness(
 
 /**
  * Resolves live per-candidate tool-surface evidence for `structured-tools`
- * derivation (station#1430), mirroring `fetchReadinessEvidenceMap`'s
+ * derivation (archive#1430), mirroring `fetchReadinessEvidenceMap`'s
  * contract one level down:
  *
  * - No source wired, or no bindings requested → a defined, all-`null` array
@@ -437,7 +437,7 @@ export async function fetchModelToolSurfaceList(
  * one full `ConnectionService.listConnections()` discovery pass (including
  * health probes) per Dispatch candidate. A candidate set is small and
  * bounded, so this resolves once per call instead of once per candidate.
- * station#1431: the caller (`createTtlCachedCandidateResolver`) invokes this
+ * archive#1431: the caller (`createTtlCachedCandidateResolver`) invokes this
  * once per `DISPATCH_EVIDENCE_TTL_MS` window over the life of the built
  * Dispatch model, not once per Dispatch invocation and not once for the
  * model's entire lifetime — SF-5's batching guarantee (one call per
@@ -451,7 +451,7 @@ export async function fetchModelToolSurfaceList(
  *
  * Returns `undefined` on a lookup failure, distinct from the `new Map()` it
  * returns for a legitimately-empty result (no source wired, or no
- * connection ids requested) — station#1431 review round (MB-1). The two
+ * connection ids requested) — archive#1431 review round (MB-1). The two
  * outcomes look identical to a naive caller ("nothing came back"), but they
  * must not be treated identically by `createTtlCachedCandidateResolver`: a
  * legitimately empty map is a valid grade worth caching for the TTL window;
@@ -530,7 +530,7 @@ function capabilitiesEqual(
  * connection id and the derived level vs. the required one, so an operator
  * can see why a model stopped routing.
  *
- * Change feed, not a per-window repeat (station#1431 review round, SF-2):
+ * Change feed, not a per-window repeat (archive#1431 review round, SF-2):
  * with evidence re-graded every TTL window instead of once at agent
  * (re)build, logging every excluded candidate on every resolution would
  * repeat an identical line ~1,440 times/day per persistently-excluded
@@ -546,7 +546,7 @@ function capabilitiesEqual(
  * named so the log line reads as a change-feed entry rather than a bare
  * repeat.
  *
- * Recovery is also named, not just decline (station#1431 review round,
+ * Recovery is also named, not just decline (archive#1431 review round,
  * R-1): a candidate that WAS excluded (below `minimum`, or missing a
  * required capability) last window and now clears both gates gets its own
  * `'admitted'` line naming the prior level — logging only exclusions would
@@ -574,7 +574,7 @@ function logExcludedCandidates(
   const previousById = new Map(
     (previousCandidates ?? []).map((candidate) => [candidate.id, candidate]),
   );
-  // station#1398 slice 5.5: this used to keep its OWN copy of the
+  // archive#1398: this used to keep its OWN copy of the
   // eligibility predicate, which meant the 0.5.0 fidelity clauses would have
   // had to be added in two places to stay honest. There is now exactly one
   // replica (`admissionOf`), and both message-producing call sites read it.
@@ -598,8 +598,8 @@ function logExcludedCandidates(
       const changeSuffix = previous
         ? ` (was '${previous.evidence.level}')`
         : '';
-      // station#1430 review, L-1 message priority — now decided once, inside
-      // `admissionOf`, instead of re-derived here (station#1398 slice 5.5).
+      // archive#1430 review, L-1 message priority — now decided once, inside
+      // `admissionOf`, instead of re-derived here (archive#1398).
       const { refusal } = admissionOf(candidate.evidence, policy);
       if (refusal === 'missing-capabilities') {
         const missing = required.filter(
@@ -638,7 +638,7 @@ function logExcludedCandidates(
   });
 }
 
-/** The evidence-independent half of one candidate's plan entry (#1431). */
+/** The evidence-independent half of one candidate's plan entry (archive#1431). */
 interface DispatchCandidateShell {
   id: string;
   runtimeId: string;
@@ -777,7 +777,7 @@ function isAdmitted(
  * Why a candidate did not clear the replicated predicate. Named so the two
  * message-producing call sites (`logExcludedCandidates` and
  * `withPolicyExclusions`) branch on a decision rather than each
- * re-deriving one from the evidence — the drift that station#1430's L-1
+ * re-deriving one from the evidence — the drift that archive#1430's L-1
  * review round already had to correct once.
  */
 type AdmissionRefusal =
@@ -856,7 +856,7 @@ function admissionOf(
   }
 
   // --- Reason, ordered by ROOT cause rather than by the engine's evaluation
-  // order (station#1430 review, L-1). An insufficient evidence level ALSO
+  // order (archive#1430 review, L-1). An insufficient evidence level ALSO
   // mechanically fails every capability requirement — `deriveDispatchCapabilities`
   // returns `[]` at `unavailable` — so naming the capability would be true
   // and useless. `level === 'unavailable'` is checked explicitly, not just
@@ -926,7 +926,7 @@ type GradedDispatchCandidate = ExecutionCandidate & {
 
 /**
  * Derives every candidate's shell: id, runtimeId, and estimated cost. Split
- * out from evidence grading (#1431) so the TTL-cached resolver below only
+ * out from evidence grading (archive#1431) so the TTL-cached resolver below only
  * has to redo the part that can actually change between calls.
  */
 function buildDispatchCandidateShells(
@@ -967,7 +967,7 @@ function gradeDispatchCandidates(
 
 /**
  * Builds the lazy, TTL-cached candidate resolver passed to
- * `createAiSdkDispatchModel` as the function form of `plan` (#1431).
+ * `createAiSdkDispatchModel` as the function form of `plan` (archive#1431).
  *
  * `@kontourai/dispatch/ai-sdk` awaits `options.plan(request)` on every
  * invocation when `plan` is a function, so this closure runs once per
@@ -975,10 +975,10 @@ function gradeDispatchCandidates(
  * resolution it returns the cached candidates (no evidence-source call at
  * all); once the window elapses it re-resolves through
  * `fetchReadinessEvidenceMap` — still ONE batched call across every
- * candidate connection (#1426 SF-5), just repeated per TTL window instead
+ * candidate connection (archive#1426 SF-5), just repeated per TTL window instead
  * of once for the life of the built model.
  *
- * The outer try/catch is the lazy path's own fail-soft floor (#1431): it is
+ * The outer try/catch is the lazy path's own fail-soft floor (archive#1431): it is
  * deliberately redundant with `fetchReadinessEvidenceMap`'s internal
  * catch — a per-request resolver must never let ANY failure during
  * re-grading reject the plan promise and break the turn, whether that
@@ -986,7 +986,7 @@ function gradeDispatchCandidates(
  * `fetchReadinessEvidenceMap`) or in this function's own bookkeeping. On
  * any throw, every candidate grades `unavailable` for that call.
  *
- * MB-1 (station#1431 review round): a *failed* resolution — whether from
+ * MB-1 (archive#1431 review round): a *failed* resolution — whether from
  * this catch, or from `fetchReadinessEvidenceMap` itself returning
  * `undefined` on a caught source rejection — is deliberately NOT cached.
  * `fetchReadinessEvidenceMap`'s own error handling already swallows the
@@ -999,7 +999,7 @@ function gradeDispatchCandidates(
  * call after a failure retries the source rather than replaying the
  * failure for the rest of the window.
  *
- * SF-1 (station#1431 review round): concurrent invocations that both land
+ * SF-1 (archive#1431 review round): concurrent invocations that both land
  * past the TTL share ONE in-flight resolution instead of each starting
  * their own — without this, N callers racing in after expiry would each
  * independently call `fetchReadinessEvidenceMap`, stampeding
@@ -1109,7 +1109,7 @@ function createTtlCachedCandidateResolver(
         // MB-1: only a defined result FROM BOTH sources — success, even if
         // legitimately empty — earns a cached grade. `undefined` from
         // either means that lookup failed; do not pin that failure for a
-        // full TTL window (station#1430: a tool-surface lookup failure must
+        // full TTL window (archive#1430: a tool-surface lookup failure must
         // not get frozen in any more than a readiness-evidence one does).
         if (evidenceByConnection && toolSurfaceByIndex) {
           cache = { resolved, expiresAt: now + DISPATCH_EVIDENCE_TTL_MS };
@@ -1224,7 +1224,7 @@ function fleetResolutionFailedExclusions(
 
 /**
  * Re-resolves every peer's manifest for this TTL window and re-grades the
- * fixed fleet shells against it (#1431's requirement, applied to the fleet
+ * fixed fleet shells against it (archive#1431's requirement, applied to the fleet
  * half: a peer's grade must re-resolve rather than stay frozen at model
  * construction, or routing on it is not honest).
  *
@@ -1305,10 +1305,10 @@ async function resolveFleetPlanHalf(
       continue;
     }
 
-    // station#1430 review, M-2: deliberately no `toolSurface` argument here
+    // archive#1430 review, M-2: deliberately no `toolSurface` argument here
     // — a fleet candidate never derives `structured-tools`, on purpose, not
     // merely because no wire currently carries a peer's tool-surface claim.
-    // `FleetContributedModel.toolSurface` (station#1430) is the PEER's own
+    // `FleetContributedModel.toolSurface` (archive#1430) is the PEER's own
     // self-report; `peer-attested` evidence is already capped at `declared`
     // in `fleet-candidate-service.ts` for the identical reason (this
     // module's own `FleetCandidateEvidence.level` docblock: a peer's claim
@@ -1323,7 +1323,7 @@ async function resolveFleetPlanHalf(
     // §4.5 rules out.
     const evidence: CapabilityEvidence = {
       level: live.evidence.level,
-      // station#1398 slice 5.5: `capabilityShape` with no tool surface, so
+      // archive#1398: `capabilityShape` with no tool surface, so
       // this necessarily yields `structuredToolsFidelity: 'unavailable'` —
       // the M-2 refusal above, restated on Dispatch 0.5.0's second axis. A
       // peer's self-reported tool surface must not become an asserted
@@ -1367,7 +1367,7 @@ async function resolveFleetPlanHalf(
 
 /**
  * The receipt records for this Station's own candidates. They carry
- * `provenance: 'local-observation'` because they came from station#1426's
+ * `provenance: 'local-observation'` because they came from archive#1426's
  * connection-readiness ladder — a real observation on this machine — while
  * fleet records carry the peer's raw claim beside the capped level routing
  * used. Collapsing the two is the defect §8 names.
@@ -1419,10 +1419,10 @@ function mergeRoutingCandidateRecords(
  * see": the difference between "you have no GPU model" and "you have one and
  * I refused to trust it yet".
  *
- * station#1430 review, L-1: the "missing capabilities" vs. "evidence too
+ * archive#1430 review, L-1: the "missing capabilities" vs. "evidence too
  * low" message choice reads `realCapabilitiesById`, the candidate's ACTUAL
  * graded `evidence.capabilities` from `resolved.candidates` — never a
- * recompute from `evidence.level` alone. Before #1430, `deriveDispatchCapabilities`
+ * recompute from `evidence.level` alone. Before archive#1430, `deriveDispatchCapabilities`
  * was a pure function of `level`, so recomputing from the receipt record's
  * `level` field alone was equivalent to reading the real value and
  * `capabilityListOf` was a harmless indirection. Once `structured-tools` can
@@ -1444,7 +1444,7 @@ function withPolicyExclusions(
   const minimum = policy?.minimumEvidence ?? 'unavailable';
   const required = policy?.requiredCapabilities ?? [];
   const exclusions = [...resolved.routing.exclusions];
-  // station#1398 slice 5.5: the whole graded evidence, not just its
+  // archive#1398: the whole graded evidence, not just its
   // capability list. The message choice now goes through the ONE replica of
   // the engine predicate (`admissionOf`), which needs the fidelity axis too.
   const realEvidenceById = new Map(
@@ -1471,7 +1471,7 @@ function withPolicyExclusions(
     const missing = required.filter(
       (capability) => !evidence.capabilities.includes(capability),
     );
-    // station#1430 review, L-1 message priority: the evidence-level message
+    // archive#1430 review, L-1 message priority: the evidence-level message
     // takes precedence whenever the level itself is the binding constraint
     // (`isAdmitted`'s FIRST condition) — a candidate whose level is too low
     // ALSO trivially fails any capability requirement (an insufficient
@@ -2014,7 +2014,7 @@ function readDispatchConfig(value: unknown): DispatchModelConfig | null {
     ) {
       throw new Error('Dispatch policy minimumEvidence is invalid.');
     }
-    // station#1398 slice 5.5. `policy` is handed to the engine verbatim, so
+    // archive#1398. `policy` is handed to the engine verbatim, so
     // an unvalidated value here reaches `eligible()` and silently excludes
     // every candidate (an unknown fidelity fails `fidelityRank` lookup).
     // Validating it is what turns a typo into a config error instead of an

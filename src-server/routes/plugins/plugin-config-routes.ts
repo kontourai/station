@@ -38,7 +38,7 @@ interface PluginConfigRouteDeps {
 }
 
 /**
- * station#3576: `field.secret` is manifest-author-controlled, so a plugin
+ * archive#3576: `field.secret` is manifest-author-controlled, so a plugin
  * author who declares a genuinely sensitive setting and forgets
  * `"secret": true` would otherwise have its value broadcast to every
  * connected client on `PLUGINS_SETTINGS_CHANGED` (correctly tagged
@@ -146,7 +146,7 @@ export function registerPluginConfigRoutes(
       // Null-prototype: `field.key` is manifest-author-controlled, so a
       // declared field keyed `constructor` would otherwise read
       // `Object.prototype.constructor` out of `values` and serialize the
-      // `Object` function into the response (station#4307).
+      // `Object` function into the response (archive#4307).
       const merged: Record<string, unknown> = Object.create(null);
       for (const field of schema) {
         if (field.secret) {
@@ -187,7 +187,7 @@ export function registerPluginConfigRoutes(
     const configLoader = new ConfigLoader({ projectHomeDir });
     const overrides = await configLoader.loadPluginOverrides();
     // The read is guarded here, as it is on GET and on the changelog route
-    // (station#4307 review): a REFUSED manifest — a name that is not a
+    // (archive#4307 review): a REFUSED manifest — a name that is not a
     // canonical plugin id, a reserved settings key, a hidden-unicode channel —
     // throws, and unguarded that surfaced as Hono's bodiless 500 with no
     // mention of what was wrong. Same disposition as GET: a context-safety
@@ -208,7 +208,7 @@ export function registerPluginConfigRoutes(
     }
     const pluginName = manifest.name || name;
     const existingSettings = overrides[pluginName]?.settings || {};
-    // Null-prototype (station#4307). Both loops below write keys that are not
+    // Null-prototype (archive#4307). Both loops below write keys that are not
     // ours: `field.key` comes from the manifest and the second loop copies
     // EVERY undeclared key from the request body verbatim, so a body of
     // `{"settings":{"__proto__":{…}}}` would otherwise hit the prototype
@@ -381,7 +381,7 @@ export function registerPluginConfigRoutes(
     // Null-prototype, matching the settings route's initializer above: a plain
     // object literal here would put a plain-prototype value back into the
     // null-prototype map on the very next save, defeating the invariant
-    // `loadPluginOverrides` documents (station#4307 review).
+    // `loadPluginOverrides` documents (archive#4307 review).
     overrides[name] = Object.assign(Object.create(null), overrides[name], {
       disabled: body.disabled || [],
     });

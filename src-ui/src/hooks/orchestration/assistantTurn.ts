@@ -4,7 +4,7 @@ import { pruneStaleFailureMarkers } from '../../utils/sessionFailure';
 import { buildAssistantTurnContent } from './messageParts';
 
 /**
- * station#1410: the turn identity and provenance envelope the terminal
+ * archive#1410: the turn identity and provenance envelope the terminal
  * `turn.completed` frame carried. The live chat path commits its assistant
  * bubble here and never refetches, so anything not attached at this moment
  * is invisible until a remount — which is why the envelope rides the SSE
@@ -27,7 +27,7 @@ export function finalizeAssistantTurn(
   const streamingMessage = chat.streamingMessage;
   const content = buildAssistantTurnContent(streamingMessage, fallbackText);
 
-  // station#1294: `handleRuntimeErrorEvent` (turnHandlers.ts) appends the raw
+  // archive#1294: `handleRuntimeErrorEvent` (turnHandlers.ts) appends the raw
   // failure text into the streaming shell's own contentParts purely so a
   // failed turn doesn't render blank while `status: 'error'` suppresses the
   // streaming shell itself — never meant to become a persisted assistant
@@ -43,13 +43,13 @@ export function finalizeAssistantTurn(
     !!chat.error &&
     content.replace(/ \(repeated \d+×\)$/, '') === chat.error;
 
-  // station#1294 review (HIGH-2): `content` only ever joins text/reasoning
+  // archive#1294: `content` only ever joins text/reasoning
   // parts (`buildAssistantTurnContent`) — a turn that made tool calls but
   // narrated no text before erroring reduces `content` to exactly
   // `chat.error` too, even though the streamed message also carries a real
   // tool-invocation record. The guard above must only ever suppress the
   // duplicated error TEXT, never the whole message — dropping the message
-  // entirely would silently discard that tool-call record (pre-#1294 it
+  // entirely would silently discard that tool-call record (pre-archive#1294 it
   // always committed).
   const nonTextParts = (streamingMessage?.contentParts || []).filter(
     (part) => part.type !== 'text' && part.type !== 'reasoning',
@@ -63,13 +63,13 @@ export function finalizeAssistantTurn(
     activeChatsStore.updateChat(threadId, {
       status: 'idle',
       orchestrationTurnOpen: false,
-      // station#1410: the turn is closed; a later terminal event must not
+      // archive#1410: the turn is closed; a later terminal event must not
       // find a stale open identity to match against.
       openTurnId: undefined,
       // turn.completed is the turn's terminal event; without this, a session
       // whose provider emits no post-turn session.state-changed keeps
       // orchestrationStatus 'running' and isSessionExecutionActive renders an
-      // empty "Working…" streaming shell forever (#1005 — reproduced live
+      // empty "Working…" streaming shell forever (archive#1005 — reproduced live
       // with Claude Code and OpenCode engines).
       orchestrationStatus: 'idle',
       streamingMessage: undefined,
@@ -90,7 +90,7 @@ export function finalizeAssistantTurn(
     ? nonTextParts
     : streamingMessage?.contentParts;
 
-  // station#1295: no normal write path stamped this before, so a healthy
+  // archive#1295: no normal write path stamped this before, so a healthy
   // chat's `latestChatTimestamp` reduced to 0 for every finalized assistant
   // turn too — the live conversation sorted dead last and a finished chat
   // skipped "Just finished" straight into "Earlier".
@@ -114,7 +114,7 @@ export function finalizeAssistantTurn(
       : {}),
   };
 
-  // UX audit V3 review round 3: this turn ended successfully, so every failure
+  // this turn ended successfully, so every failure
   // card about an EARLIER turn is stale — it used to survive here and sit
   // beside the new answer, still claiming the conversation had failed. A card
   // for THIS turn (a failure that a later terminal followed) is kept by the

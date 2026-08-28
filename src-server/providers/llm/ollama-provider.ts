@@ -28,7 +28,7 @@ import type {
 } from './model-provider-types.js';
 
 /**
- * station#1430: Ollama's bulk `/api/tags` listing (used for the base catalog
+ * archive#1430: Ollama's bulk `/api/tags` listing (used for the base catalog
  * below) reports no capability info — just name/size/digest/details. Tool
  * support is only exposed per-model via `POST /api/show { model }`, whose
  * response carries a `capabilities` array (e.g. `["completion", "tools",
@@ -47,7 +47,7 @@ const OLLAMA_TOOLS_CAPABILITY = 'tools';
 const OLLAMA_TAGS_ALLOWANCE_MS = 400;
 
 /**
- * Soft overall deadline for capability enrichment (station#1430 review,
+ * Soft overall deadline for capability enrichment (archive#1430 review,
  * H-1). DERIVED from `MODEL_CATALOG_TIMEOUT_MS`, not an independent number:
  * the outer `withCatalogTimeout` races the WHOLE `listModelCatalog` call
  * against `MODEL_CATALOG_TIMEOUT_MS`, and losing that race doesn't degrade
@@ -75,7 +75,7 @@ const OLLAMA_CAPABILITY_TIMEOUT_MS = 400;
 /** Concurrent `/api/show` lookups in flight at once. */
 const OLLAMA_CAPABILITY_CONCURRENCY = 6;
 
-// INVARIANT (station#1430 review, H-1): a lookup must be able to both START
+// INVARIANT (archive#1430 review, H-1): a lookup must be able to both START
 // and FINISH inside the enrichment budget, or enrichment would either never
 // attempt a single lookup (if this were silently violated the other way) or
 // — the actual historical bug — overrun the budget by up to a full timeout
@@ -120,7 +120,7 @@ export class OllamaLLMProvider extends AiSdkLLMProvider {
   async listModelCatalog(
     options?: ModelCatalogRequest,
   ): Promise<LLMModelCatalog> {
-    // station#1430 review, H-1 residual: captured BEFORE the `/api/tags`
+    // archive#1430 review, H-1 residual: captured BEFORE the `/api/tags`
     // fetch, not before enrichment. The enrichment deadline below is
     // anchored to this timestamp — not to whenever enrichment happens to
     // start — so the "never overruns the outer catalog budget" property
@@ -153,7 +153,7 @@ export class OllamaLLMProvider extends AiSdkLLMProvider {
     );
     const maxEntries = catalogLimit(options);
     const bounded = models.slice(0, maxEntries);
-    // station#1430 review, H-2: enrichment is for the capability-consuming
+    // archive#1430 review, H-2: enrichment is for the capability-consuming
     // (inventory) path only — a caller that just needs to validate/resolve a
     // model id (`OllamaAdapter.resolveModelId`, on every session start and
     // model switch) has no use for `supportsTools` and must not pay for
@@ -176,13 +176,13 @@ export class OllamaLLMProvider extends AiSdkLLMProvider {
   }
 
   /**
-   * Best-effort `supportsTools` enrichment via `POST /api/show` (station#1430).
+   * Best-effort `supportsTools` enrichment via `POST /api/show` (archive#1430).
    * Never blocks or fails the base catalog: a model whose lookup errors,
    * times out, or is skipped because the overall budget elapsed simply keeps
    * `supportsTools` unset (honestly unknown), same as before this method
    * existed.
    *
-   * The budget-safety property (station#1430 review, H-1 + H-1 residual):
+   * The budget-safety property (archive#1430 review, H-1 + H-1 residual):
    * `deadline` is an ABSOLUTE timestamp — `catalogStartedAt +
    * OLLAMA_CAPABILITY_BUDGET_MS`, computed by the caller BEFORE the
    * `/api/tags` fetch — not `Date.now() + BUDGET` computed here at

@@ -16,7 +16,7 @@ function validNonce(value: unknown): value is string {
  * There is deliberately no HTTP-shell branch left here. That shell used to
  * publish its per-response nonce as `window.__STATION_CSP_NONCE__` so plugin
  * bundles could be fetched as bytes and executed inline under it; it no longer
- * does (station#4287), because a nonce readable by page code is a nonce every
+ * does (archive#4287), because a nonce readable by page code is a nonce every
  * plugin bundle can reuse on an undeclared remote script. Its bundles load by
  * same-origin URL instead and need no nonce.
  *

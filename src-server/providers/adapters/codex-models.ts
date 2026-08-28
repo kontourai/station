@@ -7,12 +7,12 @@ export interface CodexModelOptions {
   effort?: CodexReasoningEffort;
   reasoningEffort?: CodexReasoningEffort;
   fastMode?: boolean;
-  /** Session-level approval posture override (#727). See ApprovalMode. */
+  /** Session-level approval posture override (archive#727). See ApprovalMode. */
   approvalMode?: ApprovalMode;
 }
 
 /**
- * station#977 ("local default + defer to engine"): unlike Claude Code's
+ * archive#977 ("local default + defer to engine"): unlike Claude Code's
  * short aliases (`sonnet`/`opus`/`haiku`, `claude-models.ts`), Codex has no
  * stable, in-repo-verifiable "current default" model id — `codex --help`/
  * `codex exec --help` expose only a free-form `-m/--model` override, the
@@ -22,7 +22,7 @@ export interface CodexModelOptions {
  * live via `CodexAdapter.listModelCatalog`). Hardcoding a guessed id here
  * risked shipping a stale/wrong default silently. Deliberately left unset:
  * `CodexAdapter.metadata.defaultModel` and `knownModels` are both absent.
- * Codex still gets the core station#977 fix (an explicit `--model=x` that
+ * Codex still gets the core archive#977 fix (an explicit `--model=x` that
  * misses the live catalog is passed through to the engine instead of
  * being rejected) — it just doesn't get a Station-selected model when omitted
  * or built-in picker entries when the live catalog is empty. Accepted,

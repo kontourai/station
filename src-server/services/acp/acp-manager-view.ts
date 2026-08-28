@@ -5,10 +5,10 @@ import {
   type ACPStatusValue,
 } from '@kontourai/station-contracts/acp';
 
-/** #895 wave B: per-connection session-surface evidence projected from a
+/** archive#895 wave B: per-connection session-surface evidence projected from a
  * live ACP `initialize` handshake.
  *
- * station#1549 AMENDS #895's "evidence only, never gates" note
+ * archive#1549 AMENDS archive#895's "evidence only, never gates" note
  * (agent-engine-unification.md §4.1b). It stays literally true of the
  * SESSION-DELIVERY map, which is still static per matrix
  * (`sessionDeliveryChannels`). It is no longer true of the BINDING/PICKER
@@ -16,7 +16,7 @@ import {
  * `engineControlPlaneCapability`'s derivation for any cell whose mechanism
  * declares `basis: 'runtime_observation'`. Naming the reversal here rather
  * than letting a half-reversal go unwritten — that is exactly how
- * "intentionally stdio-only" became a wording artifact (#1379). */
+ * "intentionally stdio-only" became a wording artifact (archive#1379). */
 export interface ACPConnectionCapabilities {
   loadSession?: boolean;
   mcpCapabilities?: { http?: boolean; sse?: boolean };
@@ -67,13 +67,13 @@ interface ACPProbeLike {
     options?: Array<{ name?: string; value?: string }>;
   }>;
   getCapabilities(): { image?: boolean } | undefined;
-  /** #895 wave B: the full initialize agentCapabilities handshake — evidence only. */
+  /** archive#895 wave B: the full initialize agentCapabilities handshake — evidence only. */
   getAgentCapabilities?(): AgentCapabilities | null | undefined;
-  /** station#1549: epoch ms of the last SUCCESSFUL initialize handshake; `0`/absent when none ever succeeded. */
+  /** archive#1549: epoch ms of the last SUCCESSFUL initialize handshake; `0`/absent when none ever succeeded. */
   getHandshakeObservedAt?(): number;
   isAvailable(): boolean;
   /**
-   * station#3404: whether a probe run is currently in flight. Used so a
+   * archive#3404: whether a probe run is currently in flight. Used so a
    * connection whose first handshake is still outstanding reports PROBING,
    * not UNAVAILABLE — see the status derivation below.
    */
@@ -100,7 +100,7 @@ export function getACPManagerStatus(
     currentModel: string | null;
     capabilities?: ACPConnectionCapabilities;
     /**
-     * station#1549: ISO-8601 instant of the last SUCCESSFUL `initialize`
+     * archive#1549: ISO-8601 instant of the last SUCCESSFUL `initialize`
      * handshake. Emitted whenever one has happened — INCLUDING a handshake
      * that carried no `agentCapabilities` at all, which is a real observation
      * whose answer is "this agent advertised nothing", not an absence of
@@ -130,7 +130,7 @@ export function getACPManagerStatus(
       );
       const observedAt = probe.getHandshakeObservedAt?.() ?? 0;
 
-      // station#3404: a connection that has NEVER completed a successful
+      // archive#3404: a connection that has NEVER completed a successful
       // handshake while a probe is in flight is still being met for the
       // first time — report PROBING, not UNAVAILABLE. This is what makes a
       // slow-starting engine (cold initialize can legitimately take 40s+)

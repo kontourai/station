@@ -26,8 +26,8 @@ export class ACPManager {
 
   // The chat-session substrate that consumed approvalRegistry/memoryAdapters/
   // usageAggregatorRef/monitoringEvents/persistEvent/monitoringEmitter was
-  // retired (#149) — these positional params are kept only so the
-  // runtime-service-bootstrap.ts call site (unchanged in shape per #149's
+  // retired (archive#149) — these positional params are kept only so the
+  // runtime-service-bootstrap.ts call site (unchanged in shape per archive#149's
   // plan) doesn't need edits. Probing/connection-management uses only
   // logger/managedWorkspaceHomeDir/eventBus.
   constructor(
@@ -53,10 +53,10 @@ export class ACPManager {
   ) {}
 
   /**
-   * station#3404: `initiator` defaults to `'request'` because this is called
+   * archive#3404: `initiator` defaults to `'request'` because this is called
    * from BOTH a fire-and-forget boot task (`startRuntimeACPConnections`,
    * where nothing is waiting and a cold engine start is exactly the case
-   * #3404 is about) and a registry install's mode refresh, which an HTTP
+   * archive#3404 is about) and a registry install's mode refresh, which an HTTP
    * client is awaiting. Only the boot caller passes `'background'`.
    */
   async startAll(
@@ -131,9 +131,9 @@ export class ACPManager {
   }
 
   /**
-   * station#1549: the return type is now taken FROM `getACPManagerStatus`
+   * archive#1549: the return type is now taken FROM `getACPManagerStatus`
    * rather than re-declared here. The hand-written copy had already drifted
-   * — it omitted the `capabilities` field #895 wave B started emitting, so
+   * — it omitted the `capabilities` field archive#895 wave B started emitting, so
    * every caller typed through this method saw a shape narrower than what
    * actually crossed the boundary at runtime, and a new field would have
    * been invisible again. One declaration, at the producer.

@@ -1,5 +1,5 @@
 /**
- * station#1501 slice 3b — the ONE adapter between
+ * archive#1501 — the ONE adapter between
  * {@link resolveProjectResource}'s state machine and what a path-consuming
  * seam actually needs: an absolute path, or an honest absence that carries
  * the resolver's own words.
@@ -15,21 +15,21 @@
  * Seam S2 (`resolveWorkspacePath` in `runtime-routes.ts`) was migrated in this
  * slice's first round and **reverted** — see §2.2.1's S2 row. It was deferred
  * until `ResourceResolutionResult` could express "the directory is there, I
- * could not verify whose repo it is". station#1594 (slice 3c-pre) added that
+ * could not verify whose repo it is". archive#1594 (slice 3c-pre) added that
  * — `stale`/`drifted` now carry `unverifiedPath` — and this module now owns
  * the derivation, as {@link resolveProjectDirectoryOutcome}. S2's
  * re-migration onto it is a separate follow-up; nothing here presumes it has
  * happened.
  *
- * ## TWO QUESTIONS, ONE DERIVATION POINT (station#1594)
+ * ## TWO QUESTIONS, ONE DERIVATION POINT (archive#1594)
  *
  * There are two different questions a caller can be asking, and conflating
- * them is what produced both the S2 revert and station#1594:
+ * them is what produced both the S2 revert and archive#1594:
  *
  * 1. **The repo-question** — "where is the VERIFIED checkout of resource X?"
  *    Answered by {@link resolveProjectWorkspaceOutcome} /
  *    {@link resolveProjectWorkspacePath}, from `path`, on `bound` only. The
- *    strong claim; unchanged by #1594.
+ *    strong claim; unchanged by archive#1594.
  * 2. **The directory-question** — "where is this project's realized directory,
  *    so I can read `.flow`/`.veritas` in it, or start a session there?"
  *    Answered by {@link resolveProjectDirectoryOutcome}, from
@@ -92,7 +92,7 @@
  * single resource is `local-only`, so **no git check runs**, and the result is
  * `bound` with `resolve(expandTilde(project.workingDirectory))` iff that
  * directory exists; `missing` when a directory is declared and is not there
- * (station#1594 — this was `unbound` before the split); and `unbound` when no
+ * (archive#1594 — this was `unbound` before the split); and `unbound` when no
  * directory is declared at all. So a project without a manifest still resolves to exactly
  * two outcomes AT THIS ADAPTER — a path, or nothing — because every non-`bound`
  * state maps to "no path" for the repo-question. `drifted`/`stale`/`ambiguous`
@@ -277,7 +277,7 @@ export async function resolveProjectWorkspaceOutcome(
 
   if (result.state === 'bound') {
     // `isWellFormedResolution` (asserted inside the resolver) guarantees a
-    // non-empty `path` here, and since station#1594 the union does too. The
+    // non-empty `path` here, and since archive#1594 the union does too. The
     // guard is belt-and-braces against a producer the compiler never saw (a
     // `vi.fn()` double, a result read off disk), and it degrades to a named
     // gap rather than to `path!`.
@@ -308,7 +308,7 @@ export async function resolveProjectWorkspaceOutcome(
     available: false,
     state: result.state,
     resourceId: result.resourceId,
-    // Required by contract on every non-`bound` state, and since station#1594
+    // Required by contract on every non-`bound` state, and since archive#1594
     // required by the TYPE as well. The fallback stays for the same reason the
     // `typeof` guard above does: `ProjectWorkspacePathOutcome.reason` is typed
     // `string`, and an untyped producer would otherwise put `undefined` behind
@@ -319,7 +319,7 @@ export async function resolveProjectWorkspaceOutcome(
 }
 
 // ---------------------------------------------------------------------------
-// THE DIRECTORY-QUESTION (station#1594, slice 3c-pre).
+// THE DIRECTORY-QUESTION (archive#1594, slice 3c-pre).
 //
 // See the module docblock: this is the WEAKER of the two questions, and it is
 // the one a caller asks when it needs somewhere to read `.flow`/`.veritas` in,
@@ -366,7 +366,7 @@ export function projectDirectoryPath(
  *
  * `missing` is deliberately its own variant rather than a `state` value with
  * optional fields: slice 3c's flip must throw naming the project AND the path
- * the record declared (#791), and an optional `declaredPath` would let that
+ * the record declared (archive#791), and an optional `declaredPath` would let that
  * seam compile with the path silently absent.
  */
 export type ProjectDirectoryOutcome =
@@ -472,7 +472,7 @@ export async function resolveProjectDirectoryOutcome(
     }
   }
   if (result.state === 'missing') {
-    // The `missing` variant exists so slice 3c's #791 throw cannot compile
+    // The `missing` variant exists so slice 3c's archive#791 throw cannot compile
     // with the path silently absent. An untyped producer can still leave it
     // absent at RUNTIME, and a throw reading `Error("")` that names no path is
     // exactly the blank-cell failure the honesty bar forbids — so a `missing`
@@ -507,10 +507,10 @@ export async function resolveProjectDirectoryOutcome(
   // one state slice 3c's mapping sends to `$HOME` + `cwdDefaulted: true`, so
   // reporting it for a result that CLAIMED a directory is fail-OPEN: a chat the
   // UI shows as project-bound would silently read and write $HOME — verbatim
-  // the #1011 class this seam exists to close, reintroduced in the adapter's
+  // the archive#1011 class this seam exists to close, reintroduced in the adapter's
   // own vocabulary. `error` is the honest degradation and it maps to a throw,
   // which is what "I cannot answer" owes a fail-closed seam. The whole point of
-  // station#1594 is that `unbound` means exactly one thing; this adapter does
+  // archive#1594 is that `unbound` means exactly one thing; this adapter does
   // not get to re-blur it.
   if (result.state === 'bound') {
     return {

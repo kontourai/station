@@ -956,7 +956,7 @@ describe('CodexAdapter', () => {
 
     try {
       service.initialize();
-      // station#3476: boot recovery restores the session's state and starts
+      // archive#3476: boot recovery restores the session's state and starts
       // no engine. This test's subject is the persisted quota ROUTING that
       // survives into the credential-profile restart, which still needs a
       // live session first — so materialise it the way the turn path does.
@@ -1256,7 +1256,7 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
-  // #903: `session.configured` is the only event that carries a model into the
+  // archive#903: `session.configured` is the only event that carries a model into the
   // read model and the persisted session row, and Codex published it once, at
   // session start — so a per-turn model change lived in adapter memory alone
   // and a rehydrated session reported the model it started with.
@@ -1589,7 +1589,7 @@ describe('CodexAdapter', () => {
     ]);
   });
 
-  // station#3451 fix round (H3): `interruptTurn` now matches claude/acp's
+  // archive#3451 fix round (H3): `interruptTurn` now matches claude/acp's
   // pattern exactly — `activeTurnId` and `terminalPublishedForTurnId` are
   // touched ONLY on a confirmed publish (after the RPC succeeds), never
   // eagerly before the await. The double-terminal guard for a later
@@ -1651,7 +1651,7 @@ describe('CodexAdapter', () => {
       'turn-1',
     );
     await flushIo();
-    // station#3451 (H3): NOT cleared yet — the RPC has not resolved. The
+    // archive#3451 (H3): NOT cleared yet — the RPC has not resolved. The
     // recovery interrupt hook and the accept-then-abort race cleanup
     // (orchestration-service.ts) both catch a rejected interruptTurn and
     // rely on a LATER canonical terminal to close the turn; clearing here
@@ -1698,7 +1698,7 @@ describe('CodexAdapter', () => {
     ).toHaveLength(1);
   });
 
-  // station#3451 finding B1 (fix #2): mirrors claude-adapter.ts's and
+  // archive#3451 finding B1 (fix #2): mirrors claude-adapter.ts's and
   // acp-adapter.ts's own target-mismatch guard, which codex previously
   // lacked. Given an explicit turnId that does not match the CURRENT
   // activeTurnId, refuse rather than blindly acting on a caller's stale id
@@ -1759,7 +1759,7 @@ describe('CodexAdapter', () => {
     ).toEqual(['initialize', 'initialized', 'thread/start', 'turn/start']);
   });
 
-  // station#3451 fix round: the double-terminal race H3's clear-on-success
+  // archive#3451 fix round: the double-terminal race H3's clear-on-success
   // change reopened for `runCooperativeStop`'s deadline path (the one caller
   // WITH an unconditional fallback) — closed by `rejectPendingRpcRequests`
   // detecting the in-flight `turn/interrupt` at the moment `stopSession`
@@ -1830,7 +1830,7 @@ describe('CodexAdapter', () => {
     ).toHaveLength(0);
   });
 
-  // station#3451 finding H3 (the primary gap): interruptTurn's RPC rejects
+  // archive#3451 finding H3 (the primary gap): interruptTurn's RPC rejects
   // for a reason OTHER than a concurrent teardown (e.g. codex returns a
   // JSON-RPC error for turn/interrupt — "no such turn", already gone) —
   // NOTHING marks the turn resolved. A LATER, INDEPENDENT stopSession must
@@ -1914,7 +1914,7 @@ describe('CodexAdapter', () => {
     expect(orphanedErrors).toHaveLength(1);
   });
 
-  // station#3451 fix round D2: an ABANDONED interrupt for an EARLIER turn
+  // archive#3451 fix round D2: an ABANDONED interrupt for an EARLIER turn
   // must not disarm a LATER turn's synthesis. `pendingRpcRequests` has no
   // timeout eviction, so turn-1's turn/interrupt can still be pending when
   // turn-2 starts and later crashes — before D2, `rejectPendingRpcRequests`
@@ -2508,7 +2508,7 @@ describe('CodexAdapter', () => {
 
   test('reports missing Codex prerequisites when CLI or login are unavailable', async () => {
     process.env.PATH = '/definitely-missing-codex';
-    // station#977: process.env.PATH alone is no longer the whole story --
+    // archive#977: process.env.PATH alone is no longer the whole story --
     // findCliBinary now also falls back to the users login-shell PATH and
     // a handful of well-known install dirs, so a genuinely-missing-CLI
     // test needs the opt-out flag too, or a dev/user machine that happens
@@ -3504,7 +3504,7 @@ describe('CodexAdapter', () => {
       });
       await withTimeout(startSessionPromise, 'startSession');
 
-      // station#1195: processFactory now also receives the resolved
+      // archive#1195: processFactory now also receives the resolved
       // toolServers config args (undefined here — this session authors no
       // toolServers, so the spawn argv stays byte-identical to before).
       expect(processFactory).toHaveBeenCalledWith(

@@ -33,7 +33,7 @@ const items = [
   item('attention', 'Needs attention', NOW - 120_000),
   item('done', 'Completed', NOW - 180_000),
   // Terminal and past the shared linger window, so it genuinely belongs to
-  // "Earlier". (This row was a 'Recent' chat before station#3227 A6 unified
+  // "Earlier". (This row was a 'Recent' chat before archive#3227 A6 unified
   // the grouping with the desktop lanes — an idle-but-open chat is Active
   // now, not history, so a non-terminal fixture can no longer stand in for
   // the Earlier group.)
@@ -62,7 +62,7 @@ describe('ChatDockInboxPanel', () => {
   beforeEach(() => {
     localStorage.clear();
     // The device-settings singleton keeps in-memory state across tests;
-    // localStorage.clear() alone no longer resets the section-collapse
+    // localStorage.clear alone no longer resets the section-collapse
     // toggles the way the old per-mount localStorage readers did.
     deviceSettingsStore.reloadFromStorage();
   });
@@ -113,7 +113,7 @@ describe('ChatDockInboxPanel', () => {
     expect(onFocusChat).toHaveBeenCalledWith('attention');
   });
 
-  // station#3687 seam 4: acknowledgement used to fire BEFORE the open,
+  // archive#3687 seam 4: acknowledgement used to fire BEFORE the open,
   // unconditionally — a click whose open then failed still moved the row out
   // of "Just finished", quietly burying a session the user could not open.
   it('acknowledges the inventory version only after the open succeeded', async () => {
@@ -282,13 +282,13 @@ describe('ChatDockInboxPanel', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
-  // station#1295 secondary fix / station#1311 review: snoozing keys on
+  // archive#1295 / archive#1311: snoozing keys on
   // `item.id` (`conversationId || storeKey`), which changes the moment a
   // brand-new chat's first send assigns a conversationId. The migration
   // that keeps a pre-assignment snooze alive happens where both ids are
   // known together — `ActiveChatsStore.assignConversationId`
   // (`migrateSnoozeKey`) — not by having the inbox panel fall back to a
-  // second key on every read (station#1311 review found that fallback
+  // second key on every read (archive#1311 found that fallback
   // itself broke reopening an EXISTING Station-native/bedrock conversation,
   // whose store key churns on every reopen while its conversationId stays
   // put). This exercises the same migration call the store makes at the
@@ -331,7 +331,7 @@ describe('ChatDockInboxPanel', () => {
     ).not.toBeNull();
   });
 
-  // station#1311 review (opposite direction): reopening an EXISTING
+  // archive#1311 (opposite direction): reopening an EXISTING
   // Station-native/bedrock conversation re-synthesizes a fresh
   // `chatSessionId` on every reopen (`useOpenConversation`), while its `id`
   // (the conversationId) stays constant. A snooze must survive that,
@@ -372,7 +372,7 @@ describe('ChatDockInboxPanel', () => {
     ).not.toBeNull();
   });
 
-  // station#1297: "rehydrate vs navigate" must be a row-open policy, not an
+  // archive#1297: "rehydrate vs navigate" must be a row-open policy, not an
   // accident of whether a live in-memory chat tab happens to exist.
   it('rehydrates a rehydratable session with no live tab instead of navigating to /activity', () => {
     const onOpenConversation = vi.fn().mockResolvedValue(true);
@@ -456,7 +456,7 @@ describe('ChatDockInboxPanel', () => {
 
   // The row-open policy treats every `onOpenConversation` failure alike —
   // an agent that no longer exists and a conversation whose message fetch
-  // 404s/errors (station#1312 review: `useOpenConversation` now reports
+  // 404s/errors (archive#1312: `useOpenConversation` now reports
   // that failure instead of silently opening a permanently empty tab, see
   // `useOpenConversation.test.tsx` for the tab-teardown proof at that
   // deeper layer) both resolve `false` here, so this one component-level
@@ -498,9 +498,9 @@ describe('ChatDockInboxPanel', () => {
     });
   });
 
-  // station#1795: an item that somehow still reaches the panel with a
+  // archive#1795: an item that somehow still reaches the panel with a
   // non-positive `updatedAt` (the upstream reduce-seed bug's exact
-  // signature — a real Date.now()-derived timestamp is never <= 0) must not
+  // signature — a real Date.now-derived timestamp is never <= 0) must not
   // render as an implausible multi-year duration. This is the last-resort
   // display guard, independent of the home-view-model fix that keeps a real
   // item from reaching here with updatedAt <= 0 in the first place.
@@ -508,7 +508,7 @@ describe('ChatDockInboxPanel', () => {
     const epochItem = item('epoch', 'Recent', 0);
     renderPanel({ items: [epochItem] });
 
-    // A 0-updatedAt, non-terminal item sits in "Active now" (station#3227
+    // A 0-updatedAt, non-terminal item sits in "Active now" (archive#3227
     // A6: the shared lane partition classes every not-finished item as
     // active regardless of recency), which is always expanded — the row is
     // reachable directly.
@@ -541,7 +541,7 @@ describe('ChatDockInboxPanel', () => {
     ).not.toBeNull();
   });
 
-  // station#1797: the collapsed rail (a second "Open chat list"/expand
+  // archive#1797: the collapsed rail (a second "Open chat list"/expand
   // control) duplicated the chrome's own header toggle whenever both
   // were on screen at once. Collapsing is now entirely the caller's job —
   // `ChatDock.tsx` simply stops mounting this component — so the component
@@ -562,16 +562,16 @@ describe('ChatDockInboxPanel', () => {
     ).not.toBeNull();
   });
 
-  // station#1797: collapsing the inbox is now the caller's responsibility —
+  // archive#1797: collapsing the inbox is now the caller's responsibility —
   // `ChatDock.tsx` mounts this component only while expanded, so there is no
   // in-component collapsed rail/state to render or test here any more. The
-  // sole expand/collapse control lives in the dock header (#3309; see
+  // sole expand/collapse control lives in the dock header (archive#3309; see
   // `ChatDockHeaderWorkspaceControls.test.tsx`'s `chat-dock__inbox-toggle`
   // coverage).
 });
 
 /**
- * REVIEW HIGH. `LIFECYCLE_CHIP_LABELS` and `HOME_LIFECYCLE_LABELS` are
+ *`LIFECYCLE_CHIP_LABELS` and `HOME_LIFECYCLE_LABELS` are
  * SHARED, so adding `'Unanswerable'` for the Home row reached this panel —
  * which rendered a bare chip with none of the basis, two components away
  * from the comment insisting a bare label is not a derivation. The item
@@ -611,7 +611,7 @@ describe('ChatDockInboxPanel answerability basis (station#1783)', () => {
 });
 
 /**
- * station#3309. The panel outlives its own collapse by one motion beat so the
+ * archive#3309. The panel outlives its own collapse by one motion beat so the
  * exit can play. For that beat it is still in the DOM while the user's decision
  * to close it is already complete, and the component documents what it does
  * about that: inert. Nothing exercised either half, so the class the CSS keys
@@ -641,7 +641,7 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     // accessibility tree, not merely faded", and `inert` is the single
     // property that delivers both. Asserted as the property rather than as an
     // absent role: jsdom does not model `inert` in its accessibility tree, so
-    // a `queryByRole(...).toBeNull()` here would be asserting something this
+    // a `queryByRole(...).toBeNull` here would be asserting something this
     // environment cannot evaluate — it stays visible to the role query whether
     // or not the mechanism is applied. The browser-side effect is what
     // tests/mobile-chat-composer.spec.ts can see; what this pins is that the

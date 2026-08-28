@@ -137,10 +137,10 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
  * The bridge is two-way. Plugin→host has always been relayed (the first
  * branch of the message handler); host→plugin was NOT, so every message the
  * host sent that this bootstrap did not itself consume arrived here and
- * stopped. Nothing said so, which is the same silence station#3308 and
- * station#3323 were both filed for.
+ * stopped. Nothing said so, which is the same silence archive#3308 and
+ * archive#3323 were both filed for.
  *
- * station#4201 step 3 makes the downlink load-bearing: the pane-host
+ * archive#4201 step 3 makes the downlink load-bearing: the pane-host
  * contract's `confirm` resolves with the user's decision and its `facts` push
  * on change, and a request/response member whose response cannot be delivered
  * is a capability that only looks implemented. So the three pane-host replies
@@ -156,7 +156,7 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
  * NOT a list of one message being withheld: it is the general property that
  * every host→frame message is decided one at a time. This list previously
  * carried an argument about `api-response`, the reply half of the frame's
- * `api-request` bridge; station#4300 deleted that bridge outright, so there is
+ * `api-request` bridge; archive#4300 deleted that bridge outright, so there is
  * no longer a message being kept out — there is only the allowlist, and the
  * next member added to it needs its own reason on its own review.
  *

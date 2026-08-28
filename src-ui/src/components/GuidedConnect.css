@@ -73,7 +73,7 @@
   color: var(--text-on-accent);
 }
 
-/* station#3372: the only one of this change's accent-filled controls with a
+/* archive#3372: the only one of this change's accent-filled controls with a
    hover FILL. `brightness(1.05)` moved the fill without consulting the
    foreground — for an accent whose contrast partner is white (a dark accent),
    brightening the fill walks the pair TOWARD each other, which is the wrong

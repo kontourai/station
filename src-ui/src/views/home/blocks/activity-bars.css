@@ -70,7 +70,7 @@
 .home-heat__bar:hover {
   opacity: 0.75;
 }
-/* station#3768: on a coarse pointer the bars render as spans, not controls. */
+/* archive#3768: on a coarse pointer the bars render as spans, not controls. */
 span.home-heat__bar {
   cursor: default;
 }

@@ -24,14 +24,14 @@ type ConversationMessage = Pick<ChatMessage, 'role' | 'content'> & {
     model?: string | null;
     modelOptions?: Record<string, string | number | boolean>;
   };
-  /** station#1410: flattened by the SDK's `mapConversationMessages`. */
+  /** archive#1410: flattened by the SDK's `mapConversationMessages`. */
   turnId?: string;
   sessionId?: string;
   sourceEventId?: string;
   answerEligible?: boolean;
   provenance?: unknown;
   /**
-   * station#1295: the backend `ConversationMessage` shape carries this as an
+   * archive#1295: the backend `ConversationMessage` shape carries this as an
    * ISO string (`chatRuntimeStream.ts`'s `mapConversationMessages`); accept
    * a bare number too so a caller that already parsed it (or a test fixture)
    * doesn't need to re-stringify.
@@ -42,12 +42,12 @@ type ConversationMessage = Pick<ChatMessage, 'role' | 'content'> & {
 export type ActiveChatConversationMessage = ConversationMessage;
 
 /**
- * station#1295: parses a backend message's `timestamp` into the epoch-ms
+ * archive#1295: parses a backend message's `timestamp` into the epoch-ms
  * number `ChatMessage.timestamp` expects, returning `undefined` when the
  * field is genuinely absent or unparsable — callers decide the fallback
- * (typically `Date.now()`) rather than this silently defaulting to 0 the way
+ * (typically `Date.now`) rather than this silently defaulting to 0 the way
  * `latestChatTimestamp`'s reducer does for a *missing* field. A silent 0
- * here is exactly the bug (#1295): it sorts the chat dead last and skips
+ * here is exactly the bug (archive#1295): it sorts the chat dead last and skips
  * "Just finished" straight into "Earlier" with an epoch-age relative time.
  */
 function parseBackendTimestamp(
@@ -64,8 +64,8 @@ function parseBackendTimestamp(
 }
 
 /**
- * station#1311 review (empirical fault injection): the *rehydrate* path's
- * `Date.now()` fallback re-inflated an old, already-read conversation's
+ * archive#1311: the *rehydrate* path's
+ * `Date.now` fallback re-inflated an old, already-read conversation's
  * recency on every reopen and every SSE-reconnect catchup sweep —
  * normalizing the SAME backend messages hours apart produced a newer stamp
  * each time, which resorts a stale conversation to the top of the inbox on
@@ -75,7 +75,7 @@ function parseBackendTimestamp(
  * list query React Query already caches for this agent
  * (`conversationQueries.list`'s `['conversations', agentSlug]` key) — the
  * same list surfaced by the agent's conversation picker/share-target modal
- * — so a conversation the client has actually seen before yields its real
+ * so a conversation the client has actually seen before yields its real
  * server-side `updatedAt`. An explicit inventory value from a row-open path
  * wins over the per-agent cache, closing the cold-cache first-reopen gap
  * without another request. Returns `undefined` when neither source resolves.
@@ -128,7 +128,7 @@ export function buildOutgoingUserMessage(
     }
   }
 
-  // station#1293: a stable client-only id for this optimistic append, so a
+  // archive#1293: a stable client-only id for this optimistic append, so a
   // rejected send's rollback can remove exactly this message by id instead
   // of relying on the whole `messages` array still being the same reference
   // it was at send time (see rejectedSendRollback in
@@ -140,7 +140,7 @@ export function buildOutgoingUserMessage(
     content,
     contentParts: contentParts.length > 0 ? contentParts : undefined,
     clientId,
-    // station#1295: no normal write path stamped this before, so a healthy
+    // archive#1295: no normal write path stamped this before, so a healthy
     // chat's `latestChatTimestamp` reduced to 0 — dead last in recency sort,
     // and never young enough to land in "Just finished".
     timestamp: Date.now(),
@@ -166,8 +166,8 @@ export function buildPostSendState(
     backendMessages[backendMessages.length - 1]?.finishReason ||
     undefined;
 
-  // station#1295: one fallback timestamp for the whole batch rather than a
-  // fresh `Date.now()` per message — the backend has no per-message
+  // archive#1295: one fallback timestamp for the whole batch rather than a
+  // fresh `Date.now` per message — the backend has no per-message
   // timestamp to lose precision against today, and a shared value keeps
   // this batch's relative order stable if the backend ever starts sending
   // real ones for only some of them.
@@ -222,13 +222,13 @@ export function buildRehydratedInputHistory(
 export function normalizeConversationMessages(
   backendMessages: ConversationMessage[],
   /**
-   * station#1311 review: the conversation's own server-side `updatedAt`
+   * archive#1311: the conversation's own server-side `updatedAt`
    * (epoch ms), when the caller can resolve one — see
    * `resolveConversationUpdatedAt`. Used as the anchor for every
-   * un-timestamped message instead of `Date.now()`, so rehydrating the SAME
+   * un-timestamped message instead of `Date.now`, so rehydrating the SAME
    * old conversation twice (a reopen, or a reconnect catchup sweep) yields
    * the SAME result both times rather than jumping to "now" on each call.
-   * Omitted (or unresolvable), this falls back to `Date.now()` exactly as
+   * Omitted (or unresolvable), this falls back to `Date.now` exactly as
    * before — the same fallback `buildPostSendState` uses unconditionally,
    * which is correct there: it runs immediately after a live send, so its
    * messages genuinely are fresh.

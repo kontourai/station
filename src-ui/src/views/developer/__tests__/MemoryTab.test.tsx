@@ -41,9 +41,9 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 import MemoryTab from '../MemoryTab';
 
 /**
- * station#771 regression. Both `rootsLoading` and `graphLoading` gates used
+ * archive#771 regression. Both `rootsLoading` and `graphLoading` gates used
  * to fall straight through to a fabricated negative fact on a settled error
- * — "No memory stores are configured." / "no recall graph available" —
+ * "No memory stores are configured." / "no recall graph available" —
  * indistinguishable from a host that genuinely has none.
  */
 describe('MemoryTab (#771)', () => {
@@ -101,10 +101,10 @@ describe('MemoryTab (#771)', () => {
     expect(screen.getByText('No memory stores are configured.')).toBeTruthy();
   });
 
-  // station#771 fix round (review HIGH): both error branches used to
+  // archive#771: both error branches used to
   // outrank the data unconditionally, so a REFETCH failure with cached
   // roots/graph on hand blanked a working tab behind an error card — the
-  // exact regression #769 exists to prevent.
+  // exact regression archive#769 exists to prevent.
   test('keeps rendering cached roots when a roots refetch fails', () => {
     roots = [
       {

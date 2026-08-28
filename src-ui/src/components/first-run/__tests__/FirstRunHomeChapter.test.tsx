@@ -29,7 +29,7 @@ const materializeEngineAgent = vi.fn();
 const configValue: { firstRun?: FirstRunState; userProfile?: unknown } = {};
 const setupState = { launcherWouldShow: false };
 const configState = { settled: true };
-/** Every value the chapter published about owning the screen (review H2). */
+/** Every value the chapter published about owning the screen  */
 const presence: boolean[] = [];
 const engineState: {
   engines: ExternalEngineReadinessProjection[];
@@ -60,7 +60,7 @@ vi.mock('../../../contexts/AgentsContext', () => ({
   useAgentsSettled: () => engineState.agentsSettled,
 }));
 // The engines step enables through ONE server path — `POST
-// /agents/materialize-engine` (station#3627) — so the batch is observed here
+// /agents/materialize-engine` (archive#3627) — so the batch is observed here
 // as the mutation it really performs, not as an agent-draft create.
 vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({
@@ -341,7 +341,7 @@ describe('the connect launcher goes first, and can only ever delay', () => {
   });
 
   test('the chapter publishes whether it owns the screen', () => {
-    // Review H2: this is the ONE piece of state both first-run overlays read,
+    // this is the ONE piece of state both first-run overlays read,
     // which is what makes "at most one of them exists" a rule rather than two
     // components guessing from the same flapping probe. The integrated
     // assertion lives in `first-run-overlay-exclusivity.test.tsx`.
@@ -358,7 +358,7 @@ describe('the connect launcher goes first, and can only ever delay', () => {
 
   // "a launcher that re-appears cannot close a chapter already open" USED to
   // live here. It passed while mocking `OnboardingGate` away, so it could only
-  // ever see one of the two overlays — the review's H2 is precisely that the
+  // ever see one of the two overlays — the review's is precisely that the
   // other one was rendering at the same time. Replaced by
   // `src-ui/src/__tests__/first-run-overlay-exclusivity.test.tsx`, which mounts
   // both components and the real store between them.
@@ -454,7 +454,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       expect(recordFirstRunDecision).toHaveBeenCalledTimes(1),
     );
     // A status and nothing else: the server decides whether the move is legal
-    // and stamps when it happened (review M1).
+    // and stamps when it happened
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
@@ -557,7 +557,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     await screen.findByTestId('first-run-engines-report');
 
     // There is no exit from here that completes: the questions are not even
-    // reachable, so `complete()` cannot be called.
+    // reachable, so `complete` cannot be called.
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByTestId('first-run-engines-give-up'));
@@ -640,7 +640,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
   });
 
   test('an already-enabled engine is shown as done and creates nothing', async () => {
-    // AC2's "no duplicate agents": an enabled row is not selectable, so it can
+    // "no duplicate agents": an enabled row is not selectable, so it can
     // never enter a batch however it renders.
     engineState.engines = [READY_CODEX];
     render(<FirstRunHomeChapter />);

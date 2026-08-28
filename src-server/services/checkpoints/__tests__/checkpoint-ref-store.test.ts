@@ -1,5 +1,5 @@
 /**
- * station#2802 slice 1 — checkpoint ref store coverage against REAL
+ * archive#2802 — checkpoint ref store coverage against REAL
  * throwaway git repositories.
  *
  * The properties that matter most here are the ones only a real git can

@@ -29,7 +29,7 @@ export function ProjectSidebarNav({
   const activeSurface = APP_SURFACE_REGISTRY.getSurfaceForView(
     resolveViewFromPath(activePath ?? window.location.pathname),
   );
-  // station#3313: pass the live flags through — calling getSidebar() with no
+  // archive#3313: pass the live flags through — calling getSidebar with no
   // flags meant a previewFlag-gated surface could never appear here, even
   // after its preview (or the developer-tools setting) was enabled.
   const sidebarSurfaces = APP_SURFACE_REGISTRY.getSidebar(
@@ -80,7 +80,7 @@ export function ProjectSidebarNav({
         }}
         title={collapsed ? label : undefined}
         aria-label={label}
-        // station#2652: a stable anchor per management group so the
+        // archive#2652: a stable anchor per management group so the
         // first-run tour can point at a real nav affordance. Derived
         // from the registry's semantic owner, so a group added or
         // renamed later carries its anchor without a parallel list.

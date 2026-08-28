@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
 /**
- * #223/#332 root-route readiness regression coverage (product bucket, mocked
+ * archive#223/#332 root-route readiness regression coverage (product bucket, mocked
  * via `page.route` — mirrors `tests/knowledge-onboarding.spec.ts` /
  * `tests/project-lifecycle.spec.ts`'s all-mocked-routes style, no live
  * backend). Exercises `resolveHomeSurface`'s (`src-ui/src/app-shell/
@@ -79,7 +79,7 @@ function delay(ms: number): Promise<void> {
 /**
  * Seeds every route the app shell needs for a clean `/` load (system
  * status, agents, config, etc. — all benign empty/ready responses), plus
- * the two data points the #223 race depends on: `GET /api/projects` and
+ * the two data points the archive#223 race depends on: `GET /api/projects` and
  * `GET /api/projects/:slug/layouts`, each independently delayable to
  * simulate a slow load per the plan's AC1 evidence requirement.
  */

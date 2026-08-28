@@ -2,7 +2,7 @@ import type { Hono } from 'hono';
 import { createFixtureComposedRoutes } from './fixture-composed-routes.js';
 
 /**
- * station#1131 review round 1 (AC1 follow-up, HIGH item 2): a minimal
+ * archive#1131 review round 1 (AC1 follow-up, HIGH item 2): a minimal
  * stand-in for `runtime-routes.ts`'s `configureRuntimeRoutes`, mounting
  * `createFixtureComposedRoutes` (the `register*Routes(app, deps)`
  * composition-helper shape) at a REAL, already family-covered base

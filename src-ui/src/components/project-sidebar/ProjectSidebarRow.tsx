@@ -28,7 +28,7 @@ export function ProjectSidebarRow({
   accent?: string;
   /**
    * Sessions in this project's live lanes — Needs you plus Active now, the
-   * Sessions list's own populations scoped to this project (station#3202).
+   * Sessions list's own populations scoped to this project (archive#3202).
    */
   liveCount?: number;
   /**
@@ -37,7 +37,7 @@ export function ProjectSidebarRow({
    * composed here, so the number and its explanation cannot drift.
    */
   liveLabel?: string;
-  /** station#3315: drag/keyboard reorder wiring from `useProjectListReorder`. */
+  /** archive#3315: drag/keyboard reorder wiring from `useProjectListReorder`. */
   reorder?: ProjectRowReorderProps;
 }) {
   const [expanded, setExpanded] = useState(isActive);
@@ -112,7 +112,7 @@ export function ProjectSidebarRow({
           <span className="sidebar__project-name">{project.name}</span>
           {liveCount > 0 && (
             <>
-              {/* station#3202: the number's meaning was written down and shown
+              {/* archive#3202: the number's meaning was written down and shown
                   ONLY to screen readers — a sighted user got a bare integer
                   with no tooltip and no legend ("what does the 6 next to
                   kontour mean?"). Same string, same source, now also a native

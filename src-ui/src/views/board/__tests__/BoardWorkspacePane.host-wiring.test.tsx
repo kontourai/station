@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * The CALL SITE, not the adapter (station#4201).
+ * The CALL SITE, not the adapter (archive#4201).
  *
  * `inProcessPaneHost.test.tsx` proves the adapter works when a harness hands
  * it its own props. That cannot catch the mounter wiring it wrongly, and the

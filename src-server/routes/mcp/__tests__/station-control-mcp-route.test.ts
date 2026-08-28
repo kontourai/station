@@ -203,7 +203,7 @@ describe('station-control-mcp-route', () => {
     __resetStationControlMcpTokensForTests();
     vi.unstubAllGlobals();
     // The route deliberately sets these two on every request (review fix,
-    // station#1195 round 1, MEDIUM) — restore whatever this suite's OTHER
+    // archive#1195 round 1, MEDIUM) — restore whatever this suite's OTHER
     // tests (or a sibling test file sharing this worker) expect.
     if (originalStationApiBase === undefined) {
       delete process.env.STATION_API_BASE;

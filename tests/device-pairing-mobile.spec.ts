@@ -13,7 +13,7 @@ async function openConnections(page: Page): Promise<Locator> {
   const setupLauncher = page.getByTestId('setup-launcher');
   // By test id, not by name: ChatDockMobileConnection derives its accessible
   // name from the same connectionIndicatorLabel, so on a phone both it and the
-  // toolbar chip start with "Manage Stations" (station#3297 + station#3311).
+  // toolbar chip start with "Manage Stations" (archive#3297 + archive#3311).
   const directConnections = page.getByTestId('app-toolbar-connection');
   const moreActions = page.getByRole('button', { name: 'More actions' });
   const openConnections = page.getByRole('button', {
@@ -97,7 +97,7 @@ async function pairedApiStatus(page: import('@playwright/test').Page) {
 }
 
 /**
- * The host context speaks for the operator, and since station#1490 that means
+ * The host context speaks for the operator, and since archive#1490 that means
  * it presents the operator credential: approving a pairing request with no
  * credential at all is refused when the REQUEST also arrived on the loopback
  * compatibility floor, which both contexts of a two-browser E2E do. A real
@@ -233,7 +233,7 @@ test('keeps direct pairing methods usable at 390px without an advanced detour', 
  * journey per-row as "Request access to <name>"
  * (`connectionNeedsAccessRequest`) — but that row is for a device that HAS a
  * shell and lost access, which is a different scenario, so this one does not
- * pretend it might be there. That confusion is what station#3753 was: the
+ * pretend it might be there. That confusion is what archive#3753 was: the
  * phone context silently inherited the suite-wide device session, so it was
  * never unpaired, the shell rendered, and the leg waited for a per-row button
  * the product had no reason to offer.
@@ -290,7 +290,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   // accepted response re-derived `credentialState` away from `required`, so
   // `connectionNeedsAccessRequest` correctly withheld the per-row
   // "Request access to <name>" affordance and the leg waited forever for a
-  // button the product had no reason to render (station#3753). The premise is
+  // button the product had no reason to render (archive#3753). The premise is
   // asserted below rather than trusted, so a future change to that shared
   // fixture fails here, naming itself, instead of surfacing as a missing
   // button.

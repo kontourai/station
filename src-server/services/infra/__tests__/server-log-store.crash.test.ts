@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 /**
- * station#1895: proves the durable NDJSON sink survives a real uncaught
+ * archive#1895: proves the durable NDJSON sink survives a real uncaught
  * exception, not just a mocked one. Spawns a minimal node script (loaded
  * through `tsx` so it can import the real `.ts` seam/store modules
  * directly) that installs the sink, throws asynchronously, and — mirroring
@@ -39,7 +39,7 @@ function runCrashScriptInChild(
   // Imports the REAL seam/store/crash-handlers modules through `tsx` —
   // not a hand-written replica of index.ts's wiring — so this proves the
   // actual `installCrashHandlers` + `logFatalAndFlush` code path survives
-  // a real uncaught exception, matching station#1895 review round 2.
+  // a real uncaught exception, matching archive#1895 review round 2.
   const loggerUrl = new URL('../../../utils/logger.ts', import.meta.url).href;
   const storeUrl = new URL('../server-log-store.ts', import.meta.url).href;
   const crashHandlersUrl = new URL(

@@ -56,7 +56,7 @@
   color: var(--k-text-faint);
 }
 
-/* Held-previous-project state (station#3092): the content below still
+/* Held-previous-project state (archive#3092): the content below still
    belongs to the OUTGOING project while the new one loads. Dim the body so
    it reads as provisional, and surface the notice unconditionally — the
    dimming alone is not enough for a screen-reader user. */

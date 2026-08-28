@@ -47,10 +47,10 @@ import type { RuntimeConnectionSummary } from './enriched-agents.js';
  * `available: false` with the concrete resolution reason (or a generic
  * fallback when the resolver is absent) so it stops being invisible (#chat).
  *
- * station#3121 — with one exception, because "not in the registered set" has
+ * archive#3121 — with one exception, because "not in the registered set" has
  * two causes, not one. An agent bound to an EXTERNAL engine (Claude Code,
  * Codex, an ACP connection) is deliberately skipped from VoltAgent
- * registration (`runtime-agent-registry.ts`, station#954/#977), so it lands
+ * registration (`runtime-agent-registry.ts`, archive#954/#977), so it lands
  * here by design rather than by failure. `resolveAgentAvailability` is a
  * Station-engine model-resolution probe — "is there an enabled LLM provider
  * connection with a resolvable model" — and an external engine has no
@@ -159,7 +159,7 @@ export function createAgentRoutes(
    */
   resolveAgentAvailability?: (spec: AgentSpec) => string | null,
   /**
-   * Station#975 (unification slice 5) D-3: fetches the current runtime
+   * Station#975 (unification) D-3: fetches the current runtime
    * (agent-engine) connections so POST/PUT can compute
    * `validation.findings` — capability surfaces the saved spec authors
    * that its bound engine cannot deliver (the same pure
@@ -187,7 +187,7 @@ export function createAgentRoutes(
    */
   getRuntimeConnections?: () => Promise<RuntimeConnectionSummary[]>,
   /**
-   * §3.3 orphan visibility (station#1004, unification slice 7): known
+   * §3.3 orphan visibility (archive#1004, unification slice 7): known
    * project slugs, used to append an ownership finding to a save response
    * when the saved spec's `project` names a nonexistent project (the A1
    * preserved-orphan case — save-time already allowed it; this surfaces
@@ -361,7 +361,7 @@ export function createAgentRoutes(
    * 400 stays the default — a malformed or unacceptable body. A submitted
    * engine binding for the reserved `station` identity is different: the
    * request is well-formed, it just names a field this identity does not own
-   * (station#3662 delta-2 HIGH), so it is a CONFLICT with the app-level
+   * (archive#3662 delta-2 HIGH), so it is a CONFLICT with the app-level
    * setting that does own it. The distinction matters to a client: 400 says
    * "fix your payload", 409 says "this value lives somewhere else", and the
    * message names where.
@@ -403,7 +403,7 @@ export function createAgentRoutes(
       // launchable model — but surface a non-blocking warning so the user
       // isn't left wondering why the agent never appears as chattable (#chat).
       //
-      // station#3121: the probe behind `resolveAgentAvailability`
+      // archive#3121: the probe behind `resolveAgentAvailability`
       // (`resolveManagedAvailabilityReason`) resolves a STATION-ENGINE model
       // identity, so it reports "No enabled LLM provider connection is
       // configured." for a spec that never wanted one. Applied
@@ -414,7 +414,7 @@ export function createAgentRoutes(
       // because the enriched projection serves it and `deriveAgentCatalog`
       // only applies this reason to store-only records. Same skip, same shared
       // classifier, as the cold-boot registry and the reload lifecycle
-      // (station#977) — an external-engine-bound record has no Station-engine
+      // (archive#977) — an external-engine-bound record has no Station-engine
       // model to resolve, so the probe has nothing to say about it.
       const unavailableReason = isExternalEngineBoundAgent(created)
         ? null
@@ -448,7 +448,7 @@ export function createAgentRoutes(
 
   /**
    * Materialize a detected engine's Agent — find-or-create, one row per
-   * engine (station#3027 follow-up).
+   * engine (archive#3027 follow-up).
    *
    * Every "turn this engine on" affordance posts HERE rather than POSTing a
    * hand-built definition: the picker's Enable, first run's "Set up N", and
@@ -481,7 +481,7 @@ export function createAgentRoutes(
         const { slug, created, spec } = mutation.value;
         if (created) agentOps.add(1, { op: 'create' });
         // Same non-blocking warning derivation as `POST /`, including its
-        // station#3121 skip: an external-engine-bound spec has no
+        // archive#3121 skip: an external-engine-bound spec has no
         // Station-engine model to resolve, so probing it would manufacture a
         // false "not launchable" for the whole population this route serves.
         // It is not dead code — the `station` identity IS Station-engine

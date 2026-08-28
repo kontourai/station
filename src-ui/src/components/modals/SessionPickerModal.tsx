@@ -84,7 +84,7 @@ export function SessionPickerModal({
       placeholder="Search conversations..."
       items={items}
       loading={inventoryQuery.isLoading}
-      // station#771: `AutoSelectModal` (published by the SDK) has no error
+      // archive#771: `AutoSelectModal` (published by the SDK) has no error
       // affordance of its own — only `loading`/`emptyMessage`, both plain
       // strings, so there is no button slot to wire a real retry into. A
       // settled read failure used to fall straight through to the SAME "No

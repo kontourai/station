@@ -60,7 +60,7 @@ export function useInspectorTabs(projectSlug: string): {
   anyConfigured: boolean;
 } {
   const flow = useFlowDefinitionsQuery(projectSlug);
-  // Opt OUT of the keepPreviousData default (station#3092). These drive the
+  // Opt OUT of the keepPreviousData default (archive#3092). These drive the
   // tab strip's `configured` and `attention` dots, which have nowhere to
   // render a "refreshing" marking — so a held render would show the OUTGOING
   // project's "not ready" dot under the incoming project, silently. The

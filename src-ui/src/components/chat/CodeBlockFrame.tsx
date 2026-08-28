@@ -1,5 +1,5 @@
 /**
- * station#3354 — shared chrome for a code block: language header + copy
+ * archive#3354 — shared chrome for a code block: language header + copy
  * button, then highlighted HTML or a plain <pre>. Lives in its own module so
  * both the async markdown renderer's code component
  * (`HighlightedCodeBlock`) and the streaming open-fence block
@@ -21,7 +21,7 @@ export function CodeBlockFrame({
   html: string | null;
 }) {
   // "Copied" is only ever shown for a clipboard write that resolved
-  // (station#3339, the same defect as #3317's dir-path button). Station is
+  // (archive#3339, the same defect as #3317's dir-path button). Station is
   // routinely reached over plain http:// from another device, where
   // `navigator.clipboard` does not exist at all, and a permission refusal
   // rejects — the old `clipboard?.writeText(code)` no-opped or threw into an

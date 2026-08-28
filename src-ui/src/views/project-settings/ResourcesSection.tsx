@@ -14,7 +14,7 @@ import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 
 /**
- * station#1502 slice 4 — the resolution states, rendered
+ * archive#1502 — the resolution states, rendered
  * (`docs/design/portable-project-identity.md` §3.6, §4.1).
  *
  * Mounted from `ProjectSettingsView` only. `ProjectPage.tsx` is deliberately
@@ -87,7 +87,7 @@ function PointAtCheckoutForm({
 }: {
   slug: string;
   /**
-   * WHICH resource this form repairs (station#1503 slice 5). A multi-repo
+   * WHICH resource this form repairs (archive#1503). A multi-repo
    * project renders one of these per row, and a form that omitted it would
    * write the PRIMARY's binding whatever row it was captioned with — the
    * "the copy would name the working directory while the button wrote a
@@ -120,9 +120,9 @@ function PointAtCheckoutForm({
 
   /*
    * DELIBERATE GAP — there is no "Clone it" action below, and none is named.
-   * §10 promises slice 4 "the single-repo bind/clone convenience"; this ships
+   * §10 promises "the single-repo bind/clone convenience"; this ships
    * the bind half only, as an accepted gap with the reason recorded here
-   * (station#1502 review round 2).
+   * (archive#1502 2).
    *
    * CORRECTION to the reason this comment first gave. It claimed the canonical
    * remote "is NOT in the answer". It is: `ProjectGitRepoResource.id` is
@@ -143,13 +143,13 @@ function PointAtCheckoutForm({
    * repairs (use the SSH remote, point at an existing checkout) both exist.
    * Manufacturing `unresolvable` out of a guess is the exact dishonesty §3.6
    * rule 2 ("asserted, never inferred") exists to prevent, and it would arrive
-   * through the one state #1425 says it cares most about.
+   * through the one state archive#1425 says it cares most about.
    *
    * So this offers the half it can perform truthfully and says nothing about
    * the half it cannot. A clone action needs a resource-level clone SOURCE
    * (an un-canonicalized URL the manifest author actually wrote, or a
    * per-member preferred protocol) — a contract addition, not a UI one.
-   * Filed for slice 5, where a resource's remote becomes legible here anyway.
+   * Filed for, where a resource's remote becomes legible here anyway.
    */
   return (
     <form
@@ -206,7 +206,7 @@ function PointAtCheckoutForm({
  * The `missing` repair for a `working-directory` record. It is NOT a bind
  * form: `bindProjectResource` writes a BINDING row keyed by the manifest's
  * resource, and a project with no manifest — every project created before
- * slice 2, plus any whose resources could not be derived — is refused
+ *plus any whose resources could not be derived — is refused
  * `no-resources-declared` 409 EVERY time. Offering the form there is a
  * guaranteed dead end, and worse, the copy would name the working directory
  * while the button wrote a different record.
@@ -238,7 +238,7 @@ interface ResourceRowProps {
 }
 
 /**
- * ONE resource row (slice 4 is single-repo), rendered by state.
+ * ONE resource row ( is single-repo), rendered by state.
  *
  * The `switch` is exhaustive with NO `default:` — a `default` is how a
  * renderer invents a state. `unresolvable` and `not-portable` have no producer
@@ -268,7 +268,7 @@ function ResourceRow({
               becomes the canonical remote the moment the project's resources
               are declared, so printing it names a transient internal string
               as the thing that resolves. The sentence says what it IS instead.
-            */}
+*/}
             {resource.resourceId === localProjectResourceId(slug) ? (
               "This project's working directory resolves here, checked just now."
             ) : (
@@ -283,9 +283,9 @@ function ResourceRow({
       );
 
     // `unbound` and `missing` are ADJACENT ARMS ON PURPOSE, so the difference
-    // between them is visible in one screen. station#1594/#1603 split them
+    // between them is visible in one screen. archive#1594/archive#1603 split them
     // because "nothing was ever declared" and "the declared directory is gone"
-    // owe opposite behaviour (#1023's `$HOME` terminus vs #791's fail-closed
+    // owe opposite behaviour (archive#1023's `$HOME` terminus vs archive#791's fail-closed
     // throw). Rendering them alike would reintroduce that defect one layer up,
     // so: different headline, different body, and different things NAMED.
     case 'unbound':
@@ -329,7 +329,7 @@ function ResourceRow({
             pre-filled with what the record declares, because that is the
             string an operator edits. Submitting is still an explicit act —
             Station re-points nothing on its own.
-          */}
+*/}
           {resource.record === 'working-directory' ? (
             <EditWorkingDirectoryPrompt />
           ) : (
@@ -357,7 +357,7 @@ function ResourceRow({
             rewrite the resource's `canonicalRemote` in the manifest, and no
             such verb exists on any surface — so the operator is not told to
             confirm anything. Re-point is real; the other half is not, yet.
-          */}
+*/}
           <PointAtCheckoutForm
             slug={slug}
             resourceId={resource.resourceId}
@@ -380,7 +380,7 @@ function ResourceRow({
               check running and FAILING (a wedged mount, a git that refused,
               a timeout). Saying it never ran misdescribes the common case and
               points the operator at the wrong thing to look at.
-            */}
+*/}
             The directory is there. Station could not confirm which repository
             is in it. {resource.reason}
           </p>
@@ -389,7 +389,7 @@ function ResourceRow({
             Re-verify needs the same pending affordance the bind form has: if
             the result is still `stale` the DOM is byte-identical, and without
             it the operator cannot tell whether anything ran at all.
-          */}
+*/}
           <button
             type="button"
             className="editor-btn resources-section__reverify"
@@ -407,7 +407,7 @@ function ResourceRow({
       // something the state says does not exist. The candidates are in the
       // reason, which also carries the repair.
       //
-      // Since station#1503 this arm has no producer in Station: the view
+      // Since archive#1503 this arm has no producer in Station: the view
       // resolves per declared resource id, and the resolver's `ambiguous` is a
       // whole-manifest answer that now lands on `view.primary` instead. It is
       // KEPT rather than deleted because the arm must exist for a server that
@@ -511,7 +511,7 @@ function ResolutionBody({
               // so `missing` → `drifted` kept the mounted repair form — and with
               // it the `useState(initialPath)` seeded from the OLD state's
               // declaredPath, plus any stale refusal text, presented as though it
-              // belonged to the new one. Keyed by resource FIRST (station#1503):
+              // belonged to the new one. Keyed by resource FIRST (archive#1503):
               // with several rows, a state-only key collides the moment two
               // resources share a state, and React reuses one row's form for
               // another resource.
@@ -528,7 +528,7 @@ function ResolutionBody({
 }
 
 /**
- * "2 of 3 resolve here" — station#1503 slice 5's whole point, and a DERIVATION:
+ * "2 of 3 resolve here" — archive#1503 's whole point, and a DERIVATION:
  * both numbers are counted from the results on screen, so the sentence cannot
  * disagree with the rows under it.
  *
@@ -560,7 +560,7 @@ function ResourceTally({
 }
 
 /**
- * The fact per-resource resolution would otherwise SILENCE (station#1503).
+ * The fact per-resource resolution would otherwise SILENCE (archive#1503).
  *
  * Every row can read healthy while the project cannot be started in at all:
  * `resolveStartSessionCwd`, the knowledge scan, and the task workspace all ask

@@ -65,7 +65,7 @@ export type SessionCommandInternalOptions = {
   /** Server-owned execution policy for independent review sessions. */
   reviewIsolation?: ProviderSessionStartInput['reviewIsolation'];
   /**
-   * station#2821 hardening L3: re-stamps `metadata.sessionVisibility =
+   * archive#2821 hardening L3: re-stamps `metadata.sessionVisibility =
    * 'ephemeral'` after `stripReservedCapabilityMetadata` removes any
    * caller-supplied value. Only the foreground webhook execution seam sets
    * this, and only for its own server-composed metadata — never accepted
@@ -140,7 +140,7 @@ export interface SessionCommandDependencies {
       existing: Required<ExistingSession>,
     ): void;
     /**
-     * station#3493 residual 6: the adapter-free half of
+     * archive#3493 residual 6: the adapter-free half of
      * {@link validateReattach}, run against the PERSISTED session BEFORE
      * {@link materializeRestoredSession} — a reattach conflict must refuse
      * before the engine spawn it would otherwise only be raised after.
@@ -153,7 +153,7 @@ export interface SessionCommandDependencies {
       provider: OrchestrationStartSessionInput['provider'],
     ): ProviderAdapterShape;
     /**
-     * station#3476: start the engine for a session this process restored at
+     * archive#3476: start the engine for a session this process restored at
      * boot without spawning one, so a reattach can bind to a real engine
      * instead of failing on the half-populated state below. Resolves to
      * `undefined` when the thread is not a dormant restored session, which
@@ -378,7 +378,7 @@ export function createSessionCommandModule(
           ) {
             throw new Error(`Session not found: ${input.threadId}`);
           }
-          // station#3476: boot recovery restores a session's state without
+          // archive#3476: boot recovery restores a session's state without
           // starting an engine, so a restored thread arrives here with a
           // `session` and no `adapter` — a shape that used to be impossible
           // and that the reattach branch below rejects as
@@ -399,7 +399,7 @@ export function createSessionCommandModule(
             existing.session.provider === input.provider &&
             deps.launchPolicy.materializeRestoredSession
           ) {
-            // station#3493 residual 6: a reattach that conflicts with the
+            // archive#3493 residual 6: a reattach that conflicts with the
             // persisted row must refuse HERE, before the engine spawns —
             // raising it only from `validateReattach` below meant the
             // conflict arrived after `materializeRestoredSession` had

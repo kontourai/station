@@ -46,7 +46,7 @@ describe('rehydrateChatSession (station#1225)', () => {
       inputHistory: [],
     });
 
-    // station#1225 review (MEDIUM fix): the 4th positional arg is
+    // archive#1225 the 4th positional arg is
     // `queryClient` — `undefined` here since none was supplied, NOT simply
     // absent from the call. Pinning the exact arity/shape is the point: the
     // regressed extraction called `fetchMessages(apiBase, agentSlug,

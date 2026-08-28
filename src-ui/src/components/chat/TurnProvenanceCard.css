@@ -1,4 +1,4 @@
-/* Per-answer provenance card (station#1410, redesigned station#1802).
+/* Per-answer provenance card (archive#1410, redesigned archive#1802).
    Kontour-facing trust surface, so it uses Console Kit --k-* tokens like the
    trust/readiness/gate-verdict surfaces — see the token-scoping rule at the
    top of src-ui/src/index.css. */
@@ -7,7 +7,7 @@
   font-size: var(--k-text-sm);
 }
 
-/* Quiet text-weight disclosure (station#2652 redesign): the pill chrome
+/* Quiet text-weight disclosure (archive#2652 redesign): the pill chrome
    (border + panel fill) made this compete with the answer above it. The
    collapsed line keeps its earned-facts content and semantics; only its
    visual weight recedes. */
@@ -28,14 +28,14 @@
   color: var(--k-text);
 }
 
-/* The collapsed line IS the takeaway (station#1802): engine, model, cost —
+/* The collapsed line IS the takeaway (archive#1802): engine, model, cost —
    the earned facts, in the reader's normal text colour, not muted like a
    gap count used to be. */
 .turn-provenance__headline {
   color: var(--k-text);
 }
 
-/* Per-answer standing (station#1802) — only a finding that can differ
+/* Per-answer standing (archive#1802) — only a finding that can differ
    between two answers from the same engine ever reaches this badge (see
    turnFindings). Muted, not cautionary: it should draw the eye without
    marking a normal healthy turn as a problem. */

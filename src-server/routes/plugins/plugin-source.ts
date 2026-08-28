@@ -32,7 +32,7 @@ interface PluginRegistryInstaller {
    * validate, and for the tree it may roll back. A provider that honours this
    * refuses before it writes anything; one that ignores it cannot be
    * prevented from here, which is why the caller also deletes nothing it
-   * cannot prove it created (station#4309 follow-up review, MEDIUM 3).
+   * cannot prove it created (archive#4309 follow-up review, MEDIUM 3).
    */
   install(
     id: string,
@@ -198,7 +198,7 @@ function readInstalledDependencyManifest(
  * writes `dist/bundle.js`. When the dependency was already installed, that
  * happens to a plugin the operator never touched, as a side effect of
  * installing something else — so it takes THAT plugin's content lock
- * (station#4288, review HIGH 3). Without it the memoized digest survives the
+ * (archive#4288, review HIGH 3). Without it the memoized digest survives the
  * mutation, so the tree reads `bound` in-process against bytes that are no
  * longer the ones any grant was given for, and only starts telling the truth
  * after a restart.
@@ -301,7 +301,7 @@ export async function fetchPluginSource(
   const isGit = isGitPluginSource(source);
 
   const tempName = extractPluginName(source);
-  // station#4288, review MEDIUM 2. The staging directory used to be
+  // archive#4288, review MEDIUM 2. The staging directory used to be
   // `.preview-<source basename>` — derived, predictable, and shared by every
   // fetch of a source with that basename. Two consequences, both reachable
   // now that preview-then-install is the ORDINARY traffic pattern rather than
@@ -573,7 +573,7 @@ export async function resolvePluginDependencies(
  * `PluginContentLockCycleError` is refused concurrency, not a bad dependency,
  * and a caller can only tell the two apart — and answer 409 rather than 500,
  * naming the plugins involved — if the instance survives this result boundary
- * (station#4309 follow-up). Callers that only report the failure can keep
+ * (archive#4309 follow-up). Callers that only report the failure can keep
  * reading `error` and ignore it.
  */
 export interface PluginDependencyInstallResult {
@@ -624,10 +624,10 @@ async function validateAndBuildInstalledDependency(
  * of what it created, and the only place that knows is the frame that created
  * it — a directory listing taken before and after cannot tell this install's
  * tree from one a concurrent install landed in the same window
- * (station#4309 follow-up review, HIGH 1).
+ * (archive#4309 follow-up review, HIGH 1).
  *
  * `approvedIds` is the set of plugin ids an operator's install decision named,
- * threaded through the recursion the same way (station#4288, review MEDIUM 1).
+ * threaded through the recursion the same way (archive#4288, review MEDIUM 1).
  * The consent gate can only check the ids the PARENT's staged manifest
  * declares; every level below it is read from a manifest fetched after the
  * decision was taken. So `P` depending on `D` is approved as `['D']`, `D`'s
@@ -742,7 +742,7 @@ export async function installPluginDependency(
         // Everything above touches `tempDir` and OTHER plugins' installs;
         // `<plugins>/<id>` does not exist yet, so a failure up there has
         // nothing of ours to roll back — and used to delete that path anyway
-        // (station#4309 follow-up), which is how a concurrent install of the
+        // (archive#4309 follow-up), which is how a concurrent install of the
         // same dependency lost its tree.
         //
         // From here the dependency's own tree is created, so the creation AND
@@ -755,7 +755,7 @@ export async function installPluginDependency(
         // the lock it needs. That says nothing about the caller's rollback,
         // which runs after this frame has released — see
         // `removeDependencyTreesCreatedByThisInstall` in
-        // plugin-install-shared.ts (station#4309 follow-up review, HIGH 1).
+        // plugin-install-shared.ts (archive#4309 follow-up review, HIGH 1).
         return await withPluginContentLock(
           pluginsDir,
           dependency.id,
@@ -805,7 +805,7 @@ export async function installPluginDependency(
   try {
     // The write, the validation that may reject it and the rollback that
     // deletes it all run under the dependency's content lock rather than
-    // beside it (station#4309 follow-up). The transitive loop stays inside
+    // beside it (archive#4309 follow-up). The transitive loop stays inside
     // because it runs AFTER the tree exists, and a failure in it has to be
     // able to remove what this call installed; the dependency locks it takes
     // are nested, which the wait-for cycle check refuses rather than
@@ -817,7 +817,7 @@ export async function installPluginDependency(
     // takes this plugin's content lock — a consent decision, an update, an
     // uninstall — QUEUES behind it, so the ceiling on that wait is the
     // subtree, not one install step. That is why the registry manifest fetch
-    // is time-bounded (station#4309 follow-up review, MEDIUM 2): an
+    // is time-bounded (archive#4309 follow-up review, MEDIUM 2): an
     // unbounded network read inside here has no computable ceiling at all.
     return await withPluginContentLock(pluginsDir, dependency.id, async () => {
       if (existsSync(targetDir)) {
@@ -827,7 +827,7 @@ export async function installPluginDependency(
         // `cpSync(staged, targetDir)` whenever an alias it owns already names
         // this plugin, so calling it here DELETES the concurrent operation's
         // tree from inside the provider, and the caller then cannot even roll
-        // that back because it did not create it (station#4309 follow-up
+        // that back because it did not create it (archive#4309 follow-up
         // review, MEDIUM 1). Same shape as the source branch above.
         await validateAndBuildInstalledDependency(
           pluginsDir,

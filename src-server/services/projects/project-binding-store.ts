@@ -1,5 +1,5 @@
 /**
- * station#1499 slice 2 — the per-Station binding store
+ * archive#1499 — the per-Station binding store
  * (`docs/design/portable-project-identity.md` §3.5).
  *
  * `<home>/config/project-bindings.json` records which local checkout satisfies
@@ -67,7 +67,7 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { JsonFileStore } from '../infra/json-store.js';
 
-/** Reserved until #1392 introduces real membership (§3.5). */
+/** Reserved until archive#1392 introduces real membership (§3.5). */
 export const LOCAL_MEMBER_ID = 'local';
 
 export class ProjectBindingStoreShapeError extends Error {
@@ -107,7 +107,7 @@ export interface UpsertProjectBindingInput {
   state: ProjectBinding['state'];
 }
 
-// Async-compatible seam (#2646): the default is the ASYNC cross-process lock
+// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
 // so a contended acquisition yields the event loop; sync test fakes remain
 // assignable (awaiting a non-promise is a no-op).
 type ProjectBindingMutationLock = (

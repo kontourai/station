@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3213: the ONE failure banner, proven to be the one both surfaces
+ * archive#3213: the ONE failure banner, proven to be the one both surfaces
  * render. The session detail's own markup was lifted into this component when
  * the chat dock became a second consumer — a parallel banner with the same
  * words is how two surfaces come to describe one failure differently.
@@ -19,9 +19,9 @@ describe('SessionFailureAlert', () => {
   });
 
   test('announces the cause as an alert, in the shared copy shape — quoted verbatim, because it carries real content', () => {
-    // The banner's contract is to QUOTE the recorded cause (station#3213) —
+    // The banner's contract is to QUOTE the recorded cause (archive#3213) —
     // rewriting a cause that names a host would attribute a meaning its
-    // producer never stated (see station#3299's narrow exception below).
+    // producer never stated (see archive#3299's narrow exception below).
     render(<SessionFailureAlert failureText="ECONNREFUSED host:8443" />);
 
     const banner = screen.getByTestId('session-failure');

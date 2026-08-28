@@ -1,10 +1,10 @@
 /**
- * station#1484 slice 1 — the four channel-log record types
+ * The four channel-log record types
  * (`docs/design/conversation-state.md` §3.2, §3.3, §3.8; the OQ decisions
- * ratified in the 2026-08-02 comment on #1484).
+ * ratified on archive#1484).
  *
  * **Contracts only.** Nothing here reads, writes, sequences, transports, or
- * renders anything. There is no wire, no store, and no UI in this slice, and
+ * renders anything. There is no wire, no store, and no UI here, and
  * the local-only invariant (§4.4) is untouched because nothing new is
  * rendered.
  *
@@ -29,9 +29,9 @@
  *   {@link foldChannelSupersessions} is the read-path fold, which refuses to
  *   guess when a chain forks.
  * - **OQ-3/OQ-4 — the durability enum lands now, the acknowledgement policy
- *   defers to slice 4.** {@link ChannelDurabilityLevel} plus
+ *   is deferred.** {@link ChannelDurabilityLevel} plus
  *   {@link durabilitySatisfies}. Nothing here says what the composer
- *   acknowledges at, because that is slice 4's decision to make.
+ *   acknowledges at, because that policy is not this file's decision to make.
  *
  * ## Two structural rules the design states and this file enforces
  *
@@ -50,14 +50,15 @@
  * ## What is deliberately absent
  *
  * No signing, no key material, no verifier (see `channel-assurance.ts` for
- * why that is honest at slice 1 and a lie from slice 3). No page cursor and
+ * why that is honest without a signing substrate and a lie once one exists).
+ * No page cursor and
  * no cache-verification states (§8) — those are read-path surface and belong
- * with the slice that serves a read. No idempotency, quota, or replay
- * machinery (§5) — slice 6. No lease service (§3.4) — slice 5;
- * {@link ChannelHomeRecord.leaseRef} is a reference to a lease this slice
+ * with the reader that serves a read. No idempotency, quota, or replay
+ * machinery (§5). No lease service (§3.4);
+ * {@link ChannelHomeRecord.leaseRef} is a reference to a lease this file
  * does not mint, and a `leaseRef` is emphatically **not** a lease: §3.4's
  * whole correction is that clients verify the lease, not the epoch number,
- * and nothing in slice 1 verifies anything.
+ * and nothing here verifies anything.
  */
 
 import { isPlainJsonObject } from './channel-assurance.js';
@@ -98,10 +99,10 @@ export const CHANNEL_SEQUENCEABLE_SCHEMA_VERSIONS = Object.freeze([
 export const CHANNEL_GENESIS_SEQ = 1;
 
 /**
- * §3.2's vocabulary, plus one addition this slice had to make.
+ * §3.2's vocabulary, plus one addition this file had to make.
  *
  * **`agent-authorization` is not in the design doc's §3.2 list, and it is
- * this slice's smallest genuine invention.** OQ-7 decides that an agent's
+ * this module's smallest genuine invention.** OQ-7 decides that an agent's
  * authorization is "a committed grant, referenced by `authorizationId`" —
  * a committed record must therefore be committed *as some kind*, and §3.2
  * offers no home for it: it is not a `membership-change` (an agent is not a
@@ -178,7 +179,7 @@ export const CHANNEL_SUPERSESSION_REQUIREMENT: Readonly<
 /**
  * §3.8's four durability levels, ordered. The wire names are the design
  * doc's names; the product words ("Sending" / "Saved" / "Copied to your
- * Station", §4.2) are a slice-4 rendering concern and appear nowhere here.
+ * Station", §4.2) are a rendering concern and appear nowhere here.
  */
 export type ChannelDurabilityLevel =
   | 'pending-local'
@@ -220,10 +221,10 @@ export function durabilitySatisfies(
   required: ChannelDurabilityLevel,
 ): boolean {
   if (!isChannelDurabilityLevel(actual)) return false;
-  // `required` is checked too (slice-1 review, MEDIUM). `indexOf` returns -1
+  // `required` is checked too. `indexOf` returns -1
   // for an unrecognised value and every real level's index beats -1, so an
   // unvalidated requirement made EVERY level satisfy it — fail-open on the
-  // argument slice 4 will read from per-channel policy JSON. One stale enum
+  // argument a per-channel policy JSON will supply. One stale enum
   // value would have shown "Copied to your Station" for a message that was
   // only `pending-local`, which is §4.2's one-checkmark-meaning-either
   // failure exactly.
@@ -561,7 +562,7 @@ function rejectForbiddenKeys(
 /**
  * Keys that would make a reference positional rather than identity-bearing.
  *
- * Exported (station#1598) because a sibling contract now records a channel
+ * Exported because a sibling contract records a channel
  * reference of its own — an answer share's channel binding — and a second
  * copy of this list is exactly the drift it exists to prevent. A ref that
  * gains a `seq` in one module and not the other would refuse in one place and
@@ -601,7 +602,7 @@ function validateRecordRef(
 }
 
 /**
- * The public form of {@link validateRecordRef} (station#1598).
+ * The public form of {@link validateRecordRef}.
  *
  * A `ChannelRecordRef` is now recorded outside this module — an answer share
  * binds to one committed message — and the refusal that matters there is the
@@ -626,7 +627,7 @@ export function validateChannelRecordRef(
 }
 
 /**
- * The public form of the recursive forbidden-key sweep (station#1598).
+ * The public form of the recursive forbidden-key sweep.
  *
  * Returned as diagnostics rather than thrown so a sibling validator folds
  * them into its own result with the shared `forbidden-key` code. Same reason
@@ -810,7 +811,7 @@ export function validateChannelProposal(
  * **There is exactly one canonical byte-string for a proposal, and this is
  * it.** The DSSE envelope is carried alongside the record rather than inside
  * it (`channel-assurance.ts`, {@link ChannelSignedRecord}), so these bytes
- * are simultaneously what a digest covers and what a slice-3 signer signs.
+ * are simultaneously what a digest covers and what a signer signs.
  * An embedded envelope would have forced two canonicalizations — a record
  * cannot contain its own signature — and nothing would have said which one
  * `proposalDigest` meant.
@@ -1038,9 +1039,8 @@ export function validateChannelHomeRecord(
  * Fail-closed validator for the refusal receipt.
  *
  * It has one **because it is a record a reader receives from a party it does
- * not trust** — a home that refuses a member's proposal. Slice-1 review
- * caught that this type, and both revocation types, shipped without
- * validators while their siblings had them; a record type with no validator
+ * not trust** — a home that refuses a member's proposal. A record type with
+ * no validator
  * is invisible to the corpus gate, which can only report a missing fixture
  * for a validator that exists.
  *
@@ -1121,8 +1121,9 @@ export function validateChannelLocatorHint(
  * equivocation" — and that sentence is only true when both are verifiably
  * signed by the same home. Unsigned, a conflict is a real thing to surface
  * and an unattributable one: anybody can fabricate an unsigned checkpoint,
- * so treating it as proof would let a third party frame a home. Slice 1 has
- * no verifier, so slice 1 produces `unattributable` conflicts, which is the
+ * and an unattributable one: anybody can fabricate an unsigned checkpoint,
+ * so treating it as proof would let a third party frame a home. Without a
+ * verifier this produces `unattributable` conflicts, which is the
  * honest answer rather than the flattering one.
  */
 export type ChannelCheckpointComparison =
@@ -1140,19 +1141,19 @@ export type ChannelCheckpointComparison =
     };
 
 /**
- * @param verifiedSignerKeyId Supplied from slice 3 onward: returns the key
+ * @param verifiedSignerKeyId Supplied when a verifier exists: returns the key
  *   that actually produced a verified signature over the checkpoint, or
  *   `null` when there is none. Returning a **key id** rather than a boolean
- *   is load-bearing (slice-1 review, HIGH): attribution means "the SAME
+ *   is load-bearing: attribution means "the SAME
  *   signer said both things", and a boolean plus the envelope's own
  *   self-declared `signatures[].keyid` cannot establish that — the declared
  *   key id is unverified metadata anyone can write, so a verifier checking
  *   key A against a record advertising key B would have produced an
  *   "equivocation proof" naming the wrong home.
  *
- *   Absent, no conflict is ever attributable — which is exactly slice 1's
- *   position, and it is why an equivocation proof is a slice-7 deliverable
- *   rather than something this slice can already emit.
+ *   Absent, no conflict is ever attributable — which is why an
+ *   equivocation proof is not something this comparison can emit without
+ *   one.
  */
 export function compareChannelCheckpoints(
   a: ChannelCheckpoint,
@@ -1177,8 +1178,7 @@ export function compareChannelCheckpoints(
   }
 
   // No verifier means never attributable — stated as an explicit `false`
-  // rather than an absent-and-therefore-falsy value, because this is the
-  // branch slice 1 always takes.
+  // rather than an absent-and-therefore-falsy value.
   let attributable = false;
   if (verifiedSignerKeyId) {
     const left = verifiedSignerKeyId(a);
@@ -1222,8 +1222,8 @@ export function foldChannelSupersessions(
   originalId: string,
   links: readonly ChannelSupersessionLink[],
 ): ChannelSupersessionFold {
-  // Deduplicated by (supersedesId, proposalId) before the arity test
-  // (slice-1 review, MEDIUM). One superseding record delivered twice — a page
+  // Deduplicated by (supersedesId, proposalId) before the arity test.
+  // One superseding record delivered twice — a page
   // union, a replayed segment — is still ONE successor, and reporting it as
   // ambiguous would render every edited message as unavailable with the same
   // candidate named twice.

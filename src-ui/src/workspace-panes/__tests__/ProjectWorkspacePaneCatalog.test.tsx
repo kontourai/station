@@ -50,7 +50,7 @@ function renderSection(
   return props;
 }
 
-// station#3318: the project page's pane section is an active-pane inventory,
+// archive#3318: the project page's pane section is an active-pane inventory,
 // not an availability diagnostics list — unplaced descriptors live only in the
 // Add-pane picker.
 describe('ProjectWorkspacePaneSection (station#3318)', () => {

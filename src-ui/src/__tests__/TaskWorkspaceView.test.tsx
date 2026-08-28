@@ -68,7 +68,7 @@ const deleteOutputMutation = {
 };
 const downloadOutputContent = vi.fn();
 
-// UX audit AW-4: the optional Task experiences are now derived from this
+// AW-4: the optional Task experiences are now derived from this
 // Station's installed plugins, so the view reads the plugin inventory too.
 const pluginsResult: {
   data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
@@ -983,7 +983,7 @@ describe('TaskWorkspaceView', () => {
     expect(screen.queryByText(/session-answer|turn-answer/)).toBeNull();
   });
 
-  // UX audit AW-4: the three optional experiences used to be filtered out by a
+  // AW-4: the three optional experiences used to be filtered out by a
   // hardcoded `id === 'direct'` — collapsed, but not driven by anything. An
   // installed, ENABLED producer that declares the contract must make its
   // experience appear.
@@ -1179,7 +1179,7 @@ describe('TaskWorkspaceView', () => {
     expect(screen.queryByTestId('file-content')).toBeNull();
   });
 
-  // station#3158: one message used to cover both, so a Task with no workspace
+  // archive#3158: one message used to cover both, so a Task with no workspace
   // read as a problem with whichever reference the user happened to click.
   test('names the missing workspace rather than blaming the reference', () => {
     queryResult.data = graph({

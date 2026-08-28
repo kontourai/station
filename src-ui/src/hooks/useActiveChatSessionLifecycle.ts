@@ -56,11 +56,11 @@ export function useCreateChatSession() {
 
 /**
  * Resolves the new/reused session id, or `null` when the conversation's
- * messages could not be fetched — station#1312 review: `fetchMessages`
+ * messages could not be fetched — archive#1312: `fetchMessages`
  * swallows its own errors and leaves `messages` as `[]`, so without this
  * check a 404/network failure on an otherwise-valid agent+conversation
  * rehydrated into a live, permanently EMPTY chat tab with no visible error,
- * a regression against the pre-#1297 always-navigate-to-/activity fallback
+ * a regression against the pre-archive#1297 always-navigate-to-/activity fallback
  * for that population. On failure the just-created tab is torn back down
  * (`removeChat`) so the caller's own fallback (`useChatDockActions`'
  * `openConversation` reporting `false` to the row-open policy, which then
@@ -70,7 +70,7 @@ export function useCreateChatSession() {
 export function useOpenConversation(apiBase: string) {
   const { initChat, updateChat, removeChat } = useActiveChatActions();
   const { fetchMessages } = useConversationActions();
-  // station#1311 review: resolves the reopened conversation's real
+  // archive#1311: resolves the reopened conversation's real
   // server-side `updatedAt` (an explicit inventory value from row-open paths,
   // then the per-agent cache; no network call of its own — see
   // `resolveConversationUpdatedAt`) so reopening an old, already-read
@@ -195,9 +195,9 @@ export function useLaunchChat(apiBase: string) {
 }
 
 export function useRehydrateSessions(apiBase: string) {
-  // station#1225 review (MEDIUM fix): resolved HERE (a real hook boundary)
+  // archive#1225 resolved HERE (a real hook boundary)
   // and threaded through — `rehydrateChatSession` itself cannot call
-  // `useQueryClient()`, and dropping this silently regressed the
+  // `useQueryClient`, and dropping this silently regressed the
   // `toolMappings` cache-lookup fallback the pre-extraction inline code had
   // (see `rehydrateChatSession.ts`'s file-header note).
   const queryClient = useQueryClient();
@@ -205,7 +205,7 @@ export function useRehydrateSessions(apiBase: string) {
   return useCallback(async () => {
     const allChats = activeChatsStore.getSnapshot();
     for (const [sessionId, chat] of Object.entries(allChats)) {
-      // station#1225: shared with the reconnect-fallback refetch
+      // archive#1225: shared with the reconnect-fallback refetch
       // (`snapshotHandlers.ts`'s `applyOrchestrationSnapshot`) via
       // `rehydrateChatSession` — see that module's header for why this is
       // no longer inlined here.

@@ -257,7 +257,7 @@ function StarterLinkRetry({ task }: { task: TaskRecord }) {
       role="status"
       aria-label="Starter work link"
     >
-      {/* station#3965: led with `NOT_VERIFIED` and buried the fact the reader
+      {/* archive#3965: led with `NOT_VERIFIED` and buried the fact the reader
           cares about — the task exists. Outcome first, then the gap. */}
       <p>
         Your task was created. We couldn’t confirm it is linked to your
@@ -340,7 +340,7 @@ function TaskWorkspaceContent({
   graph: TaskGraph;
 }) {
   const references = useMemo(() => taskReferences(graph), [graph]);
-  // UX audit AW-4: the list is derived from what this Station has actually
+  // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
   // only when an installed, ENABLED plugin declares it provides that
   // contract; everything else stays behind the one Add capabilities
@@ -962,7 +962,7 @@ function InspectionContent(
   // Two causes, and the condition that used to name both at once already
   // separates them: with no bound workspace there is nothing to resolve a
   // reference against, which is a property of the Task, not of the reference
-  // the user just picked (station#3158).
+  // the user just picked (archive#3158).
   if (!props.directory)
     return (
       <Empty

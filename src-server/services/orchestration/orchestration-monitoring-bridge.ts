@@ -12,7 +12,7 @@ type TurnContext = {
   model?: string;
   usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
   provider?: string;
-  /** Tool call start times, for the elapsed time on results (#3077). */
+  /** Tool call start times, for the elapsed time on results (archive#3077). */
   toolStartedAt?: Record<string, number>;
 };
 
@@ -21,7 +21,7 @@ type TurnContext = {
  * Station-agent is deliberately excluded: its relayed
  * `/api/agents/:slug/chat` stream already owns that projection.
  *
- * It no longer feeds lifetime analytics (station#3245). Doing so made this a
+ * It no longer feeds lifetime analytics (archive#3245). Doing so made this a
  * SECOND fold of the same events, and a wrong one: it kept the last
  * `token-usage.updated` frame per turn on the belief that every engine
  * reports cumulatively, which over-reported Codex (genuinely
@@ -39,7 +39,7 @@ export class OrchestrationMonitoringBridge {
   constructor(
     private readonly emitter: MonitoringEmitter | undefined,
     private readonly sessionContext: (threadId: string) => {
-      /** Absent when the session reported none — never a substituted literal (station#3082). */
+      /** Absent when the session reported none — never a substituted literal (archive#3082). */
       slug?: string;
       conversationId: string;
       /** Absent when the session reported none. */
@@ -66,7 +66,7 @@ export class OrchestrationMonitoringBridge {
       turnId: input.turnId,
       traceId: input.threadId,
       // Retained per turn so the TOOL events can carry it too, not just the
-      // start span (station#3074): grouping tool usage by engine previously
+      // start span (archive#3074): grouping tool usage by engine previously
       // required joining back to agent-start, which does not even exist for
       // Station-engine turns.
       provider: input.provider,
@@ -99,7 +99,7 @@ export class OrchestrationMonitoringBridge {
     if (!context || !turnId) return;
     if (event.method === 'tool.started') {
       // Remember when it started so the result can carry elapsed time too
-      // (station#3077). Without this, duration exists for Station-engine
+      // (archive#3077). Without this, duration exists for Station-engine
       // tools and silently not for external ones — the same
       // present-for-some-rows asymmetry the sibling issue is about.
       if (event.toolCallId) {

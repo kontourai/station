@@ -58,7 +58,7 @@
 }
 
 /*
- * station#3766: ONE owner for this cluster's flex behaviour.
+ * archive#3766: ONE owner for this cluster's flex behaviour.
  *
  * `index.css`'s mobile block declared `flex-shrink: 0` here at the same
  * specificity as the `flex-shrink: 1; overflow: hidden` that used to live on
@@ -251,7 +251,7 @@
   font-weight: 500;
 }
 
-/* station#3311: the connection surface is self-describing — the state is
+/* archive#3311: the connection surface is self-describing — the state is
    visible text beside the dot, with the identity after it.
    station#4474: `connStateLabel` (HeaderActions.tsx) is one of five strings
    of different lengths ("Connected", "Reconnecting", "Can't connect",
@@ -745,7 +745,7 @@
   margin: 0 0 8px;
 }
 
-/* #3310: in-flight and failed-generation states — the only un-summarized
+/* archive#3310: in-flight and failed-generation states — the only un-summarized
    states that still earn transcript space (the idle entry point moved to the
    chat-settings menu). */
 .session-summary__generating {
@@ -767,7 +767,7 @@
   opacity: 0.6;
 }
 
-/* ── Envelope-sourced model claims (station#1434) ──
+/* ── Envelope-sourced model claims (archive#1434) ──
    Replaces the bare badge above on a row whose turn provenance envelope is
    readable. Each claim carries its own label, because the envelope models
    "what Station requested" and "what the engine reported" as separate
@@ -801,7 +801,7 @@
   opacity: 0.75;
 }
 
-/* ── MessageAttribution (station#1424) ──
+/* ── MessageAttribution (archive#1424) ──
    Additive identity strip: agent identity text + engine/owner/permission-
    posture chips. Sits above the model badge, inside the existing bubble —
    the row shape stays identical, this only adds a quiet identity line. No
@@ -863,7 +863,7 @@
   color: var(--text-primary);
 }
 
-/* station#3344: attached files, shown in the composer rather than only behind
+/* archive#3344: attached files, shown in the composer rather than only behind
    the paperclip popover, so a pasted screenshot is visibly attached. The row
    scrolls instead of wrapping — wrapping grows the composer upward and pushes
    Send off a phone screen. */
@@ -914,7 +914,7 @@
   white-space: nowrap;
 }
 
-/* station#3375: the chip says the bytes changed. It is a label, not a control
+/* archive#3375: the chip says the bytes changed. It is a label, not a control
    — nothing here is clickable, so it carries no target-size obligation. */
 .composer-attachments__resized {
   flex: 0 0 auto;
@@ -987,7 +987,7 @@
   white-space: nowrap;
 }
 
-/* station#3344 (review MEDIUM-4): on a touch device this control has to meet
+/* archive#3344: on a touch device this control has to meet
    the same 44px floor its composer siblings do (WCAG 2.5.5) — a 20px target
    between a thumbnail and the next chip is a mis-tap waiting to happen. The
    button grows; the glyph does not. */
@@ -1072,7 +1072,7 @@
   fill: currentColor;
 }
 
-/* --error-primary was never defined (station#1168), so this hover fill has
+/* --error-primary was never defined (archive#1168), so this hover fill has
    always resolved to `transparent` while the glyph still went white — in the
    light theme that painted a white Stop icon onto a white composer, i.e. the
    control for interrupting a running turn disappeared under the cursor.
@@ -1160,7 +1160,7 @@
 }
 
 .chat-input__model-source {
-  /* --font-sans, not the --font-family this read until station#1254. There is
+  /* --font-sans, not the --font-family this read until archive#1254. There is
      no --font-family token; tokens.css declares --font-sans and --font-mono.
      The declaration was dropped and the label inherited body copy — which is
      --font-sans, so this is the one conversion in that sweep that changes no
@@ -1218,7 +1218,7 @@
   background: color-mix(in srgb, var(--accent-yellow) 20%, transparent);
 }
 
-/* #1010 item 1 — the meta row's pills are scoped under `.chat-input__meta`
+/* archive#1010 — the meta row's pills are scoped under `.chat-input__meta`
    (0,2,0) on purpose. `.chat-input button` (index.css, 0,1,1) sets
    `padding: 0` and `background: transparent`, which beat these single-class
    component rules and silently stripped BOTH off every chip that is a
@@ -1292,7 +1292,7 @@
   background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
 }
 
-/* Inert, and it has to LOOK inert (#1010 item 3). No fill and a dashed
+/* Inert, and it has to LOOK inert (archive#1010). No fill and a dashed
    outline read as "not a button" in both skins, `--text-disabled` matches the
    disabled treatment used elsewhere, and `cursor: default` removes the last
    cue that suggested a click would do something. Distinct from --pending,
@@ -1340,7 +1340,7 @@
 .composer-popover-overlay--start {
   justify-content: flex-start;
 }
-/* The shell owns the panel surface, not each individual popover (#992).
+/* The shell owns the panel surface, not each individual popover (archive#992).
    Every panel that opted in by hand got one; the two that never did shipped
    fully transparent — `.composer-mode-sheet` (#999) and, until this change,
    `.chat-dock__mobile-overflow-panel`, whose menu items floated over the page
@@ -1380,7 +1380,7 @@
 .composer-actions-menu__panel {
   width: min(320px, calc(100vw - 24px));
 }
-/* Desktop: an anchored popover, not a sheet (#999). The overlay stays
+/* Desktop: an anchored popover, not a sheet (archive#999). The overlay stays
    fixed-inset for stacking escape and click-away, but carries no scrim; the
    panel positions itself against the trigger geometry the surface exposes via
    `data-anchored` + `--responsive-anchor-*`. These popovers always open
@@ -1412,7 +1412,7 @@
   .session-model-picker {
   max-height: max(120px, calc(var(--responsive-anchor-top, 100dvh) - 24px));
 }
-/* Mobile: the #972 bottom sheet — full-viewport scrim, edge-docked panel.
+/* Mobile: the archive#972 bottom sheet — full-viewport scrim, edge-docked panel.
    Scoped here so desktop never inherits it (#999). */
 /* Composer grouped secondary-actions "+" menu: Delegate / Commands / Files /
    Task-context collapse into this one affordance next to attach + mic. */
@@ -1487,7 +1487,7 @@
   }
 }
 
-/* The MCP-UI block's three borders read --border-subtle until station#1254.
+/* The MCP-UI block's three borders read --border-subtle until archive#1254.
    No such token exists — the ramp is --border-primary (the subtle line) and
    --border-secondary (the strong one) — so the card had no outline, its table
    rows had no rules between them, and its form inputs had no edge. */
@@ -1677,7 +1677,7 @@
 }
 
 /* ── Mobile responsive ── */
-/* Recovery affordance on a failed-turn system marker (#797). */
+/* Recovery affordance on a failed-turn system marker (archive#797). */
 .system-event__action {
   margin-top: 6px;
   padding: 4px 10px;
@@ -1695,7 +1695,7 @@
   border-color: var(--accent-primary);
 }
 
-/* One quiet meta row under a settled answer (station#2652 redesign): the
+/* One quiet meta row under a settled answer (archive#2652 redesign): the
    provenance disclosure leads and the share control sits beside it, both
    text-weight and muted — the answer above stays the loudest thing in the
    reading column. */
@@ -1759,7 +1759,7 @@
   .app-toolbar__conn-note {
     display: none;
   }
-  /* station#3311: the toolbar chip stays compact on mobile — dot only while
+  /* archive#3311: the toolbar chip stays compact on mobile — dot only while
      healthy; the state text appears exactly when it carries news
      (reconnecting / disconnected / credential required). `idle` stays
      dot-only too, and that is not a guess about the health status: the chip

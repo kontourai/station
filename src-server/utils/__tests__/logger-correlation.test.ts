@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 /**
- * station#1897 logging slice 3 — proves two things a mocked assertion
+ * archive#1897 logging slice 3 — proves two things a mocked assertion
  * cannot: (1) `LOG_BINDING_KEYS` is not a re-declared copy of
  * `monitoring-keys.ts`'s `K` (a hardcoded literal that happens to match
  * today would silently drift tomorrow), and (2) a `logger.child()` bound

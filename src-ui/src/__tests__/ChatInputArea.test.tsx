@@ -190,7 +190,7 @@ describe('ChatInputArea', () => {
     ).toBe(true);
   });
 
-  // UX audit T1: Stop could be pressed again while the first request was
+  // Stop could be pressed again while the first request was
   // still outstanding, submitting a duplicate command and a duplicate receipt.
   test('disables Stop while a stop request is outstanding and says what is pending', () => {
     const props = renderChatInputArea({
@@ -355,7 +355,7 @@ describe('ChatInputArea', () => {
     // The model chip sits at the left edge of the composer meta rail, like
     // ComposerActionsMenu and ComposerModeSheet — it must anchor with
     // `--start`, not `--end`, or the clamp saturates and pins the panel to
-    // the far left of the viewport (station#1291).
+    // the far left of the viewport (archive#1291).
     const overlay = screen
       .getByRole('dialog', { name: 'Model' })
       .closest('.responsive-surface-overlay');
@@ -410,7 +410,7 @@ describe('ChatInputArea', () => {
     });
 
     // The source is exposed through the accessible name now rather than a
-    // second visible line, but it still goes through modelSourceLabel() — so
+    // second visible line, but it still goes through modelSourceLabel — so
     // this remains a real guard against the internal "runtime" vocabulary
     // leaking to users (docs/design/chat-composer.md §2).
     const modelButton = screen.getByRole('button', { name: /^Model/ });
@@ -499,7 +499,7 @@ describe('ChatInputArea', () => {
       },
     });
 
-    // fireEvent returns false when a handler called preventDefault().
+    // fireEvent returns false when a handler called preventDefault.
     expect(notPrevented).toBe(false);
     await waitFor(() => expect(selectAttachmentFiles).toHaveBeenCalledOnce());
     expect(selectAttachmentFiles).toHaveBeenCalledWith([
@@ -508,7 +508,7 @@ describe('ChatInputArea', () => {
     expect(onInputChange).not.toHaveBeenCalled();
   });
 
-  // station#3344.
+  // archive#3344.
   test('a pasted image is visible in the composer, with a remove affordance', async () => {
     const onRemoveAttachment = vi.fn();
     renderChatInputArea({
@@ -537,7 +537,7 @@ describe('ChatInputArea', () => {
     expect(onRemoveAttachment).toHaveBeenCalledWith('att-1');
   });
 
-  // Review MEDIUM-3: a single-attachment fixture cannot tell "removes the one
+  // a single-attachment fixture cannot tell "removes the one
   // I clicked" from "removes whatever is first". Two attachments, and the
   // second one's button, is what gives the assertion power.
   test('removing one chip removes that attachment, not its neighbour', () => {

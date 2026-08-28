@@ -7,7 +7,7 @@ import {
 } from '../views/sessions/sessions-lane-model';
 
 /**
- * station#3227 A1 — THE INVARIANT, not four spot checks.
+ * archive#3227 A1 — THE INVARIANT, not four spot checks.
  *
  * A row's status word must never contradict the lane heading it sits under.
  * Rather than asserting one word per known-bad shape, this walks the whole
@@ -31,7 +31,7 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   ]),
   // In flight, idle, or stranded — none of them finished, none of them yours
   // to discharge. "Can't answer here" belongs to this lane by design
-  // (station#1783: an unanswerable session did not FINISH, it stopped being
+  // (archive#1783: an unanswerable session did not FINISH, it stopped being
   // reachable, so it is not filed under Recently finished).
   activeNow: new Set(['Running', 'Ready', 'Queued', "Can't answer here"]),
   // Over. The refinement is which ending.
@@ -177,7 +177,7 @@ describe('a row word can never contradict its lane heading', () => {
         lane.sessions.some((entry) => entry.threadId === threadId),
       )?.id;
     const wordOf = (threadId: string) => {
-      // station#3241: no cast — `.find`'s `undefined` is handled by throwing,
+      // archive#3241: no cast — `.find`'s `undefined` is handled by throwing,
       // so a missing fixture fails loudly instead of being cast past the
       // decorated wire shape.
       const found = MIXED_FIXTURE.find((entry) => entry.threadId === threadId);

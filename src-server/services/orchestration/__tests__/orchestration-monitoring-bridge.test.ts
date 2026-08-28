@@ -82,7 +82,7 @@ describe('OrchestrationMonitoringBridge', () => {
       [K.AGENT_SLUG]: 'codex',
       [K.TRACE_ID]: 'conversation-1',
     });
-    // The engine must be ON the tool events (#3074), not only recoverable by
+    // The engine must be ON the tool events (archive#3074), not only recoverable by
     // joining back to the start span — that join is exactly what does not
     // exist for every producer. This is the live half of the fix and had no
     // coverage: deleting the two `provider`/`model` lines in the bridge left
@@ -95,7 +95,7 @@ describe('OrchestrationMonitoringBridge', () => {
       [K.TOOL_CALL_OUTCOME]: 'success',
       [K.PROVIDER]: 'codex',
     });
-    // External engines get elapsed time too (station#3077): a duration
+    // External engines get elapsed time too (archive#3077): a duration
     // present on Station-engine rows and silently absent on these would be
     // the same reader-can't-tell asymmetry the batch exists to remove.
     expect(typeof persisted[2]?.[K.TOOL_DURATION_MS]).toBe('number');
@@ -299,7 +299,7 @@ describe('OrchestrationMonitoringBridge', () => {
   });
 
   test('records an agent genuinely NAMED unknown, and drops no-session turns', async () => {
-    // Renamed and retargeted (station#3082). This used to be called
+    // Renamed and retargeted (archive#3082). This used to be called
     // "observes an agentless configured session as unknown" and pinned the
     // substitution: the service wrote the literal 'unknown' for a session
     // that reported no agent, so this asserted that literal as the contract.

@@ -69,7 +69,7 @@ export interface PulseStatTarget {
 /**
  * The counts every surface that shows them agrees on.
  *
- * `projectRowCount` (station#3227 A7): the number of per-project rows the
+ * `projectRowCount` (archive#3227 A7): the number of per-project rows the
  * HOST page actually renders beside these stats. It used to be
  * `model.projects.length` (CONFIGURED projects), a different population from
  * the rows under the number: the rows fold `projectLabel`, a display string

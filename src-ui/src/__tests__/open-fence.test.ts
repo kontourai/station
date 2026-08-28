@@ -1,5 +1,5 @@
 /**
- * station#3354 — the CommonMark fence scanner behind "don't highlight until
+ * archive#3354 — the CommonMark fence scanner behind "don't highlight until
  * the fence closes". Pure function; every case here pins a pairing rule the
  * streaming split depends on.
  */

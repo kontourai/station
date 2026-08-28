@@ -63,7 +63,7 @@ const FIXTURE_BRACES_RUNTIME_ROUTES_PATH = join(
  * source file, not a hand-copied list — so a new mount added to
  * `runtime-routes.ts` without a matching table entry makes
  * `'covers every context.app.route(...) mount in runtime-routes.ts'` below
- * fail red, exactly what station#1098 R2's "test enumerating the route
+ * fail red, exactly what archive#1098 R2's "test enumerating the route
  * surface" requires.
  *
  * Scoped honestly: the regex only matches a string-literal first argument
@@ -253,9 +253,9 @@ describe('external surface capability table (station#2000)', () => {
 });
 
 /**
- * station#1131: `scanMountedRouteBases()` above proves every mount BASE
+ * archive#1131: `scanMountedRouteBases()` above proves every mount BASE
  * resolves to a scope, but is blind to a new LEAF registered under a base
- * that's already covered — exactly the gap PR #1128 hit with
+ * that's already covered — exactly the gap PR archive#1128 hit with
  * `GET /api/environments/ssh/sessions` (see `pairing-route-scopes.ts`'s
  * module docblock and `pairing-route-leaf-scan.ts`'s own docblock for the
  * full mechanics). This block proves the extended, leaf-level scan (AC1),
@@ -264,7 +264,7 @@ describe('external surface capability table (station#2000)', () => {
  * makes the guard fail red the way a real un-declared leaf would.
  */
 /**
- * Scope-coverage invariant for the leaf scan (station#1634, epic #1555).
+ * Scope-coverage invariant for the leaf scan (archive#1634, epic archive#1555).
  *
  * The rejection half of this guardrail is already proven below: a synthetic
  * leaf under an existing mount is discovered and flagged. The structural
@@ -506,13 +506,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/environments/ssh', 'orchestration:read'],
     ['GET', '/api/environments/ssh/some-id', 'orchestration:read'],
     ['POST', '/api/environments/ssh/some-id/connect', 'orchestration:operate'],
-    // station#1131 audit finding: this had NO table entry at all before
+    // archive#1131 audit finding: this had NO table entry at all before
     // this PR (a straight coverage gap in the catch-all-mount exception
     // list, not a family-inheritance near-miss) — every remote-paired
     // credential got a fail-closed 403, invisible locally because loopback
     // callers bypass scope checks entirely.
     ['POST', '/tool-approval/some-approval-id', 'orchestration:operate'],
-    // station#1097 review round 2 (HIGH): the cross-station-read leaf
+    // archive#1097 review round 2 (HIGH): the cross-station-read leaf
     // override — see `pairing-route-scopes.ts`'s "Family-granularity
     // inheritance" docblock note and `docs/security/
     // remote-access-threat-model.md`'s "Cross-station reads" section.
@@ -537,17 +537,17 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['POST', '/api/pairing/offers', 'access:manage'],
     ['DELETE', '/api/pairing/devices/some-id', 'access:manage'],
     ['GET', '/api/pairing/requests', 'access:manage'],
-    // station#1398 slice 2: the fleet inference family, one tier for every
+    // archive#1398: the fleet inference family, one tier for every
     // method — the read (which models does this Station contribute) and the
     // write (generate tokens on one) are the same disclosure decision.
     ['GET', '/api/inference/manifest', 'inference:invoke'],
     ['POST', '/api/inference/completions', 'inference:invoke'],
     ['DELETE', '/api/inference/anything-added-later', 'inference:invoke'],
-    // station#1398 §10 OQ-2: the model-inventory leaf override.
+    // archive#1398 §10 OQ-2: the model-inventory leaf override.
     ['GET', '/api/connections/model-inventory', 'inference:invoke'],
     ['HEAD', '/api/connections/model-inventory', 'inference:invoke'],
     ['GET', '/api/connections/codex-runtime/quota', 'orchestration:read'],
-    // station#1398 slice 4 (security review, M-4): the fleet receipt leaves
+    // archive#1398 (security review, M-4): the fleet receipt leaves
     // name OTHER Stations — peer ids, operator-facing labels, contributed
     // model ids, and the fingerprints of peers that called in. Their source,
     // the outbound peer registry, is gated at `access:manage`, so anything
@@ -792,7 +792,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     }
     // The read/revoke/candidates leaves stay on the family tiers: none of
     // them mints authority, and revoke's floor direction is the disclosed
-    // #3673 trade.
+    // archive#3673 trade.
     expect(requiredPairingScope('GET', '/api/plugins/home-role')).toBe(
       'orchestration:read',
     );
@@ -1090,7 +1090,7 @@ describe('pairing-route-scopes: WS upgrade paths', () => {
  * first-frame auth wrappers call — terminal's in
  * `runtime-service-bootstrap.ts` (`PAIRING_WS_SCOPES.terminal`) and voice's
  * in `runtime-initialize.ts` (`PAIRING_WS_SCOPES.voice`). Mirrored describe
- * blocks per station#1098 review round 1: terminal already had a
+ * blocks per archive#1098 review round 1: terminal already had a
  * capture-based bootstrap test (`runtime-service-bootstrap.test.ts`); voice
  * had none. Both are exercised identically here against the same shared
  * function, so this closes that gap without depending on either runtime's

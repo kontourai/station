@@ -1,5 +1,5 @@
 /*
- * station#3177. This file styles two populations with opposite owners, and the
+ * archive#3177. This file styles two populations with opposite owners, and the
  * defect was applying one `--color-*` vocabulary to both.
  *
  * Everything except `__iframe` is Station's own chrome — Station renders every

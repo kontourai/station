@@ -10,7 +10,7 @@ import { describe, expect, test } from 'vitest';
  *
  * That is not hypothetical: a `:root, [data-theme="dark"]` block sat after the
  * light block and overrode ten of light's own tokens, so light mode rendered dark
- * shadows, a dark modal overlay, and dark disabled/subtle text (#1062). Nothing
+ * shadows, a dark modal overlay, and dark disabled/subtle text (archive#1062). Nothing
  * caught it, because a too-heavy shadow reads as a design choice rather than a bug.
  *
  * The rule this pins: every block that includes a bare `:root` selector must be

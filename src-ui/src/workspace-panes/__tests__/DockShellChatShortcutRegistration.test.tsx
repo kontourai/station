@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * station#4460 review H1/H2: `ChatWorkspacePane`'s local `useDockShellChrome`
+ * archive#4460: `ChatWorkspacePane`'s local `useDockShellChrome`
  * call (rules-of-hooks forces it to exist even when Chat is DOCKED and
  * `DockShell` already owns the real chrome) must never register
  * `dock.toggle`/`dock.maximize` itself — the shared shortcut registry keys
@@ -35,7 +35,7 @@ import { navigationStore } from '../../contexts/navigation-store';
 // --- Everything NOT under test: mocked to the lightest shape that lets the
 // real ChatWorkspacePane mount without crashing. Navigation, device settings
 // (a real store, no provider needed) and the keyboard-shortcut registry stay
-// real — those are exactly what H1/H2 exercise.
+// real — those are exactly what the shortcut registry exercises.
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
@@ -180,7 +180,7 @@ vi.mock('../../components/chat/ShareIntakeController', () => ({
 }));
 
 // `ChatDock.tsx` pre-warms `AmbientChatDockPaneHost`'s lazy chunk at module
-// load (`void loadAmbientChatDockPaneHost()`), which this test never
+// load (`void loadAmbientChatDockPaneHost`), which this test never
 // actually needs (it imports `DockShell` directly, not through the ambient
 // host). Left real, that dynamic import cascades into `HomeWorkspacePane` /
 // `HomeSurface` and can resolve AFTER this test file's environment tears

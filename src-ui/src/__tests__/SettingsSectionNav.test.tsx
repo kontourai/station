@@ -1,13 +1,13 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4463 slice 2: the audit's named bug was Settings' all-caps
+ * archive#4463: the audit's named bug was Settings' all-caps
  * `STATION`/`DEFAULTS` group labels rendering inline in the same row as its
  * Title-case links — two label vocabularies colliding in one control.
  * `settingsSectionNavItems` is the fix's contract: a flat `SectionNavItem[]`
  * with no group-label item type at all, using `dividerAfter` to mark a scope
  * boundary instead. This tests that contract directly, and separately
- * renders it through the real `SectionNav` primitive (fix round: NOT `Tabs`
+ * renders it through the real `SectionNav` primitive (NOT `Tabs`
  * — these are real deep-linkable URL sections, not an in-place tab widget,
  * see `components/SectionNav.tsx`) to prove the nav's DOM never re-admits a
  * group-label node sharing the row.

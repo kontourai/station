@@ -79,7 +79,7 @@ describe('RunBoardSummary', () => {
     expect(board.textContent).not.toContain('Unanswerable');
   });
 
-  // Review F1: 'Ready' was the one state no assertion pinned — the exact
+  // 'Ready' was the one state no assertion pinned — the exact
   // unguarded hole the derived order closes. Every SessionStateLabel member
   // must appear in board order (derivation makes it so; this test proves it).
   test('covers every canonical state, Ready included', () => {
@@ -92,7 +92,7 @@ describe('RunBoardSummary', () => {
     ]);
   });
 
-  // Review F2: a STALE observation (turn no longer active) must not
+  // a STALE observation (turn no longer active) must not
   // emphasize the board — the member rows gate on hasActiveTurn and the
   // board uses the same shared gate, so they can never contradict on screen.
   test('a stale quiet observation on an inactive turn does not emphasize', () => {
@@ -116,7 +116,7 @@ describe('RunBoardSummary', () => {
     ]);
   });
 
-  // Review F4: activation of a quiet-driven cluster lands on the member that
+  // activation of a quiet-driven cluster lands on the member that
   // CAUSED the emphasis, and its accessible name says why.
   test('a quiet-driven cluster names and targets the quiet member', () => {
     const healthy = session('healthy-first');

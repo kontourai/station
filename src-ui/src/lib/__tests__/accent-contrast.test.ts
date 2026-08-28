@@ -13,7 +13,7 @@ import {
 } from '../accent-contrast';
 
 /**
- * station#3305 review finding: `--text-on-accent` named a derivation nothing
+ * archive#3305 finding: `--text-on-accent` named a derivation nothing
  * computed. These pin the derivation itself (both ends of the luminance
  * range), the AA outcome for every shipped preset, and the fact that the two
  * custom properties are applied and cleared together.

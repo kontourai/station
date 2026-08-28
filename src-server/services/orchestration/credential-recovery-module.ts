@@ -81,7 +81,7 @@ export interface CredentialRecoveryObservation {
   /**
    * The dispatch Adapter's own replay shape, not a second copy of it: the two
    * had drifted apart the moment persistence stopped guaranteeing attachment
-   * bytes (station#3374).
+   * bytes (archive#3374).
    */
   replay: RecoveryDispatchReplay;
 }

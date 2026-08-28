@@ -176,13 +176,13 @@ export function mapServerRequestToEvent(
         description: extractString(payload.reason) ?? undefined,
         payload,
       };
-    // station#1195: the app-server's OWN "may I invoke this MCP tool" gate
+    // archive#1195: the app-server's OWN "may I invoke this MCP tool" gate
     // (and, more generally, any MCP `elicitation/create` request a
     // connected server issues) rides this SAME method regardless of which
     // MCP server or tool triggered it — `_meta.codex_approval_kind ===
     // 'mcp_tool_call'` names the common case (an empty-schema gate before
     // the FIRST call to a newly-connected server in a thread), tagged with
-    // `tool_title`/`tool_description`. Before station#1195, Codex had NO
+    // `tool_title`/`tool_description`. Before archive#1195, Codex had NO
     // toolServers delivery at all, so this method was never reachable —
     // wiring toolServers delivery (this ticket) makes it reachable for the
     // very first time, and an unhandled server request gets an immediate
@@ -242,7 +242,7 @@ export function resolveApprovalOutcome(
     case 'item/commandExecution/requestApproval':
     case 'item/fileChange/requestApproval':
       return { decision, result: { decision } };
-    // station#1195: the app-server's `McpServerElicitationRequestResponse`
+    // archive#1195: the app-server's `McpServerElicitationRequestResponse`
     // shape is `{action: 'accept'|'decline'|'cancel', content?}` — distinct
     // vocabulary from the `decision`-keyed shapes above. `acceptForSession`
     // has no wire equivalent (codex has no "remember for this thread"

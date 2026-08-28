@@ -1,5 +1,5 @@
 /**
- * Wired-real-function regression test (station#977, AC12). Closes the
+ * Wired-real-function regression test (archive#977, AC12). Closes the
  * pull-work record's recorded risk that only hand-rolled `vi.fn()` mocks ever
  * exercised the delegation route layer, never the real
  * `station-control-delegation.ts` implementations.
@@ -92,7 +92,7 @@ function stubStationBackend(): void {
       method === 'GET' &&
       url.pathname === '/api/orchestration/delegations/unbound-task'
     ) {
-      // station#3963: the 'current' environment reads its own delegation
+      // archive#3963: the 'current' environment reads its own delegation
       // read path over its canonical HTTP API (this is how `get_task`/
       // `get_task_events` call it — see station-control-operations-tools.ts
       // — since a tool invocation has no live `orchestrationService`
@@ -123,7 +123,7 @@ function stubStationBackend(): void {
       // NOT exercise that derivation here. `loadDelegatedTask`'s own
       // not-found-vs-binding-mismatch check is unit-tested directly in
       // station-control-delegation.test.ts ("still rejects a
-      // production-shaped task bound to another environment", station#2843).
+      // production-shaped task bound to another environment", archive#2843).
       // What THIS fixture proves is narrower: `getCanonical` preserves a
       // backend-supplied message across the canonical HTTP branch, and that
       // message stays distinct from the sibling not-found case above rather

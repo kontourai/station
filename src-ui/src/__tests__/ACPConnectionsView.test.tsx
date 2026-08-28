@@ -81,7 +81,7 @@ describe('ACPConnectionsView', () => {
 
     const header = document.querySelector('.page-frame__header');
     expect(header?.textContent).toContain('Connections');
-    // The title, not the eyebrow, says 'Provider setup' — station#4463 slice
+    // The title, not the eyebrow, says 'Provider setup' — archive#4463 slice
     // 1 retired the breadcrumb-as-eyebrow that restated it a second time.
     expect(document.querySelector('.page__label')?.textContent?.trim()).toBe(
       'Connections',
@@ -100,7 +100,7 @@ describe('ACPConnectionsView', () => {
     // link: no `.page__label-link`, and clicking the word does nothing.
     expect(document.querySelector('.page__label-link')).toBeNull();
     // Clicking the word is inert: the component takes no navigation callback
-    // at all since the fix round, so there is nothing a click could reach.
+    // at all since the, so there is nothing a click could reach.
     fireEvent.click(screen.getByText('Connections'));
   });
 

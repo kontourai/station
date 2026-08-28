@@ -206,7 +206,7 @@ function CodingEvidenceCompositionReceiptTracker({
   return null;
 }
 
-// station#3969: "occurrence" is our word for one open copy of a pane; the
+// archive#3969: "occurrence" is our word for one open copy of a pane; the
 // reader just has this pane, here.
 const LOCAL_OCCURRENCE_POPOUT_REASON =
   'This pane lives in this workspace only, so it can’t be opened in its own window.';
@@ -322,7 +322,7 @@ function useBuiltinCodingPanePopOut({
  * Membership equality for the host's open-instance set. `isOpen` below asks
  * one question of this set — "is this instance mounted?" — so two sets with
  * the same members are the same answer, and republishing one as new state is
- * a change the layout never made (station#3781).
+ * a change the layout never made (archive#3781).
  */
 function sameWorkspacePaneInstanceIds(
   current: ReadonlySet<string> | undefined,
@@ -336,7 +336,7 @@ function sameWorkspacePaneInstanceIds(
 /**
  * The document already published, unless its CONTENT changed.
  *
- * station#3794: `createWorkspacePaneHostBaselineDocument` is a pure function
+ * archive#3794: `createWorkspacePaneHostBaselineDocument` is a pure function
  * of (id, scope, instances), and the instances are re-minted by
  * `withWorkspacePaneInstanceLayoutBinding` on every render, so the host was
  * handed a new document object for an unchanged workspace. The host keys its
@@ -412,7 +412,7 @@ function BuiltinCodingLayoutHost({
     [],
   );
   /**
-   * station#3794: these five are host-effect dependencies
+   * archive#3794: these five are host-effect dependencies
    * (`workspacePaneHostController.ts` — the availability sweep, the
    * lifecycle-context capture, and the authoritative-catalog replacement all
    * name them), so an inline arrow re-ran each of those effects on every

@@ -1,5 +1,5 @@
 /**
- * station#3354 — chat syntax highlighting worker.
+ * archive#3354 — chat syntax highlighting worker.
  *
  * Runs Shiki tokenization off the main thread, mirroring the pattern
  * DiffPanel established for diffs ("so large diffs don't

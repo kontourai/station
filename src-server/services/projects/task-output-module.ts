@@ -194,7 +194,7 @@ export class TaskOutputModule {
       }
       this.assertReservedDeletionIdentityCapacity(store, 1);
       const snapshot = readWorkspaceSnapshot(
-        // resolve(expandTilde(...)), never resolve alone (station#3155): a
+        // resolve(expandTilde(...)), never resolve alone (archive#3155): a
         // workspace binding stores `~/...` verbatim, and `resolve` treats `~`
         // as an ordinary segment, so the root became `<cwd>/~/...`.
         resolve(expandTilde(task.workspaceBinding!.workingDirectory!)),

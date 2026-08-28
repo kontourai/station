@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3354 — the three chat-highlighting defects, as user-visible
+ * archive#3354 — the three chat-highlighting defects, as user-visible
  * behavior:
  *   1. an unclosed fence renders PLAIN and never reaches the highlighter
  *      (no tokenization during streaming, nothing partial cached);

@@ -6,7 +6,7 @@
  * at the wrong repository. Under such an environment Station's git operations
  * (status/commit/push/clone/worktree) would act on whatever repo those vars
  * point at instead of the directory passed via `cwd`, which has caused real
- * `core.bare` corruption of the surrounding checkout (issue #104).
+ * `core.bare` corruption of the surrounding checkout (issue archive#104).
  *
  * Every production git invocation MUST go through one of the helpers here so
  * the sanitized environment is applied uniformly. The only behavioral change

@@ -33,7 +33,7 @@ function boundedModelId(value: unknown): string | undefined {
  * Durable, provider-neutral snapshot of the model controls Station sent to
  * the runtime for a session/turn.
  *
- * station#1182: despite the name, `effectiveModel`/`effectiveModelOptions`
+ * archive#1182: despite the name, `effectiveModel`/`effectiveModelOptions`
  * are NOT a runtime-confirmed observation — every call site passes in the
  * model/options Station itself resolved and requested (a connection's
  * configured model id, a turn's `modelId` override). The name predates the
@@ -81,7 +81,7 @@ export function effectiveModelMetadata(
  * distinct from, and never derived from, `effectiveModelMetadata`'s
  * requested value. Absent whenever the adapter has no such signal; callers
  * must not fall back to the requested model to fill this in (that would
- * recreate the exact "requested presented as observed" bug station#1182
+ * recreate the exact "requested presented as observed" bug archive#1182
  * fixes). Never populate this from parsing the model's own generated text —
  * only from a structured protocol/API field (see the docblock above for the
  * concrete per-adapter sources).

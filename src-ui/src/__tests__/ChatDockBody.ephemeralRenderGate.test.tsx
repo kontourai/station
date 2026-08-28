@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1292: `EphemeralMessage.test.tsx` renders the `EphemeralMessage`
+ * archive#1292: `EphemeralMessage.test.tsx` renders the `EphemeralMessage`
  * component directly with hand-built props — it never exercises the actual
  * gate that decides whether a transcript message renders as an ephemeral
  * notice at all. That gate is `ChatDockBody`'s `renderOverride`, which used
@@ -40,7 +40,7 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
-// station#1424: ChatDockBody now reads the local operator identity for the
+// archive#1424: ChatDockBody now reads the local operator identity for the
 // "Managed by …" row chip — not under test here, so a fixed resolved user.
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
@@ -206,7 +206,7 @@ describe('ChatDockBody ephemeral render gate (station#1292)', () => {
 
     // The notice text renders...
     expect(await screen.findByText('Something went wrong: Retry')).toBeTruthy();
-    // ...through the real EphemeralMessage component (dismiss button present,
+    //.through the real EphemeralMessage component (dismiss button present,
     // ephemeral-message styling class applied) rather than as an ordinary
     // MessageBubble, which has no dismiss affordance at all.
     const notice = screen
@@ -219,8 +219,8 @@ describe('ChatDockBody ephemeral render gate (station#1292)', () => {
     expect(await screen.findByText('hello')).toBeTruthy();
     expect(await screen.findByText('hi there')).toBeTruthy();
 
-    // station#1424 review round 3 (item 5, "the unpinned owner hop"):
-    // ChatDockBody.tsx resolves `owner` from `useAuth()` and threads it into
+    // archive#1424 ("the unpinned owner hop"):
+    // ChatDockBody.tsx resolves `owner` from `useAuth` and threads it into
     // `<ChatMessageList owner={owner} />` — asserted here through this
     // file's real (non-overridden) assistant row so deleting that prop at
     // the ChatDockBody call site fails this test, not just a narrower unit

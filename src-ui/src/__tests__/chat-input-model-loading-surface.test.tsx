@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1825 item 2: the model popover's `React.lazy(SessionModelPicker)`
+ * archive#1825: the model popover's `React.lazy(SessionModelPicker)`
  * Suspense fallback ("Loading models…") rendered as bare text with no
  * surface behind it — floating over the page, reading as broken rather than
  * "about to load" — because `.session-model-picker__loading` had no CSS
@@ -20,7 +20,7 @@
  * name applied to the fallback element, and the CSS declarations of that
  * class in the stylesheet it must live in to be present on first paint (see
  * the `responsive-dialog-header.test.tsx` sibling suite for the same
- * eager/lazy-chunk defect class, station#1825 item 1).
+ * eager/lazy-chunk defect class, archive#1825).
  */
 
 import { readFileSync } from 'node:fs';

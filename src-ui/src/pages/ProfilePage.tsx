@@ -133,7 +133,7 @@ export function ProfilePage() {
     );
   }
 
-  // Review M2: `useAnalytics` already derived this error and the page ignored
+  // `useAnalytics` already derived this error and the page ignored
   // it, so a failed usage read settled with no stats and was drawn as "No
   // usage data yet" — a claim about the user's activity over a read that
   // never answered. Same header-first shape as the wait above: the frame's

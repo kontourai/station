@@ -1,5 +1,5 @@
 /**
- * station#2649 — the integration proof for the per-turn context receipt.
+ * archive#2649 — the integration proof for the per-turn context receipt.
  *
  * Nothing here is mocked between the retrieval that composes the injected
  * string and the envelope a person reads: the REAL `prepareChatRequest`
@@ -133,7 +133,7 @@ async function dispatchChatTurn(options: {
    * The message shape sent. `attachment-only` is the array-shaped user
    * message with a file part and NO text part — what an uncaptioned
    * attachment produces, and the shape both `/chat` composers silently drop
-   * their whole block for (station#2649 review fix HIGH-1).
+   * their whole block for (archive#2649 review fix HIGH-1).
    */
   shape?: 'text' | 'attachment-only';
   ambientContext?: string;
@@ -362,7 +362,7 @@ describe('per-turn context injection, route → adapter → provenance envelope 
     ).toBeGreaterThan(0);
   });
 
-  // station#2649 review fix (HIGH-1). The defect this test exists for:
+  // archive#2649 review fix (HIGH-1). The defect this test exists for:
   // knowledge/project-rules/guidelines were recorded from composition
   // INTENT, but `applyCombinedContextToInput` drops the whole block for an
   // array-shaped message with no text part. A user sending an uncaptioned
@@ -398,7 +398,7 @@ describe('per-turn context injection, route → adapter → provenance envelope 
     }
   });
 
-  // station#2649 review fix (MEDIUM-1): ambient context is Station-composed
+  // archive#2649 review fix (MEDIUM-1): ambient context is Station-composed
   // at the same choke point, so an empty record would otherwise assert
   // "nothing" over a turn that carried a timezone.
   test('records ambient context as its own block when it reached the model', async () => {

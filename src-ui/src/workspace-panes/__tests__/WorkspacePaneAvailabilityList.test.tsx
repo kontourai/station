@@ -62,7 +62,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     );
 
     // The available card carries an explicit Open action — never a whole-card
-    // click that means different things per state (station#3318).
+    // click that means different things per state (archive#3318).
     expect(screen.getByRole('button', { name: 'Open Files' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Preview Setup needed' }),
@@ -75,11 +75,11 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(onSelect).toHaveBeenCalledWith(available);
   });
 
-  // The safety half of the state-polymorphism fix. Independent fault injection
+  // The safety half of the state-polymorphism fix. Independent
   // rendered the remediation action AND the Open action on an unavailable card
   // and no assertion caught it — every existing check was about what a card
   // DOES carry. An Open button on a pane that cannot open is the whole defect
-  // #3318 removed, so it is pinned negatively, per card, here.
+  // archive#3318 removed, so it is pinned negatively, per card, here.
   test('an unavailable card carries its state badge and remediation but never an Open action', () => {
     const onSelect = vi.fn();
     render(
@@ -440,7 +440,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     },
   );
 
-  // station#1868: the trigger's accessible name used to come from a
+  // archive#1868: the trigger's accessible name used to come from a
   // hand-written `aria-label`, while the DOM rendered two adjacent inline
   // spans. AT read the right thing; the VISIBLE text concatenated
   // ("CodingAvailable") — which is what text selection, find-in-page, and any
@@ -480,7 +480,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(separator?.getAttribute('aria-hidden')).toBeNull();
   });
 
-  // station#1868: the component referenced `workspace-pane-availability-*`
+  // archive#1868: the component referenced `workspace-pane-availability-*`
   // classes across six files while ZERO stylesheet defined them, so the
   // catalog rendered with browser-default list chrome. This asserts the
   // stylesheet exists AND covers every class the component actually emits, so
@@ -534,7 +534,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     }
   });
 
-  // Responsive-action-surface inventory evidence (station#3318). jsdom computes
+  // Responsive-action-surface inventory evidence (archive#3318). jsdom computes
   // no layout, so this does NOT measure 44px — it derives the one link the
   // inventory entry claims: these buttons sit in a container whose class the
   // shared mobile floor selector in index.css actually matches. Asserting the
@@ -593,7 +593,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(sharedFloor?.body).toContain('min-height: 44px');
     expect(sharedFloor?.body).toContain('min-width: 44px');
 
-    // station#3348. The state toggle is the card's other tap target and it
+    // archive#3348. The state toggle is the card's other tap target and it
     // stays in `__heading` — it is the state badge, and the shared floor only
     // reaches `__actions` children. So it must declare the floor itself, and
     // both halves of that sentence are checked: it is still outside the shared

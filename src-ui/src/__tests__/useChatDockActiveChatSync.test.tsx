@@ -280,12 +280,12 @@ describe('useChatDockActiveChatSync', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  // #801 review: the lookup now reports the conversation's true owner, which
+  // archive#801: the lookup now reports the conversation's true owner, which
   // can be an agent that no longer exists (deleting an agent leaves its
   // conversations on disk). The opener cannot open one, so the pointer has to
   // be cleared rather than left aimed at a chat that will never render.
   //
-  // station#1284 (D2c/AC5): the clear is no longer silent -- it must
+  // archive#1284: the clear is no longer silent -- it must
   // navigate to /activity?session=<id> (clearing the dead `chat` param in
   // the same call) instead of only calling setActiveChat(null), or the dock
   // is left showing nothing with no way back to the conversation.
@@ -366,7 +366,7 @@ describe('useChatDockActiveChatSync', () => {
 
   // A cold `/?dock=open&chat=` load races the agent catalog fetch: the
   // opener genuinely reports `false` (not `undefined`) on the first attempt
-  // because `agents.find` has nothing to match yet, exactly like the #801
+  // because `agents.find` has nothing to match yet, exactly like the archive#801
   // "owning agent no longer exists" case below -- but here a second attempt
   // with the real catalog is still available and must get the chance to
   // resolve the chat instead of the pointer being nulled out first.
@@ -460,12 +460,12 @@ describe('useChatDockActiveChatSync', () => {
     );
   });
 
-  // #945 MED finding: `agentCatalogKey` is built by joining agent slugs, so
+  // archive#945 MED finding: `agentCatalogKey` is built by joining agent slugs, so
   // an unloaded catalog and a durably, legitimately EMPTY one (zero agents
   // ever configured) both stringify to `''` -- the same key. Gating the
   // "was this a real miss" decision (and the retry's re-run) on
   // key-emptiness alone meant a loaded-but-zero-agents catalog could never
-  // produce a second, distinct attempt, so the #801 deleted-agent clear
+  // produce a second, distinct attempt, so the archive#801 deleted-agent clear
   // never fired for it -- a stale `activeChat` pointer forever. `agentsLoaded`
   // must be the signal that actually gates this, independent of the key.
   it('navigates away for a loaded-but-empty catalog, not just a nonempty miss', async () => {
@@ -497,7 +497,7 @@ describe('useChatDockActiveChatSync', () => {
 
     // The catalog resolves to durably empty -- same key, but `agentsLoaded`
     // flips true. This must still re-run the lookup and, on this definitive
-    // miss, navigate away per #801/station#1284.
+    // miss, navigate away per archive#801/archive#1284.
     rerender({ agentsLoaded: true });
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(2));
@@ -510,11 +510,11 @@ describe('useChatDockActiveChatSync', () => {
     );
   });
 
-  // #945 round-2 MED finding: `useAgentsLoaded()`'s first cut derived
+  // archive#945 MED finding: `useAgentsLoaded`'s first cut derived
   // "loaded" from `!isLoading`, which react-query also clears on an ERRORED
   // query -- so a network outage on the agent-catalog fetch would read
   // identically to a durably empty catalog, and this hook would treat the
-  // outage as a definitive #801 miss and permanently drop a perfectly valid
+  // outage as a definitive archive#801 miss and permanently drop a perfectly valid
   // `activeChat` pointer it could have retried past once the catalog
   // recovered. `agentsLoaded` must only ever go `true` on an actual
   // successful resolution (`useAgentsLoaded` now derives from `isSuccess`,
@@ -530,11 +530,11 @@ describe('useChatDockActiveChatSync', () => {
     const { rerender } = renderHook(() =>
       useChatDockActiveChatSync({
         activeChat: 'thread-1',
-        // An errored `useAgentsQuery()` resolves `agents` to `[]` (see
-        // `useAgents()`), so this stays `''` for as long as the error
+        // An errored `useAgentsQuery` resolves `agents` to `[]` (see
+        // `useAgents`), so this stays `''` for as long as the error
         // persists -- same as the unloaded case.
         agentCatalogKey: '',
-        // `useAgentsLoaded()` reports `false` for an errored query even
+        // `useAgentsLoaded` reports `false` for an errored query even
         // though `isLoading` has already cleared -- this is exactly that
         // signal, sustained across every render below.
         agentsLoaded: false,
@@ -561,7 +561,7 @@ describe('useChatDockActiveChatSync', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  // station#1284 (D2c/AC5): the conversation simply doesn't resolve at all
+  // archive#1284: the conversation simply doesn't resolve at all
   // (deleted, or the ORIGINAL ground-truth bug -- `!conversation` at
   // useChatDockActiveChatSync.ts:148-150 used to silently null the pointer
   // here without ever trying `openConversation`).
@@ -594,7 +594,7 @@ describe('useChatDockActiveChatSync', () => {
     expect(openConversation).not.toHaveBeenCalled();
   });
 
-  // station#1284 (D2c/AC5): the lookup itself throwing (e.g. a network
+  // archive#1284: the lookup itself throwing (e.g. a network
   // error) is a resolution failure exactly like a definitive miss -- it
   // must not be a silent no-op either.
   it('navigates to /activity when the conversation lookup throws', async () => {

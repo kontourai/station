@@ -4,7 +4,7 @@
  * from perturbing content hashes and the entry-bundle gzip measurement.
  *
  * Source-derived fields only — a wall-clock build time here makes the bundle
- * non-reproducible and its measured size non-deterministic (#1080). Build time
+ * non-reproducible and its measured size non-deterministic (archive#1080). Build time
  * belongs to the instance, not the bundle: it is carried by the build manifest
  * and rendered by Settings → Deployed Build (`BuildProvenance`), which also
  * shows a live age.
@@ -49,7 +49,7 @@ export const buildLabel = `v${buildInfo.version} · ${buildInfo.commit}`;
 /**
  * The label ONLY when real build metadata resolved — null on the dev
  * fallback. For provenance surfaces that must never fabricate an identity
- * (#2585 review): "v0.0.0 · dev" is a placeholder, not a Station.
+ * (archive#2585): "v0.0.0 · dev" is a placeholder, not a Station.
  */
 export const verifiedBuildLabel: string | null =
   buildInfo.version === '0.0.0' && buildInfo.commit === 'dev'

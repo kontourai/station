@@ -1,5 +1,5 @@
 /**
- * station#1223 (offline slice 1) — reconnect invalidation.
+ * archive#1223 (offline) — reconnect invalidation.
  *
  * Cache-first persistence (`../lib/queryPersistence.ts`) shows the
  * last-loaded data instantly, including data restored from a previous
@@ -9,7 +9,7 @@
  * both the ordinary offline→online reconnect and the very first successful
  * connect after a cold boot (when the restored cache can be arbitrarily old).
  *
- * station#3069 extends the same transition to drive recovery for queries that
+ * archive#3069 extends the same transition to drive recovery for queries that
  * ERRORED during the outage, whatever their key — see the comment on the
  * `refetchQueries` call below for why nothing else in the client can.
  *
@@ -38,7 +38,7 @@ export function useQueryCacheReconnectSync(): void {
     previousStatusRef.current = status;
     if (previousStatus !== 'connected' && status === 'connected') {
       void invalidatePersistedQueries(queryClient);
-      // station#3069 — recover queries that FAILED during the outage, whatever
+      // archive#3069 — recover queries that FAILED during the outage, whatever
       // their key. `invalidatePersistedQueries` above only covers
       // `PERSISTED_QUERY_KEY_PREFIXES`, so every deliberately-unpersisted key
       // ('orchestration-*', 'attention', 'tasks', 'acp-connections', …) that

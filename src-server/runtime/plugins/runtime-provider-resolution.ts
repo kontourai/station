@@ -47,7 +47,7 @@ interface BedrockModelResolver {
 }
 
 /**
- * station#1557 review fix: this was a second copy of the region chain, with
+ * archive#1557 review fix: this was a second copy of the region chain, with
  * its own `'us-east-1'` tail and no `AWS_REGION`. It now delegates, so the
  * chain has exactly one definition.
  */
@@ -74,7 +74,7 @@ export async function createRuntimeFrameworkModel(
     projectHomeDir: string;
     modelCatalog?: BedrockModelCatalog;
     listProviderConnections?: () => ProviderConnectionConfig[];
-    /** Live connection evidence for Dispatch candidate grading (station#1426). */
+    /** Live connection evidence for Dispatch candidate grading (archive#1426). */
     dispatchEvidenceSource?: DispatchEvidenceSource;
     logger?: Logger;
   },
@@ -98,7 +98,7 @@ export async function createRuntimeModelSelection(
     projectHomeDir: string;
     modelCatalog?: BedrockModelCatalog;
     listProviderConnections?: () => ProviderConnectionConfig[];
-    /** Live connection evidence for Dispatch candidate grading (station#1426). */
+    /** Live connection evidence for Dispatch candidate grading (archive#1426). */
     dispatchEvidenceSource?: DispatchEvidenceSource;
     logger?: Logger;
   },
@@ -539,7 +539,7 @@ async function resolveManagedModelId(
 }
 
 /**
- * Narrowed to what it actually reads (station#3399 review): the connection's
+ * Narrowed to what it actually reads (archive#3399 review): the connection's
  * saved `config` bag. Every caller holds some connection record, and demanding
  * one exact record type forced a cast at the seam where the shapes should have
  * reconciled.

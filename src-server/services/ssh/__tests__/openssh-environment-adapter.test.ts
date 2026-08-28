@@ -508,7 +508,7 @@ describe('OpenSSH tunnel lifecycle', () => {
     );
   });
 
-  // station#1133 live-verification finding (BLOCKER): retarget() moving the
+  // archive#1133 live-verification finding (BLOCKER): retarget() moving the
   // local -L forward is only half of "point at the launched port" — the
   // remote worker probe script independently needs to be told which port
   // TO CHECK ON THE REMOTE HOST. An earlier revision left that argument

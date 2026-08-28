@@ -14,7 +14,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 /**
- * station#3350's PURPOSE, pinned against the events the adapters actually
+ * archive#3350's PURPOSE, pinned against the events the adapters actually
  * produce.
  *
  * Coalescing is a JOIN between two files that do not import one another:
@@ -27,7 +27,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
  * events out, zero coalescing, with every unit test still green because they
  * all hardcode one `itemId`.
  *
- * station#3457 fixed the adapters. These tests are the guard that keeps them
+ * archive#3457 fixed the adapters. These tests are the guard that keeps them
  * fixed FOR THIS PURPOSE: a future per-chunk adapter would otherwise remove
  * coalescing entirely with no test, no warning and no metric. The `perChunkId`
  * control below is that broken composition, kept so the assertion is known to
@@ -108,7 +108,7 @@ describe('content deltas coalesce for the events the adapters really emit', () =
           threadId: 'thread-per-chunk',
           turnId: 'turn-1',
           // Exactly what bedrock-adapter and ollama-adapter did before
-          // station#3457: minted inside the streaming loop.
+          // archive#3457: minted inside the streaming loop.
           itemId: `random-${index}`,
           delta: chunkText(index),
         }) as unknown as CanonicalRuntimeEvent,
@@ -129,7 +129,7 @@ describe('content deltas coalesce for the events the adapters really emit', () =
       createStream: vi.fn(async function* () {
         for (let index = 0; index < CHUNKS; index += 1)
           yield { type: 'text-delta', content: chunkText(index) };
-        // station#3545 review round 2: `AiSdkLLMProvider.createStream`
+        // archive#3545 review round 2: `AiSdkLLMProvider.createStream`
         // (which `BedrockLLMProvider` inherits) now propagates ai-sdk's own
         // `finishReason`, so `finishReason: 'stop'` IS the ordinary
         // successful-turn shape again — a bare `{ type: 'finish' }` is now

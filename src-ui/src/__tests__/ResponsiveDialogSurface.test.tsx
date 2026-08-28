@@ -194,7 +194,7 @@ describe('ResponsiveDialogSurface', () => {
   });
 
   /**
-   * station#1126. The shape of every delete confirm in the app: the button that
+   * archive#1126. The shape of every delete confirm in the app: the button that
    * opened the dialog lives on the row the confirm removes, so by the time the
    * dialog restores focus its return target is detached. The `isConnected`
    * guard correctly declines to focus a detached node, and before this fix
@@ -344,7 +344,7 @@ describe('ResponsiveDialogSurface', () => {
   });
 
   /**
-   * station#1206 gap 1. The fallback made the rAF fire on essentially every
+   * archive#1206 gap 1. The fallback made the rAF fire on essentially every
    * close (some ancestor almost always survives), so it started winning races
    * it used to lose: before #1187 the detached trigger meant nothing happened
    * and whoever else moved focus in that frame kept it. A confirm that deletes
@@ -424,7 +424,7 @@ describe('ResponsiveDialogSurface', () => {
 
     // Leave the shared dialog-history stack as this test found it — a dialog
     // still open at teardown orphans its marker, and the next test's
-    // `history.back()` then lands on that marker instead of its own entry.
+    // `history.back` then lands on that marker instead of its own entry.
     fireEvent.keyDown(renameField, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByLabelText('New name')).toBeNull());
     await act(async () => {

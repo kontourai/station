@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3 — the consuming side's admission gates and, more
+ * archive#1398 — the consuming side's admission gates and, more
  * importantly, its refusals. Every test below is about a way this module
  * could quietly claim more than it knows (`docs/design/inference-fleet.md`
  * §4.4, §4.5, §8).

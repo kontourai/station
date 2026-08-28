@@ -5,7 +5,7 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#4052 slice 3: the session detail honors the `focus=evidence` route
+ * archive#4052: the session detail honors the `focus=evidence` route
  * intent EXACTLY ONCE per activation token. A reveal is a navigation outcome,
  * not a standing rule — later renders (events streaming in, queries settling)
  * must never scroll the reader back to a region they have since left, and a

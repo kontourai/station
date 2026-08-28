@@ -20,7 +20,7 @@ const attachedOnly = {
 } as any;
 const notACommand = { name: 'plain-skill', installed: true } as any;
 
-// CAT-R08. The rule this replaces read the authored record's own `agent`
+// CAT-. The rule this replaces read the authored record's own `agent`
 // field, so the binding the agent editor wrote was never consulted and
 // attaching a record to an agent changed nothing. `agent.skills` is now both
 // the record the editor writes and the record this reads.
@@ -143,7 +143,7 @@ describe('findMatchingSkillCommand', () => {
   });
 });
 
-// Review M3: the Test modal and the slash handler share ONE substitution
+// the Test modal and the slash handler share ONE substitution
 // derivation. Its contract: declared defaults apply; a variable with neither
 // a provided value nor a usable default is REJECTED and named — never
 // silently substituted with an empty string.
@@ -179,7 +179,7 @@ describe('substituteSkillVariables', () => {
     ).toEqual({ ok: false, missing: ['notes'] });
   });
 
-  // Delta review: a CLEARED field (stored '') means "use the default", not
+  // a CLEARED field (stored '') means "use the default", not
   // "supply nothing" — the placeholder is the default, the preview agrees.
   test('a cleared value falls back to the declared default', () => {
     expect(
@@ -228,7 +228,7 @@ describe('substituteSkillVariables', () => {
   });
 });
 
-// Delta review: the ONE shell-style parser every slash-command consumer
+// the ONE shell-style parser every slash-command consumer
 // uses. Quotes group, backslash escapes, an unterminated quote is an error
 // naming it — never a guess.
 describe('parseShellWords', () => {
@@ -278,7 +278,7 @@ describe('parseShellWords', () => {
   });
 });
 
-// Delta review: `name=value` assigns by name so an earlier defaulted variable
+// `name=value` assigns by name so an earlier defaulted variable
 // can be skipped; positionals fill the unnamed variables in declaration
 // order.
 describe('assignSkillVariableArgs', () => {

@@ -147,7 +147,7 @@ describe('BedrockAdapter', () => {
     const resolveModelId = vi
       .fn()
       .mockResolvedValue('eu.anthropic.claude-profile');
-    // station#3545 review round 2: `AiSdkLLMProvider.createStream` (which
+    // archive#3545 review round 2: `AiSdkLLMProvider.createStream` (which
     // `BedrockLLMProvider` inherits unmodified) now awaits ai-sdk's own
     // `result.finishReason` and maps it onto station's vocabulary — so
     // `{ type: 'finish', finishReason: 'stop' }` IS the faithful shape for an
@@ -190,7 +190,7 @@ describe('BedrockAdapter', () => {
     ]);
   });
 
-  // station#3545 review round 2: this used to be titled "the real producer
+  // archive#3545 review round 2: this used to be titled "the real producer
   // shape" — it is now the FALLBACK case instead: a bare `{ type: 'finish' }`
   // with no `finishReason` key is what `AiSdkLLMProvider.createStream`
   // yields only when ai-sdk's own `finishReason` promise rejects or resolves
@@ -235,7 +235,7 @@ describe('BedrockAdapter', () => {
     expect(completed.finishReason).toBe('stop');
   });
 
-  // station#3545 review round 2 HIGH: the producer tests prove
+  // archive#3545 review round 2 HIGH: the producer tests prove
   // `AiSdkLLMProvider.createStream` EMITS a mapped `finishReason`; the fleet
   // test proves `FleetInferenceService` READS it. Nothing proved the
   // consumer this issue is actually about — `BedrockAdapter.sendTurn` — PASSES
@@ -327,7 +327,7 @@ describe('BedrockAdapter', () => {
       // `doStream`, which sets `response.modelId` to the REQUEST's own
       // model id), the adapter must not treat it as observed. `finishReason`
       // is orthogonal to this test's claim (`reportedModel` suppression), so
-      // it carries the ordinary `'stop'` shape (station#3545 review round 2:
+      // it carries the ordinary `'stop'` shape (archive#3545 review round 2:
       // `reportedModel` present with no `finishReason` at all would be an
       // unusual combination — ai-sdk's `response` and `finishReason`
       // promises resolving/rejecting independently — not the norm this
@@ -473,7 +473,7 @@ describe('BedrockAdapter', () => {
     for (let index = 0; index < 10; index += 1) {
       events.push((await iterator.next()).value);
     }
-    // station#3466 site pins: `interruptTurn` (`activeTurns.delete` then
+    // archive#3466 site pins: `interruptTurn` (`activeTurns.delete` then
     // `.abort()`) and `stopSession` (`.abort()` then `activeTurns.delete`)
     // both mutate `activeTurns` synchronously, in the same tick as the
     // abort that races this stream's rejection. If a future reorder ever
@@ -503,7 +503,7 @@ describe('BedrockAdapter', () => {
     expect(stopTerminals).toHaveLength(0);
   });
 
-  // station#3442 review finding, re-verified against this tree: the
+  // archive#3442 review finding, re-verified against this tree: the
   // `sendTurn` catch handler's `if (controller.signal.aborted)` arm (the
   // one that would publish `turn.completed`/`finishReason:'cancelled'`)
   // had zero coverage. Tracing it further: `interruptTurn`/`stopSession`
@@ -520,7 +520,7 @@ describe('BedrockAdapter', () => {
   // `finishReason:'cancelled'` sub-arm is unreachable via any public API on
   // this adapter, not merely untested — reported separately as an
   // out-of-scope finding. What IS reachable, and what actually matters for
-  // the "mirror image of #3442" regression risk (a user Stop wrongly
+  // the "mirror image of archive#3442" regression risk (a user Stop wrongly
   // recording the session `failed`), is the adapter's real observable
   // contract: interrupting a turn publishes exactly one terminal-shaped
   // event (`turn.aborted`) and NEVER a `runtime.error`. That is what this
@@ -574,7 +574,7 @@ describe('BedrockAdapter', () => {
     ]);
   });
 
-  // station#3466: the third abort site. `sendTurn`'s supersede branch calls
+  // archive#3466: the third abort site. `sendTurn`'s supersede branch calls
   // `superseded.controller.abort(...)` and THEN, still synchronously (no
   // await between), overwrites `activeTurns` with the new turn — the same
   // same-tick shape `interruptTurn`/`stopSession` have (proven above via the

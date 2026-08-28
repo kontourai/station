@@ -7,10 +7,10 @@ import { installServerLogSink } from '../../../services/infra/server-log-store.j
 import { readBootHistory, writeBootRecord } from '../boot-history.js';
 
 /**
- * station#2642, sol review finding 1: the route test mocked the reader, so a
+ * archive#2642, sol review finding 1: the route test mocked the reader, so a
  * written boot record that the durable reader REJECTS (time vs timestamp)
  * escaped every suite. This test pushes real bytes through the real sink and
- * the real reader — fixture-vs-reality (#1715 class).
+ * the real reader — fixture-vs-reality (archive#1715 class).
  */
 
 let dir: string;

@@ -19,7 +19,7 @@ type BannerActionBase = {
   ariaLabel?: string;
   /**
    * Fires when this control loses focus. Optional and rarely needed — the
-   * one real use today is a two-step destructive confirm (station#4470's
+   * one real use today is a two-step destructive confirm (archive#4470's
    * "Remove connection") disarming itself when the reader looks away
    * without following through, mirroring `PairedDeviceList`'s inline revoke
    * confirm. Not called on dismiss/unmount; sources that need a "the
@@ -57,7 +57,7 @@ export type BannerItem = {
   message: string;
   /**
    * Everything that did not earn a permanent line — the remedy, the address,
-   * the caveats. Rendered behind a "More" disclosure (station#3297), so a
+   * the caveats. Rendered behind a "More" disclosure (archive#3297), so a
    * banner can be one line without the detail being lost.
    *
    * A banner with no `detail` renders no disclosure at all: an expander that
@@ -86,7 +86,7 @@ export type BannerItem = {
    * content area at present and again at dismiss costs more than the
    * momentary occlusion. No source sets it today — transient reachability
    * was deliberately moved out of this host and onto the connection
-   * indicator (station#3297). It exists so that choice is a stated one at
+   * indicator (archive#3297). It exists so that choice is a stated one at
    * the banner, rather than an accident of the host's CSS applying to
    * everything at once, which is how the overlap this fixes arrived.
    */
@@ -102,7 +102,7 @@ export type BannerItem = {
   /**
    * Fires when the reader taps the card's own collapse chevron TO collapse
    * it (never on expand). Optional — most banners have nothing that cares.
-   * station#4470's two-step "Remove connection" confirm uses it: the
+   * archive#4470's two-step "Remove connection" confirm uses it: the
    * confirm's own actions render regardless of `collapsed` (a collapsed
    * card still shows its actions row), so an armed confirm was reachable
    * behind the collapse chevron too — collapsing while armed now disarms
@@ -119,7 +119,7 @@ export type BannerItem = {
    * app discovered on its own (a dropped connection, a version mismatch, a
    * failed capability). It does not change `tone` or `priority`: a redirect
    * notice for an empty Board is still merely informational. It only breaks
-   * a TIE within one priority tier (`sortBanners`, station#3823), so a
+   * a TIE within one priority tier (`sortBanners`, archive#3823), so a
    * notice caused by what the reader just did is not buried behind stale
    * passive chrome that accumulated earlier in the session and happens to
    * share its priority band — while a genuinely higher-priority passive
@@ -190,13 +190,13 @@ export type BannerPresentInput = Omit<BannerItem, 'phase' | 'collapsed'>;
  * Public API surface for chrome banners.
  *
  * - `bannerStore.present(item)` / `dismiss(id, { reason })` / `clear(prefix?)`
- * - `useBanners()` — live+exiting snapshot, priority-sorted
- * - `useBanner()` — present/dismiss helpers for sources
+ * - `useBanners` — live+exiting snapshot, priority-sorted
+ * - `useBanner` — present/dismiss helpers for sources
  *
  * Dismiss with `reason: 'user'` runs `onDismiss`. System/cleanup dismisses
  * must omit reason (or use `system`) so effect teardowns do not latch or
  * release suppression. A dismissible banner without an occurrence is keyed
- * by id alone and remains suppressed until `clear()`/`reset()`.
+ * by id alone and remains suppressed until `clear`/`reset`.
  *
  * `bannerStore.setCollapsed(id, collapsed)` is the host's own control, not a
  * source affordance, so it is deliberately absent here.
@@ -261,14 +261,14 @@ class BannerStore {
   );
   /**
    * id → the occurrence that was collapsed. Keyed exactly like
-   * `userDismissed` (station#3308's suppression keying) so the two decisions
+   * `userDismissed` (archive#3308's suppression keying) so the two decisions
    * a user can make about a banner expire together: a NEW occurrence of the
    * same condition is a new thing to read, so it arrives expanded, while the
    * same occurrence re-presented on every poll stays as the user left it.
    *
    * Same trap as dismissal, and worth naming because it is the one I hit in
-   * station#3498: a banner with NO occurrence is keyed by id alone, so its
-   * collapsed state survives until `clear()`/`reset()`. For collapse that is
+   * archive#3498: a banner with NO occurrence is keyed by id alone, so its
+   * collapsed state survives until `clear`/`reset`. For collapse that is
    * benign (the banner is still on screen, still named, still actionable) —
    * unlike dismissal, where it means the banner never comes back.
    */
@@ -304,7 +304,7 @@ class BannerStore {
 
   /**
    * Collapse or expand one banner. Every banner is collapsible, including a
-   * non-dismissible connection-blocking one: station#3432 made that band
+   * non-dismissible connection-blocking one: archive#3432 made that band
    * non-collapsible in the STACK sense (it must never go behind the cap,
    * where it leaves the DOM and its `role="alert"` never announces), and a
    * banner collapsed to its bar is still mounted, still names the fault, and
@@ -375,7 +375,7 @@ class BannerStore {
       // presentation. Running onDismiss after the 160ms exit let a system
       // dismiss (profile switch, source teardown) land inside that window,
       // cancel the timer, and silently discard the durable side of the
-      // dismissal (station#2557 review finding).
+      // dismissal (archive#2557 finding).
       item.onDismiss?.();
       this.beginExit(item, false);
       return;
@@ -507,7 +507,7 @@ class BannerStore {
 }
 
 /**
- * The highest band a user-initiated notice may be lifted into (station#3823).
+ * The highest band a user-initiated notice may be lifted into (archive#3823).
  *
  * Derived from `BANNER_PRIORITY`, not chosen: the three bands ABOVE it —
  * `connectionBlocking`, `versionMismatch`, `connectionTransient` — all say
@@ -554,7 +554,7 @@ export function sortBanners(items: BannerItem[]): BannerItem[] {
     const bPriority = effectiveBannerPriority(b);
     if (bPriority !== aPriority) return bPriority - aPriority;
     // Within one tier, a banner the user's own action just caused outranks
-    // one that nothing the user did produced (station#3823). This is what
+    // one that nothing the user did produced (archive#3823). This is what
     // decides the lifted notice against the passive `capabilityFailure`
     // banners it now ties with, and it also orders two banners that shared a
     // tier to begin with.
@@ -617,13 +617,13 @@ function stackCap(hiddenLive: BannerItem[]): BannerStackCap | null {
 }
 
 /**
- * Stack view for the overlay host (station#3308 phase 1). Collapsed shows the
+ * Stack view for the overlay host (archive#3308 phase 1). Collapsed shows the
  * front banner plus a cap describing what hides behind it; expanded shows
  * everything. Exiting banners never drive the cap: they are already leaving,
  * so counting or tinting by them would advertise a notice the user is about
  * to not have.
  *
- * station#3432: the `connectionBlocking` band (credential/pairing-required —
+ * archive#3432: the `connectionBlocking` band (credential/pairing-required —
  * states the product does not work without) never collapses. Every banner in
  * that band stays in `visible`, live or exiting; the cap describes only the
  * bands below it. This is a priority-BAND slice, not an index slice, so it
@@ -687,13 +687,13 @@ export function buildBannerStackView(
 export type BannerReserveEntry = {
   /** False for an `overlay` banner — it is measured but claims nothing. */
   reserves: boolean;
-  /** Viewport-space bottom edge (`getBoundingClientRect().bottom`). */
+  /** Viewport-space bottom edge (`getBoundingClientRect.bottom`). */
   bottom: number;
 };
 
 /**
  * Height the content area must be inset by so that no reserving banner
- * covers it — the fix for "banners overlap content" (station#3308 made the
+ * covers it — the fix for "banners overlap content" (archive#3308 made the
  * host an overlay, which stopped the app reflowing per banner and, in the
  * same move, put every banner permanently on top of the top of the view).
  *
@@ -711,7 +711,7 @@ export type BannerReserveEntry = {
  * last reserving one adds nothing, which is exactly what it asked for. With
  * nothing reserving, the result is 0 and the content area is not inset at
  * all — the host reserves no space when it has nothing to reserve for, the
- * property station#2268's blank 104px rail lost.
+ * property archive#2268's blank 104px rail lost.
  */
 export function bannerReservedHeight(
   hostTop: number,
@@ -745,16 +745,16 @@ function actionsEqual(
 export const bannerStore = new BannerStore();
 
 /**
- * TEST-ONLY (station#3823). A Playwright spec drives the real running app
+ * TEST-ONLY (archive#3823). A Playwright spec drives the real running app
  * through a `Page`, not the module graph, so it cannot `import { bannerStore }`
  * the way every vitest suite in `__tests__/` already does. This exposes the
  * same clearing primitive as a `window` global a spec reaches with
- * `page.evaluate(() => window.__stationClearPassiveChromeBannersForTestsOnly?.())`,
+ * `page.evaluate( => window.__stationClearPassiveChromeBannersForTestsOnly?.)`,
  * so a spec whose assertion is about ONE notice it caused itself is not at the
  * mercy of whatever chrome the instance accumulated around it.
  *
  * It clears PASSIVE banners only, and that is not a nicety — it is what makes
- * it safe to call. A blanket `reset()` raced with the very thing under test:
+ * it safe to call. A blanket `reset` raced with the very thing under test:
  * a spec can only call this AFTER a navigation (the hook does not exist on
  * `about:blank`, and a full page load re-executes the bundle), and by then the
  * notice the spec is waiting for may already have been presented. Clearing on

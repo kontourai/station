@@ -1,5 +1,5 @@
 /**
- * station#1501 slice 3a — SHADOW the new resolver at the session-cwd seam.
+ * archive#1501 — SHADOW the new resolver at the session-cwd seam.
  *
  * `resolveStartSessionCwd` (`orchestration-service.ts`) is fail-closed by
  * design and EVERY engine family reaches its adapter through it, which is why
@@ -67,8 +67,8 @@
  * 2. **Agreement is defined against what the baseline seam ACTUALLY DOES, not
  *    against the resolver's vocabulary.** The seam's own contract has three
  *    distinct project outcomes — a resolved directory, the deliberate
- *    `$HOME`/`cwdDefaulted` terminus for a directory-less project (#1023),
- *    and a fail-closed throw for a directory that does not exist (#791) — and
+ *    `$HOME`/`cwdDefaulted` terminus for a directory-less project (archive#1023),
+ *    and a fail-closed throw for a directory that does not exist (archive#791) — and
  *    the resolver expresses the last two both as `unbound`. Comparing raw
  *    strings would report a divergence on every directory-less project on the
  *    install, which is exactly the noise that makes a shadow log unreadable
@@ -83,7 +83,7 @@
  *
  *    This decision originally also said the record must not be a file, citing
  *    §6 of `docs/strategy/multi-agent-delivery-protocol.md` ("read paths do
- *    not write"). That was the wrong reading and station#1686 is what it
+ *    not write"). That was the wrong reading and archive#1686 is what it
  *    cost. §6 forbids a PROJECTION mutating the state it reports — a join
  *    that writes back what it just derived, opening a lost-update window on
  *    somebody else's data. An observer appending to its OWN observation
@@ -91,7 +91,7 @@
  *    the binding, and no consumer of any of those reads it. What the old
  *    wording actually bought was a divergence record whose only reader was an
  *    OTLP collector nobody has attached, i.e. no reader at all.
- * 6. **The record must be readable without a collector (station#1686).** The
+ * 6. **The record must be readable without a collector (archive#1686).** The
  *    counter is a no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set, so
  *    slice 3c's population-coverage evidence has been discarded since 3a
  *    merged, and `CONFLATED_UNBOUND_NOTE`'s fail-open tripwire has had no way
@@ -124,7 +124,7 @@
  *    lets a home that was switched off be told apart from a home where the
  *    observer never ran, and a switch that erased its own footprint would
  *    hand slice 3c's gate the emptiness-as-clearance reading that
- *    station#1686 exists to close — this time with a cause nothing in the
+ *    archive#1686 exists to close — this time with a cause nothing in the
  *    record could name.
  *
  *    The cost objection is answered on its own terms rather than waved away,
@@ -187,7 +187,7 @@ export type CwdShadowOutcome =
    * Both sides name the SAME directory, and the resolver's answer is the
    * weaker `unverifiedPath` of a `stale` result — it could not run the
    * identity check at all — rather than a live-verified `bound` path
-   * (station#1594). A `drifted` result is {@link CwdShadowOutcome}
+   * (archive#1594). A `drifted` result is {@link CwdShadowOutcome}
    * `agree-drifted`; see there for why the two are counted apart.
    *
    * This is an agreement, not a divergence: the baseline seam never
@@ -222,7 +222,7 @@ export type CwdShadowOutcome =
    */
   | 'agree-drifted'
   /**
-   * The regression TRIPWIRE for station#1594. Baseline says "a directory is
+   * The regression TRIPWIRE for archive#1594. Baseline says "a directory is
    * declared and it is gone"; the resolver says `unbound`, which since #1594
    * means "nothing is recorded" — a different fact, and the conflation that
    * blocked slice 3c. See {@link CONFLATED_UNBOUND_NOTE}.
@@ -244,7 +244,7 @@ export type CwdShadowOutcome =
    *
    * Generalised on review from "baseline resolved a directory and the shadow
    * named none": agreement is defined against what the seam ACTUALLY DOES
-   * (decision 2), and since station#1594 the flip mapping is per state —
+   * (decision 2), and since archive#1594 the flip mapping is per state —
    * `unbound` to `$HOME`, `missing`/`ambiguous`/the access states to a throw.
    * So "named no directory" is no longer a sufficient comparison on either
    * no-path branch.
@@ -284,22 +284,22 @@ export type CwdShadowOutcome =
  *
  * - `no-directory` — the project is an organizational/knowledge scope. The
  *   chat is a global chat and must terminate at `$HOME` with
- *   `cwdDefaulted: true` (#1023). Failing here would break the seeded
+ *   `cwdDefaulted: true` (archive#1023). Failing here would break the seeded
  *   `default` project and every scope-only project on the install.
  * - `missing-directory` — the project declares a directory and it is gone.
- *   The seam fails closed, naming the project and the path (#791). Silently
- *   starting at `$HOME` here is precisely the #1011 fail-open class the seam
+ *   The seam fails closed, naming the project and the path (archive#791). Silently
+ *   starting at `$HOME` here is precisely the archive#1011 fail-open class the seam
  *   was written to close: a chat the UI shows as project-bound reading and
  *   writing the wrong files.
  *
- * Until station#1594, `resolveProjectResource` returned the SAME `unbound`
+ * Until archive#1594, `resolveProjectResource` returned the SAME `unbound`
  * state for both, with the difference living only in the prose of `reason`.
  * No mapping from state alone could serve both contracts: `unbound -> $HOME`
- * regressed #791, `unbound -> throw` regressed #1023. A shadow that called
+ * regressed archive#791, `unbound -> throw` regressed archive#1023. A shadow that called
  * that `agree` would have left the divergence record empty for exactly the
  * population that made the flip unsafe — and that record is slice 3c's gate.
  *
- * **station#1594 split the state.** `unbound` now means, exactly, "nothing on
+ * **archive#1594 split the state.** `unbound` now means, exactly, "nothing on
  * this Station records a realization"; a declared-but-gone `workingDirectory`
  * is `missing` with `record: 'working-directory'`. So baseline
  * `missing-directory` vs shadow `missing` is now the honest `agree` this
@@ -440,7 +440,7 @@ export interface CwdShadowDeps {
    */
   logged?: Set<string>;
   /**
-   * station#1686: where the durable observation record goes. Optional ONLY
+   * archive#1686: where the durable observation record goes. Optional ONLY
    * as a test seam — the default is the real production behaviour (append to
    * `<homeDir>/project-resource-shadow.json`), never a bypass, so a caller
    * that forgets it still gets a readable record rather than silently
@@ -452,7 +452,7 @@ export interface CwdShadowDeps {
 /**
  * Per-process latch for the "the record itself could not be written" warning.
  *
- * A record that has silently stopped being written is the station#1686
+ * A record that has silently stopped being written is the archive#1686
  * failure wearing a new coat, so it must be said out loud — but the observer
  * runs once per session start, and an unwritable home would otherwise emit a
  * warn line per start forever and bury everything else. One line per process,
@@ -489,7 +489,7 @@ export const SHADOW_LOG_DEDUPE = new Set<string>();
 /**
  * Outcomes that are not a disagreement and must not be logged as one.
  *
- * Exported since station#1686 so the record reader's own copy
+ * Exported since archive#1686 so the record reader's own copy
  * (`NON_DIVERGENT_RECORD_OUTCOMES`) can be pinned against it in BOTH
  * directions. Two independently-maintained copies of "what counts as a
  * divergence" is the exact shape that makes a divergence record read empty
@@ -560,7 +560,7 @@ export function compareCwdShadow(
     };
   }
   const result = shadow.result;
-  // station#1594: compare on the DIRECTORY-question, through the repo's one
+  // archive#1594: compare on the DIRECTORY-question, through the repo's one
   // derivation point. The baseline seam never identity-checked anything, so
   // comparing its answer against `bound`-only would report a divergence for
   // every manifested-git project on a host where `git` cannot be run — a
@@ -609,7 +609,7 @@ export function compareCwdShadow(
       if (shadowPath !== undefined) {
         return { ...observed, outcome: 'shadow-resolved' };
       }
-      // `unbound` — and ONLY `unbound` — is the honest match for #1023's
+      // `unbound` — and ONLY `unbound` — is the honest match for archive#1023's
       // deliberate `$HOME` terminus, because `unbound` is the one state slice
       // 3c's mapping sends there.
       //
@@ -632,11 +632,11 @@ export function compareCwdShadow(
         // both are worth a line.
         return { ...observed, outcome: 'shadow-resolved' };
       }
-      // station#1594: THIS is the agreement the comparison previously could
+      // archive#1594: THIS is the agreement the comparison previously could
       // not express. Baseline says "a directory is declared and it is gone";
       // `missing` says exactly that, and says which record declared it. Before
       // the split the resolver could only answer `unbound` here, which meant
-      // the same thing as "no directory was ever declared" — the #791/#1023
+      // the same thing as "no directory was ever declared" — the archive#791/#1023
       // conflation that blocked slice 3c.
       if (observed.shadowState === 'missing') {
         return { ...observed, outcome: 'agree' };

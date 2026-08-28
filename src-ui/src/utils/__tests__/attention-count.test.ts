@@ -1,5 +1,5 @@
 /**
- * station#3214: the notifications page printed the pending count of its
+ * archive#3214: the notifications page printed the pending count of its
  * FILTERED list under the same "Needs attention (N)" label the bell badge
  * wears for the FULL pending set, so any active filter made the header
  * contradict the badge the reader had just clicked.
@@ -60,7 +60,7 @@ function approval(
 }
 
 /**
- * station#3222: the tray RENDERS the pending subset rather than counting it,
+ * archive#3222: the tray RENDERS the pending subset rather than counting it,
  * so the predicate had to become a list. These pin that the list and the count
  * are one derivation — a second `!acknowledgedAt` spelled anywhere else is the
  * drift this module exists to prevent.
@@ -276,7 +276,7 @@ describe('attentionCountLabel', () => {
   });
 
   /**
-   * station#3222: the tray narrows by TRUNCATION, not by a filter bar — it has
+   * archive#3222: the tray narrows by TRUNCATION, not by a filter bar — it has
    * room for five rows under a badge that may read nine. The helper takes the
    * fact, not the mechanism, so the same pair covers both surfaces and the
    * tray needs no second label rule of its own.

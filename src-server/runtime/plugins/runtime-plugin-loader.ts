@@ -86,7 +86,7 @@ export async function loadRuntimePluginProviders(
     overrides,
     // Fail-closed, non-throwing: when the grants store is unavailable this
     // DENIES the grant for every plugin and logs at error level, rather than
-    // aborting provider loading wholesale or silently allowing (#1835).
+    // aborting provider loading wholesale or silently allowing (archive#1835).
     (pluginName) =>
       hasGrant(
         context.projectHomeDir,

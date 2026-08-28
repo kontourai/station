@@ -337,15 +337,13 @@ export interface ConnectionCheckEvidence {
    *   catalog, or a live but empty list. This proves the endpoint answers; it
    *   proves nothing about chat, so it can never read as Ready. Keeping it
    *   distinct from `failed` is what stops an OpenAI-compatible endpoint with
-   *   working chat and no `/models` from being permanently marked broken
-   *   (station RT-06 delta review H1).
+   *   working chat and no `/models` from being permanently marked broken.
    * - `failed`: the provider refused these settings (401/403 and other
    *   error responses).
    * - `unreachable`: Station could not reach the endpoint at all — DNS, a
    *   connection reset, a transport error. Distinct from `failed` because one
    *   transient listing must not become a durable refusal that overwrites an
-   *   explicit pass and drops the connection out of recommendations (station
-   *   RT-06 delta2 review M1). A body that is not JSON, or one too large to
+   *   explicit pass and drops the connection out of recommendations. A body that is not JSON, or one too large to
    *   read, is `catalog-unavailable` instead: the endpoint answered.
    */
   status:
@@ -373,8 +371,8 @@ export interface ConnectionCheckEvidence {
    * - `explicit-test`: the operator pressed Test Connection.
    * - `catalog-discovery`: the listing's own catalogue fetch, which is what
    *   populates the Models count the user is looking at. Recording it is why
-   *   "Ready" can never come from a saved string alone (station RT-06 review
-   *   H2): a catalogue nobody actually fetched leaves the check
+   *   "Ready" can never come from a saved string alone: a catalogue nobody
+   *   actually fetched leaves the check
    *   `not-checked`, and the connection reads "Saved — not verified".
    *
    * Recency decides between them, with one exception: a `catalog-unavailable`
@@ -468,7 +466,7 @@ export interface ConnectionReadinessEvidence {
   /**
    * Present on model connections, whose `status` is derived from "a non-empty
    * string is saved in the key box" and therefore reads `ready` for a key the
-   * provider has never accepted (station RT-06).
+   * provider has never accepted.
    */
   check?: ConnectionCheckEvidence;
 }

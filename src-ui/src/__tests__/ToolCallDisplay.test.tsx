@@ -6,14 +6,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
 
-// station#3091 / #3117: the rendered end of the carrying seam. `ToolCallData`
+// archive#3091 / archive#3117: the rendered end of the carrying seam. `ToolCallData`
 // here is exactly the flat `tool-invocation` shape the LIVE orchestration
 // path produces (`handleToolCompletedEvent`, src-ui/src/hooks/orchestration/
 // streamHandlers.ts) and the durable rehydration projection reconstructs
 // (`runtime-event-projection.ts`) — these props are not a fabricated
 // shortcut, they mirror what actually reaches this component both live and
 // after a reload. (Previously cited ToolLifecycleHandler.test.ts, which
-// tested a handler with no production caller — see station#3117.)
+// tested a handler with no production caller — see archive#3117.)
 
 describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => {
   test('renders a distinct, labelled "Blocked by Station" badge naming the reason', () => {
@@ -36,7 +36,7 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     expect(badge.className).toContain('tool-call__status-badge--warning');
     // The reason is surfaced in the expandable error details section, the
     // same mechanism every tool error already uses. The collapsed row itself
-    // is the disclosure button (station#2652 redesign).
+    // is the disclosure button (archive#2652 redesign).
     fireEvent.click(document.querySelector('button.tool-call__line')!);
     expect(screen.getByText(reason)).toBeTruthy();
   });
@@ -114,10 +114,10 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     expect(screen.queryByText('Auto-approved')).toBe(null);
   });
 
-  // station#3113: an ordinary (non-policy) failed tool call — `error` set,
+  // archive#3113: an ordinary (non-policy) failed tool call — `error` set,
   // no `approvalStatus` at all. Negative control for the marker AND the
-  // positive assertion for #3113's "renders as failed" AC: a visible
-  // "Failed" flag WITHOUT expanding (station#2652 redesign — a reader must
+  // positive assertion for archive#3113's "renders as failed" AC: a visible
+  // "Failed" flag WITHOUT expanding (archive#2652 redesign — a reader must
   // never have to open a row to learn the call went wrong), no success
   // claim, and no policy-denied badge (an ordinary failure must never read
   // as a policy verdict it never received).
@@ -184,7 +184,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(footer?.textContent).toBe('✓ Success');
   });
 
-  // station#3690 review: this used `read_file`, whose past tense and bare
+  // archive#3690: this used `read_file`, whose past tense and bare
   // infinitive are both "Read" — so it could not tell a truthful label from an
   // overclaiming one. `shell_exec` discriminates ("Ran" vs "Run").
   test('an unresolved call (started, no terminal event) claims neither completion nor a terminal status', () => {

@@ -162,7 +162,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     await act(async () => resolve(false));
   });
 
-  // UX audit T3: a retained follow-up used to sit in the queue with no reason
+  // a retained follow-up used to sit in the queue with no reason
   // and no way to send it — the automatic drain only fires on a later
   // turn.completed, so a refusal the user has since fixed stranded it.
   it('explains why the queue is held and offers a retry', () => {
@@ -182,7 +182,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     );
 
     expect(screen.getByText(/started without a workspace/i)).toBeTruthy();
-    // UX audit T3 review: on this refusal the action is not a plain retry —
+    // on this refusal the action is not a plain retry —
     // it continues the conversation without the workspace — so the label says
     // that rather than promising a repeat of a deterministic failure.
     fireEvent.click(

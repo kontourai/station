@@ -1,5 +1,5 @@
 /**
- * station#4197: derives the `token-usage.updated` fields the Bedrock and
+ * archive#4197: derives the `token-usage.updated` fields the Bedrock and
  * Ollama adapters publish from the `LLMStreamChunk['usage']` their shared
  * producer (`AiSdkLLMProvider.createStream`) now populates on the finish
  * chunk.
@@ -11,7 +11,7 @@
  * `convertOpenAICompatibleChatUsage`:
  * `prompt_tokens_details?.cached_tokens ?? 0`). Publishing those zeros
  * would put an invented measurement on the durable event stream — the
- * station#4198 defect class, and the exact inverse of the absence-direction
+ * archive#4198 defect class, and the exact inverse of the absence-direction
  * lie this issue fixes. So each derivation here reads the provider-wire
  * usage object (`usage.raw`, carried verbatim by the producer) and includes
  * a cache field ONLY when the wire actually carried it. Only what the
@@ -106,7 +106,7 @@ export function bedrockReportedUsage(
   // beside it would be counted twice by every 'disjoint' consumer
   // (`cacheInclusivePromptTokens`) — the invisible double-count the
   // declaration exists to prevent. A degraded prompt figure therefore
-  // ships alone (review MEDIUM, station#4197).
+  // ships alone (review MEDIUM, archive#4197).
   if (promptFromWire && usableTokenFigure(wire.cacheReadInputTokens)) {
     fields.cacheReadTokens = wire.cacheReadInputTokens;
   }
@@ -147,14 +147,14 @@ export function ollamaReportedUsage(
   // The SDK coerces an absent wire figure to 0 (`prompt_tokens ?? 0`), so
   // when the wire object is in hand each headline figure is presence-gated
   // on ITS wire field — an SDK-invented 0 must not become a reported
-  // measurement (review MEDIUM, station#4197). Without a wire object the
+  // measurement (review MEDIUM, archive#4197). Without a wire object the
   // normalized figures are the only signal and are published as-is (the
   // primary defect stays fixed under raw-shape drift; zeros then remain a
   // disclosed SDK approximation).
   // `typeof === 'number'`, not `!== undefined`: the wire schema is
   // `nullish`, so an explicit `"prompt_tokens": null` is the OTHER spelling
   // of absence — the SDK coerces it to 0 exactly like a missing key
-  // (delta-review MEDIUM, station#4197).
+  // (delta-review MEDIUM, archive#4197).
   const promptReported =
     wire === undefined || typeof wire.prompt_tokens === 'number';
   const completionReported =

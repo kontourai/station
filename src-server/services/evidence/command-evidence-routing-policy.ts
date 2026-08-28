@@ -17,7 +17,7 @@ import type { FlowDefinition } from '@kontourai/flow';
  * Station OBSERVED this command; it did not run it (the connected/ACP agent
  * owns tool dispatch). `status` is the runtime's own outcome and the only
  * execution fact reported back, so `exitCode` and `durationMs` are null
- * whenever nothing measured them (station#4237).
+ * whenever nothing measured them (archive#4237).
  */
 export interface SpooledCommand {
   toolName: string;
@@ -96,9 +96,9 @@ const DEFAULT_COMMAND_TOOL_NAMES = [
  * Anchors a claim pattern to the LEADING word of an actual invocation,
  * rather than any mention of the word anywhere in the command line — a
  * STRICTER discipline than the verification pattern below (which only
- * excludes a leading search-tool word via `excludes`, station#189); this one
+ * excludes a leading search-tool word via `excludes`, archive#189); this one
  * requires the verb to sit in leading position via a positive anchor, so the
- * generic patterns need no bolt-on exclusion list (station#1433 round-3
+ * generic patterns need no bolt-on exclusion list (archive#1433 round-3
  * ruling). A command is only "leading" when it opens the string or a line
  * (optionally after indentation), or starts a new segment after a single
  * shell chain-operator character (`&`, `;`, `|`), optionally preceded by
@@ -109,7 +109,7 @@ const DEFAULT_COMMAND_TOOL_NAMES = [
  * string, and a `+`-quantified char class here backtracks once per offset
  * inside every run of operator characters, making a crafted input like
  * `'&;|'.repeat(6000)` quadratic — a synchronous 10s+ stall on a single
- * `route()` call (station#1433 HIGH-1, probe-confirmed). A lone `[&;|]`
+ * `route()` call (archive#1433 HIGH-1, probe-confirmed). A lone `[&;|]`
  * still matches `&&`/`||` correctly: `.test()` finds the match starting at
  * the SECOND operator character just as well as the first, with no
  * quantifier to backtrack.
@@ -157,7 +157,7 @@ const RUNNER_TOKEN = `(?:npx|npm(?:${WS}+exec|${WS}+run)?|yarn(?:${WS}+run)?|pnp
  * readiness --working-tree`, package.json). Without accounting for it, an
  * agent that ran that exact command line (rather than the `npm run
  * veritas:shadow` alias) produced governance.merge-readiness NO-ROUTE —
- * found in #1451 review. Optional (most invocations have no separator), a
+ * found in archive#1451 review. Optional (most invocations have no separator), a
  * single bounded `WS+` after the fixed two-character literal — no new
  * backtracking surface next to `ENV_PREFIX`/`RUNNER_TOKEN` above.
  */
@@ -197,13 +197,13 @@ function invocationPattern(
  * enumerate without executing, and `--explain` — the repo's own
  * `test:changed --explain` is documented (AGENTS.md) as emitting only an
  * explanation, "not a lane" — so none of these are execution evidence even
- * though the command line contains a real execution verb (station#1433
+ * though the command line contains a real execution verb (archive#1433
  * MEDIUM-1). Shared across the four generic patterns via `NO_OP_EXCLUDE`.
  *
  * `--list(?:Tests)?` is terminated with `(?=\s|$|=)`, not `\b`: a bare `\b`
  * matches at the word/hyphen boundary too, so `--list-different` (a real
  * prettier flag, nothing to do with listing tests) was tripping the
- * exclude off its `--list` prefix alone (station#1433 NEW-4 boundary,
+ * exclude off its `--list` prefix alone (archive#1433 NEW-4 boundary,
  * round-3 review). The lookahead requires the flag to actually END there
  * (whitespace, end of string, or `=value`), so a hyphen-continuation like
  * `-different` correctly fails to match.
@@ -230,7 +230,7 @@ const NO_OP_EXCLUDE = new RegExp(NO_OP_INVOCATION_FLAGS, 'i');
 const TSC_BUILD_FLAG_GAP = '[^&;|]{0,120}';
 
 /**
- * `run-e2e-suite` (station#1451) is neither an npm-script name nor an
+ * `run-e2e-suite` (archive#1451) is neither an npm-script name nor an
  * installed binary — it is a plain node script invoked as `node
  * scripts/run-e2e-suite.mjs …` (see every `test:e2e:*` entry in
  * package.json) — so it fits neither `ANCHOR_OPTIONAL`'s runner-token
@@ -255,7 +255,7 @@ const NODE_SCRIPT_ANCHOR = `${CHAIN_START}${ENV_PREFIX}node${WS}+${NODE_SCRIPT_P
  * capacity/leases") — an agent that invokes it directly with the same
  * `request <lane>` form the npm scripts use is running the real lane, so it
  * deserves the same coverage `NODE_SCRIPT_ANCHOR` gives `run-e2e-suite`
- * (station#1451 follow-up). The literal `request` is REQUIRED before the
+ * (archive#1451 follow-up). The literal `request` is REQUIRED before the
  * lane name: `node scripts/run-verification.mjs status` only inspects
  * leases — a query, not a run — and must not route, so `status` (or any
  * other subcommand) is excluded by construction rather than by an
@@ -271,7 +271,7 @@ const RUN_VERIFICATION_REQUEST_ANCHOR = `${NODE_SCRIPT_ANCHOR}run-verification\\
  * subshell — before pattern matching, so the repo's own mandated sentinel
  * idiom (`if <cmd>; then echo OK; else echo FAIL; fi`) is recognized as
  * running `<cmd>` rather than an unrecognized shell conditional
- * (station#1433 MEDIUM-2). A plain linear string strip rather than an
+ * (archive#1433 MEDIUM-2). A plain linear string strip rather than an
  * addition to `CHAIN_START` itself: teaching the anchor to understand `if`
  * would add a second backtracking-prone construct next to the exact one
  * HIGH-1 just removed. Only the matching view is stripped — `route()`
@@ -301,11 +301,11 @@ function stripConditionalWrapper(command: string): string {
 /**
  * Truncates a command at the first newline after a heredoc opening marker
  * (`<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`, …). Without this, the `m`-flag
- * multi-line anchor (station#1433 MEDIUM-3) treats a heredoc BODY line as
+ * multi-line anchor (archive#1433 MEDIUM-3) treats a heredoc BODY line as
  * its own leading invocation: `cat > run.sh <<'EOF'\nnpm test\nEOF` and the
  * equivalent for a Makefile or doc file both routed `npm test`/similar as
  * passing evidence for a command that only wrote those bytes to a file and
- * never ran them (station#1433 NEW-1, round-3 review, HIGH). A `<<<`
+ * never ran them (archive#1433 NEW-1, round-3 review, HIGH). A `<<<`
  * here-string is NOT a heredoc and must keep routing normally
  * (`npm test <<< "input"` is a real, single-line invocation) — the marker
  * regex requires `<<` followed immediately by an optional `-`, an optional
@@ -332,7 +332,7 @@ function stripHeredocBodies(command: string): string {
  *
  * The first three entries name the claim types Station's own
  * `.flow/definitions/station-delivery.json` gates expect. Without them the
- * expected set and the producible set were disjoint (station#189 defect 2):
+ * expected set and the producible set were disjoint (archive#189 defect 2):
  * every spooled command routed `no-route`, so no gate could ever be satisfied
  * by evidence Station collected itself. They must stay ahead of the generic
  * patterns because their commands also contain generic words — `npx
@@ -343,11 +343,11 @@ function stripHeredocBodies(command: string): string {
  * These three are held to a stricter standard than the generic ones, because
  * a false positive here does not merely misfile evidence — it PASSES a gate.
  * All three are now built with the same leading-command verb anchoring as
- * the generic four (station#1451; the original versions matched a MENTION
+ * the generic four (archive#1451; the original versions matched a MENTION
  * anywhere in the string — `echo "run npm run ci:fast first"`, `grep -rn
  * "verify:static" docs/`, `git commit -m "chore: speed up ci:fast"`, `git
  * log --grep "veritas readiness"`, and `echo "npm run test:e2e"` all
- * wrongly routed and PASSED a live gate, probe-proven during #1433's
+ * wrongly routed and PASSED a live gate, probe-proven during archive#1433's
  * independent review):
  *
  * - `quality.static-checks` (`verify:static`/`verify:local`/`ci:fast`) are
@@ -382,7 +382,7 @@ function stripHeredocBodies(command: string): string {
  * - `quality.verification` (`playwright test` / `verify:e2e` / `test:e2e` /
  *   `run-e2e-suite`) keeps its existing verb shape and its existing
  *   search-tool + no-op excludes (`rg`/`grep`/`ack`/`ag`/`cat`/`less`/`head`,
- *   `NO_OP_INVOCATION_FLAGS` — already applied since #1433's closing round),
+ *   `NO_OP_INVOCATION_FLAGS` — already applied since archive#1433's closing round),
  *   now ALSO anchored via `ANCHOR_OPTIONAL` (`playwright test`, direct or
  *   through `npx`/`npm exec`), `ANCHOR_REQUIRED` (`verify:e2e`/`test:e2e`,
  *   npm-script names), the dedicated `NODE_SCRIPT_ANCHOR` (`run-e2e-suite`,
@@ -390,7 +390,7 @@ function stripHeredocBodies(command: string): string {
  *   above), and `RUN_VERIFICATION_REQUEST_ANCHOR` (`request verify-e2e-full`,
  *   the coordinator behind `verify:e2e:full`). The search-tool exclude list
  *   is now redundant against the anchor for LEADING-position matches, but is
- *   kept exactly as-is (station#1451 explicitly preserves it) since it still
+ *   kept exactly as-is (archive#1451 explicitly preserves it) since it still
  *   guards a still-anchored mid-chain segment the anchor alone permits
  *   (`… && grep -rn "playwright test"` starts a new leading segment at
  *   `grep` after the `&&`). This closes the exact gap the anchor alone
@@ -413,7 +413,7 @@ function stripHeredocBodies(command: string): string {
  * `veritas:shadow`/`veritas:readiness` scripts (`npm exec -- veritas
  * readiness --working-tree`), which NO-ROUTEd before this fix if an agent
  * ran that literal command instead of the `npm run veritas:shadow` alias
- * (station#1451 review FN-1).
+ * (archive#1451 review FN-1).
  *
  * The remaining four entries (`quality.tests`, `quality.typecheck`,
  * `quality.lint`, `build.success`) used to be bare word matches
@@ -421,7 +421,7 @@ function stripHeredocBodies(command: string): string {
  * *executions*: `rm -rf test-results && npm run build` routed to
  * `quality.tests` off the word inside `test-results`, and `rg playwright
  * test` fell through to `quality.tests` off the bare word `test`
- * (station#1433). They are now built with `invocationPattern()` above,
+ * (archive#1433). They are now built with `invocationPattern()` above,
  * requiring an execution verb anchored to the leading command of an
  * invocation, so a mention inside another command's arguments, a file name,
  * or a search query never matches. `NO_OP_EXCLUDE` additionally keeps
@@ -464,7 +464,7 @@ const DEFAULT_CLAIM_PATTERNS: CommandClaimPattern[] = [
     // routes, while `rg playwright test` and `grep -rn "playwright test" docs/`
     // do not. `NO_OP_EXCLUDE` additionally covers `npm run test:e2e --help`
     // etc — a real gate expects this claim type live in station-delivery
-    // (station#1433 NEW-4, round-3 review), so a no-op invocation passing it
+    // (archive#1433 NEW-4, round-3 review), so a no-op invocation passing it
     // is not a diagnostic curiosity, it is a false-passing gate.
     excludes: new RegExp(
       `^\\s*(rg|grep|ack|ag|cat|less|head)\\b|${NO_OP_INVOCATION_FLAGS}`,

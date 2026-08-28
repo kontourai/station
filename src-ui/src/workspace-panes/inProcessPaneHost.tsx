@@ -51,7 +51,7 @@ export interface InProcessPaneHost {
 
 /**
  * The in-process (tier 2) adapter for `WorkspacePaneHostContract`
- * (station#4201, `docs/design/pane-host-contract.md` sequencing step 2): one
+ * (archive#4201, `docs/design/pane-host-contract.md` sequencing step 2): one
  * mapping from the contract's intents onto the shell's real capabilities —
  * the navigation store, the banner stack, the toast store, the shell's one
  * confirm chrome, and the single mobile derivation. The frame adapter (step

@@ -3,7 +3,7 @@
  */
 
 /**
- * station#1300: (3) the WORK list under Home used to render the first three
+ * archive#1300: (3) the WORK list under Home used to render the first three
  * open chats with no heading; (4) "New Project" used to be a full-width
  * "+ New Project" row instead of a `+` on the PROJECTS section header. Both
  * covered here against the real `ProjectSidebar` composition (mirrors
@@ -94,12 +94,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
   useProjectLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
-  // station#3313 routed the sidebar's visibility flags through
+  // archive#3313 routed the sidebar's visibility flags through
   // useSurfaceVisibilityFlags, which reads enabled previews from here. A
   // hand-rolled module mock owes every export its subject reaches, so this
   // file went red on main the moment that hook was added.
   useFeaturePreviewsQuery: () => ({ data: [] }),
-  // station#3780 gave ProjectSidebarRow the Board-availability read, and this
+  // archive#3780 gave ProjectSidebarRow the Board-availability read, and this
   // file went red again for exactly the reason recorded above — the same
   // hazard, one hook later. `undefined` is the honest shape while no row is
   // expanded: the row's read is gated `enabled: expanded && !collapsed`, so
@@ -165,7 +165,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
 
     render(<ProjectSidebar />);
     expect(screen.getByText('Open chats')).toBeTruthy();
-    // The mini-inbox rows are lazy-loaded (#3314) — await their chunk.
+    // The mini-inbox rows are lazy-loaded (archive#3314) — await their chunk.
     expect(await screen.findByText('Fix login bug')).toBeTruthy();
   });
 
@@ -202,7 +202,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
 });
 
 /**
- * kontourai/station#3314: "Open chats" is a mini-inbox — shared inbox rows
+ * archive#3314: "Open chats" is a mini-inbox — shared inbox rows
  * (compact variant), collapsible with the nav-group disclosure anatomy,
  * removable (device setting; restore lives in Settings → Appearance), with
  * the cap as a named constant and an "N more" affordance into the dock inbox.
@@ -281,7 +281,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
     // Capped at OPEN_CHATS_SIDEBAR_CAP (3): the 4th/5th fold behind N more.
     expect(screen.queryByText('Chat 3')).toBeNull();
 
-    // #3314 review SF-1: this used to assert `inboxOpen === true` as proof of
+    // archive#3314: this used to assert `inboxOpen === true` as proof of
     // a destination. That setting DEFAULTS to true, so the assertion passed on
     // a fresh store whether or not anything wrote it — no power at all, for a
     // button that led nowhere on mobile and in an edge placement.
@@ -329,13 +329,13 @@ describe('ProjectSidebar management navigation', () => {
 });
 
 /**
- * station#3202. The per-project badge used to fold the conversation INVENTORY
+ * archive#3202. The per-project badge used to fold the conversation INVENTORY
  * inline in `ProjectSidebar` and count, among other things, unseen finished
- * runs (station#1781). It now counts one thing — this project's LIVE work,
+ * runs (archive#1781). It now counts one thing — this project's LIVE work,
  * the Sessions list's own "Needs you" + "Active now" lanes scoped to the
  * project (`project-live-work-model.ts`) — because that is exactly what the
  * project page's Live work section lists, and a badge whose destination shows
- * a different set is the defect #3202 was filed about.
+ * a different set is the defect archive#3202 was filed about.
  *
  * DISCLOSED CONSEQUENCE, pinned below rather than left to be discovered: a
  * finished-and-unopened run no longer contributes to THIS badge. That signal
@@ -406,7 +406,7 @@ describe('ProjectSidebar live-work badge', () => {
   });
 
   /**
-   * station#1781's narrowing survives the move: `answerability` still demotes
+   * archive#1781's narrowing survives the move: `answerability` still demotes
    * an open request nothing can answer. It lands in Active now as
    * 'Unanswerable' rather than claiming to be yours to act on, which is the
    * Sessions lane model's own rule.
@@ -436,7 +436,7 @@ describe('ProjectSidebar live-work badge', () => {
   });
 
   test('a finished run is not live work and no longer reaches this badge', () => {
-    // The station#1781 leg this change deliberately drops. Asserted, not
+    // The archive#1781 leg this change deliberately drops. Asserted, not
     // silently removed: if a later change re-adds finished runs to the badge
     // without re-adding them to the project page section, this reds.
     resetState();
@@ -536,8 +536,8 @@ describe('ProjectSidebar New Project affordance (station#1300)', () => {
 describe('ProjectSidebar compact rail chat entry (#1348)', () => {
   test('keeps a named Open chats control inside the collapsed rail', () => {
     resetState();
-    // #1348 was written against the raw pre-unification key; sidebar
-    // collapse now lives in the device-settings envelope (slice 2), so
+    // archive#1348 was written against the raw pre-unification key; sidebar
+    // collapse now lives in the device-settings envelope, so
     // seed through the store rather than the migrated-away legacy key.
     deviceSettingsStore.set('projectSidebarCollapsed', true);
     const listener = vi.fn();

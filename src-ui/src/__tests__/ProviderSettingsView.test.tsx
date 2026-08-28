@@ -97,7 +97,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     window.history.replaceState({}, '', '/connections/providers');
   });
 
-  // station#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
+  // archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
   // `loading` prop but the query's `error` was never passed through, so a
   // settled read failure rendered the same "no model connections" empty
   // state as a host with none configured.
@@ -123,9 +123,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(button.disabled).toBe(false);
   });
 
-  // station#4463 slice 2 fix round (H2a, then M2/M3 delta review round 3):
+  // archive#4463:
   // four states through the real view, each with exactly ONE empty message
-  // — the detail panel's own "nothing to select" label used to restate
+  // the detail panel's own "nothing to select" label used to restate
   // whichever fact the list pane had already stated (genuinely-empty OR
   // filtered-to-nothing), and a typed query over an already-empty
   // collection used to misattribute the emptiness to the search.
@@ -133,9 +133,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     test('genuinely empty: the list states the fact, the detail panel does not restate it', () => {
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
-      // The list pane's own listEmptyTitle (H2a) is the ONE place this is
+      // The list pane's own listEmptyTitle is the ONE place this is
       // said — the detail panel's compact Empty is suppressed entirely
-      // (M2: llmEmbeddingProviders.length === 0).
+      // (llmEmbeddingProviders.length === 0).
       expect(screen.getAllByText('No model connections yet')).toHaveLength(1);
       expect(
         screen.queryByText('Add a model connection to power chats and agents.'),
@@ -175,7 +175,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
           'Nothing in model connections matches “zzz-does-not-match”',
         ),
       ).toBeTruthy();
-      // M2: a connection exists but is filtered off the list, so the detail
+      // a connection exists but is filtered off the list, so the detail
       // panel's "Select a model connection" is ALSO suppressed now — it
       // would otherwise be a second message on top of FilteredEmpty.
       expect(screen.queryByText('Select a model connection')).toBeNull();
@@ -206,7 +206,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       expect(screen.getAllByText('Select a model connection')).toHaveLength(1);
     });
 
-    // M3: modelConnections is EMPTY (nothing exists regardless of the
+    // modelConnections is EMPTY (nothing exists regardless of the
     // query), so a typed query must not make this read as "your search
     // matched nothing" — collectionEmpty routes it to the plain empty state.
     test('empty collection + a typed query: the plain empty state, never "Nothing matches"', () => {
@@ -276,7 +276,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     );
     fireEvent.click(screen.getByRole('button', { name: 'Hide Claude Sonnet' }));
 
-    // station#settings-revamp slice 3 (#1359 convergence): model-picker
+    // archive#settings-revamp (archive#1359 convergence): model-picker
     // preferences now live in the registry-driven envelope's
     // `modelPickerPreferences` entry, not the retired
     // `station.device-settings` root.
@@ -574,7 +574,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     );
   });
 
-  // LOW-1 / TESTS(d) (review fix round): saving a Bedrock connection must
+  // TESTS(d): saving a Bedrock connection must
   // persist only the fields the selected authMode uses — a stale apiKey
   // left over from a prior mode switch must never reach the saved config.
   test('saving a profile-mode Bedrock connection omits the unused apiKey field entirely', () => {
@@ -618,7 +618,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(savedArgs.connection.config).not.toHaveProperty('apiKey');
   });
 
-  // HIGH-2 (review fix round): Save must be disabled — not merely
+  // Save must be disabled — not merely
   // stripped-on-save — while a profile/api-key mode's required field is
   // still empty.
   test('disables Save for a profile-mode Bedrock connection with no profile chosen yet', () => {

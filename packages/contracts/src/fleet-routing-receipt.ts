@@ -1,7 +1,7 @@
 /**
- * station#1398 slice 3 — the Station-owned routing-receipt envelope
+ * The Station-owned routing-receipt envelope
  * (`docs/design/inference-fleet.md` §3.4, §4.5, §6.3, §10 OQ-3/OQ-4/OQ-8,
- * §11 slice 3).
+ * §11).
  *
  * **Why an envelope at all.** `DispatchReceipt` (`@kontourai/dispatch`) is
  * the authority on what was attempted and what it cost, and this envelope
@@ -13,15 +13,15 @@
  *    are plan-local strings; fleet attribution needs the machine.
  * 2. **No exclusions channel.** `attempts[]` records only candidates that
  *    were *launched*, so "why not that machine" is unanswerable from a
- *    Dispatch receipt alone. Until slice 6 composes Datum's
- *    `CapabilityRoleResult.exclusions`, Station carries its own — hence
+ *    Dispatch receipt alone. Until Datum's
+ *    `CapabilityRoleResult.exclusions` is composed in, Station carries its
+ *    own — hence
  *    {@link FleetRoutingExclusion.source}, which says which producer an
  *    exclusion came from rather than letting the two blur.
  *
  * **The honesty constraint this file exists to enforce.** A remote Station's
  * capability claim is *peer-attested*: it is that Station's own manifest
- * assertion, relayed. Nothing in slice 3 probes it — the first
- * `consumer-verified` smoke is slice 5. So {@link FleetCandidateEvidence}
+ * assertion, relayed. Nothing here probes it. So {@link FleetCandidateEvidence}
  * carries `provenance` alongside `level`, every peer-attested record keeps
  * the peer's raw claim in {@link PeerAttestedClaim} separate from the level
  * routing actually used, and {@link FLEET_PEER_ATTESTED_EVIDENCE_LABEL} is
@@ -38,8 +38,8 @@
  * always `null`. External wording is "receipted", never "signed".
  *
  * **Local-only (§10 OQ-4).** These envelopes are written by the DECIDING
- * Station and never replicated to a peer. Replication is deferred to
- * station#741 slice 3. Nothing here crosses the machine boundary, which is
+ * Station and never replicated to a peer (replication is deferred to
+ * archive#741). Nothing here crosses the machine boundary, which is
  * also why it may carry a peer's `environmentId` and label without the
  * disclosure analysis §5.2 applies to the wire contracts.
  *
@@ -99,11 +99,10 @@ export const FLEET_ROUTING_RECEIPT_SCHEMA_VERSION =
  * later reader recomputing them. `JSON.stringify` alone is key-order
  * dependent, so two structurally identical claims serialized by different
  * code paths hash differently and read as "the peer changed its claim" when
- * nothing changed (station#1398 security review, L-6: the peer-claim digest
- * was the one place still doing this).
+ * nothing changed.
  *
- * **`__proto__` is copied as an own property, not assigned** (station#1484
- * slice-1 review, BLOCKER). `result[key] = ...` looks like a copy and is not:
+ * **`__proto__` is copied as an own property, not assigned.**
+ * `result[key] = ...` looks like a copy and is not:
  * for `key === '__proto__'` it hits `Object.prototype`'s accessor, which
  * *reassigns the result's prototype* instead of creating a property. The key
  * then vanishes from `JSON.stringify`, so two records differing only in a
@@ -152,7 +151,7 @@ export type FleetCandidateOrigin =
 export type FleetEvidenceProvenance =
   /**
    * THIS Station observed it, through the four-level connection-readiness
-   * ladder (`connection-readiness-evidence.ts`) that station#1426 wired into
+   * ladder (`connection-readiness-evidence.ts`) wired into
    * Dispatch grading. `confirmed` here means a real bounded chat turn
    * completed on this machine.
    */
@@ -169,7 +168,7 @@ export type FleetEvidenceProvenance =
   /**
    * THIS Station ran a bounded one-turn completion against the peer THROUGH
    * THE FLEET PATH IT WILL ACTUALLY USE, and it completed (§4.3's
-   * `consumer-verified`, slice 5). This is the only fleet provenance that is
+   * `consumer-verified`). This is the only fleet provenance that is
    * a first-hand observation rather than a relayed claim, and it is the only
    * one that proves the PATH rather than the peer: a model that works
    * locally on B but is unreachable through B's inference route is exactly
@@ -177,7 +176,7 @@ export type FleetEvidenceProvenance =
    *
    * It does NOT close the attestation gap. It says "this worked from here,
    * at this time", not "this peer is who it says it is" — that needs
-   * station#1392 and a signing story that does not exist (§4.3, §10 OQ-3).
+   * archive#1392 and a signing story that does not exist (§4.3, §10 OQ-3).
    */
   | 'probe-verified';
 
@@ -194,7 +193,7 @@ export const FLEET_PEER_ATTESTED_EVIDENCE_LABEL =
 export const FLEET_LOCAL_EVIDENCE_LABEL = 'observed locally' as const;
 
 /**
- * The sentence for a peer candidate this Station probed itself (slice 5).
+ * The sentence for a peer candidate this Station probed itself.
  *
  * Deliberately narrower than {@link FLEET_LOCAL_EVIDENCE_LABEL}: what was
  * observed is a completion over the fleet path, not the peer machine. A
@@ -212,7 +211,7 @@ export const FLEET_PROBE_VERIFIED_EVIDENCE_LABEL =
 export type ConsumerProbeStatus = 'passed' | 'failed' | 'stale';
 
 /**
- * One bounded completion this Station ran against a peer (slice 5).
+ * One bounded completion this Station ran against a peer.
  *
  * **Nothing from the completion is here.** The probe sends a fixed, content-
  * free prompt and records that a turn completed, how long it took, and which
@@ -280,7 +279,7 @@ export interface FleetCandidateEvidence {
    * The level ROUTING USED. For `peer-attested` provenance this is capped at
    * `declared` by {@link capFleetEvidenceLevel} no matter how healthy the
    * peer's own claim is: `confirmed` in this codebase means a bounded
-   * completion was observed, and slice 3 observes nothing on the peer.
+   * completion was observed, and a relayed claim observes nothing on the peer.
    */
   level: FleetEvidenceLevel;
   provenance: FleetEvidenceProvenance;
@@ -299,7 +298,7 @@ export interface FleetCandidateEvidence {
    */
   peerAttested: PeerAttestedClaim | null;
   /**
-   * This Station's own probe observation (slice 5), or `null` when none has
+   * This Station's own probe observation, or `null` when none has
    * been taken. Carried even when the observation is `stale` or `failed`:
    * "we last probed this and it failed" is information an operator needs,
    * and dropping it would make a never-probed candidate look identical to a
@@ -323,12 +322,12 @@ export function capFleetEvidenceLevel(
 }
 
 /**
- * The level a candidate routes at once slice 5's consumer probe is taken
+ * The level a candidate routes at once the consumer probe is taken
  * into account.
  *
- * **The cap is not deleted, and that is the point.** Slice 4 recorded that
- * raising a peer above `declared` means "deleting that function in daylight";
- * what slice 5 actually earns is narrower than that. `capFleetEvidenceLevel`
+ * **The cap is not deleted, and that is the point.** Raising a peer
+ * above `declared` means "deleting that function in daylight"; what a
+ * probe actually earns is narrower than that. `capFleetEvidenceLevel`
  * still binds every UNVERIFIED claim exactly as before — a peer that merely
  * asserts `available`/`live` is still capped at `declared`, forever. What a
  * fresh, passing probe changes is the PROVENANCE: the claim is no longer
@@ -354,15 +353,15 @@ export function fleetEvidenceLevelWithProbe(
   provenance: FleetEvidenceProvenance;
   label: string;
 } {
-  // Expiry is enforced HERE, not just by the live caller (slice 5.5 review,
-  // finding 1). The docblock above has always stated the rule as "passed AND
-  // not expired", but the check lived entirely in `FleetProbeService.observe`,
-  // which stamps `status: 'stale'` on its way out. That is an invariant
+  // Expiry is enforced HERE, not just by the live caller. The docblock
+  // above states the rule as "passed AND
+  // not expired", but `FleetProbeService.observe` also
+  // stamps `status: 'stale'` on its way out. That is an invariant
   // maintained somewhere else, and this function is exported from a CONTRACTS
   // package whose values are stored verbatim in the routing receipt and read
   // back by two surfaces, the SDK, and any later replay path. A caller that
   // hands back a stored `ConsumerProbeObservation` — receipt replay, a
-  // cross-process cache, slice 7's admission policy — would have been handed
+  // cross-process cache, a later admission policy — would otherwise be handed
   // `confirmed` from a pass that expired months ago, and the docblock would
   // have told them that could not happen.
   const unexpired = probe !== null && Date.parse(probe.expiresAt) > now;
@@ -390,8 +389,8 @@ export function fleetEvidenceLevelWithProbe(
  * observation, or `null` when there is nothing to say.
  *
  * On the contract for exactly the reason
- * {@link FLEET_PEER_ATTESTED_EVIDENCE_LABEL} is: slice 4 recorded that "two
- * surfaces writing their own honesty wording is two places for it to drift".
+ * {@link FLEET_PEER_ATTESTED_EVIDENCE_LABEL} is: two
+ * surfaces writing their own honesty wording is two places for it to drift.
  * The stale case is the one that would drift first and matter most — a
  * surface that rendered an expired probe without saying it had expired would
  * be presenting a claim about the past as a fact about now, which is the
@@ -453,7 +452,7 @@ export type FleetRoutingExclusionCode =
   | 'peer-scope-denied'
   /** §4.5 — the peer's last observation is past its freshness window. */
   | 'evidence-stale'
-  /** §4.5 — a verification attempt ran and failed. Unreachable until slice 5. */
+  /** §4.5 — a verification attempt ran and failed (only emittable once a probe has run). */
   | 'probe-failed'
   /** §4.5 — the peer previously contributed this and no longer does. */
   | 'capability-withdrawn'
@@ -496,19 +495,18 @@ export type FleetRoutingExclusionCode =
    *
    * It is not `peer-unreachable`: that names a specific peer that did not
    * answer, and this names a failure on THIS side that says nothing about
-   * any peer. Before this code existed the failure path silently dropped
+   * any peer. Without this code the failure path would silently drop
    * every fleet candidate with no diagnostic at all — §4.5's first banned
-   * behavior, inside the module whose docblock claimed the shape was
-   * unrepresentable. Added in the station#1398 security-review round; the
-   * exhaustiveness map below is what forced it to be a decision.
+   * behavior. The
+   * exhaustiveness map below is what forces it to be a decision.
    */
   | 'resolution-failed';
 
 /**
  * Where each code in the vocabulary came from — and, structurally, the
- * exhaustiveness tripwire (station#1398 security review, L-2).
+ * exhaustiveness tripwire.
  *
- * Modelled on slice 2's `FLEET_INFERENCE_REFUSAL_STATUS`: a runtime `Record`
+ * Modelled on `FLEET_INFERENCE_REFUSAL_STATUS`: a runtime `Record`
  * keyed by the union type, so adding a member to
  * {@link FleetRoutingExclusionCode} stops this file typechecking until
  * somebody decides what the new code IS. That matters more here than for a
@@ -540,7 +538,7 @@ export const FLEET_ROUTING_EXCLUSION_CODES: Readonly<
   'resolution-failed': 'station',
 };
 
-/** Which producer decided an exclusion (§3.4 — Datum arrives in slice 6). */
+/** Which producer decided an exclusion (§3.4 — `datum` is reserved for a future Datum integration). */
 export type FleetExclusionSource = 'station' | 'datum';
 
 export interface FleetRoutingExclusion {
@@ -558,8 +556,8 @@ export interface FleetRoutingExclusion {
 /**
  * §6.3's general constraint channel. Built now, deliberately empty in v1:
  * fleet inference moves token generation only, so a binding constraint is
- * usually irrelevant to it — but building the channel here stops station#1425
- * and station#1123 from each inventing their own, and claiming binding-aware
+ * usually irrelevant to it — but building the channel here stops archive#1425
+ * and archive#1123 from each inventing their own, and claiming binding-aware
  * inference routing as a v1 feature would be overselling it.
  */
 export interface FleetRoutingConstraint {
@@ -590,12 +588,12 @@ export type FleetRoutingFailureCode =
   /**
    * Every candidate was excluded — nothing was eligible to try.
    *
-   * Load-bearing invariant (station#1556): this code asserts that an
+   * Load-bearing invariant (archive#1556): this code asserts that an
    * EXCLUSION happened, and §4.5 requires every exclusion to be named. It is
    * therefore only emittable alongside a non-empty `exclusions` list. A
    * receipt that claims exclusion while listing none sends an operator to
    * inspect eligibility rules that were never involved, which is the exact
-   * defect this code caused before #1556 — see
+   * defect this code exists to prevent — see
    * {@link FLEET_ROUTING_FAILURE_CODES}.
    */
   | 'no-eligible-candidates'
@@ -606,7 +604,7 @@ export type FleetRoutingFailureCode =
    * `exhausted` outcome on a local-only plan lands here: the candidate cleared
    * this agent's routing policy, was dispatched, and the model failed. That is
    * the opposite fact from `no-eligible-candidates`, and conflating the two
-   * was station#1556.
+   * is the defect archive#1556 fixed.
    *
    * It does NOT assert that no fleet candidate was attempted. The distinction
    * from `fleet-attempts-failed` is drawn against the DECIDING Station's
@@ -645,7 +643,7 @@ export interface FleetRoutingFailure {
 
 /**
  * What each failure code ASSERTS about the turn, as data rather than as
- * prose a reader has to infer from the message (station#1556).
+ * prose a reader has to infer from the message (archive#1556).
  *
  * The `Record<FleetRoutingFailureCode, …>` is the closed-set tripwire, the
  * same device {@link FLEET_ROUTING_EXCLUSION_CODES} uses: adding a union
@@ -660,7 +658,7 @@ export interface FleetRoutingFailure {
  *
  * `attemptsMade` says a candidate was actually dispatched — the fact an
  * operator needs to decide whether to look at eligibility rules or at the
- * model. The pre-#1556 receipt answered "no" for a turn whose local model had
+ * model, rather than being told "no" for a turn whose local model had
  * been dispatched and had failed.
  */
 export interface FleetRoutingFailureCodeSemantics {
@@ -735,7 +733,7 @@ export interface FleetRoutingReceiptEnvelope {
 }
 
 /**
- * The bounded read shape slice 4's surfaces consume
+ * The bounded read shape the receipt surfaces consume
  * (`GET /monitoring/fleet-routing-receipts`).
  *
  * `chainIntact` is not decoration. A log whose chain does not verify is a

@@ -7,8 +7,8 @@ import {
 } from './turn-provenance-context.js';
 
 /**
- * Turn provenance envelope (station#1410, first slice of the per-answer
- * provenance-card epic #1391).
+ * Turn provenance envelope (archive#1410, part of the per-answer
+ * provenance-card epic archive#1391).
  *
  * The envelope answers, for ONE completed assistant turn: which engine ran
  * it, which model identity Station requested, which model identity the
@@ -98,7 +98,7 @@ export type TurnProvenanceUnavailableReason =
   | 'usage-scope-undeclared'
   /**
    * Station holds this reference, and THIS viewer may not dereference it
-   * (station#1423). Produced only by the share projection
+   * (archive#1423). Produced only by the share projection
    * (`packages/shared/src/answer-share-projection.ts`), which re-applies
    * authorization to every reference before an envelope leaves the server
    * for a share holder.
@@ -233,7 +233,7 @@ export interface TurnProvenanceUsage {
 /**
  * Pointer to a Surface trust report.
  *
- * **Defined and unimplemented — no producer exists (station#1558).** This
+ * **Defined and unimplemented — no producer exists (archive#1558).** This
  * docblock used to describe a live dereference path, naming the route
  * (`/api/projects/:slug/trust-bundles/:id`) and the renderer
  * (`src-ui/src/components/trust/TrustPanel.tsx`), and framed the gap as a
@@ -263,7 +263,7 @@ export interface TurnProvenanceTrustReportRef {
 /**
  * Pointer to the routing decision that chose this engine/model.
  *
- * **Corrected by station#1398 slice 3 (security review, L-5).** The claim
+ * **Corrected (archive#1398, security review L-5).** The claim
  * this docblock used to make — "Station has no per-turn routing receipt
  * today" — stopped being true when
  * `station.fleet-routing-receipt/v1` shipped: a fleet-routed turn now has a
@@ -282,8 +282,8 @@ export interface TurnProvenanceTrustReportRef {
  * exists" to "no exact join exists", and it applies only to fleet-routed
  * turns — a locally-routed turn still has no routing receipt at all. Closing
  * it needs an identity carried through Dispatch (a sibling-repo change) or a
- * Station-side correlation stamped at plan time; recorded in the design doc's
- * slice-3/4 deviations rather than guessed at here.
+ * Station-side correlation stamped at plan time; recorded in the design doc
+ * rather than guessed at here.
  */
 export interface TurnProvenanceRoutingReceiptRef {
   kind: 'dispatch-routing-receipt';
@@ -292,7 +292,7 @@ export interface TurnProvenanceRoutingReceiptRef {
 
 /**
  * Pointer to the acquired source bytes an answer was based on. Source
- * acquisition and citation grounding are the NEXT slice (#1409); until then
+ * acquisition and citation grounding are future work (archive#1409); until then
  * every turn reports `not-captured-by-station` here rather than omitting
  * the field, so a reader can tell "no sources were used" apart from
  * "Station does not track sources yet" — it is always the latter today.
@@ -321,7 +321,7 @@ export interface TurnProvenanceEnvelope {
   engine: TurnProvenanceSlot<TurnProvenanceEngine>;
   /**
    * The model Station asked for. Never a runtime confirmation — see
-   * `src-server/providers/llm/effective-model-metadata.ts` (station#1182).
+   * `src-server/providers/llm/effective-model-metadata.ts` (archive#1182).
    */
   requestedModel: TurnProvenanceSlot<string>;
   /** The model the runtime independently reported, when it reports one. */
@@ -332,10 +332,10 @@ export interface TurnProvenanceEnvelope {
   sources: TurnProvenanceRefSlot<TurnProvenanceSourceRef>;
   trustReport: TurnProvenanceRefSlot<TurnProvenanceTrustReportRef>;
   /**
-   * station#2649. OPTIONAL, and that is a persistence-compat decision rather
+   * archive#2649. OPTIONAL, and that is a persistence-compat decision rather
    * than a loophole in the "an absent field is a bug" rule: envelopes are
    * persisted VERBATIM as replay sidecars (`orchestration_turn_provenance`),
-   * so every envelope folded before this slice lacks the field forever.
+   * so every envelope folded before this field existed lacks it forever.
    * Requiring it would flip all of those to "unreadable" — a worse answer
    * than an admitted gap. The fold always emits the slot going forward;
    * readers treat an ABSENT field exactly like
@@ -358,12 +358,12 @@ export type TurnProvenanceRefSlotName =
 /**
  * Whether Station can actually PRODUCE each reference slot, as data.
  *
- * station#1558: the `trustReport` docblock described a live dereference path,
+ * archive#1558: the `trustReport` docblock once described a live dereference path,
  * named its route and its renderer, and framed the absence of references as a
  * producer that sometimes doesn't stamp. There was no producer. The reader,
  * the renderer, and every test of the `referenced` state existed; the writer
  * did not — the same shape as the `fell-back-to-local` state found unreachable
- * in station#1510, where fixtures constructing the artifact under test could
+ * in archive#1510, where fixtures constructing the artifact under test could
  * confirm the fold but never the reachability.
  *
  * Declaring it here makes the claim checkable instead of rhetorical.
@@ -550,7 +550,7 @@ export function isSupportedTurnProvenanceEnvelope(
     isRefSlot(value.routingReceipt) &&
     isRefSlot(value.sources) &&
     isRefSlot(value.trustReport) &&
-    // station#2649: optional for persisted pre-slice sidecars (see the
+    // archive#2649: optional for persisted pre-existing sidecars (see the
     // envelope field's docblock). Present-but-malformed still rejects the
     // whole envelope — the no-partial-decoding rule applies to new fields
     // exactly as it does to old ones.

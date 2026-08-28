@@ -260,7 +260,7 @@ function main(argv) {
 // realpathSync both sides: an unresolved argv[1] under a symlinked workspace
 // makes this compare false, the script imports as a module, and it exits 0
 // having recorded nothing — the exact silent-unrecorded-ship gap this
-// feature exists to close (delta review LOW-A).
+// feature exists to close.
 if (
   process.argv[1] &&
   realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)

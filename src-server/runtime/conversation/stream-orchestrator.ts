@@ -121,7 +121,7 @@ export function createStreamingPipeline(
     userId: string | undefined;
     traceId: string;
     plugin?: string;
-    /** Engine + model, carried onto tool events so they can be grouped by them (#3074). */
+    /** Engine + model, carried onto tool events so they can be grouped by them (archive#3074). */
     provider?: string;
     model?: string;
   },
@@ -147,7 +147,7 @@ export function createStreamingPipeline(
 }
 
 /**
- * station#1207: how often the `/chat` SSE stream emits a keepalive comment
+ * archive#1207: how often the `/chat` SSE stream emits a keepalive comment
  * while the agent is between content events — e.g. a long tool call
  * (delegateTask sub-agent, a slow MCP/shell tool) that legitimately
  * produces no partial output for tens of seconds. Without this, a

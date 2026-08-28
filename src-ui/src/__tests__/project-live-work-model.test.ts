@@ -8,7 +8,7 @@ import {
 } from '../views/project-page/project-live-work-model';
 
 /**
- * station#3202. The sidebar badge and the project page's Live work section are
+ * archive#3202. The sidebar badge and the project page's Live work section are
  * the same function, so what is asserted here is (a) that the scoping is the
  * Sessions list's own project predicate, (b) that only the two LIVE lanes
  * survive, and (c) the agreement itself — the count is the length of the list.
@@ -22,7 +22,7 @@ function session(
   overrides: Partial<OrchestrationSessionSummary> &
     Pick<OrchestrationSessionSummary, 'threadId'>,
 ): OrchestrationSessionSummary {
-  // station#3241: no cast — the old summary-typed assertion was hiding three
+  // archive#3241: no cast — the old summary-typed assertion was hiding three
   // values the wire shape does not admit (`controlMode: 'managed'`,
   // `status: 'open'`, an unbranded agent slug). The fixture now compiles
   // against the contract, so a future wire-shape move fails here instead of
@@ -59,7 +59,7 @@ const finished = session({ threadId: 'finished', lifecycleState: 'completed' });
  * A run that finished SECONDS ago, which `partitionHomeWorkItems` files under
  * `recentlyFinished` rather than `settled` (the terminal linger window).
  *
- * This fixture exists because of a fault injection that the suite did not
+ * This fixture exists because of a that the suite did not
  * catch: adding `'recentlyFinished'` to `PROJECT_LIVE_LANE_IDS` — the exact
  * mistake of letting the archive leak into the live section — passed every
  * test, because every terminal fixture was an hour old and therefore already

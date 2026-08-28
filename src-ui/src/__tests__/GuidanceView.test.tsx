@@ -120,7 +120,7 @@ describe('GuidanceView', () => {
     expect(screen.getByText('Commands body')).toBeTruthy();
   });
 
-  // station#4463 slice 1 (2026-08-26 shell audit): the page title is
+  // archive#4463: the page title is
   // 'Guidance' and must not change when the tab changes — the tab strip
   // already names the section. Only the top-level nav route decides this, so
   // the tabs must not restate it as 'Skills'/'Commands' the way the retired

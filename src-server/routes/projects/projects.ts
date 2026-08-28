@@ -124,7 +124,7 @@ function readPluginLayout(projectHomeDir: string, pluginName: string) {
 }
 
 /**
- * station#1503 review H2 — a PLUGIN may not anchor a knowledge namespace to a
+ * archive#1503 review H2 — a PLUGIN may not anchor a knowledge namespace to a
  * project repo, and saying so is not a limitation.
  *
  * `PluginManifest.knowledge.namespaces` is typed `KnowledgeNamespaceConfig[]`,
@@ -183,7 +183,7 @@ interface ProjectRouteDeps {
   /** Project-scoped terminal termination; the route supplies the identity. */
   terminalService?: Pick<TerminalService, 'closeForProject'>;
   /**
-   * station#3778 — `OperatingStateService.hasBuilderRun`, the ONE Builder-run
+   * archive#3778 — `OperatingStateService.hasBuilderRun`, the ONE Builder-run
    * predicate the Board's nav entry and route guard already consume. Injected
    * rather than re-derived so the Pane catalogue answers the same question the
    * same way; absent (layout-only route tests), the catalogue offers every
@@ -191,7 +191,7 @@ interface ProjectRouteDeps {
    */
   hasBuilderRun?: (projectSlug: string) => boolean;
   /**
-   * station#1502 slice 4 — the resolution surface's dependencies.
+   * archive#1502 — the resolution surface's dependencies.
    *
    * Injected as ONE object rather than defaulted here on purpose. A
    * `ProjectResourceResolver` that constructs its own `FileStorageAdapter`
@@ -206,7 +206,7 @@ interface ProjectRouteDeps {
 }
 
 /**
- * station#1502 slice 4. The route owns no resolution logic; it owns the
+ * archive#1502. The route owns no resolution logic; it owns the
  * envelope, the status map, and the telemetry.
  */
 export interface ProjectResolutionRouteDeps {
@@ -265,7 +265,7 @@ const BIND_REFUSAL_STATUS: Record<BindProjectResourceRefusalCode, 400 | 409> = {
   'path-not-found': 400,
   'path-not-absolute': 400,
   'path-not-a-directory': 400,
-  // station#1503: the request named a resource this project does not declare —
+  // archive#1503: the request named a resource this project does not declare —
   // "you gave me something wrong", not a conflict with what is recorded.
   'unknown-resource': 400,
   'no-resources-declared': 409,
@@ -289,7 +289,7 @@ export function createProjectRoutes(
   }
 
   /**
-   * station#1497 — the single source of truth for a coding layout's working
+   * archive#1497 — the single source of truth for a coding layout's working
    * directory.
    *
    * This deliberately does NOT swallow a read failure. An earlier revision
@@ -336,7 +336,7 @@ export function createProjectRoutes(
   }
 
   /**
-   * station#1503 slice 5 — the working directory a coding layout derives, which
+   * archive#1503 — the working directory a coding layout derives, which
    * is the project's UNLESS the layout names a repo (§10: "layouts reference
    * repos by id").
    *
@@ -373,7 +373,7 @@ export function createProjectRoutes(
   }
 
   /**
-   * station#1497 — a coding layout's working directory is derived from its
+   * archive#1497 — a coding layout's working directory is derived from its
    * owning project, so a request that tries to set a *different* one is
    * refused by name rather than silently discarded.
    *
@@ -394,7 +394,7 @@ export function createProjectRoutes(
   }
 
   /**
-   * station#1503 review H2 — refuse a bad repo anchor AT THE WRITE, where the
+   * archive#1503 review H2 — refuse a bad repo anchor AT THE WRITE, where the
    * operator is present and the repair is obvious.
    *
    * The read side already refuses one (the manifest validator rejects a
@@ -408,7 +408,7 @@ export function createProjectRoutes(
    * shape checks still run and the declared-id check is skipped.
    *
    * **That skip rests on a coincidence of two facts, not on a rule** — say so
-   * rather than stating the conclusion (station#1503 delta review, R3). It is
+   * rather than stating the conclusion (archive#1503 delta review, R3). It is
    * safe only while BOTH hold:
    *
    *   1. Nothing backfills a manifest sidecar for an EXISTING project.
@@ -516,7 +516,7 @@ export function createProjectRoutes(
           return c.json(integrityError(diagnostics), 400);
         }
       }
-      // INERT TODAY, deliberately kept (station#1503 delta review, R2):
+      // INERT TODAY, deliberately kept (archive#1503 delta review, R2):
       // `ProjectService.createProject` overwrites `knowledgeNamespaces` with
       // `[...BUILTIN_KNOWLEDGE_NAMESPACES]` unconditionally, so a `repoRoot` in
       // a create body is discarded before it can be persisted and this can only
@@ -594,7 +594,7 @@ export function createProjectRoutes(
     }
   });
 
-  // Persist the explicit sidebar order (station#3315). Registered before the
+  // Persist the explicit sidebar order (archive#3315). Registered before the
   // `/:slug` routes so the static segment can never be captured as a slug.
   app.put('/order', validate(projectReorderSchema), async (c) => {
     try {
@@ -721,7 +721,7 @@ export function createProjectRoutes(
     }
   });
 
-  // ── station#1502 slice 4: the resolution surface ──────────────────────────
+  // ── archive#1502: the resolution surface ──────────────────────────
 
   /**
    * DISCLOSED GAP: `IStorageAdapter` has no typed not-found error, so "this
@@ -889,7 +889,7 @@ export function createProjectRoutes(
     try {
       const slug = param(c, 'slug');
       assertSafeLayoutPathSegment('project slug', slug);
-      // station#1497 — no derivation here on purpose: `listLayouts` returns
+      // archive#1497 — no derivation here on purpose: `listLayouts` returns
       // `LayoutMetadata`, which carries no `config` at all, so the list has
       // never exposed a working directory (stale or derived) and adding one
       // would change the response shape rather than correct it.
@@ -1015,7 +1015,7 @@ export function createProjectRoutes(
         }
       }
 
-      // station#1497 — a coding layout's working directory is derived from its
+      // archive#1497 — a coding layout's working directory is derived from its
       // owning project, so it is never persisted into the layout's own config.
       // Read the project BEFORE any write, so a request that names a different
       // directory is refused without having already created the layout.
@@ -1110,7 +1110,7 @@ export function createProjectRoutes(
         }
       }
 
-      // station#1497 — derive the working directory from the owning project
+      // archive#1497 — derive the working directory from the owning project
       // rather than backfilling only when absent. A copy persisted before this
       // change is discarded here, which is what makes it inert on upgrade
       // without any rewrite of existing installs.
@@ -1217,7 +1217,7 @@ export function createProjectRoutes(
             return c.json(integrityError(diagnostics), 400);
           }
         }
-        // station#1497 — stripping here is what makes the fix converge on
+        // archive#1497 — stripping here is what makes the fix converge on
         // disk. Without it a GET (which now derives the value) followed by a
         // PUT (a rename, say) would re-plant the derived path as a fresh
         // persisted copy, and any layout carrying a pre-fix copy would keep it
@@ -1319,7 +1319,7 @@ export function createProjectRoutes(
       icon: resolved.definition.icon,
       description: resolved.definition.description,
       catalogContribution: resolved.item.contribution,
-      // station#1497 — a catalog-materialized coding layout no longer embeds
+      // archive#1497 — a catalog-materialized coding layout no longer embeds
       // the project's working directory in its persisted config; the read
       // paths derive it.
       config: resolved.pluginName

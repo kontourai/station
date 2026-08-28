@@ -262,7 +262,7 @@ export function SshComputerCreatorDialog({
               exact command that records it. Both come from the server's
               `unknownHost` — the sentence above and this button cannot
               disagree, because `action` is composed from `trustCommand`.
-            */}
+*/}
             {evidence.unknownHost && (
               <div className="ssh-computer-creator__host-key">
                 {/*
@@ -274,7 +274,7 @@ export function SshComputerCreatorDialog({
                   command changes: it appends a line to a known_hosts file on
                   the machine `ssh` runs from, which nothing a paired browser
                   can do will reach.
-                */}
+*/}
                 <code className="ssh-computer-creator__fingerprint">
                   {evidence.unknownHost.keyType}{' '}
                   {evidence.unknownHost.fingerprint}

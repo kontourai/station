@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 /**
- * station#983 (scoped advance, station#settings-revamp slice 6, docs/design/
+ * archive#983 (scoped advance, station#settings-revamp slice 6, docs/design/
  * settings-architecture.md §6): proves the half of the pipeline that lives in
  * `ConfigLoader` itself — that an `agents/*\/agent.json`/`integrations/*\/
  * integration.json` watcher event is forwarded through `on('add'|'change'|

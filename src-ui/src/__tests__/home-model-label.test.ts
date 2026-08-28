@@ -7,7 +7,7 @@ import { modelDisplayLabel, prettifyModelId } from '../utils/modelCapabilities';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
 
 /**
- * station#3391. Home showed one session two model names: the "Start direct
+ * archive#3391. Home showed one session two model names: the "Start direct
  * chat" card resolved the id against the connection catalog and read
  * "Selected Test Model", while "Continue most recent work" printed the stored
  * `model-selected` beside it. Two derivations of one user-visible fact, and
@@ -108,7 +108,7 @@ describe('Home names a model the same way its sibling card does (station#3391)',
   });
 
   /**
-   * station#3391 review B-2/B-3. The prettifier is a display transformation,
+   * archive#3391. The prettifier is a display transformation,
    * and a transformation that produces a blank string or a fabricated product
    * name is worse than the id it started from.
    */
@@ -122,7 +122,7 @@ describe('Home names a model the same way its sibling card does (station#3391)',
     // Asserted on the PRETTIFIER ITSELF as well as through the card, because
     // `modelDisplayLabel` carries its own `|| id` guard — going through the
     // card alone passes with the prettifier's guard removed, so it proves the
-    // pair rather than either one (found by fault injection).
+    // pair rather than either one (found by).
     expect(prettifyModelId('claude-')).toBe('claude-');
     expect(continueCardLabel('claude-', [])).toBe('claude-');
     // And a catalog entry still wins over both.

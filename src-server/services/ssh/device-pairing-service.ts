@@ -111,7 +111,7 @@ const DEVICE_RECORD_KEYS = new Set([
   'lastActiveDay',
   'revocation',
   'locality',
-  // station#3677 PR 3. The strict key check rejects any unknown key, so a
+  // archive#3677 PR 3. The strict key check rejects any unknown key, so a
   // field the writer persists but this set omits makes the registry
   // UNREADABLE at the next boot — the review caught exactly that.
   'mintKind',
@@ -150,7 +150,7 @@ interface StoredDevice extends PairedDevice {
   locality?: 'home-possession';
   /**
    * PRIVATE — WHICH home-possession mint path issued this credential
-   * (station#3677 PR 3). `local-grant` means the per-boot owner-only secret
+   * (archive#3677 PR 3). `local-grant` means the per-boot owner-only secret
    * FILE was read and presented — a proof no browser/webview JS context can
    * produce, which is exactly why the native consent broker keys on it:
    * `locality` alone also covers the UI-bootstrap mint, whose credential
@@ -172,7 +172,7 @@ interface PairingOfferState extends DevicePairingOffer {
   /** PRIVATE — binds display-name reuse to the requesting app instance. */
   clientInstanceId?: string;
   /**
-   * station#1123 slice 1: host-side-only label (never sent to the joiner as
+   * archive#1123: host-side-only label (never sent to the joiner as
    * part of {@link DevicePairingOffer}) carried through to the exchanged
    * {@link PairedDevice.kind}. Defaults to `'device'` — see {@link
    * DevicePairingService.createOffer}.
@@ -180,7 +180,7 @@ interface PairingOfferState extends DevicePairingOffer {
   kind: PairedDeviceKind;
   /**
    * Where the caller that submitted `request` was, as far as this host can
-   * prove (station#1490); set only when a request exists. PRIVATE —
+   * prove (archive#1490); set only when a request exists. PRIVATE —
    * deliberately not on the wire `DevicePairingRequest`, which carries no
    * network identity; `station.device_pairing.requests` holds the same line.
    */
@@ -195,7 +195,7 @@ type PairingProvenance =
     };
 
 /**
- * Who is asking for a pending pairing request to be APPROVED (station#1490).
+ * Who is asking for a pending pairing request to be APPROVED (archive#1490).
  *
  * Approval is the one pairing step that converts a position into durable
  * authority: the confirmed request is exchanged for a device credential that
@@ -208,7 +208,7 @@ type PairingProvenance =
  * `confirmRequest` had no caller-identity input at all: the "a request cannot
  * approve itself" property that `DevicePairingPanel` states in its own copy
  * historically lived entirely in the HTTP boundary, allowing a caller with an
- * SSH local forward to self-issue a full-authority credential. station#2051
+ * SSH local forward to self-issue a full-authority credential. archive#2051
  * now rejects bare loopback and SSH requests before this route; the property
  * also belongs here, where it holds for every caller of the service rather
  * than for one route.
@@ -219,7 +219,7 @@ type PairingProvenance =
  * authorizeCredential` refuses a paired-device credential on this family
  * outright, so no device — however broadly scoped — reaches here.
  *
- * `local-grant` (station#1715) is a THIRD strong kind, not a weaker
+ * `local-grant` (archive#1715) is a THIRD strong kind, not a weaker
  * substitute for either of the two above: it means the HTTP boundary verified
  * possession of the per-boot, owner-only-file local-grant secret from a
  * DIRECT loopback caller (`configureDevicePairingPublicRoutes`'s
@@ -231,7 +231,7 @@ type PairingProvenance =
  */
 /**
  * Where a pairing request came from, as far as this host can PROVE
- * (station#1490).
+ * (archive#1490).
  *
  * `off-box` is earned by `isDefinitelyOffBox` (`src-server/security/
  * off-box-peer.ts`) — the packet came from a network stack that is not this
@@ -284,7 +284,7 @@ export type DeviceRevocationActor = 'operator-credential';
  * check could avoid — it is the attack, performed by a friendly party, and
  * nothing observable separates the two.
  *
- * WHAT REMAINS, stated plainly (station#1490): "not this network stack" is
+ * WHAT REMAINS, stated plainly (archive#1490): "not this network stack" is
  * weaker than "another machine". A container, VM, or other network namespace
  * on this same box has its own source address and is off-box here; so is any
  * second machine the adversary holds, and so is a NAT hairpin whose source is
@@ -336,12 +336,12 @@ export class DevicePairingError extends Error {
       | 'device_revoked'
       | 'device_active'
       | 'device_not_found'
-      // station#3816: a requested scope outside the closed vocabulary, or
+      // archive#3816: a requested scope outside the closed vocabulary, or
       // empty. Distinct from `scope_not_grantable`, which is a well-formed
       // token that has no legitimate promotion path.
       | 'invalid_scope'
       | 'scope_not_grantable'
-      // station#3816: the device's scope changed under a caller who was
+      // archive#3816: the device's scope changed under a caller who was
       // editing it. Its whole-scope replacement is refused rather than
       // silently reverting someone else's decision.
       | 'scope_changed',
@@ -490,7 +490,7 @@ function safeRequesterText(value: string, maxLength: number): boolean {
 /**
  * Same shape check {@link pairingProvenance} applies to an incoming request,
  * reused for a persisted {@link PairedDevice.requester} on registry load
- * (station#1878 slice 1) so a corrupted or hand-edited record fails closed
+ * (archive#1878) so a corrupted or hand-edited record fails closed
  * instead of surfacing a malformed requester to a caller.
  */
 function isValidStoredRequester(
@@ -583,7 +583,7 @@ function validateRegistry(
       typeof device.id !== 'string' ||
       typeof device.name !== 'string' ||
       typeof device.scope !== 'string' ||
-      // A device paired before scoped pairing (station#1098) persisted the
+      // A device paired before scoped pairing (archive#1098) persisted the
       // legacy fixed marker; every other record must be a valid scope
       // string. Both cases are migrated to a real scope below.
       (device.scope !== DEVICE_PAIRING_SCOPE &&
@@ -615,13 +615,13 @@ function validateRegistry(
       (device.clientInstanceId !== undefined &&
         (typeof device.clientInstanceId !== 'string' ||
           !CLIENT_INSTANCE_ID_PATTERN.test(device.clientInstanceId))) ||
-      // Additive field (station#1123 slice 1): a record persisted before
+      // Additive field (archive#1123): a record persisted before
       // `kind` existed has no such key at all — only reject a PRESENT but
       // malformed value, never a missing one. Migrated to 'device' below.
       (device.kind !== undefined &&
         device.kind !== 'device' &&
         device.kind !== 'delegation') ||
-      // Additive fields (station#1878 slice 1): a record persisted before
+      // Additive fields (archive#1878): a record persisted before
       // `source`/`requester` existed has no such keys at all — only reject a
       // PRESENT but malformed value, never a missing one. Unlike `kind`
       // there is no forward migration: an absent `source` stays absent, see
@@ -641,7 +641,7 @@ function validateRegistry(
       // A present value that is not the one token is corruption.
       (device.locality !== undefined &&
         device.locality !== 'home-possession') ||
-      // station#3677 PR 3, same posture as `locality`: absent on every
+      // archive#3677 PR 3, same posture as `locality`: absent on every
       // historical record; a present value outside the two mint kinds is
       // corruption. And a kind WITHOUT the possession proof is refused at
       // READ as well as at write — it is a mint-path label with no
@@ -679,7 +679,7 @@ function validateRegistry(
           device.scope === DEVICE_PAIRING_SCOPE
             ? DEFAULT_GRANT_PAIRING_SCOPE
             : device.scope,
-        // station#1123 slice 1: a device paired before `kind` existed has no
+        // archive#1123: a device paired before `kind` existed has no
         // such key at all and reads back as 'device' — every existing stored
         // record migrates in place, no forced re-pair.
         kind: device.kind === 'delegation' ? 'delegation' : 'device',
@@ -790,7 +790,7 @@ export class DevicePairingService {
       );
     }
     this.#registry = this.#loadRegistry();
-    // Durably migrate a pre-scoping registry (station#1098 R4) on first load
+    // Durably migrate a pre-scoping registry (archive#1098 R4) on first load
     // rather than waiting for an unrelated mutation to persist it.
     if (this.#pendingLegacyScopeMigrationPersist) {
       this.#pendingLegacyScopeMigrationPersist = false;
@@ -804,11 +804,11 @@ export class DevicePairingService {
    *   {@link DEFAULT_GRANT_PAIRING_SCOPE} — the same-origin "current browser"
    *   continuity flow ({@link requestAccess}) never passes a narrower scope.
    *   The scoped-pairing UI (QR/manual-code flow) always passes an explicit
-   *   preset scope (R3). Since station#1398 slice 2 that default is a frozen
+   *   preset scope (R3). Since archive#1398 that default is a frozen
    *   four-token constant rather than the whole vocabulary, so an unscoped
    *   offer emits the byte-identical string it always did and never picks up
    *   a newly-added scope such as `inference:invoke`.
-   * @param input.kind station#1123 slice 1: `'device'` (default) or
+   * @param input.kind archive#1123: `'device'` (default) or
    *   `'delegation'` — a host-side label only, never encoded into the
    *   wire {@link DevicePairingOffer} the joiner scans/types. Carried
    *   through to the exchanged {@link PairedDevice.kind} so a delegation
@@ -866,7 +866,7 @@ export class DevicePairingService {
   /**
    * @param input.requesterPosition Where this request's submitter was, as
    *   proven by {@link isDefinitelyOffBox} at the HTTP boundary
-   *   (station#1490). Required, not defaulted: it is what
+   *   (archive#1490). Required, not defaulted: it is what
    *   {@link DevicePairingService.confirmRequest} weighs an unauthenticated
    *   approver against, so a caller that does not supply it produces a request
    *   nobody on the floor can approve — a visible failure — rather than one
@@ -976,8 +976,8 @@ export class DevicePairingService {
 
   /**
    * @param approval Who is approving — see {@link PairingApproval}. Required
-   *   on purpose: station#1490 historically found an approval with no caller
-   *   identity reachable before station#2051 retired the generic loopback
+   *   on purpose: archive#1490 historically found an approval with no caller
+   *   identity reachable before archive#2051 retired the generic loopback
    *   floor.
    */
   confirmRequest(
@@ -1121,7 +1121,7 @@ export class DevicePairingService {
     // (tailnet WhoIs today). Do not derive an identity from a self-declared
     // client name/instance id or source address: that would turn an unknown
     // caller into a plausible principal. The request layer separately bounds
-    // those unclassified exchanges before parsing (#2001).
+    // those unclassified exchanges before parsing (archive#2001).
     if (request.source === 'tailnet') {
       const activeForRequester = nextRegistry.devices.filter(
         (item) =>
@@ -1171,7 +1171,7 @@ export class DevicePairingService {
         ? { clientInstanceId: input.clientInstanceId }
         : {}),
       pushSubscription: null,
-      // station#1878 slice 1: carry the pairing request's own provenance
+      // archive#1878: carry the pairing request's own provenance
       // onto the durable record instead of discarding it after the approval
       // decision — the same `source`/`requester` `confirmRequest` already
       // weighed. No clientClass field: nothing between here and the wire
@@ -1273,12 +1273,12 @@ export class DevicePairingService {
 
   /**
    * Grants or removes {@link PAIRING_SCOPE_ACCESS_APPROVE} on an
-   * ALREADY-PAIRED device (station#1887).
+   * ALREADY-PAIRED device (archive#1887).
    *
    * This is the sole grant path for that token — it is in no preset and never
    * in the default grant. Elevation at pairing time would grant approval
    * authority to the least-known party at the moment it is least known, which
-   * is the conversion station#1490 analysed; promotion is a separate,
+   * is the conversion archive#1490 analysed; promotion is a separate,
    * deliberate act against a device the operator has already accepted.
    *
    * **The authority check lives here, not at the route.** Runtime
@@ -1292,7 +1292,7 @@ export class DevicePairingService {
    * re-granting authority on one would resurrect it without a fresh pairing.
    */
   /**
-   * Sets a paired device's scope (station#3816).
+   * Sets a paired device's scope (archive#3816).
    *
    * A device's access level was fixed at pairing time: the only mutation was
    * revoking the whole device, so narrowing a phone from Standard to
@@ -1320,7 +1320,7 @@ export class DevicePairingService {
     scope: readonly PairingScope[],
     approval: PairingApproval,
     /**
-     * The scope the caller believes the device currently has (station#3816
+     * The scope the caller believes the device currently has (archive#3816
      * review). A scope edit submits a COMPLETE replacement, so without this
      * two operators racing silently overwrite each other's security
      * decisions: B opens an editor showing `consent:decide`, A removes it,
@@ -1396,7 +1396,7 @@ export class DevicePairingService {
     device.scope = PAIRING_SCOPES.filter((scope) => next.includes(scope)).join(
       ' ',
     );
-    // Persist the authority change before exposing it in memory (#3324): a
+    // Persist the authority change before exposing it in memory (archive#3324): a
     // write fault must not leave approval authority granted in this process
     // and absent on disk, where a restart would silently withdraw it.
     this.#persistRegistry(nextRegistry);
@@ -1406,7 +1406,7 @@ export class DevicePairingService {
 
   /**
    * True when this credential belongs to a live device carrying
-   * {@link PAIRING_SCOPE_ACCESS_APPROVE} (station#1887). Consulted by
+   * {@link PAIRING_SCOPE_ACCESS_APPROVE} (archive#1887). Consulted by
    * `authorizeCredential` to admit exactly the three pending-request leaves,
    * and nothing else in the `/api/pairing` family.
    */
@@ -1431,7 +1431,7 @@ export class DevicePairingService {
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
     device.pushSubscription = subscription;
-    // Persist before exposing (#3324): a subscription live in memory but
+    // Persist before exposing (archive#3324): a subscription live in memory but
     // absent on disk stops receiving pushes at the next restart, with no
     // signal to the device that registered it.
     this.#persistRegistry(nextRegistry);
@@ -1446,7 +1446,7 @@ export class DevicePairingService {
     if (!device) throw new DevicePairingError('device_not_found');
     if (device.pushSubscription === null) return publicDevice(device);
     device.pushSubscription = null;
-    // Persist before exposing (#3324). This direction is the one revocation
+    // Persist before exposing (archive#3324). This direction is the one revocation
     // depends on — "a subscription must never survive its device record" is
     // only as durable as this write.
     this.#persistRegistry(nextRegistry);
@@ -1480,7 +1480,7 @@ export class DevicePairingService {
       environmentId,
       devices: [],
     };
-    // Persist the emptied registry before adopting it (#3324). A failed write
+    // Persist the emptied registry before adopting it (archive#3324). A failed write
     // here used to leave the process with no devices while every credential
     // stayed valid on disk — a reset that reports success and un-resets on
     // restart. Offers are in-memory only, so they are cleared after the
@@ -1547,7 +1547,7 @@ export class DevicePairingService {
   }
 
   /**
-   * Mint-KIND lookup for a home-possession credential (station#3677 PR 3).
+   * Mint-KIND lookup for a home-possession credential (archive#3677 PR 3).
    * Returns a kind only when the possession proof is also present — a
    * pre-#3677 record has neither field and reads `undefined`, which every
    * consumer must treat as "not local-grant" (fail closed).
@@ -1576,7 +1576,7 @@ export class DevicePairingService {
       (device.lastUsedAt == null ||
         now - device.lastUsedAt >= LAST_USED_WRITE_INTERVAL_MS)
     ) {
-      // This is a bookkeeping write on a READ path (#3324): the callers are
+      // This is a bookkeeping write on a READ path (archive#3324): the callers are
       // verifyCredential and identifyDevice, whose contract is to answer a
       // question about a credential. Two deliberate choices follow.
       //
@@ -1596,7 +1596,7 @@ export class DevicePairingService {
       //
       // Two disclosed costs. The failure is silent: this service has no
       // logger seam, so a persistently unwritable home degrades lastUsedAt
-      // with no signal anywhere (station#3324). And because the failed write
+      // with no signal anywhere (archive#3324). And because the failed write
       // leaves the in-memory timestamp stale, the cadence gate stays open, so
       // retries happen per call rather than once per interval — self-healing
       // for a transient fault, unbounded re-attempts under a lasting one.
@@ -1724,7 +1724,7 @@ export class DevicePairingService {
 
   #publicOffer(offer: PairingOfferState): DevicePairingOffer {
     // `kind` is a host-side label — never part of the wire DevicePairingOffer
-    // a joiner scans/types (station#1123 slice 1).
+    // a joiner scans/types (archive#1123).
     const {
       status: _status,
       request: _request,

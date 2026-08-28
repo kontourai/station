@@ -3,14 +3,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * station#1423 N-4. The reviewer's ruling, as tests: do the pairing REQUEST
+ * archive#1423. The reviewer's ruling, as tests: do the pairing REQUEST
  * inline, never the confirm, and say what the grant actually is.
  *
  * The continuity flow ends in `DEFAULT_GRANT_PAIRING_SCOPE` — full authority
  * over the Station, `access:manage` included — so the host-side approve step
  * follows a public access request and never creates protected-route authority
  * from a loopback position.
- * Auto-confirming here would functionally reopen H-1.
+ * Auto-confirming here would functionally reopen.
  */
 
 const requestCurrentStationAccess = vi.fn();

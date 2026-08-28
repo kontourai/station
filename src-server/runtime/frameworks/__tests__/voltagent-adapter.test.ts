@@ -146,7 +146,7 @@ describe('VoltAgentFramework', () => {
     expect(result.text).toContain('compat-managed-ok');
   });
 
-  // station#1834 scheduler-seam regression, exercised through the REAL path:
+  // archive#1834 scheduler-seam regression, exercised through the REAL path:
   // the default agent is built via createTempAgent, and every unattended
   // caller (BuiltinScheduler.executeJob, feedback analysis, the CLI) runs
   // tools through it via activeAgents.get('default').generateText — no
@@ -442,7 +442,7 @@ describe('VoltAgentFramework', () => {
     expect(result.text).toContain('agents listed');
   });
 
-  // station#3113 tripwire: exercises the REAL installed `@voltagent/core`
+  // archive#3113 tripwire: exercises the REAL installed `@voltagent/core`
   // package end to end — a real Agent, a real tool whose `execute` throws, a
   // real model round trip over HTTP — rather than a hand-built stand-in for
   // `buildToolErrorResult`'s output. If a future `@voltagent/core` upgrade
@@ -450,7 +450,7 @@ describe('VoltAgentFramework', () => {
   // be called directly and pinned any other way), the FIRST assertion below
   // reddens, which is the signal that `normalizeVoltAgentToolErrors`'s shape
   // assumption has gone stale and the false-checkmark bug could return. The
-  // SECOND and THIRD assertions are #3113's own ACs: a real thrown tool
+  // SECOND and THIRD assertions are archive#3113's own ACs: a real thrown tool
   // error renders as failed, and remote-shaped error text never reaches the
   // client — proven end to end, not against a hand-set chunk.
   test('tripwire + #3113: a REAL thrown tool error becomes a truthful, redacted tool-result chunk end to end', async () => {
@@ -576,7 +576,7 @@ describe('VoltAgentFramework', () => {
             additionalProperties: false,
           }) as any,
           // A real thrown error carrying remote-shaped text — the exact
-          // hazard #3113 exists to redact.
+          // hazard archive#3113 exists to redact.
           execute: async () => {
             throw new Error(canary);
           },
@@ -603,16 +603,16 @@ describe('VoltAgentFramework', () => {
     });
     expect(typeof output.stack).toBe('string');
 
-    // #3113 AC: renders as failed (truthful status), never a false success.
+    // archive#3113 AC: renders as failed (truthful status), never a false success.
     expect(toolResult.error).toBe(GENERIC_TOOL_FAILURE_MESSAGE);
     expect(toolResult.policyDenied).toBeUndefined();
 
-    // #3113 AC: redaction — the remote-shaped text never reaches the field
+    // archive#3113 AC: redaction — the remote-shaped text never reaches the field
     // the relay/UI actually forward (`chunk.error`).
     expect(String(toolResult.error)).not.toContain(canary);
   });
 
-  // station#3171: `createVoltAgentLifecycleHooks`'s `onToolError` is the
+  // archive#3171: `createVoltAgentLifecycleHooks`'s `onToolError` is the
   // marker's authenticity boundary — it runs on the REAL thrown value before
   // `@voltagent/core` flattens it, so `instanceof ToolDeniedError` still
   // means something there. Exercises the REAL exported hook function (not a
@@ -631,13 +631,13 @@ describe('VoltAgentFramework', () => {
     genuine.policyDenied = true;
     await hooks.onToolError?.({ originalError: genuine } as never);
     // AC: the discriminator survives for the genuine case — this is the
-    // regression the reverted `name`-based attempt broke (station#3171 "What
+    // regression the reverted `name`-based attempt broke (archive#3171 "What
     // does NOT work").
     expect(genuine.policyDenied).toBe(true);
 
     // A tool's own `execute()` could throw a completely ordinary Error and
     // set `.policyDenied` on it directly — no `@voltagent/core` import, no
-    // `instanceof` needed, exactly the forgery station#3171 is about.
+    // `instanceof` needed, exactly the forgery archive#3171 is about.
     const forged = new Error('an entirely ordinary tool failure') as Error & {
       policyDenied?: true;
     };
@@ -646,7 +646,7 @@ describe('VoltAgentFramework', () => {
     expect((forged as { policyDenied?: unknown }).policyDenied).toBeUndefined();
   });
 
-  // station#3171 end-to-end: a forged `policyDenied` set directly on an
+  // archive#3171 end-to-end: a forged `policyDenied` set directly on an
   // ORDINARY thrown error (no `@voltagent/core` import, no `ToolDeniedError`
   // construction — just a property on a plain `Error`, exactly as trivial as
   // the marker was before this hardening) must not survive real flattening.
@@ -769,7 +769,7 @@ describe('VoltAgentFramework', () => {
           }) as any,
           // No @voltagent/core import, no ToolDeniedError — just a property
           // set directly on a plain thrown Error, exactly as easy as it was
-          // before station#3171.
+          // before archive#3171.
           execute: async () => {
             const err = new Error('a totally ordinary failure') as Error & {
               policyDenied?: true;
@@ -799,7 +799,7 @@ describe('VoltAgentFramework', () => {
 
     // And normalizeVoltAgentToolErrors correctly falls through to the
     // generic message rather than treating the forged output as a policy
-    // denial — the exact outcome station#3171 exists to guarantee.
+    // denial — the exact outcome archive#3171 exists to guarantee.
     const [normalized] = await (async () => {
       const out: unknown[] = [];
       for await (const c of normalizeVoltAgentToolErrors(
@@ -953,7 +953,7 @@ describe('VoltAgentFramework', () => {
     expect(result.text).toContain('ollama-managed-ok');
   });
 
-  // #914: `createAgent` has always wired the conversation store into the
+  // archive#914: `createAgent` has always wired the conversation store into the
   // agent's own memory; `createTempAgent` did not, so runtime agents read a
   // throwaway in-process store while Station wrote elsewhere. The callers'
   // tests prove the adapter is passed — this proves it is actually used.
@@ -1042,7 +1042,7 @@ describe('normalizeVoltAgentToolErrors', () => {
             // Both own-property markers, because that is what the real
             // writer produces: `pre-tool-policy.ts`'s `deny()` returns a
             // `stationDenial(..., policyDenied: true)`, and `onToolStart`
-            // copies BOTH onto the thrown `ToolDeniedError` (station#3210).
+            // copies BOTH onto the thrown `ToolDeniedError` (archive#3210).
             policyDenied: true,
             stationComposedReason: true,
           },
@@ -1060,7 +1060,7 @@ describe('normalizeVoltAgentToolErrors', () => {
     ]);
   });
 
-  // station#3210: the two markers answer two different questions, so the
+  // archive#3210: the two markers answer two different questions, so the
   // suite must contain a case where they disagree — otherwise a fold that
   // reads either one passes. `policyDenied` alone (the evaluator produced
   // this denial, but nothing bounded or attributed its text) must still
@@ -1097,7 +1097,7 @@ describe('normalizeVoltAgentToolErrors', () => {
     expect((out[0] as { error?: string }).error).not.toContain('evil.sh');
   });
 
-  // The mirror case, and the one station#3210 exists to fix: a denial the
+  // The mirror case, and the one archive#3210 exists to fix: a denial the
   // composer produced but the policy evaluator did NOT (a human clicking
   // Deny) reaches the user in its own words, and does NOT borrow the
   // policy-denied badge.
@@ -1132,7 +1132,7 @@ describe('normalizeVoltAgentToolErrors', () => {
     expect((out[0] as { policyDenied?: unknown }).policyDenied).toBeUndefined();
   });
 
-  // station#3113: the marker distinguishes WHICH text is safe to forward,
+  // archive#3113: the marker distinguishes WHICH text is safe to forward,
   // not WHETHER the failure is surfaced. A generic (non-policy) VoltAgent
   // tool failure has the same `{error:true, message}` shape but no marker —
   // it now gains a truthful top-level `error`, but NEVER the real
@@ -1186,8 +1186,8 @@ describe('normalizeVoltAgentToolErrors', () => {
 });
 
 /**
- * station#3211 gaps 1, 2 and 4. An independent review fault-injected each
- * guard on the #3179 denial path and recorded whether the suite noticed;
+ * archive#3211 gaps 1, 2 and 4. An independent review fault-injected each
+ * guard on the archive#3179 denial path and recorded whether the suite noticed;
  * three of them had never executed their rejection branch, because no test
  * produced a denial whose call the engine also resolved, no test produced a
  * turn with both a denial and the engine's own `finish`, and every fixture in
@@ -1302,7 +1302,7 @@ describe('appendObservedToolDenials (station#3211)', () => {
     expect(out.filter((c) => c.type === 'tool-result')).toHaveLength(1);
   });
 
-  // station#3210 on this seam specifically: the derived chunk applies the
+  // archive#3210 on this seam specifically: the derived chunk applies the
   // same authorship rule as `normalizeVoltAgentToolErrors` and the Strands
   // adapter, so a denial reads identically whichever engine ran the agent.
   test('applies the authorship rule to the derived chunk', async () => {
@@ -1333,7 +1333,7 @@ describe('appendObservedToolDenials (station#3211)', () => {
 });
 
 /**
- * station#3211 gap 3. `contextWithToolDenialObservations` copies the caller's
+ * archive#3211 gap 3. `contextWithToolDenialObservations` copies the caller's
  * own context entries before adding this call's denial sink. Dropping the
  * copy loop and keeping only the sink left the whole suite green: no Station
  * consumer reads `options.context` back today, so the loss would be silent —

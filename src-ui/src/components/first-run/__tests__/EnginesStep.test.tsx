@@ -37,7 +37,7 @@ const statusState: {
     | undefined;
   isLoading: boolean;
 } = { data: { externalEngines: [] }, isLoading: false };
-/** #3843 T2: which machine is reading the chapter. */
+/** archive#3843: which machine is reading the chapter. */
 let devicePresentation: DevicePresentation | undefined;
 
 vi.mock('../../../contexts/AgentsContext', () => ({
@@ -256,7 +256,7 @@ describe('the checklist', () => {
 });
 
 /**
- * #3843 T2 — the scan runs on the machine Station is installed on. Every
+ * archive#3843 — the scan runs on the machine Station is installed on. Every
  * sentence the chapter writes about where it looked is therefore a sentence
  * about the HOST, and "this machine" is only true for someone sitting at it.
  */
@@ -542,7 +542,7 @@ describe('reporting what actually happened', () => {
     expect(report.textContent).toContain('Claude Code: set up as');
     // A failure has to be read, so the run waits for the user here — and the
     // way out is "continue WITHOUT them", which is not the completing exit
-    // (review H1). This used to be a plain Continue that called `onDone`.
+    //  This used to be a plain Continue that called `onDone`.
     expect(onDone).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('first-run-engines-give-up'));
     expect(onGiveUp).toHaveBeenCalledTimes(1);
@@ -820,7 +820,7 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
   });
 
   test('a retry whose engine has LEFT the catalog does not complete the run', async () => {
-    // The empty-plan shortcut, which is H1 again by another door. `runBatch`
+    // The empty-plan shortcut, which is again by another door. `runBatch`
     // re-plans a retry from the CURRENT options; an engine that dropped out of
     // `externalEngines` (or flipped to blocked under a flapping probe) yields
     // no plan entry at all, and `plan.length === 0` used to take the

@@ -50,7 +50,7 @@ export function useSlashCommandHandler() {
       const chatState = activeChatsStore.getSnapshot()[sessionId];
       if (!chatState) return false;
 
-      // ONE shell-style parse of the whole line (delta review: a whitespace
+      // ONE shell-style parse of the whole line (a whitespace
       // split broke quoted values). The command word is readable even when a
       // later quote never closes, so the ACP passthrough and the parse-error
       // bail can both name the command the user typed.
@@ -127,13 +127,13 @@ export function useSlashCommandHandler() {
         }
         // Variable substitution is the SAME derivation the Test modal runs
         // (`substituteSkillVariables`), fed by the ONE arg parser
-        // (`assignSkillVariableArgs`, delta review): `name=value` words assign
+        // (`assignSkillVariableArgs`): `name=value` words assign
         // by name — so an earlier variable can keep its default while a later
         // required one is supplied — and the remaining words fill the
         // unnamed variables in declaration order. A variable left with
         // neither a value nor a usable default is REJECTED — named in an
         // error the user reads, never silently substituted with an empty
-        // string (review M3).
+        // string.
         const argAssignment = assignSkillVariableArgs(
           skill.variables ?? [],
           args,

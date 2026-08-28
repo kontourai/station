@@ -266,7 +266,7 @@ describe('wireWebPushDelivery', () => {
       title: 'Job "nightly-sync" failed',
       category: 'job-failure',
       notificationId: 'notification-2',
-      // station#1100 review fix MEDIUM: the job's own metadata.link deep
+      // archive#1100 review fix MEDIUM: the job's own metadata.link deep
       // link is used (there's no session to resolve for a scheduled job),
       // not the generic /notifications fallback.
       url: '/schedule?job=nightly-sync',

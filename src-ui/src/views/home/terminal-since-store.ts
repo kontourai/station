@@ -1,5 +1,5 @@
 /**
- * Persists "when did this item first go terminal" (station#1099 review, AC3
+ * Persists "when did this item first go terminal" (archive#1099,
  * fix). Without this, `terminalSinceRef` was in-memory only — a reload
  * re-anchored every currently-terminal item's linger clock to "now", so a
  * long-settled item would re-linger in the active lane for another

@@ -1,11 +1,11 @@
 /**
- * E2E: dialog return-focus, in a real browser (station#1206).
+ * E2E: dialog return-focus, in a real browser (archive#1206).
  *
  * WHY THIS EXISTS AND NOT ANOTHER UNIT TEST. `isConnected` answers "is it in
  * the document", not "can it take focus". jsdom performs no layout: it reports
  * `.focus()` on a `display: none` element as successful, sets `activeElement`
  * to it, and every assertion downstream agrees. In a browser that call is a
- * silent no-op, `activeElement` stays `<body>` — the exact station#1126
+ * silent no-op, `activeElement` stays `<body>` — the exact archive#1126
  * outcome the fallback exists to prevent — and the `tabindex="-1"` the walk
  * wrote is left behind on a hidden node. The gap is structurally invisible to
  * the vitest suite, so it is proven here or it is not proven.
@@ -45,7 +45,7 @@ import { ConnectionsProvider } from './packages/connect/src/react/ConnectionsCon
 import { ConnectionManagerModalContent } from './packages/connect/src/react/ConnectionManagerModalContent';
 
 /**
- * station#1206 gap 2, the real shape: deleting the last row of a section that
+ * archive#1206 gap 2, the real shape: deleting the last row of a section that
  * then collapses. The section stays in the document, so it is the nearest
  * surviving ancestor, and it cannot hold focus.
  */
@@ -88,7 +88,7 @@ function CollapsingSection() {
 }
 
 /**
- * station#1206 gap 2, the half no structural pre-check can see. An \`inert\`
+ * archive#1206 gap 2, the half no structural pre-check can see. An \`inert\`
  * ancestor has a perfectly ordinary computed style — \`display: block\`,
  * \`visibility: visible\` — and still refuses focus. Only asking the browser
  * "did that focus() actually land?" catches it. Real shape: a dialog inerts the
@@ -133,7 +133,7 @@ function InertSurvivor() {
   );
 }
 
-/** station#1206 gap 1: the confirm removes its own trigger and opens a follow-up dialog. */
+/** archive#1206 gap 1: the confirm removes its own trigger and opens a follow-up dialog. */
 function FollowUpDialog() {
   const [rows, setRows] = useState(['only-row']);
   const [confirming, setConfirming] = useState(false);
@@ -217,7 +217,7 @@ function SurvivingTrigger() {
  * The stacked case gap 1's guard must NOT break. An inner dialog opened from
  * inside an outer one closes while the outer stays open: focus belongs back on
  * the inner trigger, which lives inside the outer panel. The cheap mitigation
- * #1206 floated — "skip when the target sits outside the topmost open overlay"
+ * archive#1206 floated — "skip when the target sits outside the topmost open overlay"
  * — fails here if it is read as "bail whenever any dialog is open", and every
  * other case in this file still passes when it is. This is the case that tells
  * the two apart.
@@ -263,12 +263,12 @@ function NestedDialogs() {
 }
 
 /**
- * station#1245: the real \`ConnectionManagerModalContent\`, from
+ * archive#1245: the real \`ConnectionManagerModalContent\`, from
  * \`packages/connect\`, restoring focus through the module that now lives in
  * \`@kontourai/station-shared\`.
  *
  * This is the site the module boundary hid — the package could not import the
- * app's copy, so it kept the #1126 defect through two sweeps. The scenario is
+ * app's copy, so it kept the archive#1126 defect through two sweeps. The scenario is
  * shaped like the host that makes it reachable: \`OnboardingGate\` renders this
  * modal from its unreachable-host screen, and connecting unmounts that whole
  * screen, trigger included.
@@ -401,7 +401,8 @@ test.describe('dialog return focus', () => {
 
     const state = await readFocusState(page);
     expect(state.activeTag).toBe('MAIN');
-    // Pre-fix this read BODY — the very outcome station#1126 is about.
+    // With the defect present this reads BODY — the very outcome archive#1126
+    // is about.
     expect(state.activeTag).not.toBe('BODY');
     // …and no stray attribute written onto a node that refused focus.
     expect(state.sectionTabIndex).toBeNull();
@@ -463,8 +464,8 @@ test.describe('dialog return focus', () => {
   });
 
   /**
-   * #1187's review measured the stacked case landing correctly and treated it
-   * as an improvement over base; nothing pinned it. Gap 1's guard is the first
+   * The stacked case has measured as landing correctly and was treated as an
+   * improvement over base, but nothing pinned it. Gap 1's guard is the first
    * change that could plausibly take it away, so pin it here.
    */
   test('an inner dialog closing returns focus inside the outer one that stays open', async ({
@@ -490,10 +491,10 @@ test.describe('dialog return focus', () => {
   });
 
   /**
-   * station#1245. The other five scenarios drive `ResponsiveDialogSurface`;
+   * archive#1245. The other five scenarios drive `ResponsiveDialogSurface`;
    * this one drives the real `ConnectionManagerModalContent` out of
    * `packages/connect`, which could not import the app's copy of this fix and
-   * therefore kept station#1126 through two sweeps. It is now a consumer of
+   * therefore kept archive#1126 through two sweeps. It is now a consumer of
    * `@kontourai/station-shared/return-focus`, and this is the only assertion
    * that the cross-package wiring actually resolves in a real bundle rather
    * than only under vitest's aliases.
@@ -525,8 +526,8 @@ test.describe('dialog return focus', () => {
       .toBe('shell');
 
     const state = await readFocusState(page);
-    // Pre-fix this read BODY: `isConnected` was false for the removed trigger
-    // and the old copy had no fallback at all.
+    // With the defect present this reads BODY: `isConnected` is false for the
+    // removed trigger and a copy with no fallback leaves focus nowhere.
     expect(state.activeTag).not.toBe('BODY');
     // …and nothing written onto the inert node that refused the focus.
     expect(state.sectionTabIndex).toBeNull();

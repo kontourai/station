@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#2617. Android's WebView reports env(safe-area-inset-*) as 0 for
+ * archive#2617. Android's WebView reports env(safe-area-inset-*) as 0 for
  * system bars, so MainActivity bridges WindowInsets through a
  * `StationAndroidInsets` JavascriptInterface. This proves the web side
  * projects that bridge onto the `--safe-*` custom properties, re-applies on

@@ -10,7 +10,7 @@ import {
 } from '../utils/answerability';
 
 /**
- * The UI's single read of the ADR 0012 wire decoration (station#1780).
+ * The UI's single read of the ADR 0012 wire decoration (archive#1780).
  *
  * Four states, not a boolean, and each one is pinned here because the
  * difference between them is the difference between disabling an action and
@@ -75,14 +75,14 @@ describe('sessionAnswerabilityView', () => {
 
   test('the predicate reads the decoration, not a re-fold of lifecycleState', () => {
     // A `failed` session is terminal-by-fold and still ANSWERABLE
-    // (`failed -> queued | running` is a live retry path, station#1090). Any
+    // (`failed -> queued | running` is a live retry path, archive#1090). Any
     // implementation that re-derived this from `lifecycleState` would get
     // this backwards, which is the regression the required wire member and
     // the predicate pin in `open-requests.ts` exist to prevent.
     expect(isSessionUnanswerable(summary({ lifecycleState: 'failed' }))).toBe(
       false,
     );
-    // ...and a still-`running` session whose adapter is gone IS unanswerable.
+    //...and a still-`running` session whose adapter is gone IS unanswerable.
     expect(
       isSessionUnanswerable(
         summary({ lifecycleState: 'running', answerability: unanswerable }),

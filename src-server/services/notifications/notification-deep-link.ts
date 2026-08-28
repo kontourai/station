@@ -2,12 +2,12 @@
  * Resolves the exact-session deep link for a notification's metadata —
  * shared by `AttentionProjectionService`'s approval projection (the attention
  * inbox's "Open session" action) and the web push payload composer
- * (`push-payload-composer.ts`, station#1100 AC3) so both surfaces resolve
+ * (`push-payload-composer.ts`, archive#1100 AC3) so both surfaces resolve
  * the SAME target from the SAME metadata instead of drifting.
  *
  * Extracted verbatim from `attention-projection.ts`'s former private
  * `approvalOpenHref` — no behavior change, only where it lives (plus the
- * `metadata.link` fallback added below, station#1100 review fix MEDIUM).
+ * `metadata.link` fallback added below, archive#1100 review fix MEDIUM).
  *
  * Resolves to `undefined` — never a same-page fallback like `/notifications`
  * — when the notification's metadata does not carry enough to deep-link
@@ -21,7 +21,7 @@ export function resolveNotificationOpenHref(
 ): string | undefined {
   const meta = metadata ?? {};
   const projectSlug = stringValue(meta.projectSlug);
-  // station#1284 (AC4): both dock-targeting hrefs below carry `dock=open` so
+  // archive#1284 (AC4): both dock-targeting hrefs below carry `dock=open` so
   // the deep link actually opens the chat dock (`navigation-store.ts`'s
   // `isDockOpen` reads this param) — `/activity?session=<id>` is not a dock
   // target and is deliberately left unchanged.
@@ -34,7 +34,7 @@ export function resolveNotificationOpenHref(
   if (sessionKind === 'managed' && sessionId) {
     return `/?chat=${encodeURIComponent(sessionId)}&dock=open`;
   }
-  // Final fallback (station#1100 review fix MEDIUM): a notification with no
+  // Final fallback (archive#1100 review fix MEDIUM): a notification with no
   // resolvable session (e.g. a scheduled job failure — no session at all)
   // can still carry its OWN deep link in `metadata.link`
   // (builtin-scheduler-execution.ts sets `/schedule?job=<name>`). Only a

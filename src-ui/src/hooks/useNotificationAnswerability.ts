@@ -8,7 +8,7 @@ import {
 } from '../utils/answerability';
 
 /**
- * The one join both notification surfaces use (station#1780): an approval
+ * The one join both notification surfaces use (archive#1780): an approval
  * notification row against the decorated session summaries the app already
  * fetches. The popover and the full notifications page must not disagree
  * about whether a request can still be answered — a suppression on one

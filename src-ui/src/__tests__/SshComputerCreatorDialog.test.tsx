@@ -71,8 +71,8 @@ function reached(
 
 /**
  * What the server composes for an unknown host: it appends the EXACT key line
- * whose fingerprint the dialog displays, and re-scans nothing (sol delta
- * finding 1). The dialog must hand this over verbatim.
+ * whose fingerprint the dialog displays, and re-scans nothing.
+ * The dialog must hand this over verbatim.
  */
 const TRUST_COMMAND = `printf '%s\\n' '192.168.1.20 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEZha2U=' >> "$HOME/.ssh/known_hosts"`;
 
@@ -262,7 +262,7 @@ describe('SshComputerCreatorDialog', () => {
   });
 
   /**
-   * #3843 T1 — the trust command is host-hands: it appends a line to a
+   * archive#3843 — the trust command is host-hands: it appends a line to a
    * known_hosts file on the machine `ssh` will run from, so a paired device
    * cannot execute it and must not present it as though it could. The
    * fingerprint is the opposite — verifying it is a conversation with the

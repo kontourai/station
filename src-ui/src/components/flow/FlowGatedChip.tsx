@@ -11,7 +11,7 @@ interface FlowGatedChipProps {
 }
 
 /**
- * Three states, never two (station#189). "Flow-gated" is a claim that gates
+ * Three states, never two (archive#189). "Flow-gated" is a claim that gates
  * are being enforced, so it is reserved for a run that actually has one: a run
  * on a step declaring no gate is attached and stuck, and a binding with no
  * reported freshness is unknown — not quietly assumed to be gated.

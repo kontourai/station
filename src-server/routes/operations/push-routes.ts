@@ -9,7 +9,7 @@
  * 403 device_pairing_required, which is the structural guarantee behind "no
  * pushes to unpaired browsers."
  *
- * Not every refusal reaches this file. Since station#1123 slice 3 (#1189) the
+ * Not every refusal reaches this file. Since archive#1123 (archive#1189) the
  * gate verifies any presented, well-formed credential regardless of peer
  * class, so a revoked device is turned away there with 401
  * authentication_required and never gets here. Clients treat both as "pair

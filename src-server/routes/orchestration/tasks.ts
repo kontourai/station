@@ -89,7 +89,7 @@ const taskCreateSchema = z.object({
       capturedAt: z.string().optional(),
     })
     .optional(),
-  // Roadmap #584, part of epic #580, S4, review finding #6: without these
+  // Roadmap archive#584, part of epic archive#580, S4, review finding #6: without these
   // two fields the public create route silently stripped a caller's
   // provider-backed identity, creating a local-only task that could never
   // enter dispatch-as-claim (TaskGraphService.createTask/TaskRecord already
@@ -98,7 +98,7 @@ const taskCreateSchema = z.object({
   workItemRef: z.string().optional(),
 });
 
-// #593: an independently-versioned client may still send the pre-#581
+// archive#593: an independently-versioned client may still send the pre-#581
 // status vocabulary. Normalize known removed aliases at the HTTP boundary,
 // before enum validation, so those clients get a clean 200 (mapped to the
 // closest neutral status) instead of a 400. The coordinated Station app
@@ -189,7 +189,7 @@ function sameTaskWorkspaceBinding(
     left !== undefined &&
     right !== undefined &&
     left?.availability === right?.availability &&
-    // Raw on BOTH sides on purpose (station#4292). This is a witness check —
+    // Raw on BOTH sides on purpose (archive#4292). This is a witness check —
     // "is this the same stored binding I authorized against?" — not a path
     // read, and both sides come from `TaskRecord.workspaceBinding`, so they
     // share provenance and expansion state. Expanding would WEAKEN it: a
@@ -955,7 +955,7 @@ export function createTaskRoutes(
         };
       }
       // Awaited inside the try: the 404/400 mapping below reads the rejection
-      // message, so an unawaited promise would escape it as a 500 (#2646).
+      // message, so an unawaited promise would escape it as a 500 (archive#2646).
       const create = (narrativePin?: {
         associationRevision?: number;
         isCurrent(): boolean;

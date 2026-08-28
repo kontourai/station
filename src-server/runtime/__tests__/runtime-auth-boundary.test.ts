@@ -56,7 +56,7 @@ function createHarness(
      * Extra routes registered behind the same boundary. Deliberately not
      * folded into `RUNTIME_AUTH_ROUTE_MATRIX`: that matrix's cases all
      * assert "an authenticated remote caller reaches this", which is exactly
-     * what must NOT hold for the station#1398 fleet-inference family (its
+     * what must NOT hold for the archive#1398 fleet-inference family (its
      * `inference:invoke` tier is absent from the fixture credential's
      * default grant, by design).
      */
@@ -788,7 +788,7 @@ describe('central runtime HTTP security boundary', () => {
     );
   });
 
-  // station#1890: plugin-context SDK requests set the STATION_PLUGIN_HEADER
+  // archive#1890: plugin-context SDK requests set the STATION_PLUGIN_HEADER
   // (`x-station-plugin`) on every outgoing request (packages/sdk/src/api-core.ts,
   // telemetry.ts). A cross-origin caller's preflight must allow it, or the
   // browser blocks the real request before it ever reaches the server.
@@ -987,7 +987,7 @@ describe('central runtime HTTP security boundary', () => {
     const limited = await request('/api/projects', {}, '100.96.12.7');
     expect(limited.status).toBe(429);
     expect(limited.headers.get('retry-after')).toBe('10');
-    // station#3903: this refusal is reachable ONLY through rejected
+    // archive#3903: this refusal is reachable ONLY through rejected
     // credentials, so it says so. It used to answer the mutation budget's
     // `rate_limited`, which left a client no way to tell "this Station is
     // refusing your access" from "you are writing too fast" — and
@@ -1636,11 +1636,11 @@ describe('actual VoltAgent full-app mounts', () => {
 });
 
 /**
- * station#1398 slice 2 — the §12 regression the design doc explicitly
+ * archive#1398 — the §12 regression the design doc explicitly
  * demanded of this slice, and the one it names as reasoned-from-reading
  * rather than executed.
  *
- * station#2051 retired the generic loopback compatibility floor. The inference
+ * archive#2051 retired the generic loopback compatibility floor. The inference
  * family remains covered here because it must require both a valid credential
  * and its narrower `inference:invoke` scope; no family-specific transport
  * exception is needed or retained.

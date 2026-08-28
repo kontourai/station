@@ -33,7 +33,7 @@ export function createBedrockProvider(
   const { appConfig, agentSpec, auth, connectionRegion } = options;
 
   const model = agentSpec?.model || appConfig.defaultModel;
-  // station#1557: one resolver, shared with the model-catalogue route and with
+  // archive#1557: one resolver, shared with the model-catalogue route and with
   // the provenance the Settings badge renders.
   const { region } = resolveBedrockRegion({
     agentRegion: agentSpec?.region,

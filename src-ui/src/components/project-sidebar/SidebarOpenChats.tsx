@@ -2,7 +2,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
 
 /**
- * kontourai/station#3314: the sidebar's "Open chats" mini-inbox rows — the
+ * archive#3314: the sidebar's "Open chats" mini-inbox rows — the
  * SAME shared row anatomy as the chat-dock inbox and the mobile task
  * switcher (`ChatDockInboxRows.tsx`), in its compact host variant. No third
  * bespoke row style. Lazy-loaded by `ProjectSidebar` so the shared row

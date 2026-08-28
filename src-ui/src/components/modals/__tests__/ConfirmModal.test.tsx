@@ -123,7 +123,7 @@ describe('ConfirmModal portal containment (station#1111)', () => {
     expect(onHostClick).not.toHaveBeenCalled();
   });
 
-  // Review of #1138: the backdrop tests above passed for the WRONG reason and
+  // Review of archive#1138: the backdrop tests above passed for the WRONG reason and
   // left `onPointerDown={containToPortal}` with zero coverage. The surface
   // dismisses on pointerdown, so the portal is already detached by the time the
   // following click is dispatched — it lands in a detached tree and reaches

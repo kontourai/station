@@ -26,14 +26,14 @@ function reloadPluginRegistry(): void {
 
 /**
  * Fixed toast display duration for a NOTIFICATION_DELIVERED event
- * (station#1100 review fix, HIGH). Deliberately decoupled from
+ * (archive#1100 fix). Deliberately decoupled from
  * `Notification.ttl`: that field now has two live meanings —
  * the Web Push protocol TTL header (`push-payload-composer.ts`) and the
  * stored-record/inbox expiry (`NOTIFICATION_TTL_MS`,
  * `@kontourai/station-shared/notification-priority`), both sized in
  * minutes-to-hours (up to 24h for needs-input/failed). Reading `data.ttl`
  * here for toast duration — as this code used to — meant a job-failure
- * toast (job-failure now triggers a web push too, station#1100) would
+ * toast (job-failure now triggers a web push too, archive#1100) would
  * persist in the on-screen toast stack for up to 24 HOURS instead of a few
  * seconds. A fixed duration is simplest and matches how every other
  * `toastStore.show` call in this file already works (e.g.
@@ -166,7 +166,7 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
     qc.invalidateQueries({ queryKey: ['layouts'] });
     reloadPluginRegistry();
   },
-  // station#3815 (review HIGH): a withdrawn permission must stop working in
+  // archive#3815: a withdrawn permission must stop working in
   // ALREADY-LOADED frames. `PluginRegistry` copies `permissions.granted` into
   // each loaded layout record, and `PluginFrameHost` authorizes frame
   // navigation and its authenticated API bridge against that snapshot — so
@@ -231,7 +231,7 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
     const authenticatedStream = fetchSSE(url, {
       authentication: 'required',
       headers: { 'X-Station-Client-Session': serverEventClientSessionId },
-      // station#1848: see `ensureOrchestrationEventStream.ts` — a ceiling
+      // archive#1848: see `ensureOrchestrationEventStream.ts` — a ceiling
       // equal to the initial delay is a fixed poll, not a ladder.
       retryDelayMs: 3000,
       maxRetryDelayMs: 30_000,

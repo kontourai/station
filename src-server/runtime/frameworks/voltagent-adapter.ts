@@ -108,7 +108,7 @@ export interface CreateAgentOptions {
 // ── IAgent wrapper around VoltAgent Agent ──────────────
 
 /**
- * station#3091/#3113: lift a VoltAgent tool failure's real outcome onto the
+ * archive#3091/#3113: lift a VoltAgent tool failure's real outcome onto the
  * `IStreamChunk` the rest of Station's pipeline (MetadataHandler, SSE, the
  * live orchestration path) reads — for BOTH a policy denial and an ordinary
  * tool error.
@@ -129,7 +129,7 @@ export interface CreateAgentOptions {
  * 'tool-result'` chunk whose `output` looks like success unless this
  * function lifts the real outcome back out.
  *
- * DISCLOSED GAP (found investigating station#3171, not yet filed as its own
+ * DISCLOSED GAP (found investigating archive#3171, not yet filed as its own
  * issue): for a GENUINE `ToolDeniedError` specifically — thrown from
  * `onToolStart` below OR from a tool's own `execute` — `handleToolError`
  * takes a DIFFERENT branch first: `if (isToolDeniedError(errorValue))
@@ -145,19 +145,19 @@ export interface CreateAgentOptions {
  * apparently nothing in the live request path, actually construct). Fixing
  * the propagation gap (deciding whether to prevent the abort, or synthesize
  * a `'tool-result'` chunk before it, or surface the rejection to the caller
- * some other way) is a separate, larger change than station#3171's marker-
+ * some other way) is a separate, larger change than archive#3171's marker-
  * authenticity hardening and is left here as a found-but-not-fixed risk.
  *
- * Before station#3091 nothing recognized this shape at all: MetadataHandler's
+ * Before archive#3091 nothing recognized this shape at all: MetadataHandler's
  * outcome derivation and the client's `ToolCallDisplay` both read only the
  * chunk's OWN top-level `error`/`state`, so ANY VoltAgent tool failure —
  * policy-denied or ordinary — rendered with `result` set and no `error`: a
- * false SUCCESS checkmark. #3091 fixed only the policy-denied case
+ * false SUCCESS checkmark. archive#3091 fixed only the policy-denied case
  * (deliberately, as the smallest defensible change — generalizing to
  * ordinary failures needed its own redaction decision). This function now
  * covers both: a denial whose reason `denial-message.ts` composed carries its
  * real reason (`output.message`), and independently the `policyDenied` badge
- * marker when the policy evaluator produced it (station#3210 separated those
+ * marker when the policy evaluator produced it (archive#3210 separated those
  * two questions); everything else — including an ordinary failure — carries
  * only `GENERIC_TOOL_FAILURE_MESSAGE`, never
  * `output.message`, which is untrusted for that branch. `output` itself is
@@ -165,7 +165,7 @@ export interface CreateAgentOptions {
  * the policy-denial case).
  *
  * Where that distinction actually lands, stated precisely because the two
- * paths differ (station#3210 review, corrected here):
+ * paths differ (archive#3210 review, corrected here):
  *
  * - On the canonical orchestration relay, `mapStationAgentStreamEvent` drops
  *   `output` whenever `error` is set, so the redacted-vs-real decision made
@@ -179,8 +179,8 @@ export interface CreateAgentOptions {
  *   only thing that reaches the chat UI on that path, and saying so would be
  *   a claim this code does not support.
  *
- * That leak predates station#3210 and is neither widened nor narrowed by it;
- * it is filed as **station#3263**, whose fix is to project `output` here the
+ * That leak predates archive#3210 and is neither widened nor narrowed by it;
+ * it is filed as **archive#3263**, whose fix is to project `output` here the
  * way the Strands adapter already constructs a fresh chunk, with a test that
  * asserts the whole stringified frame rather than a `toMatchObject` subset.
  */
@@ -208,7 +208,7 @@ export function normalizeVoltAgentToolErrors(
         // `new ToolDeniedError({toolName:'t',...}).name === 't'`. Adding that
         // clause would have routed every policy denial to the generic message.
         //
-        // station#3171: by the time `output` reaches this function,
+        // archive#3171: by the time `output` reaches this function,
         // `.policyDenied` is no longer a bare convention — the `onToolError`
         // hook above already strips it from anything that was not a genuine
         // `ToolDeniedError` instance, before `buildToolErrorResult` ever
@@ -216,12 +216,12 @@ export function normalizeVoltAgentToolErrors(
         // evidence, not a self-reported flag; it does not need to re-verify
         // authenticity itself.
         //
-        // station#3210: the two markers decide two DIFFERENT things and are
+        // archive#3210: the two markers decide two DIFFERENT things and are
         // read independently. `stationComposedReason` says the text was
         // composed by `denial-message.ts` (Station prose, sanitized tool
         // name, any foreign fragment bounded/quoted/attributed) and is the
         // only thing that licenses carrying it verbatim; `policyDenied` says
-        // the policy evaluator produced the denial and drives #3091's badge.
+        // the policy evaluator produced the denial and drives archive#3091's badge.
         // A denial marked policy-denied but NOT composed here is still
         // badged and still redacted — fail-closed on authorship.
         const badge =
@@ -242,7 +242,7 @@ export function normalizeVoltAgentToolErrors(
 }
 
 /**
- * station#3179: the per-operation channel a REAL observed tool denial
+ * archive#3179: the per-operation channel a REAL observed tool denial
  * travels on, from the lifecycle hook that saw it to the stream that
  * caused it.
  *
@@ -272,7 +272,7 @@ export interface ObservedToolDenial {
   /**
    * The real `ToolDeniedError`'s own message.
    *
-   * station#3210: whether this reaches the user verbatim is decided by
+   * archive#3210: whether this reaches the user verbatim is decided by
    * `stationComposedReason`, NOT by `policyDenied`. `policyDenied` derives
    * from one thing only — the denial was produced by the pre-tool policy
    * evaluator — which answers "which code produced this?", not "who wrote
@@ -283,10 +283,10 @@ export interface ObservedToolDenial {
    * marker is what licenses carrying the result.
    */
   reason: string;
-  /** True only when the thrown error carried station#3091's own-property marker. */
+  /** True only when the thrown error carried archive#3091's own-property marker. */
   policyDenied: boolean;
   /**
-   * True only when the thrown error carried station#3210's authorship
+   * True only when the thrown error carried archive#3210's authorship
    * marker — i.e. `denial-message.ts` composed `reason`.
    */
   stationComposedReason: boolean;
@@ -299,7 +299,7 @@ export interface ObservedToolDenial {
  * `originalError` is the exact object `onToolStart` threw. Both positions
  * are accepted, but an `instanceof ToolDeniedError` check is required:
  * a duck-typed shape test would let an ORDINARY tool failure — whose
- * message may be remote-controlled (station#3113) — mint a denial and carry
+ * message may be remote-controlled (archive#3113) — mint a denial and carry
  * its text. Same single-copy assumption `@voltagent/core`'s own
  * `isToolDeniedError` makes.
  */
@@ -334,7 +334,7 @@ function observedToolDenial(
  * by identity and merges the agent's own context into it, so a copy (rather
  * than the caller's own map) keeps that merge out of the caller's object.
  *
- * Exported for the station#3211 gap-3 test: the caller's own entries must
+ * Exported for the archive#3211 gap-3 test: the caller's own entries must
  * survive the copy. `operationContext` is `{ ...restOptions, elicitation }`
  * and `restOptions` comes from the chat schema's `.passthrough()`'d
  * client-supplied `options`, so a client CAN put `options.context` on the
@@ -358,7 +358,7 @@ export function contextWithToolDenialObservations(
 }
 
 /**
- * station#3179: after the engine's own stream has ended, emit what the
+ * archive#3179: after the engine's own stream has ended, emit what the
  * engine could not — one tool-result per denial it observed but aborted
  * before reporting, and a `finish` naming the denial as the reason the turn
  * stopped.
@@ -369,7 +369,7 @@ export function contextWithToolDenialObservations(
  * a future `@voltagent/core` that stops aborting cannot produce two
  * results for one call. The redaction rule matches
  * `normalizeVoltAgentToolErrors` and the Strands adapter exactly — the real
- * reason rides only with station#3210's `stationComposedReason` authorship
+ * reason rides only with archive#3210's `stationComposedReason` authorship
  * marker, everything else gets the one shared generic message, and the
  * `policyDenied` badge marker is carried independently of both.
  *
@@ -379,7 +379,7 @@ export function contextWithToolDenialObservations(
  * fresh chunk, so on the `/chat` SSE path VoltAgent additionally ships the
  * raw `output` and Strands does not — the Strands suite asserts the canary is
  * absent from the whole stringified chunk, and no VoltAgent test makes that
- * assertion because it would fail. Tracked as station#3263.
+ * assertion because it would fail. Tracked as archive#3263.
  */
 export function appendObservedToolDenials(
   source: AsyncIterable<IStreamChunk>,
@@ -452,7 +452,7 @@ class VoltAgentWrapper implements IAgent {
   }
 
   async streamText(input: string, options?: any): Promise<IStreamResult> {
-    // station#3179: one sink per call, reachable from the lifecycle hooks
+    // archive#3179: one sink per call, reachable from the lifecycle hooks
     // (which are per-AGENT and shared by concurrent turns) only through
     // this call's own operation context.
     const observedDenials: ObservedToolDenial[] = [];
@@ -670,7 +670,7 @@ export function createVoltAgentLifecycleHooks(
         context as typeof context & { traceId?: string },
         options,
       );
-      // station#1834: hook-absent (no beforeToolCall wired at all) keeps the
+      // archive#1834: hook-absent (no beforeToolCall wired at all) keeps the
       // legacy allow path; an INVOKED hook allows only on literal `true` —
       // `undefined`, `false`, or any other value denies. A `ToolCallDenial`
       // carries the real reason — surface it instead of the old hardcoded
@@ -694,13 +694,13 @@ export function createVoltAgentLifecycleHooks(
             code: 'TOOL_FORBIDDEN',
             httpStatus: 403,
           });
-          // station#3091: own-property set BEFORE throwing — VoltAgent's
+          // archive#3091: own-property set BEFORE throwing — VoltAgent's
           // internal error handling copies every own-enumerable property of
           // a thrown error into the tool's resolved output (see
           // `normalizeVoltAgentToolErrors` above), which is how this
           // marker survives to become the UI's policy-denied badge.
           if (denial.policyDenied) deniedError.policyDenied = true;
-          // station#3210: the authorship marker rides the same own-property
+          // archive#3210: the authorship marker rides the same own-property
           // channel, and is what decides verbatim vs. redacted downstream.
           if (denial.stationComposedReason) {
             deniedError.stationComposedReason = true;
@@ -719,7 +719,7 @@ export function createVoltAgentLifecycleHooks(
         pendingToolCalls.set(context, invocationToolCalls);
       }
     },
-    // station#3171: `output.policyDenied` on the flattened tool-result (see
+    // archive#3171: `output.policyDenied` on the flattened tool-result (see
     // `normalizeVoltAgentToolErrors` above) was a bare own-enumerable
     // property copied verbatim by the installed package's own
     // `buildToolErrorResult` — indistinguishable, at that point, from any
@@ -767,7 +767,7 @@ export function createVoltAgentLifecycleHooks(
     },
     onToolEnd: async ({ tool, context, output, error, options }) => {
       const toolCallId = options?.toolContext?.callId || '';
-      // station#3179: recorded BEFORE the `afterToolCall` short-circuit
+      // archive#3179: recorded BEFORE the `afterToolCall` short-circuit
       // below — a denial must stay observable whether or not the caller
       // wired that hook, and this is the last moment it is observable at
       // all: `@voltagent/core` aborts the operation immediately after this
@@ -859,7 +859,7 @@ export class VoltAgentFramework {
 
     // Create memory. `createPromptOnlyMemoryView` filters the
     // `[CHAT_ERROR]` failed-turn marker out of this Memory instance's
-    // own reads only (#191 code-review HIGH-1) — every other caller of
+    // own reads only (archive#191 code-review HIGH-1) — every other caller of
     // `opts.memoryAdapter` (UI history, stats, monitoring) keeps using
     // the raw, unwrapped adapter, so the marker still renders on
     // reload. See `memory-adapter-prompt-view.ts` for the full trace.
@@ -996,7 +996,7 @@ export class VoltAgentFramework {
     memoryAdapter?: StorageAdapter;
     hooks?: IAgentHooks;
   }): Promise<IAgent> {
-    // #914: without a memory the framework falls back to its own in-process
+    // archive#914: without a memory the framework falls back to its own in-process
     // `InMemoryStorageAdapter`, so the agent reads a conversation history that
     // is neither durable nor the one Station persists — every turn arrived at
     // the model with no prior context while the UI showed a full transcript.
@@ -1010,7 +1010,7 @@ export class VoltAgentFramework {
       // register hand-rolled Station tools as real Volt tools.
       tools: (opts.tools || []).map(toVoltAgentTool),
       maxSteps: opts.maxSteps,
-      // station#1834: temp agents used to get NO lifecycle hooks, so the
+      // archive#1834: temp agents used to get NO lifecycle hooks, so the
       // default agent (and every scheduler//invoke/CLI call riding it)
       // executed tools without ever evaluating beforeToolCall. Wired exactly
       // as `createAgent` does when the caller supplies hooks.

@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { BedrockAdapter } from '../../adapters/bedrock-adapter.js';
 
-// station#3586: this file proves the full path a mid-stream ai-sdk error
+// archive#3586: this file proves the full path a mid-stream ai-sdk error
 // part takes through a REAL `AiSdkLLMProvider` subclass's `createStream`
 // (the producer this issue fixes) and a REAL `BedrockAdapter.sendTurn` (the
 // consumer whose existing `chunk.type === 'error'` → `throw` path this issue

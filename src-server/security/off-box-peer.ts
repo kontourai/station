@@ -1,5 +1,5 @@
 /**
- * station#1490: "is this peer PROVABLY not this machine?"
+ * archive#1490: "is this peer PROVABLY not this machine?"
  *
  * Deliberately not {@link classifyRuntimePeer}. That function answers a
  * different question — "is this definitely LOCAL?" — for the authentication
@@ -67,7 +67,7 @@ function isValidIpv4(address: string): boolean {
  * `URL` canonicalises `0:0:0:0:0:ffff:127.0.0.1` to the mapped-HEX form
  * `::ffff:7f00:1`, which is the same address as `127.0.0.1` and matches none
  * of the class predicates below — the defect this exists to remove
- * (station#1490 delta review H1). Both the `::ffff:` mapped form and the
+ * (archive#1490 delta review H1). Both the `::ffff:` mapped form and the
  * deprecated `::`-prefixed v4-compatible form are unwrapped, because refusing
  * an address the host actually holds is the safe direction and no real peer
  * arrives wearing either spelling.

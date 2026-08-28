@@ -6,12 +6,12 @@ import { describe, expect, test, vi } from 'vitest';
 import { BuiltinEngineRow } from '../views/settings/BuiltinEngineRow';
 
 /**
- * station#settings-revamp slice 3 review finding 3: this row lives inside
+ * archive#settings-revamp: this row lives inside
  * SettingsView's batched draft/Save/Discard page — choosing an engine must
  * update the draft (via `onChange`) rather than saving immediately
  * underneath the page, which would let the next Save silently revert it.
  *
- * station#1194: and the row must show what the runtime is actually bound to,
+ * archive#1194: and the row must show what the runtime is actually bound to,
  * not the raw config value — the two diverge for a saved choice the resolver
  * can no longer honour.
  */
@@ -25,7 +25,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useAgentConnectionsQuery: () => ({ data: connectionsData }),
   useConfigQuery: () => ({ data: configData }),
   useUpdateConfigMutation: () => ({ mutate, isPending: false }),
-  // station#1549: the lazily-loaded EnginePicker this row opens now probes
+  // archive#1549: the lazily-loaded EnginePicker this row opens now probes
   // not-yet-observed connections on open.
   useReconnectACPConnectionMutation: () => ({
     mutateAsync: vi.fn().mockResolvedValue(true),
@@ -116,13 +116,13 @@ describe('BuiltinEngineRow', () => {
     // rendering the persisted id made Settings display "Kiro" while the
     // runtime was on Station.
     //
-    // station#1684: the `acp` matrix cell is now
+    // archive#1684: the `acp` matrix cell is now
     // `basis: 'runtime_observation'`, so an ACP connection with NO
     // `controlPlaneObservation` derives `observation-required`, not
     // `chat-only`. This test used to assert the incapable copy here; that
     // copy is a VERDICT Station has not reached about an unobserved
     // connection — exactly the unearned label this branch exists to remove
-    // (`engineBinding.ts`'s #1549 branch). The observed-NO path keeps its
+    // (`engineBinding.ts`'s archive#1549 branch). The observed-NO path keeps its
     // own coverage in the next test.
     connectionsData = [acpConnection()];
     statusData = { providers: { configuredChatReady: false } };
@@ -254,7 +254,7 @@ describe('BuiltinEngineRow', () => {
   test('the modal never claims it rebinds Voice — the server deliberately refuses to', () => {
     // `rebindBuiltinAgents` (station-runtime.ts) leaves `station-voice`
     // alone on purpose: Voice is speech-to-speech and never reads an engine
-    // binding. #1441's copy said this reassigns "Station's default agent and
+    // binding. archive#1441's copy said this reassigns "Station's default agent and
     // voice", promising a rebind that never happens.
     connectionsData = [codexConnection()];
     statusData = { providers: { configuredChatReady: false } };

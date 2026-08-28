@@ -156,7 +156,7 @@ describe('AgentEditorForm', () => {
     expect(
       screen.queryByRole('heading', { name: 'Engine connection' }),
     ).toBeNull();
-    // station#1195: codex's toolServers cell flipped from unsupported to
+    // archive#1195: codex's toolServers cell flipped from unsupported to
     // session/wire, so the Tools tab is always shown for a codex-bound
     // agent now (deliverable, per deriveAgentEditorTabs's rule), even with
     // nothing authored yet — the same rule that already keeps Claude's

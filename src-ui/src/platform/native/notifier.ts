@@ -14,7 +14,7 @@
  * Delivery is driven by the **host**, not from here. The webview's SSE stream
  * is suspended along with the webview when the app is backgrounded and its
  * events are not replayed on reconnect, so notifications raised while the user
- * was elsewhere were lost rather than late — confirmed on device. `watch()`
+ * was elsewhere were lost rather than late — confirmed on device. `watch`
  * hands the host a URL to poll; the host posts from its own thread, which
  * keeps running while the webview is paused.
  */

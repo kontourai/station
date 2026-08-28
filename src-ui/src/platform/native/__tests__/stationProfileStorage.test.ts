@@ -215,7 +215,7 @@ describe('NativeStationProfileStorage', () => {
     });
 
     /**
-     * station#1818 part 1 review round 1 (HIGH) — THE regression this test
+     * archive#1818 — THE regression this test
      * exists to catch. Before this fix, a profile carrying BOTH
      * `credentialRef` AND `configurationState: 'configured'` short-circuited
      * here to `undefined`, on the theory those two RECORDED fields mean
@@ -255,7 +255,7 @@ describe('NativeStationProfileStorage', () => {
       expect(storage.pendingLocalSelfProvisionProfileName()).toBe('kontour');
     });
 
-    // station#1715 LIVE-BOOT REGRESSION (the bug this test would have
+    // archive#1715 LIVE-BOOT REGRESSION (the bug this test would have
     // caught): `station setup local`
     // (packages/cli/src/commands/setup-command.ts) writes a fresh local
     // profile with configurationState "configured" and NO credentialRef at

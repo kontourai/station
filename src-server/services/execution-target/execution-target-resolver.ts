@@ -93,7 +93,7 @@ export interface ResolvedExecutionTarget {
   modelLaunchPlan: ModelLaunchPlan;
   /**
    * The model this turn actually launches with: the caller's per-turn override
-   * when there is one, otherwise the Agent's own `execution.modelId`. station#3406:
+   * when there is one, otherwise the Agent's own `execution.modelId`. archive#3406:
    * only the override used to reach the adapter, so an Agent that named a model
    * ran on the engine's default and said nothing -- and the ACP adapter's
    * apply-and-verify block (acp-adapter.ts) was skipped entirely, because it is
@@ -309,7 +309,7 @@ async function resolveWorkspace(
   // continuation guard compared '/Users/me/dev/x' against '~/dev/x' with raw
   // string inequality, never matched, and refused every follow-up turn with
   // "this conversation belongs to a different workspace directory". Every
-  // conversation in a tilde-configured project was single-turn (station#3147).
+  // conversation in a tilde-configured project was single-turn (archive#3147).
   //
   // `verifiedProjectPath` stays OUTSIDE the expansion deliberately: it is a
   // REMOTE path, and this file's own comment above forbids applying local

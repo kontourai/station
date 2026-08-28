@@ -777,7 +777,7 @@ describe('mapAcpExtensionNotification', () => {
     });
   });
 
-  // station#4084 (review fix round F1): retention is now routed through the
+  // archive#4084 (review fix round F1): retention is now routed through the
   // exact-tuple binding registry, not a structural type-prefix guess.
   // mapAcpExtensionNotification retains a bound notification on
   // ctx.state.turnErrorNotifications as a side effect, alongside publishing

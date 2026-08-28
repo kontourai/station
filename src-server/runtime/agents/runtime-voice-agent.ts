@@ -44,7 +44,7 @@ const STATION_VOICE_PROMPT =
   'You are Station Voice, a hands-free voice assistant. You can navigate the app, query data, and perform actions. Be concise — this is voice, not text. Use short sentences. Always confirm before creating, modifying, or deleting anything.';
 
 /**
- * station#1194 (epic #1191, slice B review): `station-voice` is deliberately
+ * archive#1194 (epic archive#1191, slice B review): `station-voice` is deliberately
  * OUT of scope for the onboarding engine picker's rebind. Voice is a
  * speech-to-speech agent (`voice-session.ts`'s `IS2SProvider`, e.g. Nova
  * Sonic) — it never reads `execution.agentConnectionId` or any engine

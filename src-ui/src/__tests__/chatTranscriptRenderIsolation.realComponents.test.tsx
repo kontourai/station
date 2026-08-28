@@ -6,7 +6,7 @@
  * holds but says nothing about MessageBubble's or MessageContent's memo
  * boundaries underneath it. This variant uses the REAL MessageBubble and
  * MessageContent (only react-markdown itself is mocked, as a render-count
- * probe on the single most expensive operation named in the station#726
+ * probe on the single most expensive operation named in the archive#726
  * diagnosis — MessageContent re-parsing markdown on every render) so a
  * regression in either component's memoization/prop-stability shows up
  * here even if ChatMessageList's own boundary is intact.
@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({

@@ -10,7 +10,7 @@ import {
 import { buildOrchestrationItems } from '../views/home/home-view-model';
 
 /**
- * station#3227 A2/A3/A4 + C1-C5.
+ * archive#3227 A2/A3/A4 +.
  *
  * `sessionDisplay.ts` owns three derivations — the name a session is listed
  * under, the project it is attributed to, and the engine that ran it — and
@@ -48,7 +48,7 @@ function homeRow(s: OrchestrationSessionSummary) {
 }
 
 /**
- * The #3139 shape, exactly: an attached external session the server never
+ * The archive#3139 shape, exactly: an attached external session the server never
  * titled, whose thread id is a content-derived digest. `humanizeId` is a
  * NO-OP on it — it strips a leading `task[:-]?` and swaps `[-_]` for spaces,
  * and this string has none of those — which is what made the raw digest
@@ -74,7 +74,7 @@ describe('A2/C1-C3: one session, one name', () => {
     // Home built `${agentLabel} task` here -> "Claude Code task".
     expect(homeRow(ATTACHED_UNTITLED).title).toBe(canonical);
     // The detail header returned `humanizeId(threadId) || threadId` -> the
-    // raw digest. This is the assertion #3139 never got.
+    // raw digest. This is the assertion archive#3139 never got.
     expect(mutableSessionTitle(ATTACHED_UNTITLED, [])).toBe(canonical);
   });
 
@@ -233,7 +233,7 @@ describe('A3: Home attributes a project the way the contract requires', () => {
 });
 
 /**
- * station#3227 A3 + the `activity-bars.tsx` / `PulseHomeVariant.tsx` grouping
+ * archive#3227 A3 + the `activity-bars.tsx` / `PulseHomeVariant.tsx` grouping
  * key. This is the part of the change that is NOT display-only, so it is
  * pinned as behaviour rather than as copy.
  *

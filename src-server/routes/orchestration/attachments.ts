@@ -27,9 +27,9 @@ export interface AttachmentRouteDeps {
 
 /**
  * `GET /api/attachments/:ref` — the bytes behind an attachment a transcript is
- * showing (station#3385).
+ * showing (archive#3385).
  *
- * Since #3374 the event log stores a content reference rather than the image,
+ * Since archive#3374 the event log stores a content reference rather than the image,
  * and the byte-budgeted reads the transcript actually uses hand that reference
  * on unresolved. Without this route those chips can never show a picture, blob
  * on disk or not. `<img src>` cannot carry a bearer token, so the client

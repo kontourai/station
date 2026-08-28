@@ -336,7 +336,7 @@ describe('App home profile routes (#896)', () => {
     expect(postRes.status).toBe(404);
   });
 
-  // #896 wave 2: codex-runtime joins the app-home engine table.
+  // archive#896 wave 2: codex-runtime joins the app-home engine table.
   test('reports codex profile status with the profile-scoped auth state', async () => {
     const app = createAppHomeRoutes();
 
@@ -431,7 +431,7 @@ describe('App home profile routes (#896)', () => {
     }
   });
 
-  // #896 wave 2: bounded profile GC — usage report + explicit clear.
+  // archive#896 wave 2: bounded profile GC — usage report + explicit clear.
   test('status includes bounded usage for an existing profile', async () => {
     const app = createAppHomeRoutes();
     await app.request('/agent/claude/app-home/import', {
@@ -738,7 +738,7 @@ describe('App home profile routes (#896)', () => {
   });
 });
 
-// station#3552: one entry per credential Station can reach — the connection's
+// archive#3552: one entry per credential Station can reach — the connection's
 // own account plus every enrolled profile — each read independently.
 describe('credential usage route (station#3552)', () => {
   const originalFetch = globalThis.fetch;
@@ -848,7 +848,7 @@ describe('credential usage route (station#3552)', () => {
   });
 });
 
-// station#3549: the command is returned, never spawned, and the auth state
+// archive#3549: the command is returned, never spawned, and the auth state
 // comes from asking the engine rather than reading a credential file.
 describe('enrolment route (station#3549)', () => {
   test('404s for a connection with no app-home channel', async () => {

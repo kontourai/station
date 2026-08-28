@@ -1,5 +1,5 @@
 /**
- * Owner-attribution contract for message-row annotation (station#1424).
+ * Owner-attribution contract for message-row annotation (archive#1424).
  *
  * The row identifies the Station that produced it, not the single local
  * operator. The shape is deliberately versionless from the chip's point of

@@ -324,7 +324,7 @@ describe('plugin-public-server helpers', () => {
 });
 
 /**
- * station#4307 review. `readPluginServerSettings` builds the map handed to a
+ * archive#4307 review. `readPluginServerSettings` builds the map handed to a
  * plugin's server module as `config.get`/`config.all`
  * (`plugin-public-routes.ts`), and it built that map on a PLAIN-prototype
  * accumulator through two loops that both write keys nobody on this side

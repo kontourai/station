@@ -12,12 +12,12 @@ const updateChat = vi.fn((threadId: string, updates: any) => {
 
 vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: {
-    // A COPY, matching `ActiveChatsStore.notify`'s `{ ...this.chats }`: the
+    // A COPY, matching `ActiveChatsStore.notify`'s `{...this.chats }`: the
     // real store hands out a fresh map after every write, so a caller that
-    // captured `getSnapshot()` before one keeps reading the PRE-write chat.
+    // captured `getSnapshot` before one keeps reading the PRE-write chat.
     // Returning the live map instead makes every captured snapshot silently
     // read post-write, which is exactly the distinction the reconnect
-    // refetch loop below depends on (station#3352 review).
+    // refetch loop below depends on (archive#3352).
     getSnapshot: () => ({ ...chats }),
     updateChat: (...args: [string, any]) => updateChat(...args),
   },
@@ -204,7 +204,7 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     );
   });
 
-  // station#3352's permanent case: the turn both streamed and COMPLETED
+  // archive#3352's permanent case: the turn both streamed and COMPLETED
   // inside the gap, so the session is idle at reconnect and its
   // `turn.completed` — the only other thing that advances this revision — was
   // never delivered. Skipping the bump here leaves the user their prompt and
@@ -335,7 +335,7 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
   // The type widened in `types.ts` (`delegation`/`createdAt`/`lastEventAt`)
   // is declare-only for `buildOrchestrationSnapshotSyncPlan` — it reads none
   // of those fields. This pins that a payload carrying them (as every real
-  // wire payload now does, station#1301 §1.3) folds into the EXACT same
+  // wire payload now does, archive#1301 §1.3) folds into the EXACT same
   // `updateChat` call as a payload that omits them (the pre-widening shape),
   // so the new fields cannot silently perturb the existing chat-status sync.
   test('a session carrying the new fields updates the chat identically to one without them', () => {

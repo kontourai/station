@@ -72,12 +72,12 @@ vi.mock('../contexts/open-chats-store', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  // station#3122 stage 2: Home resolves its Workspace Pane renderer through
+  // archive#3122: Home resolves its Workspace Pane renderer through
   // the shared selector, which reads the MCP-app host capability from config.
   // Undefined data is the real pre-load shape, and Home's built-in renderer
   // declares no MCP capability, so no selection here depends on it.
   useConfigQuery: () => ({ data: undefined, error: null }),
-  // station#3391: Home resolves a work item's model id against this catalog so
+  // archive#3391: Home resolves a work item's model id against this catalog so
   // its rows name a model the way the New Chat cards do. Empty here — these
   // tests supply labels through their own fixtures, and an empty catalog is
   // the honest "this Station knows no models" case rather than a stub name.
@@ -108,8 +108,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: fixtures.tasksLoading,
     refetch: fixtures.tasksRefetch,
   }),
-  // station#1097: pending by default (`data: undefined`) — proves the local
-  // list above never waits on this (AC2/AC3).
+  // archive#1097: pending by default (`data: undefined`) — proves the local
+  // list above never waits on this.
   useRemoteSessionsQuery: () => ({ data: fixtures.remoteSessionsResult }),
   // Home mounts StarterWorkCard whenever first run is `completed`, which every
   // test here is. The card's own states belong to
@@ -219,7 +219,7 @@ vi.mock('../views/home/useWorkspaceHomeRole', () => ({
  * The name Home gives a `codex` session with no `displayTitle` and no
  * delegated task id — the shape most fixtures in this file use.
  *
- * station#3227 A2: this was `'Codex task'`. Home built its own title whose
+ * archive#3227 A2: this was `'Codex task'`. Home built its own title whose
  * no-taskId fallback was `${agentLabel} task`; it now reads the canonical
  * `sessionTitle`, whose fallback is the engine-named
  * `${displayProvider(session)} session` — the same string the sessions list
@@ -367,7 +367,7 @@ describe('HomeView', () => {
     });
   });
 
-  // station#1297: an orchestration row Station CAN rehydrate (a real
+  // archive#1297: an orchestration row Station CAN rehydrate (a real
   // `agentSlug`, not `read-only-attached`) should reopen into the chat
   // overlay via the shared focus action instead of always jumping to the
   // Sessions view — the third divergent destination the issue flagged.
@@ -415,8 +415,8 @@ describe('HomeView', () => {
     unregister();
   });
 
-  // station#1297: a `read-only-attached` session still can't be rehydrated
-  // — same Sessions fallback as before.
+  // archive#1297: a `read-only-attached` session still can't be rehydrated
+  // same Sessions fallback as before.
   test('still navigates to Sessions for a read-only-attached orchestration continuation', () => {
     fixtures.sessions = [
       {
@@ -848,7 +848,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     fixtures.remoteSessionsResult = undefined;
   });
 
-  // AC1: a two-station fixture (local + two remote environments) shows a
+  // a two-station fixture (local + two remote environments) shows a
   // merged list with a provenance badge, through the real component render
   // (mocked SDK data, real buildHomeWorkItems/HomeView pipeline).
   test('AC1: merges sessions from two connected remote environments into the list with environment badges', () => {
@@ -895,7 +895,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     // environment badge, using the plain (non-remote) "Session" kind label.
     expect(within(recent).getAllByText(/Session · No project/).length).toBe(1);
 
-    // station#1097 review round 2 (HIGH): REMOTE_SESSION (env-a, "Brian
+    // archive#1097: REMOTE_SESSION (env-a, "Brian
     // media") is the single most-recent item across every environment here
     // (14:00 vs. the local session's 13:00 and OTHER_REMOTE_SESSION's prior
     // day) — exactly the case that silently no-opped before the fix. The
@@ -931,7 +931,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  // station#1097 review round 2 (HIGH): when every visible item is a
+  // archive#1097: when every visible item is a
   // read-only remote card (no local work at all), the primary CTA — which
   // can only ever continue a LOCAL item — must not render rather than
   // silently target a remote card that no-ops on click.
@@ -953,7 +953,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeNull();
   });
 
-  // AC2: the local list renders synchronously (from `useOrchestrationSessionsQuery`
+  // the local list renders synchronously (from `useOrchestrationSessionsQuery`
   // /`useTasksQuery` data) with the remote query still pending
   // (`useRemoteSessionsQuery` returning `data: undefined`, this suite's
   // default) — proving the remote read never blocks or delays it.
@@ -984,7 +984,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeNull();
   });
 
-  // AC2: a remote fetch failure (a connected environment the server could
+  // a remote fetch failure (a connected environment the server could
   // not reach in time) still never blocks the local list, and degrades to
   // an unobtrusive note rather than an error state.
   test('AC2/R3: an unreachable connected environment shows an unobtrusive note beside a normally-rendered local list', () => {
@@ -1041,7 +1041,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeTruthy();
   });
 
-  // AC3: the local-first invariant — omitting/defaulting remote data
+  // the local-first invariant — omitting/defaulting remote data
   // (this suite's baseline `remoteSessionsResult: undefined`, exercised
   // throughout the rest of this file's existing suite) never introduces any
   // remote-only markup.

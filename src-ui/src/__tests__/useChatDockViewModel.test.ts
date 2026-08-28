@@ -252,13 +252,13 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
     queryState.agentConnections = [];
   });
 
-  // station#3344. The composer's image gate used to be
+  // archive#3344. The composer's image gate used to be
   // `selectedModelSupportsImages || runtimeConnection.capabilities.includes(
   // 'image-input') || agent.supportsAttachments`, and an ordinary Station
   // chat satisfies none of those: no AWS credentials means an empty Bedrock
   // model catalog, an unbound Station agent has no engine connection at all,
   // and nothing on the server ever wrote `supportsAttachments`. The engine
-  // that relays images to /chat (station#1885) was the one engine whose
+  // that relays images to /chat (archive#1885) was the one engine whose
   // pastes were refused.
   test('a Station-engine chat with no engine connection can attach images', () => {
     queryState.agentConnections = [];
@@ -426,7 +426,7 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
 });
 
 /**
- * station#1146. The dock's directory label used to be
+ * archive#1146. The dock's directory label used to be
  * `sessionProject?.workingDirectory ?? null` — the project's directory, read
  * AFTER the session had already started. For a chat on an engine connection
  * carrying its own Working Directory inside a project with none, that printed
@@ -539,7 +539,7 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
   });
 
   /**
-   * station#3213: the same correlation now also carries the session's
+   * archive#3213: the same correlation now also carries the session's
    * lifecycle to `ChatDockBody`'s failure banner. Without this the dock has no
    * record to fold and renders nothing on a cold arrival at a failed session —
    * the reported defect.
@@ -567,7 +567,7 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
     expect(result.current.activeOrchestrationSession).toBeNull();
   });
 
-  // UX audit T5: `orchestrationSessions` is `[]` while the query is pending
+  // `orchestrationSessions` is `[]` while the query is pending
   // and while it has failed, so "not in this array" answered a different
   // question from "the serving Station has no such session". The dock read
   // the first as the second and claimed "Session record missing" on every

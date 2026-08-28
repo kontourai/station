@@ -113,7 +113,7 @@ describe('evaluateFlowCompletionGate command-evidence drain', () => {
   });
 
   /**
-   * station#4237, end to end: the spool now carries what Station actually
+   * archive#4237, end to end: the spool now carries what Station actually
    * observed — a runtime status, no exit code, no duration. The gate verdict
    * must still be derived, and an errored tool call must not pass.
    */

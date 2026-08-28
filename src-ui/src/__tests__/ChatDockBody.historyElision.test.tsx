@@ -1,12 +1,12 @@
 /**
  * @vitest-environment jsdom
  *
- * station#3386. The bounded session-window read has two per-event budgets and
+ * archive#3386. The bounded session-window read has two per-event budgets and
  * both used to fire in silence: a payload over the serialized ceiling comes
  * back as its identity fields alone, and a tool result comes back cut. From
  * the client those are indistinguishable from a turn that never carried a
  * prompt, and from a blob retention reclaimed — which is why a pasted image
- * over ~3 KB lost both its prompt and its chip on restore (station#3374).
+ * over ~3 KB lost both its prompt and its chip on restore (archive#3374).
  *
  * The read now labels which budget fired (`elided`). These tests hold the
  * dock to reading that label rather than inferring anything from what is
@@ -33,7 +33,7 @@ vi.mock('@kontourai/station-connect', () => ({
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agentsMock.current,
-  // station#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 

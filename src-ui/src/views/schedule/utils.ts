@@ -157,11 +157,11 @@ export interface SchedulerFailureNotice {
 /**
  * Turns a scheduler query failure into the banner `ScheduleView` shows.
  *
- * This exists because that banner used to be a constant (station#3252): it
+ * This exists because that banner used to be a constant (archive#3252): it
  * read "Could not connect to the scheduler service. Check that the server is
  * running." whether the server was unreachable or had answered in full. A
  * corrupt ledger answers HTTP 500 with a body naming `station home restore`
- * (station#3220), and that instruction died here. The rule this encodes: the
+ * (archive#3220), and that instruction died here. The rule this encodes: the
  * copy may only assert what the error object proves, and when the server said
  * something, what it said is the message — we never replace it with advice of
  * our own.

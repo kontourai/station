@@ -768,7 +768,7 @@ async function seedCrossRuntimeRoutes(
     route.fulfill(json({ success: true, data: {} })),
   );
   // LocalUiSessionGate now proves the browser session through the protected
-  // identity endpoint before mounting the app tree (#2093).
+  // identity endpoint before mounting the app tree (archive#2093).
   await page.route('**/api/system/identity', (route) =>
     route.fulfill(
       json({
@@ -1334,7 +1334,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
 });
 
 /**
- * kontourai/station#793: the chat-dock's project badge is a real switch
+ * kontourai/archive#793: the chat-dock's project badge is a real switch
  * affordance now, not a direct-navigate link. These specs are additive to
  * the P1-G5 proof above and reuse its seeding (`seedCrossRuntimeRoutes`,
  * `PROJECTS`/`PROJECT_CONFIGS`) — same Alpha/Beta fixtures, no new mocks.
@@ -1400,7 +1400,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     await dialog.getByRole('button', { name: 'Open Beta Project' }).click();
     await expect(page).toHaveURL(/\/projects\/beta/);
     await expect(dialog).toBeHidden();
-    // #3319: opening a project COLLAPSES the dock (never closes it — the
+    // archive#3319: opening a project COLLAPSES the dock (never closes it — the
     // session survives on the collapsed bar) so the destination is visible
     // instead of landing behind the dock.
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
@@ -1469,7 +1469,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
 
     await dialog.getByRole('button', { name: 'Open Beta Project' }).click();
     await expect(page).toHaveURL(/\/projects\/beta/);
-    // #3319: same collapse contract on the mobile edge sheet — the opened
+    // archive#3319: same collapse contract on the mobile edge sheet — the opened
     // project page must be visible, with the session on the collapsed bar.
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
   });

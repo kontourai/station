@@ -5,7 +5,7 @@
  * re-renders when new providers are registered (e.g. after plugin load).
  *
  * Active provider IDs are persisted via the device-settings store
- * (`sttProvider`/`ttsProvider`, station#settings-revamp slice 2 — previously
+ * (`sttProvider`/`ttsProvider`, archive#settings-revamp — previously
  * their own raw localStorage keys).
  */
 

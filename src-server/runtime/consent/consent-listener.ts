@@ -1,5 +1,5 @@
 /**
- * The distinct-origin consent listener (station#3677).
+ * The distinct-origin consent listener (archive#3677).
  *
  * A MINIMAL, separate Hono app bound on its own first-class port — never the
  * full runtime app, which would duplicate Station's entire attack surface on
@@ -70,7 +70,7 @@ const SECURITY_HEADERS: Record<string, string> = {
     "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cache-Control': 'no-store',
-  // station#3752: NOT `no-referrer`. Chromium computes a form submission's
+  // archive#3752: NOT `no-referrer`. Chromium computes a form submission's
   // Origin under the document's referrer policy, so `no-referrer` made every
   // genuine approve click arrive as `Origin: null` — the page defeating the
   // exact-Origin check on its own decide route, which is why no plugin could
@@ -340,7 +340,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
     // uppercase scheme, default port spelled out) did not come from a
     // browser's Origin header and is refused.
     //
-    // station#3752: `null` stays REFUSED here, and the page's own
+    // archive#3752: `null` stays REFUSED here, and the page's own
     // `Referrer-Policy` was fixed instead (see SECURITY_HEADERS). Admitting
     // `null` was this fix's first shape; independent review was right that
     // it deletes a proof rather than restoring one — it makes Fetch Metadata

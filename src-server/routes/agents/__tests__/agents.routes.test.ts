@@ -5,7 +5,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   agentOps: { add: vi.fn() },
 }));
 
-// station#3121: the suites below — the create-warning tests and the bare
+// archive#3121: the suites below — the create-warning tests and the bare
 // catalog's read path — run the REAL `resolveManagedAvailabilityReason`
 // instead of a `resolveAvailability` stub. A stub is exactly what hid this
 // defect: it can be made to answer anything and never exercises the
@@ -161,7 +161,7 @@ describe('Agent Routes', () => {
     );
   });
 
-  // station#3121 — the READ path. `deriveAgentCatalog` applied the
+  // archive#3121 — the READ path. `deriveAgentCatalog` applied the
   // Station-engine model-resolution probe to every store-only record, and an
   // AUTHORED external-engine agent is a store-only record BY DESIGN (it is
   // deliberately skipped from VoltAgent registration —
@@ -314,7 +314,7 @@ describe('Agent Routes', () => {
   });
 
   /**
-   * station#3121. The warning above is computed by a STATION-ENGINE model
+   * archive#3121. The warning above is computed by a STATION-ENGINE model
    * probe, and every test that covered it stubbed the probe — so nothing ever
    * observed what the real derivation says about a spec bound to Claude
    * Code/Codex/ACP. It says "No enabled LLM provider connection is
@@ -729,7 +729,7 @@ describe('Agent Routes', () => {
 });
 
 /**
- * station#3662 delta-2 HIGH: the reserved Station identity's engine is app
+ * archive#3662 delta-2 HIGH: the reserved Station identity's engine is app
  * state, so a write that submits one must be REFUSED, not silently stripped.
  *
  * These run against a REAL `AgentService` over a mock ConfigLoader, because

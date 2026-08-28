@@ -12,7 +12,7 @@
  * active embedding *connection* can change after the server starts (a user may
  * add/enable/disable a provider connection at runtime) — capturing a snapshot at
  * route-construction time would silently go stale, echoing the
- * capture-by-value trap `configureRoutes` has hit before (#208/#210/#212).
+ * capture-by-value trap `configureRoutes` has hit before (archive#208/#210/#212).
  * `store` and `indexProvider`, by contrast, are long-lived instances constructed
  * once at startup and never reassigned afterward, so passing them directly (the
  * same way `providerService`/`projectService`/etc. are passed elsewhere in this

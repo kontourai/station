@@ -56,7 +56,7 @@ describe('resolveHomeSurface', () => {
     ).toEqual({ status: 'error', source: 'projects' });
   });
 
-  // station#3711: the state is named for what is derived — the host is not
+  // archive#3711: the state is named for what is derived — the host is not
   // available to this app — and carries the connection layer's typed reason so
   // the renderer can say WHY instead of collapsing an auth rejection or a
   // version mismatch into a false "offline" claim.

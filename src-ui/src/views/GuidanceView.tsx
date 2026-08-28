@@ -14,8 +14,8 @@ import { SkillsView } from './SkillsView';
 type GuidanceRoute = Extract<NavigationView, { type: 'guidance' }>;
 
 /**
- * Guidance is one page with two tabs. station#4463 slice 1 (the 2026-08-26
- * shell audit) fixed the page's TITLE at 'Guidance' — it must not change when
+ * Guidance is one page with two tabs. archive#4463 fixed the page's TITLE at
+ * 'Guidance' — it must not change when
  * the tab changes, the same rule every other page-level view follows now: the
  * tab strip already names the section, and a title that flips between
  * 'Skills' and 'Commands' as the reader clicks a tab reads as two different

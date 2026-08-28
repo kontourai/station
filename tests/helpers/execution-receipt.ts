@@ -10,7 +10,7 @@ import type { ForegroundMessageReceipt } from '@kontourai/station-sdk/client';
  * The one fixture for an ACCEPTED `POST /api/orchestration/chat` (and
  * `.../:conversationId/continue`) response.
  *
- * station#3800: the shape is not decorative. `readExecutionReceipt`
+ * archive#3800: the shape is not decorative. `readExecutionReceipt`
  * (`packages/sdk/src/client/execution.ts:126-137`) refuses any body without a
  * non-empty `providerTurnId` as `foreground_message_indeterminate` — the same
  * verdict the server itself returns (409, `orchestration.ts:689-701`) rather

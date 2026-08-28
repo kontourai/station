@@ -1,12 +1,11 @@
 /**
- * station#1498 slice 1 — the portable Project manifest, the per-Station
+ * The portable Project manifest, the per-Station
  * binding store, and resolution-state contracts
  * (`docs/design/portable-project-identity.md` §3.2, §3.4, §3.5, §3.6).
  *
  * These types land ALONGSIDE `ProjectConfig` (`./project.ts`), not in place
- * of it — this slice is pure types plus one validator, zero runtime wiring.
- * Nothing in the repo constructs, persists, or reads these shapes yet; that
- * is slice 2 (stores + resolver) and slice 3 (the five consumer seams).
+ * of it — this module is pure types plus validators; the stores, resolver,
+ * and consumer seams live elsewhere in the repo.
  *
  * Load-bearing decisions, copied from the design doc rather than invented
  * here. Every claim below names where it is ENFORCED, and where it is not it
@@ -27,7 +26,7 @@
  *    - `knowledge[].root.path` is additionally refused a `..` segment and an
  *      empty segment. §3.2's rule is that every path is relative *to a named
  *      repo*; `../../../etc/passwd` is anchored nowhere and escapes the repo
- *      it names, which matters the moment slice 3 joins a binding path to a
+ *      it names, which matters the moment a binding path is joined to a
  *      root path and hands the result to `KnowledgeService`. One trailing
  *      separator is stripped first (`docs/` means `docs`), and `.`/`./` are
  *      allowed as the repo root — refusing every spelling of "index the whole
@@ -91,7 +90,7 @@
  *    enforcement, not style: §5 turns today's directory-only Project into a
  *    `local-only` resource at migration and the only value on hand for its
  *    id is that directory, so the grammar makes shipping a home directory
- *    as a resource id impossible by construction rather than by reviewer
+ *    as a resource id impossible by construction rather than by
  *    vigilance.
  * 5. **Auth is the datum idiom verbatim** (§3.4): exactly one backend per
  *    `ProjectAuthReference`, never a value. The validator rejects a second
@@ -127,7 +126,7 @@
  * 6. **`ProjectBinding.path` is stored verbatim (tilde-preserving);
  *    `ProjectBinding.remotes` is stored canonicalized** (§3.5). The path
  *    stays exactly as the user gave it and is canonicalized at each READ by
- *    the resolver (slice 2); the remotes are canonicalized at WRITE because
+ *    the resolver; the remotes are canonicalized at WRITE because
  *    they are a key used for set-intersection matching against a manifest
  *    resource's `{ canonicalRemote } ∪ aliases` (§3.3(b)).
  * 7. **`ProjectBinding.verifiedAt` is an observation, not a guarantee**
@@ -136,7 +135,7 @@
  * 8. **The {@link ResourceResolution} union and its honesty
  *    invariants are enforced by a predicate, not just documented** (§3.5,
  *    §3.6): `state` is a member of {@link RESOURCE_RESOLUTION_STATES}
- *    (checked at runtime, because slice 2 reads these off disk where the
+ *    (checked at runtime, because these are read off disk where the
  *    TypeScript union proves nothing), `resourceId` NAMES the resource for
  *    every state except `ambiguous` — which requires it to be EMPTY, because
  *    no single resource was identified and a non-empty id would claim one the
@@ -148,14 +147,14 @@
  *    cannot silently violate any of them without a caller that checks it
  *    noticing.
  * 9. **A resolution reports the OBSERVATIONS it derived its state from, not
- *    only the derived label** (station#1594, slice 3c-pre). The resolver knows
+ *    only the derived label** (archive#1594). The resolver knows
  *    two independent facts whenever it answers: whether anything on this
  *    Station *declares* a realization of the resource, and what it *observed*
  *    at the declared place. Reporting only the label discarded both axes and
  *    produced two separate defects — `unbound` meaning both "nothing is
- *    recorded" and "the recorded directory is gone" (station#1594), and
+ *    recorded" and "the recorded directory is gone" (archive#1594), and
  *    `stale`/`drifted` refusing to state a path the resolver had already
- *    `existsSync`'d (the slice-3b S2 revert). So
+ *    `existsSync`'d. So
  *    {@link ResourceResolutionResult} is a DISCRIMINATED UNION whose repair
  *    states carry their own observations: `missing` carries `record` +
  *    `declaredPath`, `stale`/`drifted` carry `unverifiedPath`. See that type's
@@ -166,8 +165,8 @@
  *    take an optional `resourceId` so existing callers "keep working
  *    unchanged by resolving the `primary` repo" — which is only
  *    deterministic if the manifest guarantees the primary is unambiguous.
- *    The validator enforces the cardinality; slice 2 owns the resolver. The
- *    rule, stated here as contract so slice 2 does not re-decide it:
+ *    The validator enforces the cardinality; the resolver owns the read. The
+ *    rule, stated here as contract so the resolver does not re-decide it:
  *    - A single-resource manifest's sole resource IS its primary, whether or
  *      not it declares `role`.
  *    - A manifest with more than one resource MUST declare exactly one
@@ -181,7 +180,7 @@
  *    resource ids are unique across `repos[]`, and every
  *    `knowledge[].root.repoId` names a resource that actually exists.
  * 11. **A validation failure that makes a manifest UNREADABLE is not the same
- *    as one that makes a resource UNSELECTABLE** (slice 2, station#1499).
+ *    as one that makes a resource UNSELECTABLE** (archive#1499).
  *    Every failure this validator reports carries a machine-readable
  *    {@link ProjectManifestDiagnosticCode} alongside its unchanged human
  *    message, because a consumer has to tell those two apart and matching on
@@ -196,7 +195,7 @@
  *    {@link ProjectSelectionAmbiguityCode}s, and
  *    {@link isSelectionAmbiguityOnly} is the predicate a consumer classifies
  *    with. {@link selectPrimaryResource} is the same rule as an executable
- *    function, so slice 2's resolver applies it rather than re-deciding it.
+ *    function, so the resolver applies it rather than re-deciding it.
  */
 
 import { normalizeGitOrigin } from './git-remote-identity.js';
@@ -304,7 +303,7 @@ export interface ProjectManifest {
   /**
    * Portable, opaque, generated once at manifest creation. NEVER derived
    * from a repo, path, or machine — a project may span repos, change repos,
-   * or have none. This is the join key #1392/#1123/#1409 need and `slug`
+   * or have none. This is the join key archive#1392/archive#1123/archive#1409 need and `slug`
    * (below) is explicitly not (§9 OQ-1, §9 OQ-5).
    */
   id: string;
@@ -337,7 +336,7 @@ export interface ProjectManifest {
 
 export interface ProjectBindingStore {
   schemaVersion: typeof PROJECT_BINDING_STORE_SCHEMA_VERSION;
-  /** Reserved; always `"local"` until #1392 introduces real membership. */
+  /** Reserved; always `"local"` until archive#1392 introduces real membership. */
   memberId: string;
   /**
    * Machine-local SSH host-alias rewriting (`{"github-work": "github.com"}`),
@@ -355,7 +354,7 @@ export interface ProjectBinding {
   kind: 'git-checkout' | 'local-directory';
   /**
    * Stored EXACTLY as the user gave it, tilde preserved. Canonicalized at
-   * each read by the resolver (slice 2), in one place — see decision 6
+   * each read by the resolver, in one place — see decision 6
    * above.
    */
   path: string;
@@ -383,7 +382,7 @@ export interface ProjectCredentialBinding {
 // ---------------------------------------------------------------------------
 
 /**
- * §3.6's states, plus slice 2's `ambiguous`. They collapse to three UI tones
+ * §3.6's states, plus `ambiguous`. They collapse to three UI tones
  * (ready / repairable / not-for-you) but stay distinct in the contract
  * because the repair differs.
  */
@@ -396,16 +395,16 @@ export type ResourceResolution =
    * spec-analogue of hachure's `unknown`: no claim exists, so there is nothing
    * to appraise.
    *
-   * NARROWED in station#1594. It previously ALSO covered "a directory is
+   * NARROWED in archive#1594. It previously ALSO covered "a directory is
    * declared and it is gone", which is a claim that failed live verification —
    * a different fact with a different repair, and one the session-cwd seam
-   * treats OPPOSITELY (#1023 `$HOME` terminus vs #791 fail-closed). That case
+   * treats OPPOSITELY (archive#1023 `$HOME` terminus vs archive#791 fail-closed). That case
    * is now `missing`.
    */
   | 'unbound'
   /**
    * **A recorded realization whose path does not exist.** The record is either
-   * a binding row or — since station#1594 — the compat branch's declared
+   * a binding row or — since archive#1594 — the compat branch's declared
    * `workingDirectory`, which §5 makes the compat-era binding
    * ("`workingDirectory` stays authoritative during compat"). `record` says
    * which, and `declaredPath` says what it said.
@@ -417,8 +416,8 @@ export type ResourceResolution =
   | 'not-portable'
   /**
    * No single resource could be named: a manifest with several resources and
-   * no unique `primary`, or one that declares no resources at all. Added in
-   * slice 2 (station#1499) because §3.6's table has no state for it, and the
+   * no unique `primary`, or one that declares no resources at all
+   * (archive#1499), because §3.6's table has no state for it, and the
    * alternatives both lie — `unbound` implies a resource exists that is
    * merely not set up here, and `unresolvable` means "you were denied",
    * which collapses a configuration problem into an access one.
@@ -426,14 +425,15 @@ export type ResourceResolution =
   | 'ambiguous';
 
 /**
- * Every {@link ResourceResolution} member as a runtime value. Slice 2 reads
- * resolution results off disk, where the TypeScript union proves nothing —
+ * Every {@link ResourceResolution} member as a runtime value. Resolution
+ * results are read
+ * off disk, where the TypeScript union proves nothing —
  * {@link isWellFormedResolution} checks membership against this set rather
  * than trusting the declared type.
  *
  * **Adding a union member without adding it here is a silent break**, and it
- * nearly happened between the two branches of this arc: slice 1 introduced
- * this array while slice 2 independently introduced `ambiguous`, and git
+ * has nearly happened in practice: the array and a new
+ * union member arrived on separate branches, and git
  * merged both cleanly. `isWellFormedResolution` would then have rejected
  * every `ambiguous` result — which the resolver asserts on its own output and
  * throws on — with no test on either branch able to see it, because neither
@@ -452,8 +452,8 @@ export const RESOURCE_RESOLUTION_STATES = [
   // the annotation widens every element to the full union, which makes
   // `(typeof …)[number]` the union itself and the exhaustiveness proof below
   // `Exclude<X, X> extends never`, i.e. VACUOUSLY true. It was — dropping
-  // `'ambiguous'` from this array left `npm run typecheck` green (station#1499
-  // fault injection N3). `satisfies` keeps the literal tuple type while still
+  // `'ambiguous'` from this array left `npm run typecheck` green
+  // (archive#1499 fault injection N3). `satisfies` keeps the literal tuple type while still
   // checking that every member is a real state.
 ] as const satisfies readonly ResourceResolution[];
 
@@ -478,18 +478,18 @@ void _resolutionStatesAreExhaustive;
  * Both are realizations this Station recorded; they differ in what an operator
  * edits to repair one. A `binding` row is the per-Station store (§3.5); a
  * `working-directory` is the compat-era binding §5 keeps authoritative until
- * slice 4 writes real rows. Carried as a discriminator rather than as prose
+ * real binding rows replace it. Carried as a discriminator rather than as prose
  * because the repair prompt and the surface that owns it differ.
  */
 export type ResourceRealizationRecord = 'binding' | 'working-directory';
 
 /**
- * The shape `resolveProjectResource` (slice 2) returns — a DISCRIMINATED UNION
- * on `state` since station#1594 (slice 3c-pre).
+ * The shape `resolveProjectResource` returns — a DISCRIMINATED UNION
+ * on `state` (archive#1594).
  *
  * ## Why a union, and what it forces
  *
- * The pre-#1594 shape was one flat interface with `path?` and `reason?`, which
+ * The pre-union shape was one flat interface with `path?` and `reason?`, which
  * meant every producer could omit any observation and every consumer could
  * read `.path` unguarded. Both happened. The union makes each state carry
  * exactly the fields its own honesty requires, so a producer that omits one
@@ -498,9 +498,9 @@ export type ResourceRealizationRecord = 'binding' | 'working-directory';
  * remains the runtime backstop for producers the type system cannot see
  * (results read off disk, JS callers).
  *
- * ## The two slots, and why `unverifiedPath` is not a hole in slice 1's rule
+ * ## The two slots, and why `unverifiedPath` is not a hole in the path rule
  *
- * Slice 1's invariant — "a resolution carrying a path on a non-`bound` state
+ * The invariant — "a resolution carrying a path on a non-`bound` state
  * is forbidden" — stands, *as its purpose demands*. Its purpose is that `path`
  * is the **answer slot**: the caller asked "where is the verified checkout of
  * resource X" and only `bound` may answer, because only `bound` performed the
@@ -509,11 +509,11 @@ export type ResourceRealizationRecord = 'binding' | 'working-directory';
  * `unverifiedPath` is a differently named, per-state-REQUIRED **observation
  * slot**, and its name is the warning. `stale` and `drifted` are only ever
  * emitted AFTER `existsSync` has already passed, so the resolver holds an
- * existing absolute path at the moment it constructs them. The pre-#1594
- * contract forbade it from saying so structurally while every `reason` already
- * embedded the same path in prose — which left consumers choosing between
- * parsing prose and 404ing a perfectly good directory (the slice-3b S2
- * revert). A contract that knows a fact and refuses to state it is lying by
+ * existing absolute path at the moment it constructs them. A contract
+ * that forbade it from saying so structurally while every `reason` already
+ * embedded the same path in prose left consumers choosing between
+ * parsing prose and 404ing a perfectly good directory. A contract that knows
+ * a fact and refuses to state it is lying by
  * omission.
  *
  * **Two questions, one derivation point.** The repo-question ("the verified
@@ -536,8 +536,8 @@ export type ResourceRealizationRecord = 'binding' | 'working-directory';
  *   `ambiguous` result would claim a resource was identified while the state
  *   says the opposite, and the candidates belong in `reason`. This is the
  *   second half of the cross-branch trap {@link RESOURCE_RESOLUTION_STATES}
- *   records — slice 1 wrote "non-empty, always" when the union had no state
- *   for "nothing to name", and slice 2 then produced exactly that state.
+ *   records — "non-empty, always" was written when the union had no state
+ *   for "nothing to name", and `ambiguous` then produced exactly that state.
  * - `path` is present ONLY when `state === 'bound'`.
  * - `reason` is REQUIRED for every non-`bound` state (§3.6 rule 3:
  *   "unresolvable" — and every other non-bound state — "is never an empty
@@ -547,10 +547,10 @@ export type ResourceRealizationRecord = 'binding' | 'working-directory';
  * - `record` and `declaredPath` are REQUIRED on `missing`, and FORBIDDEN
  *   everywhere else.
  *
- * @experimental This vocabulary changed twice in three slices (`ambiguous`
- * added in slice 2, the `unbound`/`missing` split and the observation slots in
- * slice 3c-pre). It is published, but it is not settled until slice 4 writes
- * real binding rows and the remaining seams migrate onto it — treat a minor
+ * @experimental This vocabulary has changed repeatedly (`ambiguous`
+ * added, then the `unbound`/`missing` split and the observation slots).
+ * It is published, but it is not settled until real binding rows are
+ * written and the remaining seams migrate onto it — treat a minor
  * version of `@kontourai/station-contracts` as able to change it.
  */
 export type ResourceResolutionResult =
@@ -598,7 +598,7 @@ export type ResourceResolutionResult =
  * carry, fails to NAME the resource, or writes a state outside the union,
  * fails this check rather than shipping quietly.
  *
- * The parameter is `unknown` ON PURPOSE. Since station#1594 the result type is
+ * The parameter is `unknown` ON PURPOSE. Since archive#1594 the result type is
  * a discriminated union, so an in-repo TypeScript producer of a malformed
  * shape is already a compile error and this predicate would be unreachable for
  * it. What remains is exactly what the check is for: values that arrive
@@ -648,8 +648,8 @@ export function isWellFormedResolution(
   // The OBSERVATION slot: required where the resolver has already seen the
   // directory, forbidden where it has not. Forbidding it elsewhere is the half
   // that matters — a `missing` or `unbound` result carrying one would be
-  // exactly the "a path appears on a state that never checked it" leak slice
-  // 1's invariant exists to prevent.
+  // exactly the "a path appears on a state that never checked it" leak the
+  // path invariant exists to prevent.
   if (state === 'stale' || state === 'drifted') {
     if (
       typeof result.unverifiedPath !== 'string' ||
@@ -681,7 +681,7 @@ export function isWellFormedResolution(
 }
 
 // ---------------------------------------------------------------------------
-// The project-level view (§3.6 preamble, §4.1) — station#1502 slice 4.
+// The project-level view (§3.6 preamble, §4.1) — archive#1502.
 // ---------------------------------------------------------------------------
 
 /**
@@ -725,7 +725,7 @@ void _projectResolutionPosturesAreExhaustive;
 /**
  * What one Station can truthfully say about one project's resources — the
  * shape `GET /api/projects/:slug/resolution` returns and the settings surface
- * renders (station#1502 slice 4).
+ * renders (archive#1502).
  *
  * ## The discriminator is the Station's POSTURE, not a resource state
  *
@@ -778,9 +778,10 @@ void _projectResolutionPosturesAreExhaustive;
  * resolution's is (§3.6 rule 3): an honest unavailable names what was
  * unavailable. It is the error's message, not a stack trace.
  *
- * ### `resources` is ONE PER DECLARED RESOURCE (station#1503, slice 5)
+ * ### `resources` is ONE PER DECLARED RESOURCE (archive#1503)
  *
- * Slice 4 shipped this as a singular `resource`, built from the no-`resourceId`
+ * An earlier revision of this view shipped a singular `resource`, built from
+ * the no-`resourceId`
  * call — "deliberately singular rather than a one-element array so that change
  * is a visible contract change rather than a silent semantic one". This is that
  * visible change. The view now resolves EVERY declared resource by id and
@@ -795,7 +796,8 @@ void _projectResolutionPosturesAreExhaustive;
  *
  * ### `primary` is carried separately, because the ambiguity is a separate fact
  *
- * Resolving per id would otherwise SILENCE the ambiguity signal slice 4 relied
+ * Resolving per id would otherwise SILENCE the ambiguity signal the singular
+ * view relied
  * on: a manifest declaring two primaries would render as N healthy rows while
  * every no-`resourceId` consumer in Station (the session cwd, the knowledge
  * scan, the task workspace) still fails `ambiguous`. That is the honesty bar's
@@ -840,8 +842,8 @@ export type ProjectResolutionView =
 
 /**
  * Which resource answers a request that names none — the fact §3.5's optional
- * `resourceId` parameter turns on, carried on the view because slice 5's
- * per-resource resolution would otherwise hide it (see
+ * `resourceId` parameter turns on, carried on the view because per-resource
+ * resolution would otherwise hide it (see
  * {@link ProjectResolutionView}).
  *
  * Deliberately NOT `ProjectPrimarySelection`: that type carries whole
@@ -881,7 +883,7 @@ export type ProjectPrimaryResourceSelection =
  * - an EMPTY `resources` paired with a NAMED primary, and a named primary whose
  *   `resourceId` is not among the resolved entries: both are the list and the
  *   selection disagreeing about what the manifest declares, which is exactly
- *   the fact slice 5 carries `primary` in order to expose;
+ *   the fact `primary` is carried in order to expose;
  * - an absent or empty `reason` on `unreadable` or on an unnamed `primary`, and
  *   a `reason` on any other posture.
  */
@@ -920,11 +922,12 @@ export function isWellFormedProjectResolutionView(
     return false;
   }
 
-  // station#1503 review, M4: the removed singular field is refused on EVERY
+  // The removed singular field is refused on EVERY
   // posture, including `backing`.
   //
-  // This predicate is not an exact-key-set check, so when slice 5 renamed
-  // `resource` to `resources` the old field silently became just another
+  // This predicate is not an exact-key-set check, so when `resource` was
+  // renamed
+  // to `resources` the old field silently became just another
   // unknown key and started passing — while this docblock still claimed to
   // reject "§4.1's per-resource row smuggled through the posture that exists to
   // guarantee its absence". The guard lost the only field it had ever policed,
@@ -932,7 +935,7 @@ export function isWellFormedProjectResolutionView(
   // population: "a build against an older version of this package", which is
   // precisely what emits `resource`.
   //
-  // A pre-slice-5 server's `{posture: 'not-backing', resource: {…}}` must be
+  // An older server's `{posture: 'not-backing', resource: {…}}$ must be
   // refused, not quietly accepted as a view with a stray field — the SDK turns
   // that refusal into a named "this Station is running a newer version than
   // this app" error, which is the honest reading of a shape mismatch.
@@ -988,7 +991,7 @@ export function localProjectResourceId(projectSlug: string): string {
 }
 
 /**
- * `POST /api/projects/:slug/bind`'s answer (station#1502 slice 4 fix round).
+ * `POST /api/projects/:slug/bind`'s answer (archive#1502).
  *
  * ## Why this is not just a {@link ProjectResolutionView}
  *
@@ -1252,10 +1255,10 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 /**
  * Is this canonical remote a local clone source rather than a portable one?
  *
- * **Exported because the rule must exist exactly once.** The write side (slice
- * 2's backfill, which decides whether a derived remote becomes a `git` or a
+ * **Exported because the rule must exist exactly once.** The write side (the
+ * backfill, which decides whether a derived remote becomes a `git` or a
  * `local-only` resource) and the read side (this validator) previously had
- * separate implementations, and delta review measured them diverging in BOTH
+ * separate implementations, and they were measured diverging in BOTH
  * directions: the writer refused `localhost:2222/org/repo` that the validator
  * accepted (a leak), and the validator refused `.\mirror\repo` that the
  * writer accepted — which persists a manifest that can never be read back,
@@ -1370,7 +1373,7 @@ function rejectFilesystemPath(
  * Why a value is not a usable repo-relative path, or `undefined` when it is one.
  *
  * ONE authority for a rule with two callers on two sides of a boundary
- * (station#1503 slice 5): {@link validatePathField} below refuses a manifest
+ * (archive#1503): {@link validatePathField} below refuses a manifest
  * that declares a bad path, and Station's knowledge scanner refuses to JOIN one
  * onto a resolved checkout. Two copies of a path-escape rule is the shape
  * `isLocalCloneSource`'s docblock records diverging in BOTH directions —

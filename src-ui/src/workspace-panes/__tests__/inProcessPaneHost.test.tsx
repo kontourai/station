@@ -28,7 +28,7 @@ import {
 
 /**
  * The in-process adapter is the tier-2 half of the pane-host contract
- * (station#4201, `docs/design/pane-host-contract.md`): these tests prove
+ * (archive#4201, `docs/design/pane-host-contract.md`): these tests prove
  * each contract member lands on the shell capability it maps — and, for
  * `confirm`, prove the design's central semantics: the SHELL renders its
  * own ConfirmModal when a pane calls `host.confirm(...)`; the pane receives

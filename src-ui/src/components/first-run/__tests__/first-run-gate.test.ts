@@ -52,7 +52,7 @@ describe('resolveFirstRunOffer — the one read', () => {
   });
 
   test('the answer is a pure function of the field — same in, same out', () => {
-    // AC5's pure half: nothing here reads a probe, a clock, or a query, so a
+    // pure half: nothing here reads a probe, a clock, or a query, so a
     // flapping `/api/system/status` cannot reach this decision at all.
     const state: FirstRunState = { status: 'pending' };
     const first = resolveFirstRunOffer(state);
@@ -73,7 +73,7 @@ describe('isKnownFirstRunStatus', () => {
 
 describe('what the chapter asks the server to record', () => {
   test('a status, and nothing else', () => {
-    // Review M1: these used to build the whole record, timestamp included, and
+    // these used to build the whole record, timestamp included, and
     // hand it to the generic config write — so the moment a decision was said
     // to have happened came from the browser. `POST /config/first-run` refuses
     // a request carrying a timestamp and stamps its own observation.

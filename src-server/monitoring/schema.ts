@@ -33,7 +33,7 @@ export interface MonitoringEvent {
   /**
    * OTel trace ID. Optional for the same reason `gen_ai.conversation.id` is:
    * a span whose trace is unknown has no trace id, and `''` is not the way to
-   * say that (station#3086/#3115). Readers already treat it as possibly
+   * say that (archive#3086/#3115). Readers already treat it as possibly
    * absent; the emitter omits the key rather than writing it empty.
    */
   'trace.id'?: string;

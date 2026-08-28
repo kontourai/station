@@ -113,7 +113,7 @@ describe('VoltAgent lifecycle hooks', () => {
     });
     expect((caught as Error).message).toContain('no approval channel');
 
-    // station#3091: reproduce the installed @voltagent/core's OWN
+    // archive#3091: reproduce the installed @voltagent/core's OWN
     // documented copy behavior (`buildToolErrorResult`, verified by reading
     // the installed package's compiled source — it is not exported so it
     // cannot be called directly): every own-enumerable property of the

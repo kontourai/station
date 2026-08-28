@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 /**
- * station#4288 — the pre-install decision.
+ * archive#4288 — the pre-install decision.
  *
  * `requestInstallConsent` is asked about a plugin that does NOT exist yet, so
  * approving it cannot record anything: a grant binds to the content of an
@@ -123,7 +123,7 @@ test('declining resolves false and reaches no server surface', async () => {
 });
 
 /**
- * station#4288, review LOW 4. A plugin whose ONLY pending permission is
+ * archive#4288, review 4. A plugin whose ONLY pending permission is
  * trusted still opens this prompt — the decision it takes is "install these
  * bytes", which the trusted tier has nothing to do with. So the pre-install
  * copy has to render here too, and the button must not read "Review trusted

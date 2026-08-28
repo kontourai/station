@@ -3,7 +3,7 @@
  *
  * The Connections IA table, and the `/connections` resolver that reads it.
  *
- * sol review finding 6: the resolver used to carry its OWN attention
+ * the resolver used to carry its OWN attention
  * derivation — `/api/connections` raw for Models and Engines, and no
  * Knowledge case at all — beside the rail's. A redirect is a claim about the
  * same state the rail's warn dots describe, so the test that matters is that

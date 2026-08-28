@@ -1,5 +1,5 @@
 /**
- * station#3158 — one classification for "the server could not read the local
+ * archive#3158 — one classification for "the server could not read the local
  * path you named".
  *
  * Both callers previously answered every failure with a single 404 whose text
@@ -44,7 +44,7 @@ export function pathAccessFailure(
       // Client-shaped, not server-shaped: a pasted over-long path is a bad
       // request. It used to fall to the default branch, answering 500 and
       // writing an error-level entry into the durable server log for what is
-      // ordinary user input (station#3158 review).
+      // ordinary user input (archive#3158 review).
       return { error: `${subject} path is too long`, status: 400 };
     default:
       // A NUL byte in the path makes readdir throw a TypeError with

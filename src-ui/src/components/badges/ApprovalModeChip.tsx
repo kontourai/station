@@ -46,15 +46,14 @@ export interface ApprovalModeChipProps {
    * The mode the adapter last confirmed as actually applied (from
    * `session.configured` / `turn.started` metadata — see
    * ChatUIState.lastAppliedApprovalMode). Used only to detect "confirmed
-   * client-side but not yet applied server-side" for 'never' (#727 review
-   * round 3, item 1).
+   * client-side but not yet applied server-side" for 'never' (archive#727).
    */
   lastAppliedApprovalMode?: unknown;
   onChange: (mode: ApprovalMode) => void;
 }
 
 /**
- * Composer control for a session's approval posture (#727). Shows the
+ * Composer control for a session's approval posture (archive#727). Shows the
  * EFFECTIVE mode — a session override wins over the connection's default,
  * which wins over the adapter's own built-in default.
  *
@@ -63,13 +62,13 @@ export interface ApprovalModeChipProps {
  * reach this component at all, because ChatInputArea only renders it for
  * `executionMode === 'external'`) it renders an inert "Set by engine" note rather
  * than a resolved mode — see APPROVAL_MODE_UNMANAGED_CHIP_LABEL for why
- * resolving one there was actively wrong (#1010 item 3).
+ * resolving one there was actively wrong (archive#1010).
  *
  * The pill shows a SHORT label (`approvalModeChipLabel`); the full descriptive
- * label lives on `aria-label`/`title` (#1010 item 2).
+ * label lives on `aria-label`/`title` (archive#1010).
  *
  * Escalating TO 'never' (full access) requires a second confirming click
- * (#727 review item 3) — backing out of that confirm, or dismissing the sheet,
+ * (archive#727) — backing out of that confirm, or dismissing the sheet,
  * leaves the session's mode untouched. Downgrades and every other selection
  * apply immediately. The confirm step now lives inside `ComposerModeSheet`.
  *
@@ -78,10 +77,10 @@ export interface ApprovalModeChipProps {
  * 'never' may even be rejected outright if the process wasn't spawned with
  * the required flag — see claude-adapter.ts). While the override says
  * 'never' but the adapter hasn't confirmed it yet, the chip shows a
- * distinct pending state rather than overclaiming (#727 review round 3,
- * item 1). Render callers MUST remount this component (e.g. `key={sessionId}`)
+ * distinct pending state rather than overclaiming (archive#727). Render
+ * callers MUST remount this component (e.g. `key={sessionId}`)
  * when the active session changes — its local confirm state is not reset by
- * prop changes alone (#727 review round 3, item 2).
+ * prop changes alone (archive#727).
  */
 export function ApprovalModeChip({
   engineConnectionId,
@@ -99,7 +98,7 @@ export function ApprovalModeChip({
   const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
 
   if (!supported) {
-    // Deliberately NOT `resolveEffectiveApprovalMode` (#1010 item 3): this
+    // Deliberately NOT `resolveEffectiveApprovalMode` (archive#1010): this
     // engine's adapter never reads `approvalMode`, so resolving one produced a
     // posture claim nothing honoured. Kept visible rather than hidden because
     // approvals are a security-relevant surface — an absent chip is
@@ -144,7 +143,7 @@ export function ApprovalModeChip({
     isOverride && effective.mode === 'never' && appliedMode !== 'never';
 
   // Full text for assistive tech and hover; the pill itself shows the short
-  // form so it stops clipping at 390px (#1010 item 2).
+  // form so it stops clipping at 390px (archive#1010).
   const selectedLabel = isPendingApply
     ? `${approvalModeLabel('never')} — pending next turn`
     : effective.label;

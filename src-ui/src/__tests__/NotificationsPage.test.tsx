@@ -92,8 +92,8 @@ function renderPage() {
 
 /**
  * The number the header bell renders, derived exactly as `HeaderActions` does
- * — `attention.pendingCount` through the notifications surface's own `badge()`
- * — so these tests compare the page against the real badge derivation rather
+ * `attention.pendingCount` through the notifications surface's own `badge`
+ * so these tests compare the page against the real badge derivation rather
  * than against a number restated in the test.
  */
 function bellBadgeCount(): number | null {
@@ -211,7 +211,7 @@ describe('NotificationsPage', () => {
       screen.getByText(/That approval request isn’t available/i),
     ).toBeTruthy();
     // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (station#3965).
+    // Station declines to substitute a different approval (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -256,7 +256,7 @@ describe('NotificationsPage', () => {
       screen.getByText(/That approval request isn’t available/i),
     ).toBeTruthy();
     // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (station#3965).
+    // Station declines to substitute a different approval (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -352,8 +352,8 @@ describe('NotificationsPage', () => {
     expect(screen.getByText('Nightly job failed')).toBeTruthy();
   });
 
-  // station#settings-revamp slice 5: canonical cross-link to Settings → Notifications.
-  // No guard here (confirmed, HIGH 1) — this page holds no editable/dirty
+  // archive#settings-revamp: canonical cross-link to Settings → Notifications.
+  // No guard here (confirmed, 1) — this page holds no editable/dirty
   // state a navigation could silently discard.
   test('the Notification settings link navigates to Settings with the notifications section param', () => {
     renderPage();
@@ -385,7 +385,7 @@ describe('NotificationsPage', () => {
     });
   });
 
-  // Review M2: the failure branch dropped the header the loading branch
+  // the failure branch dropped the header the loading branch
   // deliberately preserves, so a failed read took the route's own title and
   // its Clear / Notification settings controls down with it — the 6-OPS-23
   // defect the loading branch had already been fixed for.
@@ -567,7 +567,7 @@ describe('NotificationsPage', () => {
     expect(sdkMocks.acknowledgeAttentionItem).not.toHaveBeenCalled();
   });
 
-  // station#1912: `NotificationCard` used to render its Dismiss button only
+  // archive#1912: `NotificationCard` used to render its Dismiss button only
   // for `status === 'delivered'` — an `expired` (or still-`pending`)
   // notification, exactly the stale-pairing-request shape the issue
   // reported, had no dismiss affordance at all.
@@ -614,7 +614,7 @@ describe('NotificationsPage', () => {
     expect(screen.queryByText('Dismiss')).toBeNull();
   });
 
-  // station#1914: a `session-failed` attention item's "Dismiss" acknowledges
+  // archive#1914: a `session-failed` attention item's "Dismiss" acknowledges
   // it (a stored ack, not a notification delete) rather than doing nothing.
   test('dismissing a session-failed attention item acknowledges it', () => {
     const timestamp = new Date().toISOString();
@@ -645,7 +645,7 @@ describe('NotificationsPage', () => {
 });
 
 /**
- * station#1780 AC3: the full notifications page carries the SAME annotation
+ * archive#1780: the full notifications page carries the SAME annotation
  * the popover carries, on the same join. The two surfaces disagreeing about
  * one approval is the divergence this slice exists to end — and this page is
  * the one a reader reaches by clicking "View all notifications" from the
@@ -717,7 +717,7 @@ describe('NotificationsPage answerability annotation', () => {
 });
 
 /**
- * station#3214: the "Needs attention (N)" heading used to count the FILTERED
+ * archive#3214: the "Needs attention (N)" heading used to count the FILTERED
  * list while the bell badge counted the full pending set, so the two wore one
  * label for two populations. These pin the repaired contract: unfiltered the
  * heading IS the badge's number, and under a filter it names both.
@@ -838,7 +838,7 @@ describe('NotificationsPage attention count scope', () => {
   });
 
   /**
-   * Acknowledging is the operation station#3203 taught to move the badge; both
+   * Acknowledging is the operation archive#3203 taught to move the badge; both
    * numbers must move together, filtered or not. The projection is re-served
    * with the acknowledgement recorded, exactly as the invalidation-driven
    * refetch does.

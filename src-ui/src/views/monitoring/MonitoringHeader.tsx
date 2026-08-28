@@ -37,7 +37,7 @@ export function MonitoringHeader({
       }
     >
       <div className="monitoring-summary">
-        {/* audit 6-OPS-26 review: a number here is a claim about this Station.
+        {/* audit 6-OPS-26: a number here is a claim about this Station.
             Until the read succeeds there is no number to make — `—` while it
             is in flight, and a retry when it failed, rather than a `0` that
             reads as "nothing is running". */}

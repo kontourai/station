@@ -13,7 +13,7 @@ interface UIBlockRendererProps {
 }
 
 /**
- * station#1399 fix round, H2 (independent review): slice 1 shipped the
+ * archive#1399: shipped the
  * `attestationState` DATA with no reader anywhere in the product — nothing
  * in `UIBlockRenderer` inspected it, so a `'unattested'` block rendered
  * identically to an `'attested'` one and the state was invisible in
@@ -26,8 +26,8 @@ interface UIBlockRendererProps {
  * same as before; there is nothing to mark unattested about prose.
  */
 /**
- * station#1399 fix round 2, B5 (independent review — the reviewer's
- * condition for accepting the host's upward correction, M6): Console Kit's
+ * archive#1399 (the reviewer's condition for accepting the host's upward
+ * correction): Console Kit's
  * `Badge` has no title/tooltip prop of its own (it forwards only `value`/
  * `tone`/`className`), so the precise meaning is carried on a wrapping
  * `<span title>` — a plain, standard HTML tooltip, not a new component API.

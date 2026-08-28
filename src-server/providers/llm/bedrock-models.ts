@@ -52,7 +52,7 @@ const BEDROCK_REGION_CATALOG_MAX_KEYS = 32;
 const BEDROCK_CACHE_TTL_MS = 15 * 60 * 1000;
 export function normalizeBedrockRegion(region: string): string {
   const normalized = region.trim();
-  // station#1557 review round 2: the grammar lives in `bedrock-region.ts`
+  // archive#1557 review round 2: the grammar lives in `bedrock-region.ts`
   // alongside the resolver, so the module that discards a malformed
   // `AWS_REGION` and the module that throws on one cannot drift apart.
   if (!isBedrockRegionId(normalized)) {

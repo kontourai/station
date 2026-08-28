@@ -480,7 +480,7 @@ describe('buildHomeWorkItems', () => {
           provider: 'codex',
           status: 'ready',
           lifecycleState: 'running',
-          // Since #1069 "Running" means a turn is in flight, not merely that a
+          // Since archive#1069 "Running" means a turn is in flight, not merely that a
           // runtime attached. This fixture's subject is label ordering, so it
           // now carries the turn fold that makes it genuinely running.
           hasActiveTurn: true,
@@ -533,7 +533,7 @@ describe('buildHomeWorkItems', () => {
     });
 
     // The claim is WHICH model survives the restore, so it is asserted on the
-    // id. `modelLabel` is a derivation of that id (station#3391) and reads as
+    // id. `modelLabel` is a derivation of that id (archive#3391) and reads as
     // a name, not as the internal selector.
     expect(item?.model).toBe('claude-fable-5');
     expect(item?.modelLabel).toBe('Fable 5');
@@ -584,7 +584,7 @@ describe('buildHomeWorkItems', () => {
         },
       ] as any,
     });
-    // station#3227 A2: was `'Delegated Review'`. Home's private copy stripped
+    // archive#3227 A2: was `'Delegated Review'`. Home's private copy stripped
     // the `task:` prefix with its own regex and then Title-Cased the result;
     // `sessionTitle` (which the sessions list and project page already read)
     // keeps the id's own casing behind an explicit "Worker task ·" prefix, so
@@ -613,7 +613,7 @@ describe('buildHomeWorkItems', () => {
         },
       ] as any,
     });
-    // station#3227 A2/A4: was `'kiro task'`. The title is the ENGINE's name
+    // archive#3227 A2/A4: was `'kiro task'`. The title is the ENGINE's name
     // now, not the assigned agent's — `sessionTitle` names the engine that
     // ran the session, and `agentLabel` (asserted immediately below, and
     // rendered as its own field on every Home row that shows an agent) is
@@ -651,7 +651,7 @@ describe('buildHomeWorkItems', () => {
     expect(tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ title: 'codex Chat' }),
-        // station#3227 A2: was `'codex task'` — see the engine-vs-agent note
+        // archive#3227 A2: was `'codex task'` — see the engine-vs-agent note
         // above. `agentLabel` still pins the slug, which is what this test
         // is actually about (no raw runtime id reaches either field).
         expect.objectContaining({
@@ -840,7 +840,7 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Completed');
   });
 
-  // station#1296: a sticky `pendingReview` (a resolution that bypassed the
+  // archive#1296: a sticky `pendingReview` (a resolution that bypassed the
   // normal respond/stop path) must never outrank a session that has actually
   // completed — this is the UI half of the fix; the server half stops
   // `pendingReview` from surviving a terminal transition in the first place
@@ -886,7 +886,7 @@ describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
     expect(item.lifecycleLabel).toBe('Failed');
   });
 
-  // station#1296 independent-review fault injection: `status` (transport)
+  // archive#1296: `status` (transport)
   // and `lifecycleState` (event-fold outcome) are independent — a crashed
   // runtime (lifecycleState 'failed' via runtime.error) commonly also has
   // its connection torn down (status 'closed') once the process exits. The
@@ -954,7 +954,7 @@ describe('orchestration display identity', () => {
       ] as any,
     });
 
-    // station#3227 A2: was `'Review History'` (Home's Title-Casing of the
+    // archive#3227 A2: was `'Review History'` (Home's Title-Casing of the
     // task id). Same canonical form as the delegated-title test above.
     expect(item.title).toBe('Worker task · review history');
     expect(item.cwdLabel).toBeUndefined();
@@ -1145,7 +1145,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
     };
   }
 
-  // AC3: the local-first invariant. Omitting `remoteEnvironments` and
+  // the local-first invariant. Omitting `remoteEnvironments` and
   // passing its default `[]` explicitly must produce byte-identical output
   // to each other, and to what this exact input produced before remote
   // support existed (a plain local orchestration item, untouched).
@@ -1167,7 +1167,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
     expect(withoutField[0].environmentLabel).toBeUndefined();
   });
 
-  // AC1: a two-station fixture — one local session, one connected remote
+  // a two-station fixture — one local session, one connected remote
   // environment's session — merges into one list, the remote item carrying
   // environment provenance for the badge.
   test('AC1: merges a connected remote environment session into the list with provenance', () => {
@@ -1255,7 +1255,7 @@ describe('station#1795: a chat with no messages yet is not epoch-0', () => {
   // so `latestChatTimestamp`'s reduce used to bottom out at its literal `0`
   // seed — sorting the chat dead last (behind every item with a real,
   // however old, timestamp) and rendering it in "Earlier" stamped "20668d"
-  // (days since 1970). station#1295 already fixed the case where a chat
+  // (days since 1970). archive#1295 already fixed the case where a chat
   // HAS a message with no usable timestamp; this covers the genuinely
   // message-less case that fix does not reach.
   test('a chat with no messages sorts by its own creation time, not epoch 0', () => {
@@ -1338,7 +1338,7 @@ describe('station#1295: chat recency is no longer derived from a 0 timestamp', (
     expect(tasks[0].title).toBe('Fresh chat');
   });
 
-  // station#1295: streaming bumps recency even though `streamingMessage`
+  // archive#1295: streaming bumps recency even though `streamingMessage`
   // itself carries no timestamp and hasn't been appended to `messages` yet
   // (finalize does that) — without this, a chat streaming RIGHT NOW could
   // still sort behind one that merely finished a while ago.
@@ -1369,11 +1369,11 @@ describe('station#1295: chat recency is no longer derived from a 0 timestamp', (
 });
 
 /**
- * station#1783 (ADR 0012 residual) — the Home lane family.
+ * archive#1783 (ADR 0012 residual) — the Home lane family.
  *
  * `orchestrationLifecycleLabel` folded a dead session's sticky
  * `pendingReview`/`needs_input` to `'Needs attention'`, which
- * `lifecycle-priority.ts` ranks TOP. Since station#1791 retired the
+ * `lifecycle-priority.ts` ranks TOP. Since archive#1791 retired the
  * boot-time cancellation write, nothing ever moved it off, so one dead
  * session pinned the top of Home — and of the lane placement and the mobile
  * Active group derived from the same label — indefinitely.
@@ -1489,7 +1489,7 @@ describe('Failed rows carry their reason (station#3688)', () => {
     expect(item.failureNotice).toBe('Stopped by request.');
   });
 
-  // #3724 review (BLOCKING): the iff must survive the chat+session MERGE —
+  // archive#3724: the iff must survive the chat+session MERGE —
   // the spread used to carry the chat side's notice regardless of which
   // side's label won.
   test('merge: an errored chat under a winning non-Failed label sheds its notice', () => {
@@ -1558,7 +1558,7 @@ describe('Failed rows carry their reason (station#3688)', () => {
 
   // The discriminating case injection proved missing: a BLOCKED session
   // carries a blockedReason too, and its label is not Failed. An unbound
-  // derivation (the #1783 B1b shape — computed without the label gate) puts
+  // derivation (the archive#1783 shape — computed without the label gate) puts
   // failure prose under a non-Failed chip; this is the test that reddens it.
   test('iff, session side: a blocked (non-failed) session with a blockedReason carries no failure notice', () => {
     const base: OrchestrationSessionSummary = {
@@ -1595,7 +1595,7 @@ describe('Home lifecycle label answerability (station#1783)', () => {
 
   // Fully typed, with NO cast. `as never` is a stronger exemption than the
   // `as OrchestrationSessionSummary` removed earlier in this branch — it
-  // disables structural checking outright, so station#1778's required member
+  // disables structural checking outright, so archive#1778's required member
   // would not be enforced for this fixture at all. Review caught that the
   // "no casts survive" claim was false while these two remained.
   function build(
@@ -1645,7 +1645,7 @@ describe('Home lifecycle label answerability (station#1783)', () => {
   });
 
   /**
-   * REVIEW BLOCKING B1b. `turn.completed` folds a session to `completed`, and
+   *`turn.completed` folds a session to `completed`, and
    * recovery skips already-closed sessions at boot — so after any restart
    * every ordinary finished conversation is detached and takes the
    * `past_resume` arm. This is not an edge case; it is the steady state of

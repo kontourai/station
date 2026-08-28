@@ -212,7 +212,7 @@ describe('framework-model-factory — Bedrock auth threading across execution pa
   });
 });
 
-// station#4197 delta review: the include_usage request is scoped to ollama —
+// archive#4197 delta review: the include_usage request is scoped to ollama —
 // generic openai-compat fronts gateways where an unrecognized stream_options
 // param can 400 a previously-working streamed turn. Pinned in both
 // directions so a factory refactor cannot silently drop or widen the flag.

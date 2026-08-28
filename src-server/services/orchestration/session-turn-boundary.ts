@@ -119,7 +119,7 @@ export interface SessionTurnBoundaryAuthority {
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
   observe(event: CanonicalRuntimeEvent): SessionTurnBoundaryTransition;
   /**
-   * station#4080 slice 1: `reconcile`'s existing dead-owner sweep already
+   * archive#4080: `reconcile`'s existing dead-owner sweep already
    * flips a dead `invoking` owner to `indeterminate` — this surfaces THAT
    * same sweep's full dead-owner findings, additionally across `accepted`
    * (a deliberately protected fact this sweep never mutates on its own) and

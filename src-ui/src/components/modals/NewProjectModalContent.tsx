@@ -37,7 +37,7 @@ function NewProjectModalHeader({
           id="new-project-modal-title"
           // Only actually receives focus when `NewProjectModalContent`'s own
           // effect imperatively moves it here on returning from the layout
-          // browser (station#1825 item 4 review round 2) — never stolen on
+          // browser (archive#1825 2) — never stolen on
           // the modal's genuine first open, which stays owned by
           // `ResponsiveDialogSurface`'s own initial-focus behavior.
           tabIndex={-1}
@@ -76,7 +76,7 @@ function NewProjectFormActions({
         shared `Button`'s `pending` adds the spinner and the refusal, and
         makes this the same treatment every other async primary now uses
         rather than a per-dialog convention.
-      */}
+*/}
       <Button
         type="submit"
         variant="primary"
@@ -210,7 +210,7 @@ export function NewProjectModalContent({
 
   const browseHistoryId = useId();
   // Hardware/browser Back while browsing must return to the draft form, not
-  // exit the whole New Project flow (station#1825 item 4 review round 2).
+  // exit the whole New Project flow (archive#1825 2).
   // The outer `ResponsiveDialogSurface` below intentionally does NOT push a
   // history layer of its own (`historyMode="route"`: the modal's overall
   // open/close is driven by the app's own `/projects/new` route, mounting
@@ -238,8 +238,8 @@ export function NewProjectModalContent({
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const wasBrowsingRef = useRef(false);
-  // Return-focus for the reverse transition (station#1825 item 4 review
-  // round 2): `NewProjectLayoutBrowserBody` moves focus onto its own heading
+  // Return-focus for the reverse transition (archive#1825
+  //): `NewProjectLayoutBrowserBody` moves focus onto its own heading
   // when it mounts (forward). Coming back, the modal frame itself doesn't
   // remount (unlike the old nested dialog, which got a fresh focus trap for
   // free), so without this, focus falls to `document.body` — outside the

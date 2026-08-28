@@ -35,7 +35,7 @@ vi.mock('../session-summary-generation.js', async (importOriginal) => ({
     partialMessageIncluded: false,
   }),
 }));
-// station#4080 slice 1 follow-up (review round 2, finding 1): spy-wrap the
+// archive#4080 follow-up (review round 2, finding 1): spy-wrap the
 // REAL implementation (not a fake) so every other test's behavior is
 // unchanged — this exists only to pin that the messages route actually
 // calls through the shared resolver rather than a re-derived copy.
@@ -705,7 +705,7 @@ describe('Conversation Routes', () => {
     );
     // A typed failure, not null: the generator no longer has a null return
     // at all, because four different causes collapsing to one value is what
-    // forced the route into an ambiguous message (station#3148).
+    // forced the route into an ambiguous message (archive#3148).
     vi.mocked(generateSessionSummary).mockReset();
     vi.mocked(generateSessionSummary).mockResolvedValue({
       failed: true,
@@ -1247,7 +1247,7 @@ describe('Conversation Routes', () => {
     expect(manageConversationContext).not.toHaveBeenCalled();
   });
 
-  // S1 of #1302: the session projection already emits `projectSlug`
+  // S1 of archive#1302: the session projection already emits `projectSlug`
   // (`orchestration-service.ts`'s `readSessionConversation`) — this pins
   // that the list route's declared type no longer erases it on the wire.
   test('GET /:slug/conversations carries projectSlug through for session-projection items', async () => {
@@ -1301,7 +1301,7 @@ describe('Conversation Routes', () => {
     ]);
   });
 
-  // S1 of #1302: `ensureChatConversation` stamps `projectSlug` into a
+  // S1 of archive#1302: `ensureChatConversation` stamps `projectSlug` into a
   // newly-created file-backed conversation's metadata; the list route
   // must project it back out to the top level.
   test('a chat-created conversation persists projectSlug and re-lists it', async () => {
@@ -1738,7 +1738,7 @@ describe('Conversation Routes', () => {
     });
   });
 
-  // station#1566: a rename always stamps `titleSource: 'user'` into
+  // archive#1566: a rename always stamps `titleSource: 'user'` into
   // metadata (merged with whatever metadata already existed on the
   // conversation), even though this PATCH body carries no `metadata` field
   // of its own — see `sanitizePublicConversationUpdate`.
@@ -1760,7 +1760,7 @@ describe('Conversation Routes', () => {
     });
   });
 
-  // station#1566: a rename's titleSource:'user' stamp must survive
+  // archive#1566: a rename's titleSource:'user' stamp must survive
   // alongside a caller-supplied metadata patch too, not just the
   // no-metadata-in-body case above.
   test('PATCH /:slug/conversations/:id stamps titleSource user alongside an explicit metadata update', async () => {
@@ -1784,7 +1784,7 @@ describe('Conversation Routes', () => {
     });
   });
 
-  // station#1566: a metadata-only PATCH (no title in the body) must NOT
+  // archive#1566: a metadata-only PATCH (no title in the body) must NOT
   // stamp titleSource:'user' — only a real rename should mark the title as
   // human-owned.
   test('PATCH /:slug/conversations/:id does not stamp titleSource when only metadata changes (no rename)', async () => {
@@ -1926,7 +1926,7 @@ describe('Conversation Routes', () => {
     });
   });
 
-  // S1 of #1302: the metadata merge in `sanitizePublicConversationUpdate`
+  // S1 of archive#1302: the metadata merge in `sanitizePublicConversationUpdate`
   // preserves arbitrary existing fields the client's PATCH body doesn't
   // mention — pinning this for `projectSlug` specifically (not just the
   // `acpSessionId` case already covered above) so a title/color rename
@@ -1998,7 +1998,7 @@ describe('Conversation Routes', () => {
         }),
       );
       expect(body.success).toBe(true);
-      // station#1566: a rename still stamps titleSource:'user' even when the
+      // archive#1566: a rename still stamps titleSource:'user' even when the
       // metadata payload itself was invalid and stripped — existing valid
       // metadata (here, the real acpSessionId) survives alongside it.
       expect(adapter.updateConversation).toHaveBeenCalledWith('c1', {
@@ -2579,7 +2579,7 @@ describe('Conversation Routes', () => {
     );
   });
 
-  // station#1399 fix round 2, B2 (independent review) — the FileMemory
+  // archive#1399 fix round 2, B2 (independent review) — the FileMemory
   // bypass reproduction: `memory-adapter-messages.ts` serializes and reads
   // back a message's `parts` VERBATIM, with no equivalent write-time seam
   // to `publishCanonicalEvent`'s. A well-shaped forged tuple (real
@@ -2730,7 +2730,7 @@ describe('Conversation Routes', () => {
     // methods are required, mirroring the full-reader literals used
     // elsewhere in this file.
     const reader = {
-      // The full SessionMessageReader surface: #1324's original fixture
+      // The full SessionMessageReader surface: archive#1324's original fixture
       // predated the S1/S2 interface convergence and carried only
       // readSessionUsage, which no longer satisfies the type.
       readSessionMessages: vi.fn().mockReturnValue([]),
@@ -3014,7 +3014,7 @@ describe('Global Conversation Routes', () => {
     );
   });
 
-  // S2 of #1302: the global conversation-inventory endpoint. Folds the
+  // S2 of archive#1302: the global conversation-inventory endpoint. Folds the
   // orchestration session leg (across every agent) and every registered
   // adapter's file-store conversations, tags each item's `source`, and
   // pins that `projectSlug` survives on both legs.
@@ -3479,7 +3479,7 @@ describe('Global Conversation Routes', () => {
     expect(body.data.agentSlug).toBe('station');
   });
 
-  // #801: the map key names the adapter that answered, not the owner. An
+  // archive#801: the map key names the adapter that answered, not the owner. An
   // adapter resolves conversations stored under any agent, so the first
   // adapter iterated used to be reported as the agent — relabelling the
   // transcript under an agent that never produced it and routing the next
@@ -3691,7 +3691,7 @@ describe('Conversation export route (station#1999 S2)', () => {
   });
 
   /**
-   * station#3158: one string answered three different situations, and the
+   * archive#3158: one string answered three different situations, and the
    * read already knew which one it was looking at.
    */
   describe('names which empty it found', () => {
@@ -3702,7 +3702,7 @@ describe('Conversation export route (station#1999 S2)', () => {
       // projection meant a conversation that exists (and that GET /messages
       // serves as 200 []) was reported as "Conversation not found" by export.
       // A positive claim of non-existence about something that exists is the
-      // label-vs-derivation defect relocated, not removed (station#3158
+      // label-vs-derivation defect relocated, not removed (archive#3158
       // review).
       const adapter = exportAdapter();
       adapter.getMessages = vi.fn().mockResolvedValue([]);

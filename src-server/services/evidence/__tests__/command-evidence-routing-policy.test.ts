@@ -142,7 +142,7 @@ describe('DefaultCommandEvidenceRoutingPolicy', () => {
 
 /**
  * The claim types Station's own `station-delivery` definition expects
- * (station#189). These are held to a stricter standard than the generic
+ * (archive#189). These are held to a stricter standard than the generic
  * patterns: a false positive here does not misfile evidence, it PASSES a
  * delivery gate. Each case below is a command that must NOT be accepted as
  * that gate's evidence.
@@ -250,7 +250,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station-delivery claim types',
 
   test('an excluded command with no real execution below it falls through to NO-ROUTE', () => {
     // `--check test` is a mention (a --check category value), not a test
-    // execution — station#1433's exact bug class. Before the fix this fell
+    // execution — archive#1433's exact bug class. Before the fix this fell
     // through to `quality.tests` off the bare word; now `quality.tests`
     // requires an execution verb, so nothing below the readiness exclude
     // matches and the command correctly does not route anywhere.
@@ -271,12 +271,12 @@ describe('DefaultCommandEvidenceRoutingPolicy — station-delivery claim types',
 });
 
 /**
- * station#1433: the generic entries (`quality.tests`, `quality.typecheck`,
+ * archive#1433: the generic entries (`quality.tests`, `quality.typecheck`,
  * `quality.lint`, `build.success`) used to be bare word matches, so they
  * matched a MENTION of the word anywhere in the command line, not an actual
  * execution. Redesigned around execution verbs — the same discipline already
- * applied to `quality.verification` in station#189 — with no bolt-on
- * exclusion list (per the #189 round-3 review ruling).
+ * applied to `quality.verification` in archive#189 — with no bolt-on
+ * exclusion list (per the archive#189 round-3 review ruling).
  */
 describe('DefaultCommandEvidenceRoutingPolicy — generic patterns require an execution verb', () => {
   const policy = new DefaultCommandEvidenceRoutingPolicy();
@@ -323,7 +323,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — generic patterns require an ex
   });
 
   test('rg playwright test does not route at all', () => {
-    // Not just excluded from quality.verification (station#189) — the bare
+    // Not just excluded from quality.verification (archive#189) — the bare
     // word `test` inside a search query must not fall through to
     // quality.tests either.
     expect(routeFor('rg playwright test')).toBeNull();
@@ -384,7 +384,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — generic patterns require an ex
 });
 
 /**
- * station#1433 round-2 review fixes: a ReDoS in the anchor (HIGH-1), a
+ * archive#1433 round-2 review fixes: a ReDoS in the anchor (HIGH-1), a
  * multi-line/indentation gap (MEDIUM-3), missing non-JS ecosystems
  * (MEDIUM-4), no-op invocations routing as passing evidence (MEDIUM-1), a
  * too-strict tsc build exclude (LOW), and the repo's own mandated sentinel
@@ -585,7 +585,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — round-2 review fixes', () => {
   });
 
   /**
-   * station#1433 round-3 review, NEW-1 (HIGH): the `m`-flag anchor
+   * archive#1433 round-3 review, NEW-1 (HIGH): the `m`-flag anchor
    * (MEDIUM-3) treats every line as a potential leading invocation,
    * including a heredoc BODY line — so a command that only WRITES "npm
    * test" into a file (a shell script, a Makefile, a doc) was routing as if
@@ -652,12 +652,12 @@ describe('DefaultCommandEvidenceRoutingPolicy — round-2 review fixes', () => {
 });
 
 /**
- * station#1433 round-3 review, NEW-4: `quality.verification` is a claim
+ * archive#1433 round-3 review, NEW-4: `quality.verification` is a claim
  * type a LIVE station-delivery gate expects, so a no-op invocation that
  * happens to match its verb pattern (`npm run test:e2e --help`) is not a
  * diagnostic curiosity — it is evidence that would falsely pass a real
  * gate. `governance.merge-readiness` and `quality.static-checks` gained the
- * same NO_OP_EXCLUDE treatment in station#1451 (see the describe block
+ * same NO_OP_EXCLUDE treatment in archive#1451 (see the describe block
  * below).
  */
 describe('DefaultCommandEvidenceRoutingPolicy — NEW-4: quality.verification rejects no-op invocations', () => {
@@ -706,7 +706,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — NEW-4: quality.verification re
 });
 
 /**
- * station#1433 round-3 review, NEW-4 boundary: `--list(?:Tests)?` must not
+ * archive#1433 round-3 review, NEW-4 boundary: `--list(?:Tests)?` must not
  * match as a prefix of an unrelated flag like prettier's `--list-different`.
  */
 describe('DefaultCommandEvidenceRoutingPolicy — NEW-4 boundary: --list-different is not a no-op flag', () => {
@@ -757,13 +757,13 @@ describe('DefaultCommandEvidenceRoutingPolicy — NEW-4 boundary: --list-differe
 });
 
 /**
- * station#1451: `quality.static-checks`, `quality.verification`, and
+ * archive#1451: `quality.static-checks`, `quality.verification`, and
  * `governance.merge-readiness` are the three claim types a LIVE
  * station-delivery gate actually expects (see the "station-delivery claim
  * types" describe block above), yet still matched a MENTION anywhere in
- * the command line rather than an execution — the exact #189 M1 class,
+ * the command line rather than an execution — the exact archive#189 M1 class,
  * surviving on the patterns that matter most: a false positive here
- * doesn't misfile evidence, it PASSES a real gate. Found during #1433's
+ * doesn't misfile evidence, it PASSES a real gate. Found during archive#1433's
  * independent review (2026-08-01). Fixed with the same leading-command
  * verb anchoring already applied to the generic four; the review's probe
  * corpus is the negative-test set below.
@@ -803,7 +803,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
 
   describe('quality.static-checks', () => {
     test.each([
-      // The exact #1451 probe corpus: echoing/searching/committing about
+      // The exact archive#1451 probe corpus: echoing/searching/committing about
       // the command is not running it.
       'echo "run npm run ci:fast first"',
       'grep -rn "verify:static" docs/',
@@ -817,7 +817,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
       ['npm run verify:local', 'quality.static-checks'],
       ['npm run ci:fast', 'quality.static-checks'],
       ['yarn run ci:fast', 'quality.static-checks'],
-      // npm's documented `--` argument separator (station#1451 review FN-1).
+      // npm's documented `--` argument separator (archive#1451 review FN-1).
       ['npm run -- ci:fast', 'quality.static-checks'],
       // The coordinator behind the npm scripts, invoked directly.
       [
@@ -864,7 +864,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
 
   describe('governance.merge-readiness', () => {
     test.each([
-      // The exact #1451 probe corpus: git history/commit-message mentions
+      // The exact archive#1451 probe corpus: git history/commit-message mentions
       // of "veritas readiness" are not a readiness run.
       'git log --grep "veritas readiness"',
       'git commit -m "docs: mention veritas readiness"',
@@ -883,7 +883,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
         'governance.merge-readiness',
       ],
       // The VERBATIM body of this repo's own veritas:shadow/veritas:readiness
-      // npm scripts (package.json) — station#1451 review FN-1, reviewer-
+      // npm scripts (package.json) — archive#1451 review FN-1, reviewer-
       // verified: npm's documented `--` separator broke the anchor before
       // this fix, so an agent running the expanded form (instead of the
       // `npm run veritas:shadow` alias) produced NO-ROUTE.
@@ -908,7 +908,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
 
   describe('quality.verification', () => {
     test.each([
-      // The exact #1451 probe corpus: echoing, searching within a file, and
+      // The exact archive#1451 probe corpus: echoing, searching within a file, and
       // finding a FILE NAMED after run-e2e-suite are none of them running
       // the browser lane. Not previously excluded by the search-tool
       // prefix list (echo/sed/find are not rg/grep/ack/ag/cat/less/head) —
@@ -949,7 +949,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
 });
 
 /**
- * station#1451: the same ReDoS discipline HIGH-1/NEW-1 already established
+ * archive#1451: the same ReDoS discipline HIGH-1/NEW-1 already established
  * for the generic four patterns, re-run against the three gate-passing
  * patterns' final regexes. `route()`'s `.find()` scans the WHOLE
  * `claimPatterns` array in order for every call regardless of which gate is
@@ -1034,7 +1034,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: ReDoS regression
     expect(routeFor(`node ${'x'.repeat(130)}run-e2e-suite.mjs`)).toBeNull();
   });
 
-  // FN-1 (station#1451 review): SEP (`(?:--\s+)?`) is folded into the shared
+  // FN-1 (archive#1451 review): SEP (`(?:--\s+)?`) is folded into the shared
   // ANCHOR_OPTIONAL/ANCHOR_REQUIRED, so it participates in every pattern
   // built from them, not just governance/static-checks. Reviewer-specified
   // adversarial shapes.
@@ -1050,7 +1050,7 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: ReDoS regression
     expect(performance.now() - start).toBeLessThan(250);
   });
 
-  // FN-2 (station#1451 review): the new RUN_VERIFICATION_REQUEST_ANCHOR
+  // FN-2 (archive#1451 review): the new RUN_VERIFICATION_REQUEST_ANCHOR
   // literal (`run-verification\.mjs` + `request`) composed against the
   // m-flag CHAIN_START anchor, across many independent line-start points —
   // the same shape as the NODE_SCRIPT_ANCHOR probe above, extended past the

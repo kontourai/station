@@ -271,7 +271,7 @@ describe('BoardStore', () => {
     expect(reloaded.generation).toBe(widget.generation);
     expect(reloaded.revision).toBe(0);
     // Attestation state survives verbatim from the store's persisted bytes —
-    // it is never re-minted on rehydrate (station#1399's serve-path
+    // it is never re-minted on rehydrate (archive#1399's serve-path
     // sanitization guards the READ-FOR-DISPLAY paths, not this store, but
     // the invariant this probe cares about is that the reload does not
     // fabricate a DIFFERENT attestation state than what was pinned).

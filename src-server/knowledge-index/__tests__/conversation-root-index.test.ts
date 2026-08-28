@@ -1,5 +1,5 @@
 /**
- * End-to-end index integration for `root:conversations` (station#1879, W4):
+ * End-to-end index integration for `root:conversations` (archive#1879, W4):
  * register the `conversation-store` adapter + boot-wire the root exactly like
  * production (`ensureConversationKnowledgeRoot`), `rebuildRoot` it through the
  * real K3 `SqliteVecIndexProvider` (stub embedder, real chunking, real

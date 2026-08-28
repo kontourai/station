@@ -33,7 +33,7 @@
 }
 
 /**
- * station#1783: "can't be answered here" — settled-looking, but visibly NOT
+ * archive#1783: "can't be answered here" — settled-looking, but visibly NOT
  * the "Done" chip. Review caught the first version reusing `--done`, which
  * painted the opposite meaning in the same colour on a row that has not
  * finished. Still inside the neutral family (no fourth colour meaning): the

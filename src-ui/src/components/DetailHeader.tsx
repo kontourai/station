@@ -3,7 +3,7 @@
  * Enforces consistent hierarchy: identity left, contextual actions right.
  *
  * Heading level is owned by the skeleton, not by the calling view
- * (station#2931, `docs/design/shell-skeletons.md` §2.1). Inside a
+ * (archive#2931, `docs/design/shell-skeletons.md` §2.1). Inside a
  * `SplitPaneLayout` detail slot the shell already renders the collection title
  * at page level, so this header's title is the ITEM title and renders one level
  * down; everywhere else it is the page's own subject and renders at page level.

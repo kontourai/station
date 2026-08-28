@@ -187,7 +187,7 @@ describe('monitoringSessionCounts', () => {
       activeSessions: 0,
       runningTurns: 0,
     });
-    // ...but an open turn is a fact the server did report.
+    //...but an open turn is a fact the server did report.
     expect(monitoringSessionCounts([{ hasActiveTurn: true }])).toEqual({
       activeSessions: 0,
       runningTurns: 1,

@@ -68,7 +68,7 @@ export interface StagedPreToolPolicyDeps {
 /**
  * Every denial this evaluator produces, composed in one place.
  *
- * station#3210: the tool name is passed SEPARATELY from the prose and is
+ * archive#3210: the tool name is passed SEPARATELY from the prose and is
  * interpolated only inside `denial-message.ts`, so a new stage added below
  * cannot accidentally put an unbounded, newline-carrying tool name into
  * Station's own sentence — the signature does not offer a way to. Foreign
@@ -85,11 +85,11 @@ function deny(
   toolDenials.add(1, { reason });
   return {
     behavior: 'deny',
-    // station#3091: `policyDenied` marks this as an evaluator-produced
+    // archive#3091: `policyDenied` marks this as an evaluator-produced
     // denial (as opposed to a human declining via an approval requester,
     // which agent-hooks.ts constructs without this flag) — the client's
     // policy-denied badge derives from this field, never inferred.
-    // station#3210: `stationDenial` additionally stamps
+    // archive#3210: `stationDenial` additionally stamps
     // `stationComposedReason`, which is the separate signal that gates
     // verbatim rendering. The badge's derivation is unchanged.
     denial: stationDenial({
@@ -107,7 +107,7 @@ const CONFIG_PROTECTION_PREDICATE =
 
 /**
  * How a config-protection verdict's `reason` should be rendered, derived from
- * the authorship the policy service declared for it (station#3210).
+ * the authorship the policy service declared for it (archive#3210).
  *
  * `station` text continues Station's own sentence, because Station wrote it:
  * either the pure-TypeScript guard's remediation prose or the `native`
@@ -218,7 +218,7 @@ export function createStagedPreToolPolicyEvaluator(
           engine: verdict.engine,
           reasonAuthor: policyReasonRendering(verdict).author,
         });
-        // station#3210: `verdict.reason` has two possible authors and the
+        // archive#3210: `verdict.reason` has two possible authors and the
         // attribution is DERIVED from the one the policy service declared,
         // never hardcoded. Hardcoding "quoted from the config-protection
         // hook" is the same defect this issue is about, pointed the other
@@ -267,7 +267,7 @@ export function createStagedPreToolPolicyEvaluator(
           agentSlug: invocation.agentSlug,
           reason: review.reason,
         });
-        // station#3210: `review.reason` is LLM-authored, from a prompt that
+        // archive#3210: `review.reason` is LLM-authored, from a prompt that
         // embeds the tool's own MCP-server-supplied description and its
         // arguments. It is genuinely useful to the user, so it is preserved —
         // but bounded and attributed, never presented as Station's verdict.

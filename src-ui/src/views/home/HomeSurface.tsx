@@ -25,7 +25,7 @@ export interface HomeSurfaceProps {
    * join the way Activity's does (`PageFrameActions`). This is Home's own
    * top-of-content action slot instead: rendered beside the intro rather
    * than stacked above it, so it no longer collides with the `Your work`
-   * eyebrow (2026-08-26 audit F6). Optional so a test rendering `HomeSurface`
+   * eyebrow. Optional so a test rendering `HomeSurface`
    * directly is not forced to supply one.
    */
   topAction?: ReactNode;
@@ -34,7 +34,7 @@ export interface HomeSurfaceProps {
 const ACTIVITY_HEADING_ID = 'home-activity-heading';
 
 /**
- * The one Home (station#3122's experiment, concluded).
+ * The one Home (archive#3122's experiment, concluded).
  *
  * Reading order: name the question, offer the ways in, show where the work
  * has been, then the work itself. The first two sections are what Home has

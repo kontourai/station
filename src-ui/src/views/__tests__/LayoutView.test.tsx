@@ -96,7 +96,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
   /**
    * The audit watched `/projects/audit-alpha/layouts/coding` rotate whimsical
    * loading phrases indefinitely while the API had already answered 404 three
-   * times. The old code called `navigate()` from inside render and returned a
+   * times. The old code called `navigate` from inside render and returned a
    * loader; this asserts an answered 404 produces an ANSWER.
    */
   test('a 404 renders the not-found state with a way back, and never a loader', () => {
@@ -113,7 +113,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     ).toBeTruthy();
     // The dead layout stops being the restore target for `/`.
     expect(localStorage.getItem(LAST_PROJECT_LAYOUT_KEY)).toBeNull();
-    // ...and it is not a silent redirect: the broken deep link stays visible.
+    //.and it is not a silent redirect: the broken deep link stays visible.
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
@@ -160,7 +160,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
   // LayoutView maps the STORED config into the shape the renderer reads. The
   // `tabs[].prompts` -> `tabs[].skills` rename moved the contract and the
   // renderer but not this mapper, so a correctly authored quick action arrived
-  // as `undefined` and vanished with no error anywhere (review H2).
+  // as `undefined` and vanished with no error anywhere
   test('a tab skill survives the map into the renderer shape', () => {
     layoutQueryState.data = {
       slug: 'coding',

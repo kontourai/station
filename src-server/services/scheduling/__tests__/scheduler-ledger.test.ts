@@ -841,7 +841,7 @@ describe('SchedulerLedger', () => {
   });
 
   /**
-   * station#3188. The birth fingerprint comes from `ps` under a 1500ms
+   * archive#3188. The birth fingerprint comes from `ps` under a 1500ms
    * timeout, and spawning is exactly what contends on a loaded host. When
    * that probe returned null, a crashed owner's occurrence became
    * permanently unreclaimable — the scheduler silently stopped retrying it —
@@ -1211,7 +1211,7 @@ describe('SchedulerLedger', () => {
     };
     expect(first.receipt.recordNotInvoked(input)).toEqual({
       kind: 'unavailable',
-      // An injected readback fault, not damaged bytes (station#3220).
+      // An injected readback fault, not damaged bytes (archive#3220).
       reason: 'transient',
     });
     expect(first.receipt.recordNotInvoked(input)).toMatchObject({

@@ -53,7 +53,7 @@ async function seedScheduleCrudApi(page: Page) {
   ]);
   const runCalls: string[] = [];
 
-  // #947: this suite mocks every scheduler endpoint but left `/api/system/status`
+  // archive#947: this suite mocks every scheduler endpoint but left `/api/system/status`
   // to the live instance, so whether the first-run setup launcher rendered was
   // decided by whatever the server happened to have configured. On a clean
   // `--temp-home` instance `providers.configuredChatReady` is false, the
@@ -294,7 +294,7 @@ test.describe('Schedule Page', () => {
         .getByRole('dialog', { name: 'Edit: weekly-brief' })
         .locator('.schedule__cron-time'),
     ).not.toHaveText('...');
-    // #947: this Enter-submit was lost in ~2 of every 20 standalone runs — the
+    // archive#947: this Enter-submit was lost in ~2 of every 20 standalone runs — the
     // dialog just stayed open. Diagnosed rather than assumed: adding
     // `expect(saveChanges).toBeFocused()` immediately before the press still
     // failed at the same rate, and the failing run's trace shows *no*

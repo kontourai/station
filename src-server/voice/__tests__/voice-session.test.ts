@@ -462,7 +462,7 @@ describe('VoiceSession wiring', () => {
     });
     await tick();
 
-    // No guardian and no approval requester is configured here, so #1834's
+    // No guardian and no approval requester is configured here, so archive#1834's
     // fail-closed default denies: absence of an approval mechanism is not
     // approval. This is the same outcome any other surface gets.
     expect(execute).not.toHaveBeenCalled();
@@ -476,7 +476,7 @@ describe('VoiceSession wiring', () => {
   });
 
   /**
-   * station#3210 MED-3. The voice path composes four of its own denial
+   * archive#3210 MED-3. The voice path composes four of its own denial
    * sentences, and every existing assertion about them was
    * `stringContaining(<the tool name>)` — which a raw interpolation of the
    * name satisfies identically, so two independent injections reverting the
@@ -822,7 +822,7 @@ describe('VoiceSession wiring', () => {
     );
   });
 
-  // Owner decision (#2016 review): voice uses the SAME approval mechanics as
+  // Owner decision (archive#2016 review): voice uses the SAME approval mechanics as
   // every other surface — no voice-specific restriction. An operator who
   // enables the guardian has enabled it for voice too, exactly as for the
   // scheduler and /invoke, which are equally unattended.

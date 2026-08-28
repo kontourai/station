@@ -393,7 +393,7 @@ describe('installPluginDependency', () => {
 });
 
 /**
- * station#4288, review HIGH 3.
+ * archive#4288, review HIGH 3.
  *
  * `installPluginDependency` REBUILDS a dependency that is already installed:
  * `buildPlugin` runs `ensurePluginDeps` (an `npm install` inside
@@ -490,7 +490,7 @@ describe('rebuilding an installed dependency (station#4288)', () => {
 });
 
 /**
- * station#4309 follow-up, defect 1.
+ * archive#4309 follow-up, defect 1.
  *
  * `withPluginContentLock` refuses an acquisition that would deadlock by
  * throwing a typed `PluginContentLockCycleError` carrying the cycle. The
@@ -564,7 +564,7 @@ describe('a refused content lock survives the dependency result boundary', () =>
 });
 
 /**
- * station#4309 follow-up, defect 2.
+ * archive#4309 follow-up, defect 2.
  *
  * The dependency rollback used to `rmSync` `<plugins>/<id>` from a catch that
  * sits OUTSIDE that plugin's content lock, and on failures that happened
@@ -685,7 +685,7 @@ describe('a dependency rollback only deletes a tree it created, under that plugi
     // `cpSync(staged, targetDir)` once an alias it owns names this plugin, so
     // a provider call here deletes the concurrent operation's tree from inside
     // the provider — and the caller cannot roll THAT back, because it did not
-    // create it (station#4309 follow-up review, MEDIUM 1).
+    // create it (archive#4309 follow-up review, MEDIUM 1).
     let releaseHolder: () => void = () => {};
     const holderGate = new Promise<void>((resolve) => {
       releaseHolder = resolve;
@@ -757,7 +757,7 @@ describe('a dependency rollback only deletes a tree it created, under that plugi
     // will validate that path. The expected name is the assertion that keeps
     // the two in step; without it a provider resolving a different name
     // rewrites another plugin's tree under this plugin's lock, and neither
-    // rollback branch fires (station#4309 follow-up review, MEDIUM 3).
+    // rollback branch fires (archive#4309 follow-up review, MEDIUM 3).
     const providerInstall = vi.fn(
       async (
         _id: string,
@@ -794,7 +794,7 @@ describe('a dependency rollback only deletes a tree it created, under that plugi
 });
 
 /**
- * station#4309 follow-up review, HIGH 1.
+ * archive#4309 follow-up review, HIGH 1.
  *
  * A caller that has to undo a partial install needs the IDENTITY of the trees
  * this install created. The frames that create them are the only ones that

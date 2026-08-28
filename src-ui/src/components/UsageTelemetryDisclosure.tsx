@@ -25,7 +25,7 @@ type Disclosure = {
  * The dialog needs an exit that does not require the acknowledgement to
  * succeed — a revoked session, a 403, or an unwritable receipt path otherwise
  * traps the user behind a modal whose single action keeps failing, with the
- * connection-recovery UI it covers unreachable (delta review, HIGH). But the
+ * connection-recovery UI it covers unreachable. But the
  * component re-mounts on every route, so component state would forget the
  * dismissal immediately; it lives here instead.
  *

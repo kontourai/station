@@ -20,7 +20,7 @@ const taskMetrics = vi.hoisted(() => ({
   taskReferenceCreatedTotal: { add: vi.fn() },
   taskWorkspaceBindingTotal: { add: vi.fn() },
   taskWorkspaceOpenTotal: { add: vi.fn() },
-  // station#1501 slice 3b: the workspace seam now resolves through
+  // archive#1501: the workspace seam now resolves through
   // `project-resource-resolver.ts`, which records this instrument from the
   // SAME module this mock replaces wholesale. Omitting it left it undefined
   // and every resolution threw a TypeError.
@@ -365,7 +365,7 @@ describe('TaskGraphService', () => {
     const second = new TaskGraphService(home);
     let interleaved = false;
     const first = new TaskGraphService(home, {
-      // Async since #2646: the interleaved commit must be AWAITED here, or the
+      // Async since archive#2646: the interleaved commit must be AWAITED here, or the
       // concurrent write this test exists to preserve never lands before the
       // lock is handed back and the assertion below silently stops testing it.
       acquireMutationLock: async () => {
@@ -427,7 +427,7 @@ describe('TaskGraphService', () => {
     const second = new TaskGraphService(home);
     let interleaved = false;
     const stale = new TaskGraphService(home, {
-      // Async since #2646 — `void` no longer completes the concurrent write
+      // Async since archive#2646 — `void` no longer completes the concurrent write
       // before the lock is released, which would leave the stale transition
       // below succeeding and the test asserting nothing.
       acquireMutationLock: async () => {
@@ -1500,7 +1500,7 @@ describe('TaskGraphService', () => {
       },
       undefined,
       // This task names no builder sidecar, so nothing is declared and no
-      // attach mode is forced (station#189 S4).
+      // attach mode is forced (archive#189 S4).
       undefined,
     );
     expect(result.dispatch.outcome).toBe('started');
@@ -1523,7 +1523,7 @@ describe('TaskGraphService', () => {
       const service = createTempService({
         orchestrationService: { dispatch, seedSessionRecord: vi.fn() },
         workflowSidecarReader: { readState } as never,
-        // A namespaced workItemRef routes through dispatch-as-claim (#584)
+        // A namespaced workItemRef routes through dispatch-as-claim (archive#584)
         // on its way to session start; stub it so these tests observe the
         // slug decision rather than the claim gate.
         resolveProjectWorkspace: () => '/tmp/project-alpha',
@@ -1584,8 +1584,8 @@ describe('TaskGraphService', () => {
     });
 
     test('never derives a slug from a namespaced work item ref', async () => {
-      // `github:kontourai/station#1388` names a work item, not a sidecar
-      // directory. Slugifying it would be exactly the heuristic #582 forbade.
+      // `github:kontourai/archive#1388` names a work item, not a sidecar
+      // directory. Slugifying it would be exactly the heuristic archive#582 forbade.
       const { dispatch, readState } = await dispatchWithSidecar({
         workItemRef: 'github:kontourai/station#1388',
         readState: () => ({ task_slug: 'anything' }),
@@ -1682,7 +1682,7 @@ describe('TaskGraphService', () => {
 });
 
 /**
- * station#1501 slice 3b, seam S4
+ * archive#1501, seam S4
  * (`docs/design/portable-project-identity.md` §2.2.1).
  *
  * These use a REAL `FileStorageAdapter` over the same home the service is
@@ -1738,7 +1738,7 @@ describe('TaskGraphService workspace binding — migrated onto resolveProjectRes
   });
 
   /**
-   * station#1501 slice 3b review, FIX 5. The tilde fix reaches NEWLY DERIVED
+   * archive#1501 review, FIX 5. The tilde fix reaches NEWLY DERIVED
    * bindings only. A Task created while the same `~`-stored project did not
    * resolve persisted `availability: 'unavailable'`; reopening it after the
    * fix reports `ambiguous`, because `sameWorkspace` requires the STORED side
@@ -1845,7 +1845,7 @@ describe('TaskGraphService workspace binding — migrated onto resolveProjectRes
 
     // Half 2 — chat, for the SAME directory-less project. It must still
     // launch, at $HOME, flagged as a default rather than as a real binding
-    // (#1023/#1174). A slice that hardens this side into a refusal would
+    // (archive#1023/#1174). A slice that hardens this side into a refusal would
     // break a first-run affordance the UI advertises as "~ (defaults to
     // home)" — and half 1 alone would not notice.
     const chat = createChatHarness(adapter);

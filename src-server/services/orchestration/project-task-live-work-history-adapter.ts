@@ -1,4 +1,4 @@
-/** Composition seam for #2914's live projection and #2972's room authority. */
+/** Composition seam for archive#2914's live projection and archive#2972's room authority. */
 
 import type {
   ProjectTaskRoomAppendBody,

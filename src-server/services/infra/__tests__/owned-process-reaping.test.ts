@@ -27,10 +27,10 @@ import {
 } from '../process-utils.js';
 
 /**
- * station#1863 — the load-bearing tests.
+ * archive#1863 — the load-bearing tests.
  *
  * The founding finding of this repo is that a guardrail whose rejection path
- * has never executed is unproven. #1863 exists BECAUSE the cleanup path was
+ * has never executed is unproven. archive#1863 exists BECAUSE the cleanup path was
  * never exercised against a SIGKILLed parent. These tests do exactly that:
  * they spawn REAL detached processes, SIGKILL the owner, and assert the sweep
  * reaps the orphaned engine AND its grandchild. No mocks.
@@ -164,7 +164,7 @@ describe('owned-process reaping (#1863)', () => {
       // Grandchild covered: the group kill reaped it too.
       expect(isAlive(gc)).toBe(false);
     } finally {
-      // station#1863 fix round 3: this test previously had NO finally, so a
+      // archive#1863 fix round 3: this test previously had NO finally, so a
       // failure before the sweep (e.g. the grandchild-pid poll, or any
       // precondition assertion) left the detached engine + grandchild
       // reparented to init — the exact orphan this suite exists to prevent.
@@ -308,7 +308,7 @@ describe('owned-process reaping (#1863)', () => {
     // genuine pid recycle, so we fabricate the condition it produces — a live
     // owner.pid whose recorded birth fingerprint no longer matches the process
     // currently holding that pid. That is the exact signal `ownerIsGone` must
-    // read as "demonstrably gone" on a long-running host (#1863's scenario:
+    // read as "demonstrably gone" on a long-running host (archive#1863's scenario:
     // orphans accumulate over hours, owner pids recycle over hours).
     const bystander = spawn(
       process.execPath,
@@ -416,7 +416,7 @@ describe('ACPProcess escalation (#1863)', () => {
       logger: { warn: () => {}, debug: () => {} },
     });
     // Attach the spawned child the way start() does (proc + spawnedPid +
-    // release handle). `spawnedPid` is what the escalation reads (#3463).
+    // release handle). `spawnedPid` is what the escalation reads (archive#3463).
     (acp as any).proc = proc;
     (acp as any).spawnedPid = proc.pid ?? null;
     (acp as any).releaseOwnedChild = release;
@@ -425,7 +425,7 @@ describe('ACPProcess escalation (#1863)', () => {
       expect(proc.pid).toBeTypeOf('number');
       expect(isAlive(proc.pid)).toBe(true);
 
-      // station#3441 HIGH-1: forceGroupKill() now waits to CONFIRM the group
+      // archive#3441 HIGH-1: forceGroupKill() now waits to CONFIRM the group
       // is gone before releasing the registry record, so its own resolution
       // (not a separately-polled `isAlive`) is the proof.
       await acp.forceGroupKill();
@@ -442,7 +442,7 @@ describe('ACPProcess escalation (#1863)', () => {
     }
   });
 
-  // station#3441 HIGH-1: the pre-fix `forceGroupKill()` released the registry
+  // archive#3441 HIGH-1: the pre-fix `forceGroupKill()` released the registry
   // record unconditionally, on signal delivery alone -- never on confirmed
   // death. Reproduced live against this exact scenario (real spawn, real
   // registry dir, real `destroy()` rejection via `destroyProcessWithEscalation`):
@@ -479,7 +479,7 @@ describe('ACPProcess escalation (#1863)', () => {
       }),
     });
     (acp as any).proc = proc;
-    // `spawnedPid` is what forceGroupKill() reads (station#3463) -- without
+    // `spawnedPid` is what forceGroupKill() reads (archive#3463) -- without
     // it the escalation declines before ever consulting probeIdentity, and
     // the record surviving would prove nothing about confirm-before-release.
     (acp as any).spawnedPid = proc.pid ?? null;
@@ -517,7 +517,7 @@ describe('ACPProcess escalation (#1863)', () => {
     }
   });
 
-  // station#3441 MEDIUM-4: the `MAX_CLEANUP_RETRY_ATTEMPTS` docblock
+  // archive#3441 MEDIUM-4: the `MAX_CLEANUP_RETRY_ATTEMPTS` docblock
   // (acp-probe.ts) claimed "≈25s per reconnect when every survivor's destroy
   // rejects (never confirms)" -- a figure never re-derived after the R4 fix
   // round. This drives the IDENTICAL real scenario the sibling HIGH-1 test
@@ -537,7 +537,7 @@ describe('ACPProcess escalation (#1863)', () => {
       createClient: () => ({}) as any,
       logger: { warn: () => {}, debug: () => {} },
       // Rejects immediately -- models "destroy() REJECTS QUICKLY", the mode
-      // the corrected docblock text distinguishes from the #3422-shaped hang
+      // the corrected docblock text distinguishes from the archive#3422-shaped hang
       // (destroy never settling at all, ~13s/attempt, already validated).
       terminateProcess: async () => {
         throw new Error('cannot terminate');
@@ -550,7 +550,7 @@ describe('ACPProcess escalation (#1863)', () => {
       }),
     });
     (acp as any).proc = proc;
-    // `spawnedPid` is what forceGroupKill() reads (station#3463) -- without
+    // `spawnedPid` is what forceGroupKill() reads (archive#3463) -- without
     // it the escalation declines instantly and the measured "elapsed" would
     // be near-zero, not the confirm-wait cost under test.
     (acp as any).spawnedPid = proc.pid ?? null;
@@ -580,7 +580,7 @@ describe('ACPProcess escalation (#1863)', () => {
     }
   });
 
-  // station#3441 LOW-1: every existing assertion on releaseIfConfirmedGone()
+  // archive#3441 LOW-1: every existing assertion on releaseIfConfirmedGone()
   // was a vi.fn() spy on a mock cast `as unknown as ACPProcess` in
   // acp-probe.test.ts -- that proves attemptCleanup() CALLS something named
   // that, never that a registry record actually disappears. Same
@@ -674,7 +674,7 @@ describe('ACPProcess escalation (#1863)', () => {
     // own destroy. `terminateProcess` is a no-op, so destroy() completes
     // "successfully" — setting `destroyed` and NULLING `this.proc` — while the
     // real child is still running. Reading the pid from `this.proc` here
-    // declined to act and the engine survived unreaped (station#3463); the
+    // declined to act and the engine survived unreaped (archive#3463); the
     // escalation must read `spawnedPid`, exactly as survivesCleanup() does.
     const { proc, release } = spawnOwnedChild(
       process.execPath,
@@ -700,13 +700,13 @@ describe('ACPProcess escalation (#1863)', () => {
       await acp.destroy();
       // destroy() has forgotten the handle, and the child is still there.
       expect((acp as any).proc).toBeNull();
-      // station#3441: survivesCleanup() is async on this branch too -- an
+      // archive#3441: survivesCleanup() is async on this branch too -- an
       // unawaited call returns a Promise, which is always truthy and would
       // make this assertion vacuous rather than checking the pre-kill state.
       expect(await acp.survivesCleanup()).toBe(true);
       expect(isAlive(proc.pid)).toBe(true);
 
-      // station#3441: forceGroupKill() is async now and its own resolution
+      // archive#3441: forceGroupKill() is async now and its own resolution
       // is what confirms the release -- unawaited, this call races the
       // isAlive poll below against forceGroupKill's internal confirm-wait,
       // and survivesCleanup() could read the pre-release state by accident.
@@ -734,7 +734,7 @@ describe('ACPProcess escalation (#1863)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// station#1863 BLOCKING 1 — refusal tests.
+// archive#1863 BLOCKING 1 — refusal tests.
 //
 // An unvalidated enginePid negated into `process.kill(-pid, 'SIGKILL')` turns
 // the sweep into a self-kill (0), a session-kill (1), or an arbitrary kill
@@ -953,7 +953,7 @@ describe('sweep refuses invalid engine pids (#1863 BLOCKING 1)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// station#1863 BLOCKING 2 — registry trust tests.
+// archive#1863 BLOCKING 2 — registry trust tests.
 //
 // A predictable registry directory with default mode lets a co-resident
 // process (or a different user on a shared /tmp) plant a record that
@@ -1064,10 +1064,10 @@ describe('registry directory trust (#1863 BLOCKING 2)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// station#1863 fix round 3 — fail-closed identity proof.
+// archive#1863 fix round 3 — fail-closed identity proof.
 //
 // The 'unavailable' branch (alive pid, fingerprint unreadable) is the branch
-// that matters most under the ENOSPC/high-load conditions #1863 targets, and
+// that matters most under the ENOSPC/high-load conditions archive#1863 targets, and
 // the one NO existing test could reach: every process this host spawns has a
 // readable birth fingerprint, so the real probe always returns 'exact'. The
 // sweep accepts a test-only `probeIdentity` seam so the branch can now be
@@ -1275,7 +1275,7 @@ describe('fail-closed identity: unavailable retains, never reclaims (#1863 fix r
 });
 
 // ---------------------------------------------------------------------------
-// station#1863 fix round 3 — registry trust predicate (BLOCKING 2, uid axis).
+// archive#1863 fix round 3 — registry trust predicate (BLOCKING 2, uid axis).
 //
 // The foreign-OWNER (uid) refusal gates an arbitrary group-SIGKILL, but it
 // cannot be exercised against a real foreign-owned directory without root (a

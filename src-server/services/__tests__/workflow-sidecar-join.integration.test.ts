@@ -1,5 +1,5 @@
 /**
- * Integration coverage for #582's task/session-detail join: a Station task
+ * Integration coverage for archive#582's task/session-detail join: a Station task
  * (title, and optionally workItemRef), exact-matched against a workspace's
  * REAL flow-agents sidecar `task_slug`s (read through the existing
  * WorkflowSidecarService — no parallel reader). Fixtures are written to a

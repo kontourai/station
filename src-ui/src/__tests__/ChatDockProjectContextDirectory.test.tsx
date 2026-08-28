@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1146 — what the dock's directory row actually RENDERS, per case.
+ * archive#1146 — what the dock's directory row actually RENDERS, per case.
  *
  * The view-model test next door pins the resolution; this pins the pixels it
  * produces, because the defect was a rendered string ("~ (defaults to home)")

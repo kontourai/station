@@ -159,7 +159,7 @@ describe('CredentialUsageSection (station#3552)', () => {
   });
 });
 
-// Review round 3 (Codex): restoring the old unconditional zero-window guard
+// restoring the old unconditional zero-window guard
 // left all credential-usage tests green, so this behaviour was unprotected —
 // and the card it produced contradicted itself.
 describe('an exhausted account with no percentages', () => {

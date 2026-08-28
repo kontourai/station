@@ -102,7 +102,7 @@ describe('useIsMobile', () => {
 /**
  * The literal's own docblock says it "must stay byte-identical to the
  * condition on every mobile `@media` block across the stylesheets", and until
- * station#3928 nothing computed that. A dock slice widened the constant to
+ * archive#3928 nothing computed that. A dock slice widened the constant to
  * `(max-width: 768px), (pointer: coarse)` to answer a dock question, leaving
  * the stylesheets on the old condition and the docblock asserting a match that
  * no longer held — so a touchscreen laptop would have taken desktop CSS and

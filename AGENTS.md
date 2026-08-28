@@ -11,6 +11,12 @@
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - After focused proof, freeze the worktree before `npm run full:regression:submit`. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
+## Issue references
+
+`archive#NNNN` — and any `station#NNNN` or bare `#NNNN` below #550, the reseeded backlog's start — refers to [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 backlog and history. Those discussions remain readable there; this repository's own issues start fresh. Write new references as plain `#NNNN` for this repo or `archive#NNNN` for the archive.
+
+Bare `#NNNN` references in areas the sweep has not touched (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`) predate the reset and refer to the archive as well.
+
 ## Read only the route you need
 
 Codex loads this root file when launched here; it does not automatically load nested instructions after touching files. Read the routed scope explicitly. Claude loads nested `CLAUDE.md` when it reads that directory; each nested file imports its paired `AGENTS.md`.

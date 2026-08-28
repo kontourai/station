@@ -4,7 +4,7 @@
  * Subscribes to contextRegistry via useSyncExternalStore. Exposes:
  *   providers[]        — all registered context providers
  *   toggleProvider(id) — enable/disable a provider
- *   getComposedContext() — compose all enabled providers into one string
+ *   getComposedContext — compose all enabled providers into one string
  */
 
 import type { MessageContextProvider } from '@kontourai/station-sdk';

@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 3 — the wiring test: does an agent that opts into fleet
+ * archive#1398 — the wiring test: does an agent that opts into fleet
  * routing actually get peer candidates in its Dispatch plan, and does the
  * receipt that comes back carry every exclusion?
  *
@@ -216,7 +216,7 @@ describe('fleet candidates join the Dispatch plan', () => {
     );
   });
 
-  // station#1430 review, M-2: a fleet candidate must never derive
+  // archive#1430 review, M-2: a fleet candidate must never derive
   // 'structured-tools', however healthy the peer's own claim is — a peer's
   // self-reported capability must not become an asserted fact the way a
   // locally-observed one does (the exact reasoning that already caps
@@ -241,7 +241,7 @@ describe('fleet candidates join the Dispatch plan', () => {
     expect(fleetCandidate.evidence.capabilities).not.toContain(
       'structured-tools',
     );
-    // station#1398 slice 5.5: the same refusal on dispatch 0.5.0's SECOND
+    // archive#1398: the same refusal on dispatch 0.5.0's SECOND
     // axis. A peer's self-reported tool surface must not become an asserted
     // structured-tool fidelity any more than it may become an asserted
     // capability — and because 0.5.0 refuses evidence whose two halves
@@ -954,7 +954,7 @@ describe('authorized turn to fleet receipt correlation (station#3866)', () => {
 });
 
 /**
- * L-3, carried into the dispatch 0.2.0 → 0.5.0 bump (station#1398 slice 5.5).
+ * L-3, carried into the dispatch 0.2.0 → 0.5.0 bump (archive#1398).
  *
  * The conformance tripwire in `dispatch-model-policy.test.ts` compares the
  * real engine's admitted set against this Station's replica of its
@@ -1059,7 +1059,7 @@ describe('station#1398 slice 5 — the probe observation reaches the ENVELOPE', 
 });
 
 /**
- * station#1398 slice 5.5 review, finding 2. `fell-back-to-local` is the §4.5
+ * archive#1398 review, finding 2. `fell-back-to-local` is the §4.5
  * state slice 3 exists to name — a turn that SUCCEEDS locally after a fleet
  * attempt failed, which is the case most likely to be reported as a plain
  * success. Every other test of it feeds `capturedOnReceipt` a hand-built

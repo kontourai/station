@@ -2,11 +2,11 @@ import { compareTaskRecency, type HomeWorkItem } from './home-view-model';
 
 /**
  * Position-stable active lane + snooze/linger model for the Home work list
- * (station#1099). Every function here is pure and `now`-injected so the
+ * (archive#1099). Every function here is pure and `now`-injected so the
  * invariants are testable without faking timers; the stateful glue (refs,
  * localStorage, a re-render tick) lives in `useHomeWorkLanes.ts`.
  *
- * Design reference (issue #1099, competitor analysis): the active lane never
+ * Design reference (issue archive#1099, competitor analysis): the active lane never
  * reorders on activity — rows hold position from entry until a lifecycle
  * transition (settle/snooze) moves them out of the lane; new items enter at
  * the top.
@@ -18,7 +18,7 @@ import { compareTaskRecency, type HomeWorkItem } from './home-view-model';
  * they leave only after their rendered inventory version is durably
  * acknowledged by the server (see `partitionHomeWorkItems`).
  *
- * THE one linger window (station#3227 A6): desktop Home lanes, the Sessions
+ * THE one linger window (archive#3227 A6): desktop Home lanes, the Sessions
  * lanes, and the mobile activity groups (`mobile-activity-groups.ts`) all
  * classify through `partitionHomeWorkItems`, so this constant is the only
  * home the window has. Mobile used to carry its own 10-minute
@@ -41,11 +41,11 @@ export const WOKE_PILL_WINDOW_MS = 15 * 60 * 1000;
 
 /**
  * Settled for lane purposes — deliberately NOT including `'Unanswerable'`
- * (station#1783). The settled/"Just finished" lane asserts the work FINISHED,
+ * (archive#1783). The settled/"Just finished" lane asserts the work FINISHED,
  * and an unanswerable session did not; it stopped being reachable. So it
  * stays in the Active lane, ranked and chipped, with its basis on the row.
  *
- * station#3227 A6: this is now the ONE "active" predicate for every surface
+ * archive#3227 A6: this is now the ONE "active" predicate for every surface
  * that renders the label "Active now" — desktop Home lanes, the Sessions
  * lanes (`sessions-lane-model.ts`), and the mobile activity groups
  * (`mobile-activity-groups.ts` now derives its groups from
@@ -62,7 +62,7 @@ export function isTerminalLifecycle(
 
 /**
  * A `HomeWorkItem` with a logical identity that survives the two known
- * `id`-changing promotions on the default path (review finding, station#1099):
+ * `id`-changing promotions on the default path (archive#1099):
  *
  * (a) `useActiveChatSessionMessaging.ts`'s `assignConversationId` flips a
  *     chat's `id` from its local session key to the server-assigned
@@ -83,7 +83,7 @@ export function isTerminalLifecycle(
  *
  * Not persisted: the alias map (like `orderRef`) lives only in
  * `useHomeWorkLanes`'s in-memory refs, so a reload rebuilds active-lane
- * position from recency, same as a brand-new session. AC1's scope is status
+ * position from recency, same as a brand-new session. scope is status
  * churn within a session, not surviving a reload.
  */
 export interface HomeLaneItem extends HomeWorkItem {
@@ -139,7 +139,7 @@ export function withStableIds(
 /**
  * Generic over the item type (defaulting to `HomeLaneItem`) because the
  * partition only reads `id`/`lifecycleLabel`/`conversationUpdatedAt`/
- * `acknowledgedAt` — the mobile activity groups (station#3227 A6) hand it
+ * `acknowledgedAt` — the mobile activity groups (archive#3227 A6) hand it
  * bare `HomeWorkItem`s and must get the SAME object references back, while
  * desktop callers keep their `stableId`-carrying lane items.
  */
@@ -245,13 +245,13 @@ export function terminalSinceFromRecency(
 }
 
 /**
- * AC1 ordering invariant: status churn never reorders the active lane.
+ * ordering invariant: status churn never reorders the active lane.
  *
  * `previousOrder` is the caller's last committed order (a list of
  * `HomeLaneItem.stableId` — NOT `HomeWorkItem.id`; the raw `id` can change
  * out from under a still-visible row, see `withStableIds` above). Stable ids
  * still present in `activeItems` keep their prior relative position exactly
- * — recomputing this every render on the same set of stable ids is a no-op
+ * recomputing this every render on the same set of stable ids is a no-op
  * regardless of how many times a row's `lifecycleLabel`, `updatedAt`, or
  * even its raw `id` changed in between. Only stable ids genuinely new to the
  * lane (not in `previousOrder`) are inserted, at the top, ordered by recency
@@ -324,6 +324,6 @@ export function formatWakeTime(wakeAt: number, now: number): string {
 
 // Snooze preset date math (design (b): In 1 hour / This evening / Tomorrow
 // 9am / Next week Mon 9am) lives in `./snooze-presets.ts`, not here. Only
-// the lazily-loaded `SnoozeMenu` needs it (AC4 — this module is imported
+// the lazily-loaded `SnoozeMenu` needs it (this module is imported
 // eagerly by `useHomeWorkLanes`, so keeping the preset-menu-only code out of
 // it keeps that code out of the entry bundle too).

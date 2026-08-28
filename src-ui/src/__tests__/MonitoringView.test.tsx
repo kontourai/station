@@ -70,7 +70,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
     ...actual,
-    // station#1398 slice 4: the view now renders `FleetRoutingReceipts`, which
+    // archive#1398: the view now renders `FleetRoutingReceipts`, which
     // reads this hook. Stubbed as a successful empty page by default — this
     // describe block is about the shell's page root, and a receipt panel
     // that threw would be caught by `MonitoringErrorBoundary` and blank the
@@ -150,7 +150,7 @@ vi.mock('../contexts/MonitoringContext', async (importOriginal) => ({
         'gen_ai.conversation.id': 'conversation:alpha-123456',
         'station.input.chars': 420,
       },
-      // Carries the tool result whose copy button station#3341 migrates.
+      // Carries the tool result whose copy button archive#3341 migrates.
       {
         timestamp: '2026-04-26T16:00:01.100Z',
         'timestamp.ms': 1100,
@@ -204,7 +204,7 @@ describe('MonitoringView shell port', () => {
     orchestrationSessionsFixture.refetch = vi.fn();
   });
 
-  // audit 6-OPS-26 review (MEDIUM): `data` is undefined while the read is
+  // audit 6-OPS-26: `data` is undefined while the read is
   // pending and while it failed; defaulting that to `[]` reported an
   // authoritative `0 / 0` — the same false-zero discrepancy in a new costume.
   test('reports no count at all while the session read is pending', () => {
@@ -318,7 +318,7 @@ describe('MonitoringView shell port', () => {
   });
 });
 
-// station#3341: the tool-result copy called `navigator.clipboard.writeText`
+// archive#3341: the tool-result copy called `navigator.clipboard.writeText`
 // bare and toasted "Copied to clipboard" unconditionally — including on the
 // insecure origins Station is routinely reached over from another device.
 describe('MonitoringView tool-result copy (station#3341)', () => {

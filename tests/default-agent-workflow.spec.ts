@@ -463,7 +463,7 @@ async function openDefaultAgentSession(page: import('@playwright/test').Page) {
     .locator('.chat-dock__tab-actions .chat-dock__new')
     .nth(1)
     .dispatchEvent('click');
-  // #3309 (`components/agent-selection-policy.ts:129-141`,
+  // archive#3309 (`components/agent-selection-policy.ts:129-141`,
   // `ChatDock.tsx:1005-1016`): with exactly one chat-ready agent — which is
   // all this fixture seeds — the dock's New button opens that chat DIRECTLY
   // and no picker ever mounts. The picker was incidental setup here; the
@@ -580,7 +580,7 @@ test.describe('Default agent workflow', () => {
     await textarea.fill('trigger failure');
     await page.getByRole('button', { name: 'Send' }).click();
 
-    // #191 R1: the SDK client now parses the server's JSON error body
+    // archive#191 R1: the SDK client now parses the server's JSON error body
     // instead of discarding it behind a bare 'HTTP ${status}' string, so the
     // ephemeral bubble shows the real failure reason.
     await expect(page.locator('body')).toContainText(

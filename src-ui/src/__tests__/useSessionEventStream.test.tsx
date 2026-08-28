@@ -57,7 +57,7 @@ vi.mock('@kontourai/station-sdk', () => ({
         ...detail,
         events: detail.events.map((item: any, index: number) => ({
           sequence: index + 1,
-          // station#3386: the wire item carries the read's own budget report
+          // archive#3386: the wire item carries the read's own budget report
           // beside the event. A fixture opts in by wrapping an event as
           // `{ event, elided }`; a bare event stays unlabelled.
           ...(item && typeof item === 'object' && 'event' in item
@@ -103,52 +103,52 @@ function event(eventId: string, createdAt: string) {
 describe('useSessionEventStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // station#3522: `clearAllMocks()` clears call history but leaves queued
+    // archive#3522: `clearAllMocks` clears call history but leaves queued
     // `mockResolvedValueOnce`/`mockRejectedValueOnce`/`mockImplementationOnce`
-    // values in place — only `mockReset()` drains that queue. A test that
+    // values in place — only `mockReset` drains that queue. A test that
     // fails before draining its own queue leaks the leftover value into the
-    // next test's first `fetchSession()` call, which then returns the wrong
+    // next test's first `fetchSession` call, which then returns the wrong
     // payload, fails for an unrelated reason, and leaves ITS OWN queue
     // undrained — cascading through the rest of the file. Measured with one
     // genuine injected defect: pre-fix the whole file goes red around it,
     // post-fix exactly ONE test fails, with identical failure text both
     // times. (Absolute counts are deliberately not quoted here — they moved
-    // within hours of being measured when #3553 added `fetchSession` call
+    // within hours of being measured when archive#3553 added `fetchSession` call
     // sites, and the argument rests on the one-versus-many shape, not the
     // numbers.)
     //
     // `fetchSession` gets this explicitly rather than switching the whole
-    // `beforeEach` to `vi.resetAllMocks()`, which was tried and measured
-    // BROKEN: on a clean tree with no injected defect, `resetAllMocks()`
+    // `beforeEach` to `vi.resetAllMocks`, which was tried and measured
+    // BROKEN: on a clean tree with no injected defect, `resetAllMocks`
     // reds most of the file. The reason: `fetchEventStreamResumeCapability`
     // attaches its default (`.mockResolvedValue(false)`) AFTER construction
-    // (`vi.fn().mockResolvedValue(false)`, not `vi.fn(impl)`) and has no
-    // re-establishment line anywhere in this file — `mockReset()` restores a
-    // mock only to whatever implementation was passed to `vi.fn()` at
-    // construction, which for this one is nothing, so `resetAllMocks()`
+    // (`vi.fn.mockResolvedValue(false)`, not `vi.fn(impl)`) and has no
+    // re-establishment line anywhere in this file — `mockReset` restores a
+    // mock only to whatever implementation was passed to `vi.fn` at
+    // construction, which for this one is nothing, so `resetAllMocks`
     // silently strips its default to "no implementation" before every test
     // runs, test #1 included (this `beforeEach` runs before the first test
     // too, not just "after the first" — measured, and the 36 failures include
     // it). `claimSessionEventWindowCapabilityRecovery` and `fetchSSE`, by
     // contrast, DO pass their implementation at construction
-    // (`vi.fn(() => true)`, `vi.fn((_url, options) => {...})`), so
-    // `mockReset()` restores them correctly regardless; and
+    // (`vi.fn( => true)`, `vi.fn((_url, options) => {...})`), so
+    // `mockReset` restores them correctly regardless; and
     // `fetchSessionEventWindowCapability` shares
     // `fetchEventStreamResumeCapability`'s after-construction shape but is
     // separately defended by its own re-establishment line two lines below
     // (`fetchSessionEventWindowCapability.mockResolvedValue(true)`), which
-    // would survive a `resetAllMocks()` fine.
+    // would survive a `resetAllMocks` fine.
     //
     // `fetchSession` DOES carry persistent (non-Once) defaults set by four
     // tests below (`fetchSession.mockRejectedValue(...)` /
     // `.mockResolvedValue(...)`, not `Once` — search this file for those
     // exact calls) — the fix is not "fetchSession has no persistent default
-    // to lose", it is that `mockReset()` clearing those defaults is
-    // CORRECT: `vi.clearAllMocks()` alone never touched them, so a leftover
+    // to lose", it is that `mockReset` clearing those defaults is
+    // CORRECT: `vi.clearAllMocks` alone never touched them, so a leftover
     // `mockRejectedValue(...)` from one test was silently the default
-    // `fetchSession()` behaviour for the rest of the file whenever nothing
-    // queued a fresher `Once` value ahead of it — `mockReset()` clears that
-    // too, closing a second latent leak alongside the one #3522 named.
+    // `fetchSession` behaviour for the rest of the file whenever nothing
+    // queued a fresher `Once` value ahead of it — `mockReset` clears that
+    // too, closing a second latent leak alongside the one archive#3522 named.
     //
     // `fetchSession` carries the overwhelming majority of this file's
     // once-queue call sites. The remainder are 13 across four other mocks
@@ -171,14 +171,14 @@ describe('useSessionEventStream', () => {
     // undrained — and in both cases that residue is `true`, identical to
     // what this `beforeEach` re-establishes below, so it is currently
     // indistinguishable from a fresh mount even when it leaks. None of the
-    // 13 can currently cascade the way #3522 describes, but that is a
+    // 13 can currently cascade the way archive#3522 describes, but that is a
     // property of today's fixtures, not a guarantee: a leaked once-value
     // always beats this `beforeEach`'s re-establishment (the leftover queue
     // entry is consumed before the freshly-set default ever applies), so if
     // either of those two chains
     // ever queues a second value other than `true`, it will cascade the same
-    // way `fetchSession` did. This mirrors the targeted `mockReset()` the
-    // #3445 test below already used by hand for the same reason.
+    // way `fetchSession` did. This mirrors the targeted `mockReset` the
+    // archive#3445 test below already used by hand for the same reason.
     fetchSession.mockReset();
     claimSessionEventWindowCapabilityRecovery.mockReturnValue(true);
     fetchSessionEventWindowCapability.mockResolvedValue(true);
@@ -221,12 +221,12 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3458 fix-round (BLOCKING): `onOpen` firing only for a response
+   * archive#3458: `onOpen` firing only for a response
    * the transport actually consumes means a live stream stuck retrying a
    * 5xx/network failure never sets `streamOpened` — and hydration used to be
    * gated on exactly that flag, so a session opened while Station sits
    * behind a proxy returning 502/503/504 rendered an EMPTY FEED with
-   * `connected: false` and no error: the persisted transcript #3378 built
+   * `connected: false` and no error: the persisted transcript archive#3378 built
    * this path to survive a live-stream blip never loaded at all.
    *
    * Hydration's real dependency is not "the live stream opened" — it is "the
@@ -303,7 +303,7 @@ describe('useSessionEventStream', () => {
     act(() => streamOptions.onOpen?.());
     await waitFor(() => expect(result.current.connected).toBe(true));
 
-    // Initial-mount fetch (station#1092 design: "keep the initial-mount
+    // Initial-mount fetch (archive#1092 design: "keep the initial-mount
     // fetch") still happened once — but the reconnect's onOpen did NOT
     // trigger a second one, because the server's Last-Event-ID replay makes
     // it redundant.
@@ -917,7 +917,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3378. This block replaces the pin that used to live here
+   * archive#3378. This block replaces the pin that used to live here
    * ('closes and clears a failed hydration instead of buffering later
    * frames'): a transient `/event-window` failure closed the live stream and
    * nothing ever reopened it, so a blip in one endpoint took the session's
@@ -995,7 +995,7 @@ describe('useSessionEventStream', () => {
     ]);
     expect(result.current.error).toBeUndefined();
     expect(result.current.historyRetrying).toBe(false);
-    // station#3426: a hydration that recovered after a transient failure was
+    // archive#3426: a hydration that recovered after a transient failure was
     // never stopped for good — nothing here should have flipped the flag.
     expect(result.current.historyStoppedTerminal).toBe(false);
   });
@@ -1010,7 +1010,7 @@ describe('useSessionEventStream', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(fetchSession).toHaveBeenCalledTimes(1);
-    // station#3426: a transient (non-401/403) failure keeps retrying — this
+    // archive#3426: a transient (non-401/403) failure keeps retrying — this
     // is the "retrying" state, not "stopped for good".
     expect(result.current.historyStoppedTerminal).toBe(false);
 
@@ -1043,8 +1043,8 @@ describe('useSessionEventStream', () => {
     });
     expect(result.current.error?.message).toBe('Unauthorized');
     expect(result.current.historyRetrying).toBe(false);
-    // station#3426: this is the "stopped for good" story, not "coming back"
-    // — `historyRetrying === false` alone cannot tell those apart (it also
+    // archive#3426: this is the "stopped for good" story, not "coming back"
+    // `historyRetrying === false` alone cannot tell those apart (it also
     // reads false before anything has ever failed).
     expect(result.current.historyStoppedTerminal).toBe(true);
     expect(close).toHaveBeenCalled();
@@ -1066,15 +1066,15 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3445: a history retry timer scheduled by an EARLIER transient
+   * archive#3445: a history retry timer scheduled by an EARLIER transient
    * failure is not cancelled by a LATER terminal (401/403) failure on a
    * different, independently-triggered hydration attempt (here, a snapshot
-   * frame forcing a second `recoverPersistedEvents()` call while the first
+   * frame forcing a second `recoverPersistedEvents` call while the first
    * attempt's retry is still pending). Pre-fix, the stale timer fired
    * anyway, re-ran the request, succeeded, and silently cleared
    * `historyStoppedTerminal`/`error` — the worst state available: a
    * live-looking session (`connected` never touched) with its SSE stream
-   * already `close()`d and nothing left to reopen it. The fix cancels the
+   * already `close`d and nothing left to reopen it. The fix cancels the
    * pending timer from the terminal branch, so it never fires and the
    * terminal state survives.
    */
@@ -1138,7 +1138,7 @@ describe('useSessionEventStream', () => {
     expect(result.current.error).toBeInstanceOf(Error);
 
     // The queued "attempt 3" response is deliberately never consumed (that
-    // is the assertion above) — `vi.clearAllMocks()` in `beforeEach` clears
+    // is the assertion above) — `vi.clearAllMocks` in `beforeEach` clears
     // call history but not a mock's queued `mockResolvedValueOnce`/
     // `mockRejectedValueOnce` values, so drain it explicitly or it leaks
     // into the next test's first `fetchSession` call.
@@ -1146,18 +1146,18 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3518: the sibling of #3445. There, a retry's TIMER survived a
+   * archive#3518: the sibling of archive#3445. There, a retry's TIMER survived a
    * terminal because the timer was still pending and never cancelled. Here
    * the retry's timer has already fired — its callback already cleared
    * `historyRetryTimer`/`historyRetryScheduled` before calling
-   * `recoverPersistedEvents()` — so `cancelHistoryRetry()` (a no-op on an
+   * `recoverPersistedEvents` — so `cancelHistoryRetry` (a no-op on an
    * already-cleared timer) cannot reach it at all. The call itself is a live
    * promise, independent of a LATER, different call that establishes the
    * terminal outcome in the meantime. Pre-fix, this promise resolving
    * successfully silently cleared `historyStoppedTerminal` and `error`
    * (`epoch.current` does not help: only the success path bumps it, and this
    * call's own success path is exactly what is being suppressed), leaving
-   * `connected: true` with the SSE stream already `close()`d and nothing
+   * `connected: true` with the SSE stream already `close`d and nothing
    * left to reopen it — the worst state available.
    */
   test('station#3518: a retry already in flight when a terminal is established must not clear it on success', async () => {
@@ -1169,7 +1169,7 @@ describe('useSessionEventStream', () => {
       .mockRejectedValueOnce(new Error('window unavailable'))
       // Attempt B: the retry timer's own call. Held open so it resolves
       // AFTER attempt C below has already established the terminal outcome
-      // — the exact race the issue describes.
+      // the exact race the issue describes.
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -1193,7 +1193,7 @@ describe('useSessionEventStream', () => {
     // The retry timer fires: attempt B starts and is held open by the
     // controlled promise above — `historyRetryTimer` is now `undefined`
     // (the timer callback cleared it before calling `recoverPersistedEvents`
-    // — see `scheduleHistoryRetry`), so `cancelHistoryRetry()` below has
+    // see `scheduleHistoryRetry`), so `cancelHistoryRetry` below has
     // nothing left to cancel.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
@@ -1240,12 +1240,12 @@ describe('useSessionEventStream', () => {
     expect(result.current.connected).toBe(true);
     expect(result.current.historyRetrying).toBe(false);
     // B's payload was never applied — the stale success bailed before
-    // reaching `apply()`.
+    // reaching `apply`.
     expect(result.current.events).toEqual([]);
   });
 
   /**
-   * station#3518, the symmetric direction: a transient (non-terminal)
+   * archive#3518, the symmetric direction: a transient (non-terminal)
    * rejection that is still in flight when a DIFFERENT, later call
    * establishes the terminal outcome must not re-arm polling once it
    * finally lands. Nothing in effect scope could prevent this before the
@@ -1304,7 +1304,7 @@ describe('useSessionEventStream', () => {
     expect(result.current.error?.message).toBe('Unauthorized');
 
     // Attempt A finally rejects — non-terminally — AFTER the terminal was
-    // already established. Pre-fix, this called `scheduleHistoryRetry()`
+    // already established. Pre-fix, this called `scheduleHistoryRetry`
     // unconditionally, re-arming polling over a session already stopped for
     // good, AND overwrote the honest terminal error with this transient
     // message.
@@ -1328,7 +1328,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3518 fix round: `recoverPersistedEvents`'s success path checks
+   * archive#3518: `recoverPersistedEvents`'s success path checks
    * `epoch.current` TWICE — once right after the `await`, once inside the
    * `queue.current.then` callback it goes on to enqueue. The first check is
    * provably redundant against the two tests above (fault injection: dropping
@@ -1413,12 +1413,12 @@ describe('useSessionEventStream', () => {
     expect(result.current.historyStoppedTerminal).toBe(true);
     expect(result.current.error?.message).toBe('Unauthorized');
     // B's payload was never applied — the queued checkpoint bailed before
-    // reaching `apply()`.
+    // reaching `apply`.
     expect(result.current.events).toEqual([]);
   });
 
   /**
-   * station#3437 review (MEDIUM-1): an uncaught injection. Removing
+   * archive#3437: an uncaught injection. Removing
    * `setHistoryStoppedTerminal(false)` from the hydration-success path was
    * caught by NOTHING — the nearest assertion (above, "stops on a credential
    * failure...") only ever proves the flag reaches `true`, never that a
@@ -1461,7 +1461,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3426. `AttachedSessionDetail`'s "retrying automatically" copy
+   * archive#3426. `AttachedSessionDetail`'s "retrying automatically" copy
    * folded three mechanisms with different behaviours into one `disconnected`
    * flag; this block proves the three new signals it now derives from are
    * each written by exactly the code path that owns them, mirroring how
@@ -1486,14 +1486,14 @@ describe('useSessionEventStream', () => {
     expect(result.current.connected).toBe(false);
     expect(result.current.liveStreamStoppedTerminal).toBe(true);
 
-    // A later reconnect (fetchSSE's own `retry()`, or a credential fix waking
+    // A later reconnect (fetchSSE's own `retry`, or a credential fix waking
     // it) must not leave this reading a rejection that already cleared.
     act(() => streamOptions.onOpen?.());
     expect(result.current.liveStreamStoppedTerminal).toBe(false);
   });
 
   /**
-   * station#3437 review (HIGH-2): `onOpen` was the ONLY clearing path, but
+   * archive#3437: `onOpen` was the ONLY clearing path, but
    * the transport's terminal state ends at the wake (`onRetry`), not at a
    * successful open. A resumed attempt that fails with a NETWORK-level
    * failure (no `Response` ever arrives — a rejected `fetch`, DNS failure,
@@ -1602,7 +1602,7 @@ describe('useSessionEventStream', () => {
       'http://station.test',
       'task:1',
     );
-    // station#3437 review (HIGH-1): the budget reset above is not enough on
+    // archive#3437: the budget reset above is not enough on
     // its own — the CACHE must be invalidated too, or the immediately-prior
     // (just-resolved) probe's cached settlement satisfies the "re-probe"
     // below with zero real requests. This mock can't observe that on its
@@ -1619,10 +1619,10 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3437 review (MEDIUM-3): two synchronous manual-retry calls (a
+   * archive#3437: two synchronous manual-retry calls (a
    * double-click, or two racing callers) must not each start their own
    * probe. Before the in-flight guard, both calls invalidated the cache and
-   * called `negotiateWindow()` independently — two parallel chains that each
+   * called `negotiateWindow` independently — two parallel chains that each
    * separately consume a recovery-budget slot on resolution, exhausting the
    * ladder after one round instead of three.
    */
@@ -1666,7 +1666,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3437 review round 2 (LOW-3). MEDIUM-3's in-flight guard was
+   * archive#3437 2. in-flight guard was
    * previously consulted ONLY at the manual-retry entry point —
    * `negotiateWindow` has three other entries (`onError`, the automatic
    * re-probe timer, and the effect's own start) that could race each
@@ -1711,7 +1711,7 @@ describe('useSessionEventStream', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    // Still ONE call: onError's negotiateWindow() folded into the probe
+    // Still ONE call: onError's negotiateWindow folded into the probe
     // already running rather than starting a second one.
     expect(fetchSessionEventWindowCapability).toHaveBeenCalledTimes(1);
 
@@ -1726,7 +1726,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3437 review round 3 (LOW-B). The in-flight guard's entire
+   * archive#3437 3. The in-flight guard's entire
    * no-starvation argument (comment above `negotiateWindow`) rests on "every
    * caller is asking the same host/session the same question" — which is
    * only true because `capabilityProbeInFlight` is declared fresh inside
@@ -1776,7 +1776,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3386 review (MEDIUM). Both readers in this hook unwrapped
+   * archive#3386. Both readers in this hook unwrapped
    * `item.event` and discarded the envelope, so the chat dock disclosed what
    * a bounded read withheld while this hook's consumer rendered the identical
    * amputated turn in silence — one read, two consumers, one of them lying by
@@ -1975,7 +1975,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3378 review (LOW). The unhydrated buffer's cap was documented as
+   * archive#3378. The unhydrated buffer's cap was documented as
    * costing nothing because `mergeSessionEvents` trims to the same bound
    * anyway. It does not: that merge ALSO reaches back past its own cut to
    * rescue the `turn.started` anchoring the retained window's first turn, so a
@@ -2043,7 +2043,7 @@ describe('useSessionEventStream', () => {
   });
 
   /**
-   * station#3378 review (LOW d). Review asked for a `setUpgradeRequired(false)`
+   * archive#3378 ( d). Review asked for a `setUpgradeRequired(false)`
    * beside the hydration-success `setError(undefined)`; adding one and
    * injecting against it came back GREEN, because the setter is unreachable —
    * the only path that raises the claim also stops the capability, and every

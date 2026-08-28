@@ -1,4 +1,4 @@
-// station#1301 — "Background tasks" Running/Finished projection folded
+// archive#1301 — "Background tasks" Running/Finished projection folded
 // client-side from events already streaming (design plan on issue #1301).
 // Same module-scope external-store shape as `active-chats-store`
 // (subscribe/getSnapshot/notify), split into pure fold functions (this file)
@@ -492,7 +492,7 @@ function makeProviderEntry(
 /**
  * The one read the UI consumes: this chat's Running/Finished entries, with
  * provider background subagents (`ChatUIState.backgroundTasks`, tracked
- * separately per station#1301 §1.4) merged in at selector level. Dedup rule
+ * separately per archive#1301 §1.4) merged in at selector level. Dedup rule
  * per the plan: a provider task sharing a `toolCallId` with a raw tool card
  * suppresses that tool card — the provider task's richer representation
  * (description, subagent type) wins for as long as the provider still lists

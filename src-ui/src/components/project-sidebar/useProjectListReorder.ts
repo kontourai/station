@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 
 /**
- * station#3315 — hand-rolled pointer reorder for the project rail.
+ * archive#3315 — hand-rolled pointer reorder for the project rail.
  *
  * No DnD dependency exists in this repo (checked before writing this), and the
  * in-repo reorder precedents are command/button driven (queued messages, pane
@@ -9,9 +9,9 @@ import { useRef, useState } from 'react';
  * pointer, the insertion index is derived from row midpoints, and the commit
  * is one call with the full reordered slug list. Keyboard access is the same
  * handle: ArrowUp/ArrowDown move the row one step per press, each announced
- * through a polite live region the caller renders (station#3331).
+ * through a polite live region the caller renders (archive#3331).
  *
- * There is deliberately NO focus-restore after a keyboard move. station#3331
+ * There is deliberately NO focus-restore after a keyboard move. archive#3331
  * predicted that the optimistic reorder of a keyed row list would relocate the
  * focused handle's DOM node and drop focus. A real-browser A/B against builds
  * with and without a restore disproved it in the two engines that were run —

@@ -22,7 +22,7 @@ interface GuidedConnectProps {
   /** Called after a pairing exchange has committed a usable browser session. */
   onSessionEstablished?: () => void;
   /**
-   * station#2652 / #1772: open the unpaired sample workspace so a reviewer
+   * archive#2652 / archive#1772: open the unpaired sample workspace so a reviewer
    * can take the receipts tour without a Station host.
    */
   onExploreSample?: () => void;

@@ -251,7 +251,7 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
     });
   });
 
-  // station#1455: the station-agent adapter now stamps `effectiveModel`
+  // archive#1455: the station-agent adapter now stamps `effectiveModel`
   // (surfaced here as `requestedModel`) on its turn events but deliberately
   // never a `reportedModel` (station-agent-adapter.ts:526-547) — this is
   // the requested-only shape that adapter's turns actually produce, distinct

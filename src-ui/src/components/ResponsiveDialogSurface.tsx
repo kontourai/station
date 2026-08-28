@@ -34,7 +34,7 @@ export interface ResponsiveDialogSurfaceProps {
    * `alertdialog` for a prompt that INTERRUPTS with something the user must
    * act on — an unsaved-changes confirmation, a destructive action. ARIA
    * distinguishes the two, and assistive tech announces them differently.
-   * Defaults to `dialog` (station#3157).
+   * Defaults to `dialog` (archive#3157).
    */
   role?: 'dialog' | 'alertdialog';
   overlayClassName?: string;
@@ -76,7 +76,7 @@ export interface ResponsiveDialogHeaderProps {
 
 /**
  * Canonical title-row + close-button header for `ResponsiveDialogSurface`
- * consumers (station#1825). Previously every sheet hand-rolled this same
+ * consumers (archive#1825). Previously every sheet hand-rolled this same
  * `<div className="session-model-picker__header">` markup, and the flex/gap
  * layout that keeps the title and the close button from colliding lived in
  * `SessionModelPicker.css` — a stylesheet Vite only loads once
@@ -224,7 +224,7 @@ export function ResponsiveDialogSurface({
         '--responsive-anchor-right': `${Math.round(window.innerWidth - rect.right)}px`,
         // The anchor's OWN bottom edge, distance from the viewport top —
         // for a popover that opens DOWNWARD from a top-of-screen trigger
-        // (station#4521), which cannot reuse `--responsive-anchor-top` (the
+        // (archive#4521), which cannot reuse `--responsive-anchor-top` (the
         // trigger's top edge would overlap it) without a magic per-trigger
         // height offset going stale the moment that trigger's own size
         // changes.
@@ -254,10 +254,10 @@ export function ResponsiveDialogSurface({
   }, [initialFocusPolicy, initialFocusRef, isMobile, returnFocusTarget]);
 
   // Focus restoration, with a fallback for the case the trigger did not
-  // survive (station#1126). The behaviour lives in
+  // survive (archive#1126). The behaviour lives in
   // `@kontourai/station-shared/return-focus` so the surfaces that do not render
   // this frame share one implementation — including the ones in other packages
-  // (station#1206, #1245). The panel node is read at mount, not in the cleanup:
+  // (archive#1206, #1245). The panel node is read at mount, not in the cleanup:
   // React nulls refs as it tears the tree down.
   useEffect(() => {
     const panel = panelRef.current;

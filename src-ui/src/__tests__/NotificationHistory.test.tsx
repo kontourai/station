@@ -18,7 +18,7 @@ let attention: AttentionProjection = { items: [], pendingCount: 0 };
 let sessions: OrchestrationSessionSummary[] = [];
 let sessionsSettled = true;
 let listsLoading = false;
-// Review H1: both reads settle with no data when they fail, so an errored
+// both reads settle with no data when they fail, so an errored
 // query used to be indistinguishable from a genuinely empty inbox — the
 // panel asserted "All caught up" over a read that never answered. These are
 // independent, matching `NotificationHistory`'s own `notificationsError ??
@@ -248,7 +248,7 @@ describe('NotificationHistory', () => {
     );
 
     const headings = screen.getAllByRole('heading', { level: 2 });
-    // station#3222: the section names the badge's own number, so a reader
+    // archive#3222: the section names the badge's own number, so a reader
     // arriving from "Notifications (1 need attention)" is shown one row and
     // told that is all of them.
     expect(headings.map((heading) => heading.textContent?.trim())).toEqual([
@@ -294,7 +294,7 @@ describe('NotificationHistory', () => {
 });
 
 /**
- * station#3222 / station#3227 A5 — the popover under the bell badge.
+ * archive#3222 / archive#3227 A5 — the popover under the bell badge.
  *
  * `AttentionProjection.items` deliberately KEEPS acknowledged items
  * (`attention-projection.ts:225-228`) while `pendingCount` — the badge — counts
@@ -498,7 +498,7 @@ describe('NotificationHistory undo window', () => {
       unmount();
       expect(dismiss).toHaveBeenCalledTimes(1);
 
-      // ...and the pending timer must not then fire a second commit.
+      //.and the pending timer must not then fire a second commit.
       act(() => {
         vi.advanceTimersByTime(10_000);
       });
@@ -510,7 +510,7 @@ describe('NotificationHistory undo window', () => {
 });
 
 /**
- * station#1780 — the BLOCKING finding this slice closes.
+ * archive#1780 — the finding this slice closes.
  *
  * The popover renders `notifications minus attention-projected`. When the
  * attention projection correctly drops an unanswerable session's card, its
@@ -694,7 +694,7 @@ describe('NotificationHistory answerability annotation', () => {
 
   /**
    * "All caught up" is a claim about the data, not a default. The panel now
-   * mounts on first open (station#2751) rather than living for the app's
+   * mounts on first open (archive#2751) rather than living for the app's
    * lifetime, so its first paint genuinely has nothing yet — and a cache
    * eviction returns it to that state later. Asserting an empty inbox while
    * the fetch is still in flight would state something the component has not
@@ -732,7 +732,7 @@ describe('NotificationHistory answerability annotation', () => {
 });
 
 /**
- * Review H1: `notificationsError ?? attentionError` renders `ErrorState`
+ * `notificationsError ?? attentionError` renders `ErrorState`
  * before the empty branch, before this fix "All caught up" — the most
  * definitive empty state in the app — rendered over a query that failed.
  * The panel ORs the two sources, so each is pinned independently: either

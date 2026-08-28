@@ -43,7 +43,7 @@ interface UseNewProjectSubmitOptions {
   /**
    * Re-reads the project list from the SERVER and returns the sentence to show
    * if the slug is still taken, or `null` to proceed. Anything it cannot
-   * establish must be `null`: the POST is the authority (review HIGH).
+   * establish must be `null`: the POST is the authority
    */
   verifySlugAvailability?: (candidate: {
     name: string;

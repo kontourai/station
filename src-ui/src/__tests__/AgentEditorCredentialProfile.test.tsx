@@ -57,7 +57,7 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
     isError = false;
   });
 
-  // Review round 2 (Codex) proved the loading/error branch could be DELETED
+  // proved the loading/error branch could be DELETED
   // with this suite staying green, because nothing here ever set those flags.
   // Loading and a failed request must never read as "this engine has no
   // accounts" — for a pinned agent OR an unpinned one.

@@ -38,7 +38,7 @@ interface ACPChatPanelProps {
   /** Stable tab ID — used to persist the session across re-renders */
   tabId: string;
   /**
-   * station#1294 review (SHOULD-FIX-4): whether this tab is the active one.
+   * archive#1294: whether this tab is the active one.
    * `CodingTerminalPanel` keeps every tab's panel mounted (`display: none`
    * on inactive tabs, mirroring `TerminalPanel`'s own `isActive` prop)
    * rather than unmounting it, so a send failure in a background tab must
@@ -157,8 +157,8 @@ export function ACPChatPanel({
   });
 
   const activeSession = useActiveChatState(sessionId);
-  // Agent app connection default for the approval-mode chip (#727 review
-  // item 7 LOW) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
+  // Agent app connection default for the approval-mode chip (archive#727
+  //) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
   const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
@@ -179,7 +179,7 @@ export function ACPChatPanel({
     }
   }, [activeSession, projectSlug, projectName, sessionId, updateChat]);
 
-  // station#3344: this used to read `agent.supportsAttachments`, a wire field
+  // archive#3344: this used to read `agent.supportsAttachments`, a wire field
   // no server code has ever written — so it was `undefined ?? false` on every
   // render and this panel refused every image, while `acp-adapter.ts` declares
   // `image-input` and builds real ACP image content blocks. The engine's own
@@ -217,7 +217,7 @@ export function ACPChatPanel({
     conversationId: activeSession?.conversationId,
     availableModels: [],
     attachmentCapabilities,
-    // station#1294 review (SHOULD-FIX-4): suppress the generic error toast
+    // archive#1294: suppress the generic error toast
     // only while this tab is the one actually on screen.
     isChatVisible: isActive,
   });

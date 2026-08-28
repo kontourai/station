@@ -17,19 +17,19 @@ import { bannerStore } from '../../../contexts/banner-store';
 import { BannerHost } from '../BannerHost';
 
 /**
- * station#4470a — reproduces (and pins the fix for) the reported overlap: on
+ * archive#4470a — reproduces (and pins the fix for) the reported overlap: on
  * a real Android build, the pairing-mismatch banner's inline "Less" toggle
  * rendered on top of the message text once the banner was expanded.
  *
  * jsdom does not lay out CSS (same precondition as
- * `BannerHost.touch-target.test.tsx`, station#3453's own docblock), so
+ * `BannerHost.touch-target.test.tsx`, archive#3453's own docblock), so
  * geometry can only be proven against a real engine: this renders the actual
  * `BannerHost` component through `@testing-library/react`, injects the
  * resulting markup into a real Chromium page carrying the REAL, cascade-
  * resolved stylesheets (`index.css` + `BannerHost.css`, `@import`s fully
  * inlined and proven complete by `assertNoImportsSurvive`), and measures
- * actual `getBoundingClientRect()`/`Range.getClientRects()` geometry at a
- * 390x844 phone viewport — the same shape station#3453 used to prove a real,
+ * actual `getBoundingClientRect`/`Range.getClientRects` geometry at a
+ * 390x844 phone viewport — the same shape archive#3453 used to prove a real,
  * rendered control height where a CSS-source-text ratchet cannot see the
  * resolved cascade.
  *
@@ -90,7 +90,7 @@ function renderExpandedFixtureMarkup(input: {
   const { container, unmount } = render(<BannerHost connectionSlot={false} />);
   // Expand the disclosure — the overlap only exists once `detail` is
   // showing; collapsed, the disclosure is not rendered at all
-  // (BannerHost.tsx). station#4470b: the toggle's label is now the constant
+  // (BannerHost.tsx). archive#4470b: the toggle's label is now the constant
   // "Details" regardless of state (was "More"/"Less").
   fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   const markup = container.innerHTML;
@@ -114,7 +114,7 @@ type Box = { x: number; y: number; width: number; height: number };
 
 // The real defect this file exists to catch overlapped by double-digit
 // pixels (an 11px vertical bleed into the preceding wrapped line, measured
-// while diagnosing station#4470a). A small epsilon absorbs ordinary
+// while diagnosing archive#4470a). A small epsilon absorbs ordinary
 // Chromium subpixel/font-hinting rounding under concurrent load — observed
 // up to ~1px drift running alongside this repo's other real-Chromium
 // geometry tests, matching this repo's own documented "shared-host sibling
@@ -176,7 +176,7 @@ describe.skipIf(!chromiumAvailable)(
             null,
           );
           // The overlap fix must not regress the touch-target floor
-          // (station#3453) it shares CSS with.
+          // (archive#3453) it shares CSS with.
           expect(disclosure!.height).toBeGreaterThanOrEqual(
             MIN_TOUCH_TARGET_PX,
           );
@@ -187,9 +187,9 @@ describe.skipIf(!chromiumAvailable)(
           expect(detailBox, '.banner-host__detail not visible').not.toBe(null);
 
           // Every visual LINE of the message's own text, independent of the
-          // disclosure's own inline position within it — `Range.getClientRects()`
+          // disclosure's own inline position within it — `Range.getClientRects`
           // returns one rect per wrapped line, which a block-level
-          // `getBoundingClientRect()` on `.banner-host__message` cannot.
+          // `getBoundingClientRect` on `.banner-host__message` cannot.
           const lineRects: Box[] = await page.evaluate(() => {
             const messageEl = document.querySelector('.banner-host__message');
             const textNode = messageEl?.childNodes[0];

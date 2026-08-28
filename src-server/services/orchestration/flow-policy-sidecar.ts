@@ -137,7 +137,7 @@ export interface FlowPolicySidecarDeps {
 }
 
 /**
- * Flow run / policy hooks / workflow sidecar (epic #4024 slice 11, #4218):
+ * Flow run / policy hooks / workflow sidecar (epic archive#4024, archive#4218):
  * the C15 cluster — seven owned fields, fourteen methods, the biggest
  * island in the remaining core (fourteen moved bodies; the class declares
  * seventeen members — the two `forget*` seam accessors and the
@@ -157,7 +157,7 @@ export interface FlowPolicySidecarDeps {
 export class FlowPolicySidecar {
   private readonly readinessBridge?: FlowReadinessBridge;
   private readonly commandEvidenceBridge?: FlowCommandEvidenceBridge;
-  /** Same instance the command-evidence bridge routes with (station#189 S2). */
+  /** Same instance the command-evidence bridge routes with (archive#189 S2). */
   private readonly commandEvidenceRoutingPolicy =
     new DefaultCommandEvidenceRoutingPolicy();
   /**
@@ -249,7 +249,7 @@ export class FlowPolicySidecar {
    * Flow-bound). REST callers use this to resolve the run id, then operate
    * through the existing /api/projects/:slug/flow routes.
    *
-   * The view carries freshness alongside the run (station#189 S1) so every
+   * The view carries freshness alongside the run (archive#189 S1) so every
    * consumer states what the run has actually evaluated. `run.state.updated_at`
    * is not that: it moves on writes no gate was involved in, which is how the
    * gates pane came to read `step=plan status=active` for a run that had never
@@ -277,7 +277,7 @@ export class FlowPolicySidecar {
   }
 
   /**
-   * The Builder run joined to this session (station#189 S4), read entirely
+   * The Builder run joined to this session (archive#189 S4), read entirely
    * from the published sidecar contract.
    *
    * Deliberately a SEPARATE read from `readSessionFlowRun`, not a field on it.
@@ -585,7 +585,7 @@ export class FlowPolicySidecar {
    * Read the workflow sidecar binding + current durable state for a session
    * (null when the session is not task-bound).
    *
-   * NO CALLER TODAY (station#4218 review M1): the previous sentence here
+   * NO CALLER TODAY (archive#4218 review M1): the previous sentence here
    * claimed REST callers resolve the task slug through this method before
    * reading /api/projects/:slug/workflow. That route exists
    * (`routes/evidence/workflow-sidecars.ts`) but reaches the sidecar
@@ -831,25 +831,25 @@ export class FlowPolicySidecar {
         status: event.status,
         // Station only OBSERVED this tool call — the runtime dispatched it,
         // and `ToolCompletedEvent` carries no exit code, so none is claimed
-        // (station#4237); `status` above is the observed execution fact the
+        // (archive#4237); `status` above is the observed execution fact the
         // pass/fail claim derives from.
         exitCode: null,
         // `timedOut` here means Station's OWN budget, which it never armed
         // over a call it did not dispatch. A runtime-side kill is not
         // representable in this field and arrives as `status: 'error'`, so
-        // it still fails the claim — see #4237's review (L3) for why this
+        // it still fails the claim — see archive#4237's review (L3) for why this
         // stays false rather than becoming tri-state.
         timedOut: false,
         // NOT plumbed rather than unknowable: the monitoring bridge already
         // derives an observed tool duration from the started/completed pair
-        // (station#3077). Recording null until this path carries it beats
-        // the 0 that read as a measured instant (#4237 review L2).
+        // (archive#3077). Recording null until this path carries it beats
+        // the 0 that read as a measured instant (archive#4237 review L2).
         durationMs: null,
         // Derived, not assumed: the adapters that truncate say so on the
         // event. Claude head-slices tool output at 2000 chars and ACP caps
         // by bytes; both now emit `outputReceipt`, whose presence IS the
         // truncation. Asserting `false` here recorded a head slice as a
-        // complete output whose "tail" was its beginning (#4237 review M1).
+        // complete output whose "tail" was its beginning (archive#4237 review M1).
         outputTruncated: event.outputReceipt !== undefined,
       });
     } catch (error) {

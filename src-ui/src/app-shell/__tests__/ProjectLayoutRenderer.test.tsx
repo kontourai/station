@@ -37,13 +37,13 @@ const catalogMock = vi.fn();
 const navigationMock = vi.hoisted(() => ({ setLayout: vi.fn() }));
 const { hostMock, hostEffectMock, mobileMock } = vi.hoisted(() => ({
   hostMock: vi.fn(),
-  // station#3794: the real controller runs its availability sweep, its
+  // archive#3794: the real controller runs its availability sweep, its
   // lifecycle-context capture and its authoritative-catalog replacement from
   // dep arrays naming exactly these five inputs
   // (`workspacePaneHostController.ts` — the sweep at its
   // `[operationalAvailability, operationalEventContext, persistenceStatus,
   // state.document]`, the capture at `[operationalEventContext,
-  // state.document]`, the replacement at `[..., onInstanceRemoved, ...]`).
+  // state.document]`, the replacement at `[..., onInstanceRemoved,...]`).
   // Counting one effect over the same inputs here states the cost in the
   // units the defect is measured in: renders that change nothing must not
   // re-run host work.

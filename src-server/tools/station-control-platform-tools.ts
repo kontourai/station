@@ -18,12 +18,12 @@ import {
 } from './station-control-shared.js';
 
 /**
- * #167 Wave 3: `list_integrations`/`get_integration`/`create_integration`/
+ * archive#167 Wave 3: `list_integrations`/`get_integration`/`create_integration`/
  * `delete_integration` now run through `@kontourai/station-sdk/client`'s
  * canonical `client/integrations.ts` fetchers instead of this file's own
  * inline `api()` calls, mirroring Wave 2B's approach. `apiBase` is resolved
  * once at module load (station-control is a long-lived MCP server process —
- * see the matching note in `station-control-agent-tools.ts` and #167 plan
+ * see the matching note in `station-control-agent-tools.ts` and archive#167 plan
  * Risk 3).
  *
  * `list_registry_integrations`/`install_registry_integration` are left on
@@ -40,10 +40,10 @@ import {
  *
  * `list_providers`, `create_provider`, `install_plugin`,
  * `check_plugin_updates`, `update_plugin`, `remove_plugin` are untouched —
- * none are in the #167 audit's triplication table (providers/plugins have
+ * none are in the archive#167 audit's triplication table (providers/plugins have
  * their own separate CLI-gap findings, not duplication).
  */
-// station#1195: resolved fresh on every call (see station-control-shared.ts's
+// archive#1195: resolved fresh on every call (see station-control-shared.ts's
 // `api()` doc comment) -- a module-load-time freeze here would be wrong once
 // these same tool registrations are reachable from Station's own long-lived
 // process (station-control-mcp-route.ts), not only a freshly-spawned stdio
@@ -190,7 +190,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
 
   server.tool(
     'install_plugin',
-    // station#4288. It no longer installs, and the description no longer says
+    // archive#4288. It no longer installs, and the description no longer says
     // it does: a tool advertising a capability it cannot perform is its own
     // defect, and this one could not perform it honestly.
     'Explain how to install a plugin. This tool cannot install one: installing needs an approval a person gives on a preview, and this tool has no person in its loop.',

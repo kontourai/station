@@ -515,7 +515,7 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
 
   // Writes CHAT_TURN_DEDUP_MAX_ENTRIES+1 claim/resolve pairs through the
   // real store — priced explicitly so full-corpus contention cannot red it
-  // at the default budget (station#2654).
+  // at the default budget (archive#2654).
   test('bounds a full persisted file with one representative persistence transition', {
     timeout: 30_000,
   }, async () => {

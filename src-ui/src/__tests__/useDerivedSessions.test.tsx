@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * Productionizes the station#726 review's probe against the ChatDock
- * derivation path: active-chats-store.notify() replaces the *whole*
- * `allChats` map object on every updateChat() call for ANY session
- * (active-chats-store.ts), and useAllActiveChats() (ActiveChatsContext.tsx)
+ * Productionizes the archive#726's probe against the ChatDock
+ * derivation path: active-chats-store.notify replaces the *whole*
+ * `allChats` map object on every updateChat call for ANY session
+ * (active-chats-store.ts), and useAllActiveChats (ActiveChatsContext.tsx)
  * is an unfiltered subscription to that map — so without a per-session
  * cache, a keystroke in one open tab rebuilds every open tab's ChatSession
  * (and its cloned messages array/objects), which is what made the primary
@@ -15,7 +15,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // A stable array/object reference across renders, matching real
-// useAgents() (backed by react-query, which returns the same cached
+// useAgents (backed by react-query, which returns the same cached
 // reference when the query data hasn't changed) — a fresh literal here
 // would defeat useDerivedSessions' per-session cache on every render for
 // reasons that have nothing to do with production behavior.
@@ -57,9 +57,9 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
   });
 
   afterEach(() => {
-    // Unmount any still-subscribed hook (via RTL's own act-wrapped cleanup)
-    // before mutating the store — otherwise removeChat()'s notify() reaches
-    // a mounted useSyncExternalStore subscriber outside of act().
+    // Unmount any still-subscribed hook (via own act-wrapped cleanup)
+    // before mutating the store — otherwise removeChat's notify reaches
+    // a mounted useSyncExternalStore subscriber outside of act.
     cleanup();
     clearChats();
   });
@@ -270,7 +270,7 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
     );
     expect(notice).toBeDefined();
     expect(notice?.ephemeral).toBe(true);
-    // station#1292: every notice also gets a real id/timestamp — never left
+    // archive#1292: every notice also gets a real id/timestamp — never left
     // for the caller to assign (or omit).
     expect(typeof (notice as any)?.id).toBe('string');
     expect(typeof notice?.timestamp).toBe('number');
@@ -491,7 +491,7 @@ describe('dedupeOptimisticMessages (station#1293 — identity-based reconciliati
     expect(dedupeOptimisticMessages(local, backend)).toEqual([]);
   });
 
-  // The exact #1293 bug: a client-only row with no backend counterpart (an
+  // The exact archive#1293 bug: a client-only row with no backend counterpart (an
   // error bubble finalizeAssistantTurn appended, a queue-drain optimistic
   // append, …) shifts every subsequent index by one under the old
   // `slice(backendMessages.length)` — the real user message right after it
@@ -598,7 +598,7 @@ describe('useDerivedSessions — end to end: no duplicate user bubble across a b
     ]);
 
     // The backend transcript now carries the exact same turn — simulating
-    // fetchMessages() landing after the optimistic append.
+    // fetchMessages landing after the optimistic append.
     act(() => {
       (
         conversationsStore as unknown as {
@@ -646,7 +646,7 @@ describe('useDerivedSessions — end to end: no duplicate user bubble across a b
     );
 
     // The backend transcript now carries BOTH real turns (but never the
-    // aside) — simulating fetchMessages() landing after both optimistic
+    // aside) — simulating fetchMessages landing after both optimistic
     // appends.
     act(() => {
       (

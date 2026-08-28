@@ -136,7 +136,7 @@ function containsRouteFulfill(node) {
 }
 
 /**
- * station#3800: a mocked `POST /api/orchestration/chat` is only ACCEPTED when
+ * archive#3800: a mocked `POST /api/orchestration/chat` is only ACCEPTED when
  * its body carries the exact provider turn identity — `readExecutionReceipt`
  * (`packages/sdk/src/client/execution.ts:126-137`) and the route itself
  * (`src-server/routes/orchestration/orchestration.ts:689-701`) both refuse a
@@ -357,7 +357,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
-    // UX-audit E2E regression lane: every one of these seeds and reads LIVE
+    // E2E regression lane: every one of these seeds and reads LIVE
     // Station state (agents, skills, model connections) through the
     // authenticated API, because the claim under test is that the surface
     // renders the SERVER's answer rather than a fixture's.

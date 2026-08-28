@@ -41,7 +41,7 @@ const loadProjectSidebarStatus = () =>
     default: module.ProjectSidebarStatus,
   }));
 
-/** #3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
+/** archive#3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
  *  stays out of the entry chunk this sidebar belongs to. */
 const loadSidebarOpenChats = () =>
   import('./SidebarOpenChats').then((module) => ({
@@ -49,7 +49,7 @@ const loadSidebarOpenChats = () =>
   }));
 
 /**
- * kontourai/station#3314: how many open chats the sidebar section lists
+ * archive#3314: how many open chats the sidebar section lists
  * before folding the rest behind an "N more" affordance that opens the
  * dock's own inbox (the unbounded surface for this list).
  */
@@ -77,7 +77,7 @@ export function ProjectSidebar() {
   const openChats = useOpenChats(agents);
   const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
   const openChatsOverflow = openChats.length - recentTasks.length;
-  // #3314: per-section collapse + removal, persisted device-side alongside
+  // archive#3314: per-section collapse + removal, persisted device-side alongside
   // `projectSidebarCollapsed` (restore for a removed section lives in
   // Settings → Appearance).
   const { sidebarSections } = useDeviceSettings();
@@ -112,7 +112,7 @@ export function ProjectSidebar() {
     () => projects.map((project) => project.slug),
     [projects],
   );
-  // station#3315: server-owned order. The list arrives pre-sorted by the
+  // archive#3315: server-owned order. The list arrives pre-sorted by the
   // persisted positions; a commit sends the full desired slug order back.
   const reorderProjectsMutation = useReorderProjectsMutation();
   const { rowReorderProps, announcement: reorderAnnouncement } =
@@ -124,7 +124,7 @@ export function ProjectSidebar() {
           projects.find((project) => project.slug === slug)?.name ?? slug,
       },
     );
-  // station#3202: the badge's number is now the Sessions list's own live lanes
+  // archive#3202: the badge's number is now the Sessions list's own live lanes
   // scoped to one project (`project-live-work-model.ts`) — the same function
   // the project page's Live work section renders from, so the count and the
   // list it sends the reader to cannot disagree. The badge previously folded
@@ -153,8 +153,8 @@ export function ProjectSidebar() {
   const returnFocusRef = useRef<HTMLElement[]>([]);
 
   // The mobile drawer's return focus goes through the shared module
-  // (station#1245). Its own copy was `if (trigger?.isConnected) trigger.focus()`
-  // — the exact #1126 shape: `isConnected` answers "is it in the document", not
+  // (archive#1245). Its own copy was `if (trigger?.isConnected) trigger.focus`
+  // the exact archive#1126 shape: `isConnected` answers "is it in the document", not
   // "can it take focus", and there was no fallback when the trigger did not
   // survive. The drawer navigates, so the header button that opened it can be
   // replaced by the destination's own header, and a hamburger inside a
@@ -283,7 +283,7 @@ export function ProjectSidebar() {
             <span aria-hidden="true">⌂</span>
             <span className="sidebar__project-name">Home</span>
           </button>
-          {/* #3314: Open chats is a mini-inbox — shared inbox rows (compact
+          {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
               variant), collapsible with the nav groups' disclosure anatomy
               (aria-expanded + aria-controls + hidden), and removable
               (restore in Settings → Appearance). */}
@@ -344,8 +344,8 @@ export function ProjectSidebar() {
                     onClick={() => {
                       // Which surface holds the unbounded list depends on the
                       // dock's chrome, so `openCollection` owns that routing —
-                      // the sidebar must not decide it from here (#3314 review
-                      // SF-1).
+                      // the sidebar must not decide it from here (archive#3314
+                      //).
                       openChatsStore.openCollection();
                       if (isMobile) setMobileOpen(false);
                     }}

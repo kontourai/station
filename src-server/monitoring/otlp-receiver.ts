@@ -38,14 +38,14 @@ function baseEvent(
   // A producer that reports the user is the better authority than this
   // instance's own account; the receiving instance's user is what an OTLP
   // sender that reports none belongs to. Either way `''` is not an id
-  // (station#3086), so the key is omitted rather than written empty.
+  // (archive#3086), so the key is omitted rather than written empty.
   const userId = attrStr(attrs, K.USER_ID) || instanceUserId;
   return {
     timestamp: new Date().toISOString(),
     [K.TIMESTAMP_MS]: nowMs(),
     // Same rule for the trace id, and this is the one place it arrives off
     // the wire: the body is unvalidated, so a sender that omits `traceId`
-    // or sends `""` must not be recorded as having reported one (#3115).
+    // or sends `""` must not be recorded as having reported one (archive#3115).
     ...(traceId ? { [K.TRACE_ID]: traceId } : {}),
     [K.OP_NAME]: (attrStr(attrs, K.OP_NAME) as GenAiOperationName) ?? OP.CHAT,
     [K.PROVIDER]: attrStr(attrs, K.PROVIDER),
@@ -62,7 +62,7 @@ function baseEvent(
 }
 
 /**
- * station#3130: every event this receiver builds went to `emitRaw`, the one
+ * archive#3130: every event this receiver builds went to `emitRaw`, the one
  * `MonitoringEmitter` entry point that does not take a `userId` — so none of
  * them carried `station.user.id`, and `queryEvents` (`runtime-event-log.ts`)
  * admits a row only when that field equals the querying user. Ingested rows
@@ -180,7 +180,7 @@ export function createOtlpReceiverRoutes(
         [K.AT_ENRICHMENT]: ev.enrichment,
         ...(ev.tool?.name && { [K.TOOL_NAME]: ev.tool.name }),
         // The ingest schema declares tool.input and this mapping dropped it
-        // (station#3078), so an ingested agent's tool arguments were absent
+        // (archive#3078), so an ingested agent's tool arguments were absent
         // rather than redacted-but-present — and a reader could not tell
         // "takes no arguments" from "we threw them away". It rides the same
         // redaction seam as every locally produced event.

@@ -96,7 +96,7 @@ export class FlowMcpUiEvidenceBridge {
         output: stringifyResult(call.result),
         // The call ran inside the MCP server, not Station: there is no process
         // exit code and no measured duration, so neither is claimed
-        // (station#4237). Reaching here means the approved call returned a
+        // (archive#4237). Reaching here means the approved call returned a
         // result instead of throwing, which is the observed fact the passing
         // claim derives from. `outputTruncated` is genuinely false —
         // `stringifyResult` serializes the whole result Station holds.

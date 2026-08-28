@@ -14,7 +14,7 @@ import { TurnProvenanceCard } from '../components/chat/TurnProvenanceCard';
  * zero, a success, or nothing at all) only ever shows up in what a person
  * sees.
  *
- * station#1802 redesign: the headline is the takeaway (engine/model/cost),
+ * archive#1802 redesign: the headline is the takeaway (engine/model/cost),
  * the badge only ever names something that can differ between two answers
  * (never Station's own backlog), and the four row kinds — earned claim,
  * meaningful absence, Station's own gap, and correlation id — must be
@@ -73,7 +73,7 @@ describe('TurnProvenanceCard', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  // station#1802 — the collapsed line is the whole point: a reader who never
+  // archive#1802 — the collapsed line is the whole point: a reader who never
   // expands must still learn the engine, the model, and what this turn cost.
   it('renders the earned facts on the collapsed line: engine, model, and usage', () => {
     render(
@@ -94,7 +94,7 @@ describe('TurnProvenanceCard', () => {
     );
 
     const summary = screen.getByRole('button');
-    // SF7: the product name people know, not Station's internal slug.
+    // the product name people know, not Station's internal slug.
     expect(summary.textContent).toContain('Claude Code');
     expect(summary.textContent).toContain('claude-opus-5');
     // The engine's own reported total, not a rebuilt in/out sentence — see
@@ -115,7 +115,7 @@ describe('TurnProvenanceCard', () => {
     expect(screen.getByText('Engine')).toBeTruthy();
   });
 
-  // SF7 — product vocabulary up front, raw identifier still checkable.
+  // product vocabulary up front, raw identifier still checkable.
   it('renders the engine by product name and keeps the raw slug available', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
 
@@ -180,7 +180,7 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Model reported by engine')).toContain('sonnet-9-20260701');
   });
 
-  // station#1802 H-1 (review fix): a REQUESTED model is not a confirmed
+  // archive#1802: a REQUESTED model is not a confirmed
   // report. When the engine never echoed what it actually ran, the headline
   // must not present the requested value as if it were confirmed — that is
   // indistinguishable from an earned claim once this line is "the takeaway".
@@ -214,7 +214,7 @@ describe('TurnProvenanceCard', () => {
     );
   });
 
-  // AC2 — the sharp one.
+  // the sharp one.
   it('shows missing usage, routing receipt, sources, and trust report as named gaps, never 0 (AC2)', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
     expand();
@@ -263,7 +263,7 @@ describe('TurnProvenanceCard', () => {
     expand();
 
     const usage = valueFor('Usage');
-    // station#4196: for a provider DECLARED 'disjoint' (claude), the engine's
+    // archive#4196: for a provider DECLARED 'disjoint' (claude), the engine's
     // reported total is input + output by protocol — the detail row names it
     // "in+out" so it cannot contradict a cache-inclusive collapsed line.
     expect(usage).toBe('400 in+out tokens');
@@ -274,7 +274,7 @@ describe('TurnProvenanceCard', () => {
     expect(usage).not.toMatch(/\b0 out\b/);
   });
 
-  // station#4196: the collapsed line said "N tokens" from a total that is
+  // archive#4196: the collapsed line said "N tokens" from a total that is
   // input + output only — cache-exclusive under a cache-inclusive label,
   // right above a detail row listing thousands of cache tokens.
   it('includes cache in the collapsed-line total when the declared inclusivity backs the sum', () => {
@@ -394,7 +394,7 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Tools')).toBe('read_file, bash (1 failed) — and 3 more');
   });
 
-  // R3 — drill-down into the existing trust surface, only when a reference exists.
+  // drill-down into the existing trust surface, only when a reference exists.
   it('links to the referenced trust report, naming the exact bundle', () => {
     render(
       <TurnProvenanceCard
@@ -414,7 +414,7 @@ describe('TurnProvenanceCard', () => {
     expand();
 
     expect(valueFor('Trust report')).toContain('atlas / veritas-readiness');
-    // SF4: the label names where the link actually lands. There is no
+    // the label names where the link actually lands. There is no
     // per-bundle deep link, so "Open trust report" over-promised.
     expect(
       screen
@@ -431,7 +431,7 @@ describe('TurnProvenanceCard', () => {
     ).toBeNull();
   });
 
-  // SF1 — a reason string from a newer Station must not render as a blank.
+  // a reason string from a newer Station must not render as a blank.
   it('names an unrecognized unavailable reason instead of rendering a blank', () => {
     render(
       <TurnProvenanceCard
@@ -452,7 +452,7 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Usage')).not.toBe('');
   });
 
-  // D3 — a reason that collides with an Object.prototype key.
+  // a reason that collides with an Object.prototype key.
   it.each(['toString', 'constructor', 'hasOwnProperty', '__proto__'])(
     'does not render a prototype-chain value for the reason %s',
     (reason) => {
@@ -474,7 +474,7 @@ describe('TurnProvenanceCard', () => {
     },
   );
 
-  // SF3 — an engine whose usage scope nobody declared.
+  // an engine whose usage scope nobody declared.
   it('says the engine has not declared its usage scope', () => {
     render(
       <TurnProvenanceCard
@@ -491,7 +491,7 @@ describe('TurnProvenanceCard', () => {
     expect(valueFor('Usage')).not.toMatch(/\d/);
   });
 
-  // station#1423 — a reference this VIEWER may not dereference. The share
+  // archive#1423 — a reference this VIEWER may not dereference. The share
   // projection is the only producer of this reason, and the copy has to say
   // that the record exists: every other reason here means "Station has
   // nothing", and telling a share viewer that about a trust report Station
@@ -518,7 +518,7 @@ describe('TurnProvenanceCard', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  // --- station#1802: the badge is per-answer standing, not a backlog tally ---
+  // --- archive#1802: the badge is per-answer standing, not a backlog tally ---
 
   it('shows no badge for a healthy, unremarkable turn — even with three Station gaps present', () => {
     const { container } = render(
@@ -566,8 +566,8 @@ describe('TurnProvenanceCard', () => {
     expect(badge?.textContent).not.toMatch(/captured/i);
   });
 
-  // Review finding (station#1802, lower-severity item, addressed alongside
-  // H-1): a tool call this turn started but never resolved is a genuine
+  // Review finding (archive#1802, lower-severity item, addressed alongside
+  //): a tool call this turn started but never resolved is a genuine
   // per-answer anomaly by turnFindings' own stated rule, distinct from a
   // reported failure/cancellation.
   it('badges a turn with a tool call that started but never resolved', () => {
@@ -597,7 +597,7 @@ describe('TurnProvenanceCard', () => {
     expect(badge?.textContent).toBe('1 tool call unresolved');
   });
 
-  // --- station#1802: the four row kinds must be checkably distinct ---
+  // --- archive#1802: the four row kinds must be checkably distinct ---
 
   it('renders an engine-didn’t-report row and a Station-hasn’t-built-it row with different classes and in different sections', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
@@ -651,7 +651,7 @@ describe('TurnProvenanceCard', () => {
     );
   });
 
-  // --- station#1802: correlation ids are metadata, behind the disclosure ---
+  // --- archive#1802: correlation ids are metadata, behind the disclosure ---
 
   it('correlates the card to its exact turn, only after expanding, under Metadata', () => {
     render(<TurnProvenanceCard provenance={envelope({ turnId: 'turn-42' })} />);
@@ -700,7 +700,7 @@ describe('TurnProvenanceCard', () => {
     ).toBeTruthy();
   });
 
-  // AC5 — an envelope this build cannot read degrades honestly.
+  // an envelope this build cannot read degrades honestly.
   //
   // The versioned-but-truncated cases are the sharp ones (MB2): the card
   // reads `slot.state` on every field, so an envelope that passes a header
@@ -745,7 +745,7 @@ describe('TurnProvenanceCard', () => {
       },
     ],
     [
-      // #1456 — a slot claiming `observed` with a well-formed value but zero
+      // archive#1456 — a slot claiming `observed` with a well-formed value but zero
       // backing pointers is a vacuous observation: a confident fact with
       // nothing behind it. This is distinct from the case above (which fails
       // on the empty engine VALUE, not the pointer list) — here the value is
@@ -802,7 +802,7 @@ describe('TurnProvenanceCard', () => {
     expect(screen.getByText('The answer text.')).toBeTruthy();
   });
 
-  // --- station#2649: the Context row ---
+  // --- archive#2649: the Context row ---
   //
   // Four shapes, and the card must never render a fifth. The failure this
   // row exists to prevent is a Station context section appearing on a turn

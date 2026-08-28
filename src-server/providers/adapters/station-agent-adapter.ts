@@ -54,7 +54,7 @@ import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 const PROVIDER = 'station-agent' as const;
 
 /**
- * station#1207 (review HIGH 2, the actual production trigger under
+ * archive#1207 (review HIGH 2, the actual production trigger under
  * `managed-chat-orchestration`): how long `consumeChatStream`'s bridge from
  * the inner `/chat` SSE response onto the orchestration event bus may go
  * completely silent before it is treated as dead. Without this, a silent
@@ -81,7 +81,7 @@ export const STATION_AGENT_STREAM_STALL_TIMEOUT_MS = 45_000;
  * can carry an honest, specific reason instead of a generic one.
  *
  * The read/race mechanics themselves are the shared
- * `readWithStallWatchdog` (station#1256, deduplicating station#1207) —
+ * `readWithStallWatchdog` (archive#1256, deduplicating archive#1207) —
  * this class is injected as its `makeError`, which is the only thing that
  * differed from the SDK's `ChatStreamStallError` sibling.
  */
@@ -123,14 +123,14 @@ export interface StationAgentAdapterOptions {
   apiBase: string;
   /**
    * Must recognize any agent the `/api/agents/:slug/chat` route can serve —
-   * not just the in-memory active set (station#1049). A persisted agent that
+   * not just the in-memory active set (archive#1049). A persisted agent that
    * failed to register (e.g. an unresolved model connection) is still a
    * *known* agent to that route (it returns a specific 409), so this check
    * has to agree or the flip pre-empts the route with a factually wrong
    * "unknown agent" instead of letting the route's own availability handling
    * run. `sendTurn`'s non-ok branch reads the route's own reason out of the
    * response body and threads it into both the thrown error and the
-   * published `runtime.error` event (station#1071); this predicate only
+   * published `runtime.error` event (archive#1071); this predicate only
    * stops the wrong "unknown agent" rejection from pre-empting that.
    * See `createRegistryAwareHasAgent` for the production predicate.
    */
@@ -174,7 +174,7 @@ function stringField(value: unknown): string | undefined {
 }
 
 /**
- * station#1885: the mutation-budget middleware rejects oversized bodies with
+ * archive#1885: the mutation-budget middleware rejects oversized bodies with
  * `{ error: { code: 'request_too_large', limit_bytes } }` — an OBJECT, not a
  * string. The `stringField` read above silently dropped objects, so a size
  * rejection surfaced as the generic "did not accept the task turn" with no
@@ -227,7 +227,7 @@ interface RelayChatMessage {
 }
 
 /**
- * station#1885: composes the `input` field forwarded to `/chat`. When the
+ * archive#1885: composes the `input` field forwarded to `/chat`. When the
  * turn carries attachments, they ride as the multipart message shape `/chat`
  * already accepts — the same shape the direct path built pre-#1418
  * (`buildConversationTurnInput` in chatRuntimeStream.ts), where each
@@ -320,7 +320,7 @@ function normalizeRejectionReason(value: string): string | undefined {
 }
 
 /**
- * Extracts the `error` field from a /chat rejection's JSON body (#1071).
+ * Extracts the `error` field from a /chat rejection's JSON body (archive#1071).
  * The read is bounded (bytes + deadline) and abort-aware, so a degenerate
  * body can never hang or bloat the turn-failure path — the pre-#1071 code
  * never read rejection bodies at all, and surfacing the reason must not
@@ -331,7 +331,7 @@ function normalizeRejectionReason(value: string): string | undefined {
  * Handles BOTH error shapes this route's middleware can produce: a plain
  * string (`{ error: "..." }`, the route's own 409s) and a structured object
  * (`{ error: { code, limit_bytes } }`, the mutation-budget middleware's 413
- * and the security middleware's 401/403/429 — station#1885).
+ * and the security middleware's 401/403/429 — archive#1885).
  */
 export async function readChatRejectionReason(
   response: Response,
@@ -415,7 +415,7 @@ export function mapStationAgentStreamEvent(options: {
   failed?: true;
   approvalOpened?: { requestId: string; toolName?: string };
   /**
-   * station#2649: `/chat`'s own dispatch-time context receipt, parsed
+   * archive#2649: `/chat`'s own dispatch-time context receipt, parsed
    * strictly (a malformed record is dropped whole, leaving the honest
    * envelope gap, never a partial claim). Not published as its own canonical
    * event — `consumeChatStream` stamps it on the turn's terminal event,
@@ -466,19 +466,19 @@ export function mapStationAgentStreamEvent(options: {
   if (event.type === 'tool-result') {
     const toolCallId = stringField(event.toolCallId) ?? crypto.randomUUID();
     const error = stringField(event.error);
-    // station#3113/#3117: `event.error` reaching this relay is ALREADY the
+    // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's
     // `normalizeVoltAgentToolErrors`, strands-stream-events.ts's
     // `mapStrandsStreamEvent`) lift it from their own internals and decide
-    // there what may cross. station#3210 changed WHICH marker makes that
+    // there what may cross. archive#3210 changed WHICH marker makes that
     // decision: it is `stationComposedReason` (the text was composed by
     // `denial-message.ts`, so its tool name is sanitized and any guardian or
     // hook prose inside it is bounded, quoted and attributed) — not
     // `policyDenied`, which says only that the policy evaluator produced the
-    // denial and rides through here independently as the #3091 badge.
+    // denial and rides through here independently as the archive#3091 badge.
     // Anything else is the fixed generic message. This relay
     // no longer substitutes its own hardcoded literal — doing so is what
-    // discarded the real denial reason before (#3117's original complaint)
+    // discarded the real denial reason before (archive#3117's original complaint)
     // — it forwards exactly what the adapter decided, and nothing else
     // (never `event.output`, which may still hold the raw framework error
     // object with a remote-controlled `.message`).
@@ -554,7 +554,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     displayName: 'Station agents',
     description:
       'Station-owned agents with their configured model, skills, tools, and memory.',
-    // station#1885: `image-input` is declared because the relay below
+    // archive#1885: `image-input` is declared because the relay below
     // forwards `input.attachments` to `/chat` as the same multipart input
     // shape the direct path used pre-#1418 (`buildConversationTurnInput`),
     // and `/chat` → `agent.streamText` consumes it. Declaring a capability
@@ -709,7 +709,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record.activeTurnId = turnId;
     record.activeController = controller;
     record.abortPublished = false;
-    // #796: a Station agent's session is started without a model — the UI
+    // archive#796: a Station agent's session is started without a model — the UI
     // resolves one only when a turn is sent — so the model settles here.
     // `session.configured` is the only event that carries a model into the
     // read model and the persisted session row; without republishing it, the
@@ -717,10 +717,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     // loaded, gone the moment it is rehydrated, which is what leaves resumed
     // sessions labelled 'Model not reported'.
     //
-    // station#1182 survey finding, station#1455 fix: this adapter
+    // archive#1182 survey finding, archive#1455 fix: this adapter
     // deliberately does not gain a `reportedModel` here (see the
     // `effectiveModelMetadata` call a few lines down for the requested/
-    // effective side, which station#1455 DOES populate). Station agents run
+    // effective side, which archive#1455 DOES populate). Station agents run
     // on Station's OWN engine (VoltAgent/Strands) — Station resolves the
     // model (`modelId`) AND executes the turn end-to-end via the
     // `/chat` relay below, so "requested" and "what ran" are the same fact
@@ -736,9 +736,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     this.publishSettledModel(record, modelId);
     this.updateSession(record, 'running', modelId);
     this.publishState(record, 'idle', 'running');
-    // station#1455: the requested/effective side of the model identity this
+    // archive#1455: the requested/effective side of the model identity this
     // adapter otherwise never stamps — see the reportedModel refusal note
-    // just above (station#1182 survey finding) for why only this half is
+    // just above (archive#1182 survey finding) for why only this half is
     // populated. Computed once and reused on the terminal event below so
     // both carry the SAME requested snapshot for this turn, even if a
     // concurrent turn on this session were to change the model before
@@ -802,10 +802,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               : {}),
           },
           body: JSON.stringify({
-            // Relay contract (#685): forward the TYPED text plus the raw
+            // Relay contract (archive#685): forward the TYPED text plus the raw
             // ambient context so /chat's own choke point composes exactly
             // once and its persistence surfaces (conversation title, temp
-            // agent messages) keep typed content only. station#1885: when
+            // agent messages) keep typed content only. archive#1885: when
             // the turn carries attachments, `buildRelayInput` composes the
             // multipart `input` shape `/chat` consumes so the attachment is
             // forwarded (not silently dropped after the gate passed).
@@ -821,7 +821,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               ...(record.userId ? { userId: record.userId } : {}),
               ...(record.delegation ? { delegation: record.delegation } : {}),
               ...(modelId ? { model: modelId } : {}),
-              // station#1288: `/chat`'s model-override guard
+              // archive#1288: `/chat`'s model-override guard
               // (chat-model-override.ts) 400s any request that carries a
               // bare `options.model` without a resolved provider connection
               // — `chat-request-preparation.ts` only resolves one when
@@ -850,7 +850,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                     providerModel: modelId,
                   }
                 : {}),
-              // station#1224 (offline slice 2): forward the caller's
+              // archive#1224 (offline): forward the caller's
               // idempotency key so `/chat`'s own dedup (`chat-turn-dedup.ts`)
               // also recognizes a replayed turn on this relay path — defense
               // in depth alongside the orchestration-service-level dedup
@@ -866,7 +866,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         },
       );
       if (!response.ok || !response.body) {
-        // #1071: /chat rejections carry the actionable reason in their JSON
+        // archive#1071: /chat rejections carry the actionable reason in their JSON
         // error body — surface it instead of only the generic string. The
         // read is bounded and abort-aware (this branch's hardening of
         // main's edabd771): an unbounded response.json() here would let a
@@ -1025,7 +1025,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     let outputText = '';
     let resolvedFinishReason: ReturnType<typeof finishReason> = 'stop';
     let failed = false;
-    // station#2649: /chat emits at most one context-injection frame per
+    // archive#2649: /chat emits at most one context-injection frame per
     // turn; a later frame (should the route ever re-emit) supersedes.
     let contextInjection: TurnProvenanceContextInjection | undefined;
     try {
@@ -1106,13 +1106,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         method: 'turn.completed',
         finishReason: resolvedFinishReason,
         ...(outputText ? { outputText } : {}),
-        // station#1455: same requested-model snapshot stamped on
+        // archive#1455: same requested-model snapshot stamped on
         // turn.started — the turn-provenance fold's terminal event wins
-        // over turn.started when both carry a value (station#1182), so
+        // over turn.started when both carry a value (archive#1182), so
         // repeating it here (rather than leaving turn.completed silent)
         // keeps the observed slot in place even if a future edit stops
         // reading turn.started for this provider.
-        // station#2649: plus /chat's own context-injection receipt, when
+        // archive#2649: plus /chat's own context-injection receipt, when
         // the inner stream carried one — the metadata channel the
         // turn-provenance fold reads `contextInjection` from. Only what the
         // frame actually said is stamped; no frame, no claim.
@@ -1166,7 +1166,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
 
   /**
    * Announces a model that a turn settled (or changed), so the read model and
-   * the persisted session row learn it — see the #796 note at the call site.
+   * the persisted session row learn it — see the archive#796 note at the call site.
    * No-ops when the turn carries no model or repeats the one already recorded.
    */
   private publishSettledModel(

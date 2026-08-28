@@ -175,7 +175,7 @@ describe('default-agent slash commands', () => {
 
     await handler!(context);
 
-    // station#3969: `bindingStatus` is PRESENT here and `tool_execution` is
+    // archive#3969: `bindingStatus` is PRESENT here and `tool_execution` is
     // false, so this is the known-false branch — Station has read what this
     // agent can do and the answer is no. The unknown branch (no
     // `bindingStatus` at all) says something different on purpose, and is

@@ -51,7 +51,7 @@ describe('reserved-object-keys', () => {
   test('objects INSIDE arrays are converted too, and a shared subtree twice over', () => {
     // The shape an iterative rewrite regresses on: an element gets enqueued
     // and its children missed. The previous fixture held only primitives in
-    // its array, so it could not have noticed (station#4307 delta review).
+    // its array, so it could not have noticed (archive#4307 delta review).
     const source = JSON.parse(
       '{"list":[{"deep":{"a":1}},[{"b":2}]],"x":{"shared":{"c":3}},"y":{"shared":{"c":3}}}',
     );
@@ -84,7 +84,7 @@ describe('reserved-object-keys', () => {
   });
 
   /**
-   * station#4307 review. The recursive form spent one call frame per level and
+   * archive#4307 review. The recursive form spent one call frame per level and
    * threw `RangeError: Maximum call stack size exceeded` at ~3.5k, while
    * `JSON.parse` — the only producer that reaches this helper — is iterative
    * and survives ~200k. A settings body nested between those limits therefore

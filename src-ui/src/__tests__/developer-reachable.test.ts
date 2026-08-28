@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-// station#3313: Developer is settings-gated. The flag derivation has its own
+// archive#3313: Developer is settings-gated. The flag derivation has its own
 // test (useSurfaceVisibilityFlags.test.ts); here it is controllable so this
 // suite can pin both sides of the gate.
 const flagsState = vi.hoisted(() => ({ flags: new Set<string>() }));

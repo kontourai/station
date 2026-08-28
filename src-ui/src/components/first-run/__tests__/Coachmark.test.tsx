@@ -46,7 +46,7 @@ function mountAnchor(name: string) {
 }
 
 afterEach(() => {
-  // Unmount through RTL first; wiping innerHTML underneath it makes its own
+  // Unmount through first; wiping innerHTML underneath it makes its own
   // cleanup throw on a container it no longer owns.
   cleanup();
   for (const stale of document.querySelectorAll(

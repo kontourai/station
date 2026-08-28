@@ -1,6 +1,6 @@
 /**
- * WorkItemProviderService — provider seam aggregator (roadmap #583, part of
- * epic #580, S3). Follows the `NotificationService` precedent: registered
+ * WorkItemProviderService — provider seam aggregator (roadmap archive#583, part of
+ * epic archive#580, S3). Follows the `NotificationService` precedent: registered
  * `IWorkItemProvider` backends are polled per project and merged into one
  * response. Every backend is expected to report `available: false` on its
  * own absence rather than throw; this service adds a defensive catch on top

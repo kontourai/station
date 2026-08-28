@@ -190,7 +190,7 @@ describe('createStrandsFunctionTools', () => {
     expect(deniedToolCalls.has('tool-1')).toBe(false);
   });
 
-  // station#3091: the policy-denied badge derives from this marker riding
+  // archive#3091: the policy-denied badge derives from this marker riding
   // along on the thrown Error. Prove it survives the throw itself here
   // (loader layer); strands-agent-hooks.test.ts proves it survives the REAL
   // SDK's own error-wrapping on top of this.
@@ -216,7 +216,7 @@ describe('createStrandsFunctionTools', () => {
     ).rejects.toMatchObject({ message: reason, policyDenied: true });
   });
 
-  // Negative control (station#3091): a denial with no `policyDenied` marker
+  // Negative control (archive#3091): a denial with no `policyDenied` marker
   // (e.g. a human declining via the approval requester) must NOT throw an
   // error carrying the marker — collapsing the two would mislabel a user's
   // own choice as a policy block.

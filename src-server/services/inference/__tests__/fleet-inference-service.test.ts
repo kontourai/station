@@ -1,5 +1,5 @@
 /**
- * station#1398 slice 2 — the serving half's refusal taxonomy and bounds
+ * archive#1398 — the serving half's refusal taxonomy and bounds
  * (`docs/design/inference-fleet.md` §3.2, §4.5, §11 slice 2).
  *
  * The load-bearing property under test is that the CONTRIBUTED SUBSET is the
@@ -27,7 +27,7 @@ import {
   validateFleetCompletionRequest,
 } from '../fleet-inference-service.js';
 
-// station#3545 LOW: `#generate` reads `chunk.finishReason ?? null` (line
+// archive#3545 LOW: `#generate` reads `chunk.finishReason ?? null` (line
 // ~660), which is honest pass-through — the bug was never here. It was that
 // EVERY `AiSdkLLMProvider`-backed provider (Anthropic, Google, OpenAI-compat,
 // Bedrock, Ollama) never set `chunk.finishReason` at all, so every fleet
@@ -39,7 +39,7 @@ import {
 // proving the fix at the one seam a stub cannot: production.
 vi.mock('ai', () => ({
   streamText: vi.fn(() => ({
-    // station#3586: `AiSdkLLMProvider.createStream` now consumes
+    // archive#3586: `AiSdkLLMProvider.createStream` now consumes
     // `result.fullStream`, not `result.textStream` — this mock's
     // `fullStream` yields the raw `TextStreamPart` union (`text-delta` parts
     // carry their text on `.text`, per `node_modules/ai/dist/index.d.ts`),
@@ -612,7 +612,7 @@ describe('boundFleetContributionManifest (§4.2 peer-boundary decision)', () => 
 });
 
 /**
- * station#1398 slice 2, review round 1 (M-1) — a concurrency cap is only a
+ * archive#1398, review round 1 (M-1) — a concurrency cap is only a
  * bound if every occupant is guaranteed to leave.
  *
  * Before this, a provider that accepted a request and never yielded held its

@@ -109,7 +109,7 @@ describe('typing a command skill', () => {
       'Ship ABC-1 to staging',
     );
   });
-  // Review M3: a variable with neither a typed value nor a declared default
+  // a variable with neither a typed value nor a declared default
   // is REJECTED — named in an error the user reads — never silently
   // substituted with an empty string. Nothing is sent and the run is not
   // counted, because the skill did not run.
@@ -132,7 +132,7 @@ describe('typing a command skill', () => {
     expect(mocks.updateChat).toHaveBeenCalledWith('session-1', { input: '' });
   });
 
-  // Delta review: args parse shell-style — quotes group into one value.
+  // args parse shell-style — quotes group into one value.
   test('a quoted argument is one value, not split on its spaces', async () => {
     seedSkills([
       { name: 'release-check', command: { enabled: true, global: true } },
@@ -148,7 +148,7 @@ describe('typing a command skill', () => {
     );
   });
 
-  // Delta review: `name=value` assigns by name, so an earlier defaulted
+  // `name=value` assigns by name, so an earlier defaulted
   // variable keeps its default while a later required one is supplied.
   test('a named argument supplies a later variable while the earlier keeps its default', async () => {
     seedSkills([
@@ -180,7 +180,7 @@ describe('typing a command skill', () => {
     );
   });
 
-  // Delta review: a line the parser cannot read is never dispatched — not
+  // a line the parser cannot read is never dispatched — not
   // to a skill, a builtin, or the model.
   test('an unterminated quote reports the parse error and sends nothing', async () => {
     seedSkills([
@@ -233,7 +233,7 @@ describe('typing a command skill', () => {
     expect(mocks.readSkillDetail).toHaveBeenCalledWith('release-check');
   });
 
-  // CAT-R08: attaching is what makes a non-global command available, and the
+  // CAT-: attaching is what makes a non-global command available, and the
   // binding is `agent.skills` — the record the agent editor writes.
   test('a non-global command skill is only typable where it is attached', async () => {
     seedSkills([

@@ -1,6 +1,6 @@
 /**
  * THE single definition of "which store serves this conversation's
- * transcript" (station#4080 slice 1, review round 2, follow-up 1).
+ * transcript" (archive#4080, review round 2, follow-up 1).
  *
  * Two callers independently needed the exact same two-step FileMemory
  * lookup: `readConversationMessages` (`routes/chat/conversations.ts`) reads

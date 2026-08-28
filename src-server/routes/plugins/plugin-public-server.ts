@@ -324,7 +324,7 @@ export async function readPluginServerSettings(
   // copies every persisted key verbatim — so on a plain accumulator a
   // `__proto__` key REPARENTED `merged` instead of landing on it: `config.get`
   // then answered attacker-supplied values for keys nobody set while
-  // `config.all()` showed no such key, and the two disagreed (station#4307
+  // `config.all()` showed no such key, and the two disagreed (archive#4307
   // review). The manifest side is also refused at parse
   // (`plugin-manifest-loader.ts`); this is the store-shaped half of the fix.
   const merged: Record<string, unknown> = Object.create(null);

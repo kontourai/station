@@ -1,6 +1,6 @@
 /**
  * The `devicePresentation` projection served on `GET /api/system/status`
- * (station#3843 §1).
+ * (archive#3843 §1).
  *
  * ONE DERIVATION. `deviceClass` reads the local-operator flag the auth
  * boundary already bound for this request — mint-time

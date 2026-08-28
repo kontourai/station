@@ -88,7 +88,7 @@ function readTaskSlug(
  * - `station-owned`: Station is the workflow's writer. It may create the task
  *   and, on resume, touch `updated_at` so activity ordering stays honest.
  * - `read-only-join`: the sidecar belongs to a Builder run another process is
- *   driving (station#189 S4). Station is joining it to READ it, so this attach
+ *   driving (archive#189 S4). Station is joining it to READ it, so this attach
  *   never creates and never writes `state.json`.
  *
  * The distinction is not stylistic. `transition()` is a read-modify-

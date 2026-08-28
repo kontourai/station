@@ -615,7 +615,7 @@ export class SessionRecoveryCoordinator {
    * catches that already-durable event without treating `turn.started` as
    * provider proof.
    *
-   * station#3510: `runtime.error` is also a canonical terminal (station#3442)
+   * archive#3510: `runtime.error` is also a canonical terminal (archive#3442)
    * — a failed turn publishes it INSTEAD of `turn.completed`, never
    * alongside — so a search that only recognized `turn.completed`/
    * `turn.aborted` could find nothing for a turn that failed before dispatch
@@ -646,7 +646,7 @@ export class SessionRecoveryCoordinator {
    * (`event-store.ts`) — pre-acceptance the row has not reached that
    * outcome yet, so the UPDATE matches nothing and `findSourceTurn` matches
    * instead. Reading `armForRuntimeError`/`findSourceTurn`: when the race in
-   * station#3510's issue text occurs, the live `runtime.error` carries the
+   * archive#3510's issue text occurs, the live `runtime.error` carries the
    * RECOVERED turn's own `turnId`, and every adapter publishes that
    * recovered turn's `turn.started` synchronously at the start of `sendTurn`
    * — before any failure can occur — so `findSourceTurn(threadId,
@@ -657,7 +657,7 @@ export class SessionRecoveryCoordinator {
    * depends on `activeByThread` timing this method does not control. Left
    * open rather than attempting an
    * unverified change to the live-observation ordering under time pressure;
-   * station#3510's own title names this half explicitly and it is still
+   * archive#3510's own title names this half explicitly and it is still
    * unaddressed.
    */
   private replayObservedTerminal(
@@ -721,7 +721,7 @@ export class SessionRecoveryCoordinator {
   /**
    * A recorded turn can be replayed only when everything it carried can be
    * sent again. `prompt` has always been that test; attachment bytes are now
-   * part of it (station#3374), because retention can reclaim a blob and
+   * part of it (archive#3374), because retention can reclaim a blob and
    * re-running the turn without the image the user attached asks the model a
    * different question than the user did.
    */

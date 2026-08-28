@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * #3843 T2 — the Agents row's fixing verb on a paired device.
+ * archive#3843 — the Agents row's fixing verb on a paired device.
  *
  * "Set up" sends the user to Connections, which a paired device can browse
  * perfectly well, so this is a remote-safe affordance: the verb stays, and it
@@ -108,7 +108,7 @@ describe('AgentReadinessCell — the one verb, host-named', () => {
 });
 
 /**
- * station#4521 review round 2 (design ruling): a caution row's HEADER chip
+ * archive#4521 (design ruling): a caution row's HEADER chip
  * must still read caution at a glance, so it keeps a short, chip-native
  * label ("Not set up") instead of the full server sentence — but the
  * DECISION of which states shorten to which label lives here, in

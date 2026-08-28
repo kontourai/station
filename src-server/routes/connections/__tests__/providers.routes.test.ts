@@ -6,7 +6,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 // Stable spies, not a fresh object per construction: a route test can only
 // assert that NO catalogue request was made if the calls are observable
-// (#3654 review round 2). Behaviour is unchanged from the literals they
+// (archive#3654 review round 2). Behaviour is unchanged from the literals they
 // replace.
 const bedrockProvider = vi.hoisted(() => ({
   healthCheck: vi.fn(async () => true),
@@ -332,7 +332,7 @@ describe('Provider Routes', () => {
     expect(svc.saveProviderConnection).toHaveBeenCalledOnce();
   });
 
-  // #191 code-review M2: the 409 message must derive the provider-type
+  // archive#191 code-review M2: the 409 message must derive the provider-type
   // label from the request body's type, not hardcode "Ollama" — proven
   // here with a non-Ollama type so a future HOST_IDENTIFIED_PROVIDER_TYPES
   // addition (the code comment names Bedrock as a plausible candidate)
@@ -365,7 +365,7 @@ describe('Provider Routes', () => {
 });
 
 /**
- * #3654 review, M2 — these legacy endpoints used to expose the provider's own
+ * archive#3654 review, M2 — these legacy endpoints used to expose the provider's own
  * `healthCheck()` boolean directly.
  *
  * Bedrock's now answers "did AWS return a catalogue", so an IAM identity

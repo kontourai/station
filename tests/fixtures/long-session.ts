@@ -1,5 +1,5 @@
 /**
- * Shared long-session transcript fixture (station#3307).
+ * Shared long-session transcript fixture (archive#3307).
  *
  * One canonical builder for the 10,000-turn orchestration event corpus that
  * used to live inline in `tests/mobile-chat-composer.spec.ts`. Consumers:

@@ -1,9 +1,9 @@
 /**
- * station#settings-revamp slice 3 (#1359 store convergence, epic #1269 /
- * #1272): keyboard-shortcut overrides now live in the registry-driven
+ * archive#settings-revamp (archive#1359 store convergence, /
+ * archive#1272): keyboard-shortcut overrides now live in the registry-driven
  * device-settings envelope (`deviceSettingsStore`, `shortcutOverrides` —
  * `packages/contracts/src/device-settings.ts`) instead of the parallel
- * `station.device-settings` root #1359 shipped. Every exported function's
+ * `station.device-settings` root archive#1359 shipped. Every exported function's
  * signature is unchanged from that era so consumers
  * (`KeyboardShortcutsContext.tsx`) need no changes.
  */
@@ -11,7 +11,7 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 
 /**
  * Legacy compat window-event name — `deviceSettingsStore` itself dispatches
- * this on every mutation (see its `notify()`), so consumers that still
+ * this on every mutation (see its `notify`), so consumers that still
  * `window.addEventListener(DEVICE_SETTINGS_EVENT, …)` (rather than the
  * store's own `subscribe`) keep working unchanged.
  */

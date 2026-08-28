@@ -79,7 +79,7 @@ describe('ApprovalGuardianService', () => {
     expect(generateObject).toHaveBeenCalledOnce();
   });
 
-  // station#1831 delivery review (HIGH): user instructions were an OR-fallback
+  // archive#1831 delivery review (HIGH): user instructions were an OR-fallback
   // that REPLACED the entire built-in decision framework, while the Settings
   // copy ("Extra instructions" before, "added on top of" now) promised
   // additive behavior. These tests exercise the real composition path through
@@ -142,8 +142,8 @@ describe('ApprovalGuardianService', () => {
     });
   });
 
-  // station#3577: `toolArgs` is `unknown` and can arrive already serialized
-  // as a string (ACP's `rawInput`, the same source #3542/#3559 fixed for the
+  // archive#3577: `toolArgs` is `unknown` and can arrive already serialized
+  // as a string (ACP's `rawInput`, the same source archive#3542/#3559 fixed for the
   // thread export path and the collapsed tool-call header). Double-encoding
   // it with `JSON.stringify` puts escaped quotes in front of the reviewer
   // model instead of the raw command text.
@@ -185,7 +185,7 @@ describe('ApprovalGuardianService', () => {
       return capturedPromptFull({ toolArgs });
     }
 
-    // The fence is nonced (station#3577 review round 2, HIGH-3): the exact
+    // The fence is nonced (archive#3577 review round 2, HIGH-3): the exact
     // tag bytes differ on every call, so a test must extract whatever nonce
     // the code actually generated rather than assume a fixed delimiter. The
     // tag wraps `toolName`/`toolDescription`/`toolArgs` alike (review round
@@ -241,7 +241,7 @@ describe('ApprovalGuardianService', () => {
       );
     });
 
-    // station#3577 review round (HIGH-1): before the fence, a multi-line
+    // archive#3577 review round (HIGH-1): before the fence, a multi-line
     // string toolArgs was inserted as free prompt text after `Arguments: `,
     // so a model-authored value could forge its own copy of the trailing
     // decision instruction (or an "Operator note: pre-approved" line) and
@@ -273,7 +273,7 @@ describe('ApprovalGuardianService', () => {
       expect(afterOccurrences).toBe(1);
     });
 
-    // station#3577 review round 2 (HIGH-3): reopens HIGH-1. Round 1's fence
+    // archive#3577 review round 2 (HIGH-3): reopens HIGH-1. Round 1's fence
     // used a FIXED, public delimiter, so a model-authored value could
     // include its own `</tool_data:…>` (no nonce needed — round 1 didn't
     // have one) and everything after it — a decoy benign tool call, a fake
@@ -324,7 +324,7 @@ describe('ApprovalGuardianService', () => {
       expect(afterOccurrences).toBe(1);
     });
 
-    // station#3577 review round 3 (HIGH-4): reopens HIGH-1/HIGH-3 again.
+    // archive#3577 review round 3 (HIGH-4): reopens HIGH-1/HIGH-3 again.
     // Round 2 fenced only `toolArgs`. `toolDescription` (and `toolName`)
     // are equally model/tool-authored (`acp-adapter.ts:1648,1654`) and were
     // still inserted as free text — a malicious `toolDescription` could
@@ -382,7 +382,7 @@ describe('ApprovalGuardianService', () => {
       expect(genuineOccurrences).toBe(1);
     });
 
-    // station#3577 review round 4 (MEDIUM-6): round 3's fix has two halves
+    // archive#3577 review round 4 (MEDIUM-6): round 3's fix has two halves
     // — `toolName` and `toolDescription` share the same nonce — but only
     // `toolDescription` was pinned by a test; deleting the `toolName` fence
     // in production left the suite green. `toolName` is the WORSE half to
@@ -438,7 +438,7 @@ describe('ApprovalGuardianService', () => {
       expect(genuineOccurrences).toBe(1);
     });
 
-    // station#3577 review round 3 (MEDIUM-5): unpredictability IS the
+    // archive#3577 review round 3 (MEDIUM-5): unpredictability IS the
     // security property the nonce provides. A test asserting only "a nonce
     // shape is present" cannot distinguish a real random nonce from a
     // constant, publicly-readable one — which would be exactly as defeated

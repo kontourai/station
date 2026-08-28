@@ -46,8 +46,8 @@ export function useMenuFocus<T extends HTMLElement>(
     target?.focus();
 
     return () => {
-      // Restore through the shared module (station#1245). Its own copy was
-      // `if (previouslyFocused?.isConnected) previouslyFocused.focus()`, which
+      // Restore through the shared module (archive#1245). Its own copy was
+      // `if (previouslyFocused?.isConnected) previouslyFocused.focus`, which
       // carried both #1126 gaps: a connected-but-unfocusable trigger swallows
       // the restore, and a trigger the menu's own action removed gets nothing
       // at all. That case is real for these menus — a notification popover's
@@ -60,7 +60,7 @@ export function useMenuFocus<T extends HTMLElement>(
       // here does.
       //
       // A MENU IS NOT A MODAL, and the fit was checked rather than assumed
-      // (station#1245). The one behaviour that changes is dismissal by
+      // (archive#1245). The one behaviour that changes is dismissal by
       // focusout, which these menus do by design: tabbing out used to fire
       // `onClose`, unmount the menu, and then yank focus back to the trigger,
       // so Tab appeared to do nothing. The shared module's gap-1 guard leaves

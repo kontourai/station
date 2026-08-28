@@ -97,7 +97,7 @@ export function matchesKnowledgeFilter(
 }
 
 /**
- * station#1501 slice 3b, seam S3 (`docs/design/portable-project-identity.md`
+ * archive#1501, seam S3 (`docs/design/portable-project-identity.md`
  * §2.2.1).
  *
  * The namespace's own `storageDir` still WINS over the project directory, and
@@ -158,7 +158,7 @@ export async function resolveKnowledgeScanPath(
     // write half would send writes to $HOME/notes/files while the scan kept
     // looking under <cwd>/~/notes/files, making a directory scan a silent
     // permanent no-op. Expanding one side of a pair is the same defect class
-    // as not expanding at all (station#3155 review).
+    // as not expanding at all (archive#3155 review).
     const storageDir = resolve(expandTilde(namespaceConfig.storageDir));
     const filesDir = join(storageDir, 'files');
     return existsSync(filesDir) ? filesDir : storageDir;
@@ -167,7 +167,7 @@ export async function resolveKnowledgeScanPath(
   if (!storageAdapter) return null;
 
   /*
-   * station#1503 slice 5 — a namespace anchored to a NAMED repo resolves that
+   * archive#1503 — a namespace anchored to a NAMED repo resolves that
    * repo, not "the project's directory".
    *
    * Why this is the whole point of the slice for knowledge: with one repo per

@@ -1,6 +1,6 @@
 /**
- * Work Item Provider Routes — project-scoped provider seam (roadmap #583,
- * part of epic #580, S3). Mounted at /api/projects/:slug/work-items.
+ * Work Item Provider Routes — project-scoped provider seam (roadmap archive#583,
+ * part of epic archive#580, S3). Mounted at /api/projects/:slug/work-items.
  * Read-only this slice; aggregates every registered backend and never
  * fails the request for a backend's own absence (see
  * `WorkItemProviderService`).
@@ -31,8 +31,8 @@ export interface WorkItemRouteDeps {
    */
   getSessionReadAuthority?: (request: Request) => SessionReadAuthority;
   /**
-   * AssignmentProvider claim status reader (roadmap #584, part of epic
-   * #580, S4). Optional — when absent, `/claim` always reports
+   * AssignmentProvider claim status reader (roadmap archive#584, part of epic
+   * archive#580, S4). Optional — when absent, `/claim` always reports
    * `'unavailable'` rather than 404ing, matching the never-throws
    * degradation the rest of this seam already follows.
    */
@@ -89,7 +89,7 @@ export function createWorkItemRoutes(
   });
 
   /**
-   * Generic AssignmentProvider claim read (roadmap #584, part of epic #580,
+   * Generic AssignmentProvider claim read (roadmap archive#584, part of epic archive#580,
    * S4) — for a local task's `workItemRef` or a raw `ProviderWorkItem
    * .workItemRef` from any backend, since the claim is keyed by subject id,
    * not by which backend rendered the row. The caller derives "claimed by

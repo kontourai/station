@@ -127,7 +127,7 @@
  * not the bar sitting on top of it.
  *
  * The dock half is `--dock-bottom-clearance` (index.css), not a second copy of
- * the same sum: station#3902 found the SHELL reserving a strictly smaller
+ * the same sum: archive#3902 found the SHELL reserving a strictly smaller
  * number than the mobile block below derived, which is how a route that
  * reserved nothing of its own still ended up under the dock. This file now
  * adds only what is genuinely its own — this header's sticky bar, and the gap
@@ -146,22 +146,22 @@
  * published as `--dock-slot-size`, and `--layer-dock` (9200) in the layer
  * scale. This bar carried a raw `z-index: 20` and `bottom: 0`, so the dock
  * covered the lower 52px of its 57 and its own send button ate every tap
- * aimed at Save (station#3738). The bar sits ON TOP of the dock and above it
+ * aimed at Save (archive#3738). The bar sits ON TOP of the dock and above it
  * in the scale — the role `--layer-floating-action` already names, and the
  * one the voice button and the onboarding prompt already use to stand clear
  * of the dock.
  */
 /*
- * station#4521 MED-1: was `(max-width: 768px), (pointer: coarse)` — a WIDER
+* archive#4521: was `(max-width: 768px), (pointer: coarse)` — a WIDER
  * match than `useIsMobile`'s `MOBILE_MEDIA_QUERY` (src-ui/src/hooks/
  * useIsMobile.ts), which requires the coarse-pointer clause to ALSO be short
  * (`(max-height: 540px) and (pointer: coarse)`), matching index.css's own
  * mirror of that same literal a few thousand lines up. The mismatch was
  * silent, not cosmetic: a wide coarse-pointer device (e.g. a touchscreen
- * laptop) matched this file's query but not `useIsMobile()`, so it reserved
+* laptop) matched this file's query but not `useIsMobile`, so it reserved
  * `--detail-header-mobile-footer-height` (~76px) of bottom clearance for a
  * footer AgentsViewEditorPane no longer mounts there (gated on `isMobile`)
- * — dead space with nothing occupying it. Byte-identical to
+* dead space with nothing occupying it. Byte-identical to
  * `useIsMobile.ts`'s `MOBILE_MEDIA_QUERY` now; see that file's docblock for
  * why the coarse-pointer clause needs both conditions.
  */
@@ -180,15 +180,15 @@
     position: fixed;
     right: 0;
     /*
-     * The dock does not sit at the layout viewport's bottom edge when the
-     * software keyboard or Android system chrome shortens the VISIBLE
-     * viewport — it re-anchors to that edge, and this bar has to move with it.
-     * That inset used to be published only onto the dock's own element, where
-     * a sibling could not read it, so with an editor input focused the dock
-     * rose above the keyboard and Save stayed behind it (sol review, MEDIUM).
-     * `installVisualViewportInset` publishes it on the document element, and
-     * `--dock-bottom-clearance` (index.css) is the one sum that reads it.
-     */
+* The dock does not sit at the layout viewport's bottom edge when the
+* software keyboard or Android system chrome shortens the VISIBLE
+* viewport — it re-anchors to that edge, and this bar has to move with it.
+* That inset used to be published only onto the dock's own element, where
+* a sibling could not read it, so with an editor input focused the dock
+* rose above the keyboard and Save stayed behind it.
+* `installVisualViewportInset` publishes it on the document element, and
+* `--dock-bottom-clearance` (index.css) is the one sum that reads it.
+*/
     bottom: var(--dock-bottom-clearance);
     left: 0;
     z-index: var(--layer-floating-action);

@@ -1,5 +1,5 @@
 /**
- * station#2252 — a destructive rewrite must publish atomically.
+ * archive#2252 — a destructive rewrite must publish atomically.
  *
  * Separate file because it mocks `node:fs/promises`, and a module mock is
  * file-scoped: keeping it here leaves the behavioural suite next door running

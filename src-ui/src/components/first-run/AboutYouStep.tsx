@@ -1,5 +1,5 @@
 /**
- * AboutYouStep — the two first-run questions (station#2652 chapter 2).
+ * AboutYouStep — the two first-run questions (archive#2652 chapter 2).
  *
  * The honesty rules this component enforces at the UI edge, matching what
  * `buildUserProfileContextBlock` enforces at the data edge:
@@ -52,7 +52,7 @@ export interface AboutYouStepProps {
   /**
    * The save FAILED and nothing was persisted. Rendered in place of the
    * preview's promise, because "Exactly what Station will add" is false once
-   * the write did not land (review M1).
+   * the write did not land
    */
   error?: string | null;
 }

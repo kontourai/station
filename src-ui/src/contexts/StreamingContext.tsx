@@ -78,7 +78,7 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // station#3796. Note `getStreamingMessage` is keyed to `streamingMessages`
+  // archive#3796. Note `getStreamingMessage` is keyed to `streamingMessages`
   // BY DESIGN (a consumer must read fresh tokens through it), so this memo
   // still invalidates per token — it removes the churn from every OTHER
   // render of this provider, and does not pretend to make streaming cheap.

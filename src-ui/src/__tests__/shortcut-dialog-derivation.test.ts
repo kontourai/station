@@ -8,7 +8,7 @@ import {
 } from '../contexts/KeyboardShortcutsContext';
 
 /**
- * station#3767: `dialogOpen` used to be a reference-counted CLAIM, and the
+ * archive#3767: `dialogOpen` used to be a reference-counted CLAIM, and the
  * claim was made by exactly one component in the app — every hand-rolled
  * modal (the command launcher, the shortcuts cheatsheet, the command palette,
  * the task switcher) left the app's global chords live underneath it. It is

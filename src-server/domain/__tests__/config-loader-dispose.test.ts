@@ -1,5 +1,5 @@
 /**
- * Shutdown must not pay for the config watcher close (#956).
+ * Shutdown must not pay for the config watcher close (archive#956).
  *
  * `StationRuntime.shutdown()` is the app-quit path, and `configLoader.dispose()`
  * was the whole of its latency. Measured here with every other shutdown step
@@ -80,7 +80,7 @@ class HeldWatcher extends EventEmitter {
         if (this.closeFailure) reject(this.closeFailure);
         else resolve();
       };
-      // The close is now deferred (#956), so a release can be requested before
+      // The close is now deferred (archive#956), so a release can be requested before
       // `close()` is ever called. Honour it rather than hanging.
       if (this.released) this.releaseClose();
     });
@@ -182,7 +182,7 @@ describe('ConfigLoader dispose', () => {
     const disposeMs = performance.now() - startedAt;
 
     // The deterministic half: the close has not even been *called* yet, so
-    // dispose cannot have paid for it. Before #956 this was 1.
+    // dispose cannot have paid for it. Before archive#956 this was 1.
     expect(watcher.closeCalls).toBe(0);
     // The corroborating half, with a full 2s of headroom against a block
     // dispose would otherwise have absorbed in full.
@@ -253,7 +253,7 @@ describe('ConfigLoader dispose', () => {
   });
 
   it('cancels the pending post-ready reconciliation passes', async () => {
-    // #958 schedules six reconciliation passes out to 15.75s after `ready`.
+    // archive#958 schedules six reconciliation passes out to 15.75s after `ready`.
     // Disposing must stop that chain, not leave it firing into a torn-down
     // loader.
     const { events } = startLoader<HeldWatcher>();

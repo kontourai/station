@@ -5,8 +5,8 @@ import type {
 import type { EngineCapabilityMatrix } from './engine-capability-matrix.js';
 
 /**
- * `AgentType`/`resolveAgentTypeFromRuntimeConnection` retired in slice 6
- * (station#1003) — the matrix-driven `EngineCapabilityMatrix`
+ * `AgentType`/`resolveAgentTypeFromRuntimeConnection` are retired
+ * (archive#1003) — the matrix-driven `EngineCapabilityMatrix`
  * (`engine-capability-matrix.ts`) is now the single source of truth for
  * engine-derived capability/tab decisions; see
  * `requiresAgentPromptForRuntime` (`agent-validation.ts`) and

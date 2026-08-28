@@ -1,6 +1,6 @@
 /**
  * Roving-tabindex arrow-key navigation shared by every ARIA `tablist` in the
- * app (station#4463 slice 2). Originally lived only in
+ * app (archive#4463). Originally lived only in
  * `workspace-panes/WorkspacePaneHostTabs.tsx`; `components/Tabs.tsx` (the
  * page-level tab strip primitive) needed the identical Left/Right/Up/Down/
  * Home/End behavior, and two hand-rolled copies of the same keyboard

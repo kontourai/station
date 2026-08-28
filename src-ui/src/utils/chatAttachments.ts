@@ -17,7 +17,7 @@ export interface AttachmentInputCapabilities {
   files: boolean;
   /**
    * The engine- or model-specific sentence explaining why `images` is false
-   * (station#3344, from `resolveComposerImageSupport`). Without it a paste
+   * (archive#3344, from `resolveComposerImageSupport`). Without it a paste
    * onto a text-only engine is refused with a generic line that names nothing
    * the user can act on.
    */
@@ -230,7 +230,7 @@ export async function readChatAttachmentFiles(
       continue;
     }
 
-    // station#3375: an oversized image is shrunk to fit rather than refused —
+    // archive#3375: an oversized image is shrunk to fit rather than refused —
     // a pasted 4K screenshot should just work. The caps stay exactly where they
     // were; they now apply to what is about to be sent instead of to what was
     // picked. The module is loaded here, and only here, so the canvas ladder

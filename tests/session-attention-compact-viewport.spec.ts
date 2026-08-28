@@ -5,7 +5,7 @@ import {
 } from './helpers/orchestration';
 
 /**
- * station#1170 review HIGH #1 regression guard.
+ * archive#1170 (HIGH #1) regression guard.
  *
  * The session detail page hides its generic compose box whenever a
  * needs_input session's AttentionCard is showing its own answer form (see
@@ -21,8 +21,7 @@ import {
  * This MUST be a real-browser check: an RTL/jsdom test can only prove the
  * textarea is present in the DOM, never that it is visible — jsdom does
  * not load or apply stylesheets, so a `display: none` regression is
- * invisible to it (verified by fault injection; see the PR discussion for
- * the reproduced red/green transcript). `getComputedStyle` and
+ * invisible to it. `getComputedStyle` and
  * `boundingBox()` here read the real CSS cascade.
  */
 test('needs_input attention answer field stays genuinely visible once the viewport goes compact (keyboard-open)', async ({
@@ -130,7 +129,7 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
   await expect(answer).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send answer' })).toBeVisible();
 
-  // Review HIGH #3 (station#1170 fix round): .sessions-detail__header used
+  // archive#1170 (HIGH #3): .sessions-detail__header used
   // to be hidden entirely at this exact viewport, taking the page's title
   // and status badge with it — reproduced live at 390x560 with a `failed`
   // session (title/prompt, status badge, live indicator, and Stop task all
@@ -155,14 +154,14 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
 });
 
 /**
- * station#1170 review HIGH #3 regression guard.
+ * archive#1170 (HIGH #3) regression guard.
  *
  * `.sessions-detail__header` used to be hidden entirely (`display: none`)
  * in the same compact-viewport media query the sibling test above covers —
  * reproduced live at 390x560 with a `failed` session: title/prompt, status
  * badge, live indicator, and Stop task all disappeared, leaving only the
  * failure text and the collapsed diagnostics summary. The owner's original
- * #1170 complaint came from a phone, so the exact moment the keyboard
+ * archive#1170 complaint came from a phone, so the exact moment the keyboard
  * opens is when "what am I looking at" (title) and "what state is it in"
  * (status badge) matter most — this asserts both survive, using the same
  * real-CSS technique as the sibling test (`getComputedStyle`, a non-zero

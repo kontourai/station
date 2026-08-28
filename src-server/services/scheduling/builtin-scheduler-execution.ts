@@ -41,7 +41,7 @@ export interface SchedulerExecutionDeps {
    * idempotence falls back to the in-process fast path alone.
    */
   announcementOutbox?: SchedulerAnnouncementOutbox;
-  /** Optional (station#1897 logging slice 3): the caller's job-run-scoped
+  /** Optional (archive#1897 logging slice 3): the caller's job-run-scoped
    * `logger.child()` (`BuiltinScheduler.executeJob`) — absent when the
    * scheduler was constructed without a logger (e.g. `new
    * BuiltinScheduler()` in `scheduler.test.ts`), in which case this stays
@@ -87,7 +87,7 @@ const JOB_TIMEOUT = 10 * 60_000;
  * The strings below reach the durable run log and a manual run's receipt
  * message, and for an operator they are the only clue about why a run stopped.
  *
- * Before station#3220 a damaged store and a contended one both printed
+ * Before archive#3220 a damaged store and a contended one both printed
  * `unavailable`, so the advice was "wait" for a store that waiting cannot fix.
  * Both helpers take the outcome unions rather than a structural `{kind:
  * string}`, so a mistyped kind is a compile error instead of user-facing text.

@@ -68,7 +68,7 @@ export function createConnectionRoutes(
   });
 
   /**
-   * station#3748: `failures` is always present, and it is the difference
+   * archive#3748: `failures` is always present, and it is the difference
    * between "you have no model connections" and "Station could not read
    * them". A row that throws costs itself and names itself; the rest of the
    * inventory still reaches the picker, the Create gate and status.
@@ -107,7 +107,7 @@ export function createConnectionRoutes(
   });
 
   /**
-   * station#1398 §5.3 / §10 OQ-2 — the CONTRIBUTED-SUBSET projection, gated
+   * archive#1398 §5.3 / §10 OQ-2 — the CONTRIBUTED-SUBSET projection, gated
    * at `inference:invoke`.
    *
    * This endpoint used to return every model this Station can launch. Both
@@ -127,7 +127,7 @@ export function createConnectionRoutes(
    * repo called it (the SDK's two exported functions had zero call sites),
    * and `docs/reference/api.md` records the change for out-of-repo embedders.
    *
-   * station#2051 retires the former tunnel-disclosure residue: like every
+   * archive#2051 retires the former tunnel-disclosure residue: like every
    * protected route, this read rejects a bare loopback or SSH-forwarded
    * request with `401 authentication_required`. The contributed subset remains
    * the only credentialed HTTP projection; the un-projected inventory is

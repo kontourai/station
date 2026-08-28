@@ -26,7 +26,7 @@ interface Conversation {
   agentContext?: string;
   agentIcon?: string;
   agentEngine?: EngineDescriptor | null;
-  /** S1 of #1302: the project this conversation was created in/for, if any. */
+  /** of archive#1302: the project this conversation was created in/for, if any. */
   projectSlug?: string;
   title?: string;
   updatedAt: string;

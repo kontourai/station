@@ -1,5 +1,5 @@
 /**
- * Client-side image shrinking for the composer (station#3375).
+ * Client-side image shrinking for the composer (archive#3375).
  *
  * COVERAGE BOUNDARY — read before changing `browserDecoder` or
  * `browserReencoder`. Everything above the seam (the ladder, the format policy,
@@ -11,7 +11,7 @@
  * dev dependency. No E2E spec pastes an image either.
  *
  * They were proven by hand: this module bundled verbatim and run in Chromium
- * against a 41 MB 4000x3000 PNG of random pixels (2026-08-19, re-run against
+ * against a 41 MB 4000x3000 PNG of random pixels ( re-run against
  * this file after the decode hoist). It produced WebP 2048x1536 at 1,997,934
  * bytes under the 5 MB cap; the same pixels as a 12 MB JPEG source stayed JPEG
  * at 1,739,485 bytes; a 400 KB cap produced 1024x768; a 64-byte cap refused.

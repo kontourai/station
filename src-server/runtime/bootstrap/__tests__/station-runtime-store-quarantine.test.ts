@@ -20,7 +20,7 @@ import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-h
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The placement proof for station#3217.
+ * The placement proof for archive#3217.
  *
  * The quarantine takes the home MAINTENANCE lease, which is only grantable
  * while no runtime lease is held. Move the call below

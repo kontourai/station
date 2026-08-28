@@ -121,7 +121,7 @@ export function mapMuseFinishReason(
  * - `run_output_delta{text}` -> `content.text-delta`
  * - `run_terminal{terminal,text,reason}` -> `turn.completed` when
  *   `terminal === 'completed'`, or `runtime.error` ONLY (never both;
- *   station#3450) when it is not.
+ *   archive#3450) when it is not.
  *
  * Everything else is dropped ON PURPOSE:
  *
@@ -142,7 +142,7 @@ export function mapMuseFinishReason(
  *   stream (they exist only in `muse export`'s durable log), so
  *   `tool.started.arguments` would have nothing behind it either.
  * - **No `token-usage.updated` is emitted, because the live envelope carries
- *   no usage kind to map (station#4197 audit, muse 0.2.1-R1215.1).** Verified
+ *   no usage kind to map (archive#4197 audit, muse 0.2.1-R1215.1).** Verified
  *   two ways: a live `muse exec --json --provider echo` run (full stream
  *   captured; `run_terminal` carries only `command_id`/`run_stream`/
  *   `terminal`/`text`/`reason`), and the binary's own exec-stream

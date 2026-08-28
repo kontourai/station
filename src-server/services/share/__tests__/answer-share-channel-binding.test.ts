@@ -40,11 +40,11 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 /**
- * station#1598 — the recorded channel binding, end to end through the store
+ * archive#1598 — the recorded channel binding, end to end through the store
  * and the service.
  *
  * The persistence property is asserted against the BYTES ON DISK rather than
- * against the API's promises, for the same reason the #1423 store tests are:
+ * against the API's promises, for the same reason the archive#1423 store tests are:
  * the store's document validator is a strict allowlist RE-MAPPER, so a field
  * it does not name is dropped silently on every read AND on every write-back
  * (`#write` re-validates on the way out). A binding that survives a mint and

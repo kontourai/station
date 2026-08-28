@@ -89,8 +89,8 @@ test.describe('First-run zero-provider chat rescue (#191 R1)', () => {
   test('ends at a guided chat empty-state, never a raw error, with a one-click path to Connections -> Models', async ({
     page,
   }) => {
-    // station#3764: `ChatDockBody` mounts `ChatEmptyState` in the empty-
-    // transcript filler #2467's chunk split left behind, so the guided rescue
+    // archive#3764: `ChatDockBody` mounts `ChatEmptyState` in the empty-
+    // transcript filler archive#2467's chunk split left behind, so the guided rescue
     // is reachable without the heavy transcript chunk.
     await page.goto('/projects/dev/layouts/code?dock=open&chat=session-1');
 

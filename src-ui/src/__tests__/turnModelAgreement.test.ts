@@ -5,7 +5,7 @@ import { describe, expect, test } from 'vitest';
 import { resolveTurnModel } from '../lib/turnModel';
 
 /**
- * station#3149. The composer chip and the message dispatcher computed the
+ * archive#3149. The composer chip and the message dispatcher computed the
  * requested model separately and disagreed: with `requestedModel === null`
  * the dispatcher correctly sent no override, while the chip substituted the
  * AGENT DEFAULT and displayed it as though it were running.

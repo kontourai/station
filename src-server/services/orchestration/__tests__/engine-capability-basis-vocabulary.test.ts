@@ -1,5 +1,5 @@
 /**
- * station#1549: pins `BuiltinStationControlDelivery['basis']` to the Surface
+ * archive#1549: pins `BuiltinStationControlDelivery['basis']` to the Surface
  * spec's own evidence vocabulary.
  *
  * WHY THIS TEST LIVES HERE AND NOT IN `packages/contracts`

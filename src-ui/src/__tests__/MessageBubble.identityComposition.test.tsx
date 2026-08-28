@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#1434 — the assistant row's identity surfaces compose into ONE
+ * archive#1434 — the assistant row's identity surfaces compose into ONE
  * story, with #1410's turn provenance envelope as the single per-turn
  * authority.
  *
@@ -37,7 +37,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 const { MessageBubble } = await import('../components/chat/MessageBubble');
 
 /**
- * station#1423 added a share affordance to the assistant row, and it mints
+ * archive#1423 added a share affordance to the assistant row, and it mints
  * through a react-query mutation — so the real row now needs a client. Given
  * for real rather than mocked away: this file exists to prove what the REAL
  * row renders, and a row that cannot mount inside the app's own provider tree
@@ -188,7 +188,7 @@ describe('assistant row identity composition (station#1434)', () => {
       turnId: 'turn-7',
       // The pre-existing bare badge would have shown this requested model
       // with no label at all, next to a card pill preferring the reported
-      // one — the station#1182 disagree case.
+      // one — the archive#1182 disagree case.
       model: 'sonnet-latest',
       provenance: envelope({
         requestedModel: observed('sonnet-latest', 'e2'),

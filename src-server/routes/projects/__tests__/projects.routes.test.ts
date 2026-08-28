@@ -44,7 +44,7 @@ const FIXED_PROJECT_PANE_DESCRIPTOR_IDS = [
  * Fixed Project panes the route DECLARES. The Basis pane joined these
  * (`pane:builtin:basis`) but is not auto-instantiated, so the descriptor and
  * instance populations genuinely differ — a single shared constant made the
- * descriptor count right and the instance count wrong (station#4292). Named
+ * descriptor count right and the instance count wrong (archive#4292). Named
  * by identity rather than folded into a bare count, so each assertion still
  * says WHICH panes it expects.
  */
@@ -78,7 +78,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   projectOps,
   projectPaneCatalogDuration,
   workspacePaneAvailabilityResolutions,
-  // station#1502 slice 4 — an instrument missing from this factory is
+  // archive#1502 — an instrument missing from this factory is
   // `undefined` at call time, so the route throws inside its own try/catch and
   // every assertion below reads a 500 instead of the behavior under test.
   projectBindingOperations: { add: vi.fn() },
@@ -354,7 +354,7 @@ describe('Project Routes', () => {
     expect(JSON.stringify(body)).not.toContain(workspace);
   });
 
-  // station#3158 — these three shared one 404 reading "Workspace is
+  // archive#3158 — these three shared one 404 reading "Workspace is
   // unavailable or inaccessible", from a `catch {}` that did not even bind the
   // error. The path stays masked; the reason no longer is.
   test('GET /icon-candidates reports a missing workspace as missing, without its path', async () => {
@@ -433,7 +433,7 @@ describe('Project Routes', () => {
     expect(res.status).toBe(201);
   });
 
-  // station#3315: the static /order segment must reach the reorder handler,
+  // archive#3315: the static /order segment must reach the reorder handler,
   // never be captured as a project slug by the parameterized routes.
   test('PUT /order persists the sidebar order and refuses an unknown slug', async () => {
     const service = createMockProjectService();
@@ -1148,7 +1148,7 @@ describe('Project Routes', () => {
 
     const body = await json(await app.request('/test/panes'));
     // Select the layout-derived instance by IDENTITY, never by array position:
-    // the catalog also carries built-in panes (station#2201 added the chat
+    // the catalog also carries built-in panes (archive#2201 added the chat
     // pane), and a positional pick silently retargets this assertion at
     // whichever pane happens to sort first.
     const instance = body.data.instances.find((candidate: any) =>
@@ -1466,7 +1466,7 @@ describe('Project Routes', () => {
     });
     expect(JSON.stringify(body)).not.toContain('private');
     // The cause stays out of the response but must reach the server log with
-    // the project identity (station#2549).
+    // the project identity (archive#2549).
     expect(routesLogger.error).toHaveBeenCalledWith(
       'Workspace Pane catalog read failed',
       {
@@ -2264,7 +2264,7 @@ describe('Project Routes', () => {
     expect(body.success).toBe(true);
   });
 
-  // #597 — projectCreateSchema allows an omitted slug, but the real
+  // archive#597 — projectCreateSchema allows an omitted slug, but the real
   // FileStorageAdapter previously threw `ERR_INVALID_ARG_TYPE` building the
   // on-disk path from `config.slug`, surfacing as a bare 500. Wire the real
   // ProjectService + FileStorageAdapter (not the route-level mocks above) so
@@ -2404,7 +2404,7 @@ describe('Project Routes', () => {
         name: 'Renamed',
         type: 'coding',
         description: 'Preserved description',
-        // station#1497 — the rename still preserves the stored definition
+        // archive#1497 — the rename still preserves the stored definition
         // (`tabs` survives, which is what this test is about), but a coding
         // layout's `workingDirectory` is no longer persisted: the seeded
         // pre-fix copy is cleared by this write and the value is derived from
@@ -2456,7 +2456,7 @@ describe('Project Routes', () => {
     });
   });
 
-  // station#1004 §3.3 / §6: deleting a project is a passive `rmSync` of the
+  // archive#1004 §3.3 / §6: deleting a project is a passive `rmSync` of the
   // project's own directory only — no agent cascade exists, so an agent
   // owned by the deleted project is orphaned VISIBLY (survives on disk,
   // ownership intact, flagged by `agentOwnershipFinding` once the project
@@ -2508,7 +2508,7 @@ describe('Project Routes', () => {
       });
     });
   });
-  // ── station#1502 slice 4: the resolution surface ────────────────────────
+  // ── archive#1502: the resolution surface ────────────────────────
   //
   // Built over REAL stores on a temp home. The states under test are produced
   // by the resolver from on-disk facts rather than handed in by a fake, so a
@@ -2539,7 +2539,7 @@ describe('Project Routes', () => {
 
     function createResolutionApp(
       readRemotes: RemoteReader = remotesOk([]),
-      // station#1502 fix round, MEDIUM-3: lets a test make the POST-write
+      // archive#1502 fix round, MEDIUM-3: lets a test make the POST-write
       // RE-DERIVATION fail while the write itself succeeds.
       overrideResolver?: { resolveProjectResource: (...args: any[]) => any },
     ) {
@@ -2750,7 +2750,7 @@ describe('Project Routes', () => {
       const body = await json(response);
 
       expect(body.data.posture).toBe('backing');
-      // station#1503: each declared resource still resolves BY ID; the
+      // archive#1503: each declared resource still resolves BY ID; the
       // ambiguity is the PRIMARY selection's, and it is what a no-`resourceId`
       // consumer would hit.
       expect(
@@ -2845,7 +2845,7 @@ describe('Project Routes', () => {
       expect(written?.state).toBe('bound');
     });
 
-    // ── station#1503 review H2 — a PLUGIN may not anchor to a project repo ─
+    // ── archive#1503 review H2 — a PLUGIN may not anchor to a project repo ─
 
     test('applying a plugin layout REFUSES a repo-anchored namespace, before any write', async () => {
       // A plugin cannot know a project's declared resources — those are
@@ -2950,7 +2950,7 @@ describe('Project Routes', () => {
       ).toEqual(['plugin-docs']);
     });
 
-    // ── station#1503 review H2 — repo anchors are refused at the WRITE ────
+    // ── archive#1503 review H2 — repo anchors are refused at the WRITE ────
 
     test('PUT /:slug refuses a knowledge anchor naming an UNDECLARED repo', async () => {
       // The read side already fails such a project closed as `unreadable`,
@@ -3076,7 +3076,7 @@ describe('Project Routes', () => {
       expect((await json(response)).error).toContain('repo-relative');
     });
 
-    // ── station#1503 slice 5 — the repair action names ITS resource ────────
+    // ── archive#1503 — the repair action names ITS resource ────────
 
     test('POST /:slug/bind records the NAMED resource, not the primary', async () => {
       // A multi-repo project renders one repair form per row. A bind that
@@ -3243,7 +3243,7 @@ describe('Project Routes', () => {
       expect(response.status).toBe(404);
     });
 
-    // ── station#1502 fix round ─────────────────────────────────────────────
+    // ── archive#1502 fix round ─────────────────────────────────────────────
 
     test('POST /:slug/bind REFUSES a remote-less directory WITHOUT claiming it is a different repository (HIGH-4)', async () => {
       // `readCheckoutRemotes` answers `{ok: true, remotes: []}` for BOTH "not a

@@ -176,7 +176,7 @@ export function useWorkspacePaneHostController({
    */
   const onDocumentChangeRef = useRef(onDocumentChange);
   /**
-   * station#3793: the same reasoning as `onDocumentChangeRef`, applied to the
+   * archive#3793: the same reasoning as `onDocumentChangeRef`, applied to the
    * observability callbacks the persistence lease closes over. The lease
    * effect's subjects are the storage, the lock name and the lock manager —
    * WHO is told about an event is not one of them. `operationalEventContext`
@@ -342,7 +342,7 @@ export function useWorkspacePaneHostController({
       waitAbortController.abort();
       releaseLease?.();
     };
-    // station#3793: the lease's real subjects, and nothing else. The two
+    // archive#3793: the lease's real subjects, and nothing else. The two
     // callbacks still listed are identity-stable by construction —
     // `emitOperationalEvent` closes over refs (`useCallback(…, [])`) and
     // `leaseOperationalEventSink` is a ref value — so neither can re-elect the
@@ -529,7 +529,7 @@ export function useWorkspacePaneHostController({
    * was re-announced a document that had not moved, once per render.
    * A consumer that answers by storing a freshly built value then closes the
    * circuit: notify -> setState -> render -> new handler identity -> notify.
-   * station#3781 measured that loop at ~1,300 notifications/second on the
+   * archive#3781 measured that loop at ~1,300 notifications/second on the
    * project-layout route, 6,472 of 6,472 of them carrying an unchanged
    * instance list.
    */

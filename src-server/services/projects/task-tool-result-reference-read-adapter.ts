@@ -222,7 +222,7 @@ function bindingMatchesProjectWorkspace(
   const captured = (binding as TaskWorkspaceBinding).workingDirectory;
   if (captured === undefined) return false;
   // The two witnesses arrive in DIFFERENT forms, which is why this cannot be
-  // a raw string compare (station#4292): the Task's captured binding holds
+  // a raw string compare (archive#4292): the Task's captured binding holds
   // whatever was stored — `~/dev/repo` verbatim — while `workspace` comes
   // from `resolveProjectWorkspacePath`, which returns
   // `resolve(expandTilde(...))`. For any project stored with a tilde the two
@@ -241,7 +241,7 @@ function sameWorkspaceBinding(
   const b = right as TaskWorkspaceBinding;
   return (
     a.availability === b.availability &&
-    // Raw on BOTH sides on purpose (station#4292): same-provenance witness
+    // Raw on BOTH sides on purpose (archive#4292): same-provenance witness
     // comparison, not a path read. See the note in
     // `bindingMatchesProjectWorkspace` above for the case that genuinely
     // does need expansion — there the two sides arrive in different forms.

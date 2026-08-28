@@ -8,7 +8,7 @@ import {
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
 
-// #149 big-bang cutover: ACP chats ride the same orchestration chat surface
+// archive#149 big-bang cutover: ACP chats ride the same orchestration chat surface
 // as Claude/Codex (AC1), the typed plan.updated event renders and
 // live-updates the Plan inspector tab (AC3), and the _kiro.dev OAuth
 // extension.notification renders a clickable auth link (AC4). Modeled

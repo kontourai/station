@@ -1,5 +1,5 @@
 /**
- * useMessageContext — returns getComposedContext() from the active
+ * useMessageContext — returns getComposedContext from the active
  * context providers. Thin wrapper over MessageContextContext.
  */
 import { useMessageContextContext } from '../contexts/MessageContextContext';

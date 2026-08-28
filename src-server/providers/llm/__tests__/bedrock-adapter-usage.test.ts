@@ -6,7 +6,7 @@ vi.mock('../bedrock.js', () => ({
 }));
 
 /**
- * station#4197: Bedrock engine sessions used to silently discard reported
+ * archive#4197: Bedrock engine sessions used to silently discard reported
  * usage — `AiSdkLLMProvider.createStream` never populated
  * `LLMStreamChunk.usage`, and this adapter never published
  * `token-usage.updated`, so the UI claimed "engine did not report" for an
@@ -182,7 +182,7 @@ describe('BedrockAdapter token-usage.updated emission (station#4197)', () => {
     // fallback prompt figure is the SDK's cache-INCLUSIVE total, so cache
     // fields on the same event would be counted twice by every 'disjoint'
     // consumer (cacheInclusivePromptTokens). The event must carry the
-    // degraded figure with NO cache claim (review MEDIUM, station#4197).
+    // degraded figure with NO cache claim (review MEDIUM, archive#4197).
     const { events } = await runTurn({
       finishReason: 'stop',
       usage: {

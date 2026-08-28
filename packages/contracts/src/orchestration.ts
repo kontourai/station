@@ -157,8 +157,8 @@ export type SteerTurnResult =
     }
   | {
       /**
-       * station#4075 stage 2 review round 1 (F2): a second steer arrived
-       * for this thread while an earlier one's attribution reservation
+       * A second steer arrived
+       * for this thread while an earlier steer's attribution reservation
        * (`ClientOriginTurnPropagation`) was still in flight. Refused
        * outright rather than risk the earlier steer's `turn.started`
        * republishing under the WRONG (later) caller's principal — a
@@ -222,7 +222,7 @@ export interface OrchestrationDelegationContext {
   /**
    * All three name one public delegated-task target: an Agent.
    *
-   * station#3408: `'agent'` is the only one any writer in this repo actually
+   * archive#3408: `'agent'` is the only one any writer in this repo actually
    * persists — both launch writers (`station-control-delegation.ts`'s
    * delegated-task start and `execution-target-execution.ts`'s foreground
    * dispatch) write it. It was missing from this union, and from the
@@ -235,7 +235,7 @@ export interface OrchestrationDelegationContext {
   targetId?: string;
   projectSlug?: string;
   /**
-   * station#1463: how `projectSlug` came to name the project the work lands
+   * archive#1463: how `projectSlug` came to name the project the work lands
    * in. Slugs are locally generated with local dedupe suffixes, so a
    * cross-machine name match is a coincidence, not proof of identity — the
    * durable record says which it was rather than letting every slug read as
@@ -253,13 +253,13 @@ export interface OrchestrationDelegationContext {
    * - `unverified-cross-machine` — a remote target matched by project *name*
    *   only, or whose configured path equals the verified path only after
    *   normalization/tilde expansion against the probe-captured remote home
-   *   (station#1870). Accepted by the confinement gate, but not raw byte
+   *   (archive#1870). Accepted by the confinement gate, but not raw byte
    *   equality, so it earns no `directory-corroborated` claim. The old
    *   `~/`-relative SUFFIX tolerance is gone: a remote `~/dev/station` no
    *   longer matches `/home/anyone/dev/station` unless the recorded remote
    *   home makes them the same directory.
    *
-   * Absent means the record predates this field (station#1463); it is not a
+   * Absent means the record predates this field (archive#1463); it is not a
    * fourth state and must not be read as `local`.
    */
   projectSlugJoin?:
@@ -288,7 +288,7 @@ export type RequestAnswerabilityQualification =
 /**
  * Whether anything in the SERVING process could still answer an open request
  * on this session, as observed at the moment the summary was emitted
- * (station#1745 / ADR 0012).
+ * (archive#1745 / ADR 0012).
  *
  * `answerable: false` is not a claim that anything was cancelled — nothing is
  * written and nothing is resolved. It says that when this response was built,
@@ -324,7 +324,7 @@ export type RequestAnswerabilityQualification =
  *
  * A consumer that reads this as "something is wrong with this session" will
  * de-count, demote, or annotate every conversation the user ever finished.
- * That defect shipped in review of station#1780-#1783 and reached three
+ * That defect reached three
  * surfaces at once: a sidebar badge that silently read 0 instead of naming
  * unseen completed work, a Home row rendering "Done" directly above
  * "Unanswerable", and a delegated-task card annotating every clean finish.
@@ -429,7 +429,7 @@ export function withNormalizedAnswerability<
 }
 
 /**
- * THE copy every surface renders for an unanswerable session (station#1780/
+ * THE copy every surface renders for an unanswerable session (archive#1780/
  * #1781/#1782/#1783), so the four of them cannot tell four different stories
  * about one observation. `null` for the positive arm: there is nothing to
  * annotate, and returning a string there would invite a surface to render
@@ -483,7 +483,7 @@ export function unknownAnswerabilityNotice(subject?: string): string {
 }
 
 /**
- * station#4054: a process-local observation made by the turn-stall watchdog,
+ * archive#4054: a process-local observation made by the turn-stall watchdog,
  * not a lifecycle verdict. It is deliberately absent after the next observed
  * progress event or turn end; a quiet provider run can be expected rather
  * than anomalous (notably long tool calls on muse and station-agent).
@@ -529,7 +529,7 @@ export interface TerminalAttribution {
 export interface OrchestrationSessionSummary extends ProviderSession {
   controlMode: SessionControlMode;
   /**
-   * REQUIRED, and that is the point (ADR 0012 / station#1778). The consumer
+   * REQUIRED, and that is the point (ADR 0012 / archive#1778). The consumer
    * sweep found six independent emission routes for this shape and no
    * natural choke point, so convention cannot enumerate them — the compiler
    * can. A seventh emission path, or a sixteenth consumer that constructs
@@ -563,7 +563,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   /** Server-resolved Station/Environment namespace that owns the conversation. */
   environmentId?: string;
   /**
-   * station#1462: present only when this Station could NOT attribute the
+   * archive#1462: present only when this Station could NOT attribute the
    * session to exactly one project — today, a read-only-attached session
    * whose working directory is configured as more than one project. It
    * carries the named candidates instead of an arbitrary winner, and
@@ -574,7 +574,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * (which would read as "no project" when the truth is "too many") — see
    * `sessionProjectLabel` in `sessionDisplay.ts`, which is the one helper
    * every such surface goes through, Home's project grouping included
-   * (station#3227 A3).
+   * (archive#3227 A3).
    *
    * Project-SCOPED collections are a deliberate, disclosed exception: a
    * surface that answers "which sessions belong to project X" is addressed
@@ -584,7 +584,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * — the alternative asserts the binding twice instead of zero times. The
    * accepted gap is that project context carries no "N sessions could not be
    * attributed" signal yet; that needs a project-context affordance of its
-   * own and is tracked as station#1519, not silently absorbed.
+   * own and is tracked as archive#1519, not silently absorbed.
    *
    * `omittedCandidates` is the number of further candidates the read side
    * bounded away (`ATTACHED_SESSION_PROJECT_CANDIDATES_MAX`); when present,
@@ -606,7 +606,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   delegation?: OrchestrationDelegationContext;
   /**
    * Latest model Station itself requested/configured, from
-   * session.configured/turn.started metadata. station#1182: despite the
+   * session.configured/turn.started metadata. archive#1182: despite the
    * historical "provider-confirmed" framing, this is a requested value, not
    * an observation — it echoes back Station's own connection/turn model
    * selection, never something the runtime independently reported. See
@@ -622,7 +622,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   /** Accepted at session start; preserved independently from reported model. */
   modelLaunchPlan?: ModelLaunchPlan;
   /**
-   * station#1182: the model identity a runtime independently reported for
+   * archive#1182: the model identity a runtime independently reported for
    * this session (e.g. the Claude Agent SDK's per-turn assistant-message
    * model, Codex's thread/start response, an ACP agent's own model-category
    * config option, an Ollama chat response's `model` field) — distinct from
@@ -652,7 +652,7 @@ export interface OrchestrationSessionDetail {
 }
 
 /**
- * Why a bounded read handed back less than the stored event — station#3386.
+ * Why a bounded read handed back less than the stored event — archive#3386.
  *
  * Absent means nothing was withheld. Present, it names WHICH budget fired, in
  * the `<what>_limit` vocabulary the attached-transcript reader already labels
@@ -663,7 +663,7 @@ export interface OrchestrationSessionDetail {
  *   other field are absent from THIS read; they are still in the store.
  * - `output_limit` — a tool result's `output`/`error` was cut to the
  *   per-field ceiling. The rest of the payload is intact. `error` is always
- *   cut as text it was sent as. `output` is cut as text too, but — station#3462
+ *   cut as text it was sent as. `output` is cut as text too, but — archive#3462
  *   — a non-string `output` (contract-typed `unknown`; real producers send
  *   structured results) is JSON-serialised first, so its cut text may be a
  *   truncated JSON fragment rather than valid JSON, and is not meant to be
@@ -681,7 +681,7 @@ export interface OrchestrationSequencedEvent {
   event: CanonicalRuntimeEvent;
   /**
    * Set only when THIS read withheld part of the stored payload — never a
-   * statement about the event as persisted (station#3386).
+   * statement about the event as persisted (archive#3386).
    */
   elided?: RuntimeEventElisionReason;
 }
@@ -818,13 +818,12 @@ export interface AgentRunSummary {
    * Whether Station's own engine owns execution, an external engine does,
    * or (persisted-but-unresolvable adapter) it's unknown — replaces the
    * Phase-A `executionClass: 'managed'|'connected'|'unknown'` field
-   * (station#1003 Phase B; docs/design/agent-engine-unification.md §4.1).
+   * (archive#1003 Phase B; docs/design/agent-engine-unification.md §4.1).
    * Derived at read time from adapter metadata, never persisted in events.
    */
   engineExecution: 'station' | 'external' | 'unknown';
   /**
-   * The THIRD sibling wire shape ADR 0012 names, and the one whose omission
-   * the delta review caught (station#1778 HIGH 1).
+   * The THIRD sibling wire shape ADR 0012 names.
    *
    * `status` here is folded from the same raw events as `lifecycleState`:
    * `deriveAgentRunStatus` returns `waiting_for_approval` for any still-open
@@ -833,8 +832,7 @@ export interface AgentRunSummary {
    * whose request nothing can answer reads `waiting_for_approval` forever.
    * Carrying the decoration is what gives a consumer of `/api/orchestration/
    * runs` a wire-level way to know that. Teaching `status` itself is a
-   * behaviour change and is NOT done here — see the divergence table on the
-   * PR and station#1798.
+   * behaviour change and is NOT done here — see archive#1798.
    */
   answerability: RequestAnswerability;
   status: AgentRunStatus;
@@ -856,7 +854,7 @@ export interface SessionBoardItem {
   controlMode: SessionControlMode;
   runtimeKind: string;
   /**
-   * Station-vs-external collapse of the session's engine (station#1003
+   * Station-vs-external collapse of the session's engine (archive#1003
    * Phase B — replaces the `'managed'|'connected'|'acp'|'unknown'`
    * vocabulary; mirrors `AgentRunSummary.engineExecution`'s tri-state).
    */

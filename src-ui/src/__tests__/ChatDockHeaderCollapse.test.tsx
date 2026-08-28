@@ -93,7 +93,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     expect(onDockSnap).toHaveBeenCalledWith('half');
   });
 
-  // #795 review: the reopened dock takes its height from the persisted snap,
+  // archive#795: the reopened dock takes its height from the persisted snap,
   // so expanding after a Full-height collapse used to come back full height
   // with its own Maximize button still reading "Maximize".
   test('expanding restores Maximized when the persisted size was Full', () => {
@@ -108,7 +108,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
   });
 });
 
-// #800: this label read "Start a chat" and carried a pointer cursor, but was
+// archive#800: this label read "Start a chat" and carried a pointer cursor, but was
 // inert text — the click it appeared to offer only toggled the dock open (the
 // header's own handler), leaving the user to hunt for "New".
 describe('collapsed dock "Start a chat" affordance (#800)', () => {
@@ -135,7 +135,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     expect(setDockState).not.toHaveBeenCalled();
   });
 
-  // #800 review: the header renders unconditionally, so without an open-state
+  // archive#800: the header renders unconditionally, so without an open-state
   // guard the dock-open-and-empty state showed two identical "Start a chat"
   // controls — the header's and the body's — and any role-based query would
   // resolve to both.
@@ -220,7 +220,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
   });
 });
 
-// station#4460: Chat's header carried no occupant switcher at all — only
+// archive#4460: Chat's header carried no occupant switcher at all — only
 // Home/Activity's `.dock-slot__header` did. `ChatDockHeader` is the SAME
 // component every ambient occupant (Chat included) now renders through, so
 // this is the direct proof that Chat gets the picker too, without needing
@@ -236,7 +236,7 @@ describe('occupant picker (station#4460)', () => {
   });
 
   test('renders when supplied, naming the current occupant', () => {
-    // station#4460 review M4: `occupantPicker` is a PRE-RENDERED node (built
+    // archive#4460: `occupantPicker` is a PRE-RENDERED node (built
     // by the ambient host's lazy chunk), not `{current, onChoose}` data —
     // this test constructs the real `DockOccupantPicker` element itself,
     // the same way the host does.

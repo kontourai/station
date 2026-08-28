@@ -1,5 +1,5 @@
 /**
- * OperatingStateService tests (roadmap #586, part of epic #580, S6) — real
+ * OperatingStateService tests (roadmap archive#586, part of epic archive#580, S6) — real
  * `WorkflowSidecarService` against a temp-dir workspace fixture (matching
  * `workflow-sidecar-service.test.ts`'s own convention), the REAL published
  * `@kontourai/console-server` bridge functions (no mocks on

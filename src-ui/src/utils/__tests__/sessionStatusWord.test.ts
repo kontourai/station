@@ -7,7 +7,7 @@ import {
 } from '../session-state';
 
 /**
- * station#3227 A1. `orchestrationLifecycleLabel` is the fold every lane
+ * archive#3227 A1. `orchestrationLifecycleLabel` is the fold every lane
  * heading, project badge and project page is built from; `sessionStatusWord`
  * is the word a ROW prints. Before this slice the row printed
  * `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state, with
@@ -26,7 +26,7 @@ function session(
     provider: 'claude',
     status: 'ready',
     controlMode: 'station-owned',
-    // station#1778: required decoration, supplied rather than cast away.
+    // archive#1778: required decoration, supplied rather than cast away.
     answerability: { answerable: true },
     isLoaded: true,
     isPersisted: true,
@@ -225,7 +225,7 @@ describe('the row word is always product vocabulary', () => {
 });
 
 /*
- * station#3227 B1. The failed → finished → awaiting → active adjudication
+ * archive#3227. The failed → finished → awaiting → active adjudication
  * inside `orchestrationLifecycleLabel` is the SHARED
  * `sessionAttentionDisposition` fold — the same derivation the server's
  * attention projection counts the bell from (its own matrix test asserts item

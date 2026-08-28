@@ -19,7 +19,7 @@ import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat'
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 
 /**
- * Outbound peer-credential store (station#1123 slice 2,
+ * Outbound peer-credential store (archive#1123,
  * `docs/design/station-peer-pairing.md` §5).
  *
  * Keyed by the REMOTE peer's `environmentId`, this holds the bearer
@@ -85,7 +85,7 @@ interface PeerCredentialDocument {
   peers: StoredPeerCredential[];
 }
 
-// Async-compatible seam (#2646): the default is the ASYNC cross-process lock
+// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
 // so a contended acquisition yields the event loop; sync test fakes remain
 // assignable (awaiting a non-promise is a no-op).
 type PeerCredentialMutationLock = (

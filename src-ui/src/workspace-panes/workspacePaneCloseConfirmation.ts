@@ -5,7 +5,7 @@
  * state is controller-driven and awkward to reach from a test — and this is
  * exactly the part that has to stay right: the prompt was hand-rolled markup
  * under a class with no CSS rule, so it had no dialog surface and its
- * DISCARDING action was visually identical to Cancel (station#3157).
+ * DISCARDING action was visually identical to Cancel (archive#3157).
  *
  * `danger` is the load-bearing field. Everything else is wording.
  */
@@ -21,7 +21,7 @@ export interface PaneCloseConfirmationProps {
    * work; ARIA distinguishes the two and assistive tech announces them
    * differently. The hand-rolled markup this replaced had it right, and
    * reusing ConfirmModal silently downgraded it until the pane host's own
-   * test caught the missing role (station#3157).
+   * test caught the missing role (archive#3157).
    */
   role: 'alertdialog';
 }

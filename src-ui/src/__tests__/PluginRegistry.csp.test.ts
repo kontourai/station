@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * station#4287 — how a plugin bundle reaches the shell's realm, and what the
+ * archive#4287 — how a plugin bundle reaches the shell's realm, and what the
  * shell hands it on the way.
  *
  * jsdom does not enforce CSP and never loads an external `<script src>`, so
@@ -136,7 +136,7 @@ describe('same-origin plugin bundles', () => {
     });
     // The exports read must happen after the script evaluated, not before it
     // was appended. It must ALSO not happen after the load was reported --
-    // that is station#4302's late-bundle window, pinned in
+    // that is archive#4302's late-bundle window, pinned in
     // `PluginRegistry.late-bundle.test.ts`.
     expect(await settled).toBe('ready');
     expect(registry.hasLayout('demo-pane')).toBe(true);

@@ -18,7 +18,7 @@ function base(
   return {
     timestamp: new Date(now).toISOString(),
     [K.TIMESTAMP_MS]: now,
-    // The third join key, guarded like the other two (station#3115): every
+    // The third join key, guarded like the other two (archive#3115): every
     // reader of `trace.id` treats `''` as no trace, so writing it is a
     // durable record of an id that is not one.
     ...(traceId ? { [K.TRACE_ID]: traceId } : {}),
@@ -53,13 +53,13 @@ export class MonitoringEmitter {
     slug?: string;
     /**
      * Required to pass, but may be undefined: a turn that has no conversation
-     * yet is a real state, and `''` is not the way to say it (station#3086).
+     * yet is a real state, and `''` is not the way to say it (archive#3086).
      */
     conversationId: string | undefined;
     userId?: string;
     /**
      * Required to pass, but may be undefined: a span whose trace is unknown
-     * has no trace id, and `''` is not the way to say it (station#3115).
+     * has no trace id, and `''` is not the way to say it (archive#3115).
      */
     traceId: string | undefined;
     input: string;
@@ -83,13 +83,13 @@ export class MonitoringEmitter {
     slug?: string;
     /**
      * Required to pass, but may be undefined: a turn that has no conversation
-     * yet is a real state, and `''` is not the way to say it (station#3086).
+     * yet is a real state, and `''` is not the way to say it (archive#3086).
      */
     conversationId: string | undefined;
     userId?: string;
     /**
      * Required to pass, but may be undefined: a span whose trace is unknown
-     * has no trace id, and `''` is not the way to say it (station#3115).
+     * has no trace id, and `''` is not the way to say it (archive#3115).
      */
     traceId: string | undefined;
     reason: string;
@@ -129,26 +129,26 @@ export class MonitoringEmitter {
     slug?: string;
     /**
      * Required to pass, but may be undefined: a turn that has no conversation
-     * yet is a real state, and `''` is not the way to say it (station#3086).
+     * yet is a real state, and `''` is not the way to say it (archive#3086).
      */
     conversationId: string | undefined;
     userId?: string;
     /**
      * Required to pass, but may be undefined: a span whose trace is unknown
-     * has no trace id, and `''` is not the way to say it (station#3115).
+     * has no trace id, and `''` is not the way to say it (archive#3115).
      */
     traceId: string | undefined;
     /**
      * Omit when the producer reported no name. Do NOT substitute a string:
      * writing the literal 'unknown' into the durable log converts an absence
      * into a value no reader can undo, and makes it indistinguishable from a
-     * tool actually named `unknown` (station#3073).
+     * tool actually named `unknown` (archive#3073).
      */
     toolName?: string;
     toolCallId: string | undefined;
     input?: unknown;
     /**
-     * The engine that ran the tool (station#3074). Without it, tool usage
+     * The engine that ran the tool (archive#3074). Without it, tool usage
      * cannot be grouped by engine at all — the sibling agent-start record is
      * the only carrier today, and the Station-engine path does not even set
      * it there.
@@ -182,13 +182,13 @@ export class MonitoringEmitter {
     slug?: string;
     /**
      * Required to pass, but may be undefined: a turn that has no conversation
-     * yet is a real state, and `''` is not the way to say it (station#3086).
+     * yet is a real state, and `''` is not the way to say it (archive#3086).
      */
     conversationId: string | undefined;
     userId?: string;
     /**
      * Required to pass, but may be undefined: a span whose trace is unknown
-     * has no trace id, and `''` is not the way to say it (station#3115).
+     * has no trace id, and `''` is not the way to say it (archive#3115).
      */
     traceId: string | undefined;
     /** Omit when the producer reported no name — see `emitToolCall`. */
@@ -201,7 +201,7 @@ export class MonitoringEmitter {
      * Elapsed time from call to result. Recorded on the EVENT because the
      * OTel histogram that used to be its only home is a no-op unless an
      * exporter endpoint is configured — so on a default install tool latency
-     * was computed and discarded (station#3077, the #1686 lesson again).
+     * was computed and discarded (archive#3077, the archive#1686 lesson again).
      */
     durationMs?: number;
     provider?: string;
@@ -232,13 +232,13 @@ export class MonitoringEmitter {
     slug?: string;
     /**
      * Required to pass, but may be undefined: a turn that has no conversation
-     * yet is a real state, and `''` is not the way to say it (station#3086).
+     * yet is a real state, and `''` is not the way to say it (archive#3086).
      */
     conversationId: string | undefined;
     userId?: string;
     /**
      * Required to pass, but may be undefined: a span whose trace is unknown
-     * has no trace id, and `''` is not the way to say it (station#3115).
+     * has no trace id, and `''` is not the way to say it (archive#3115).
      */
     traceId: string | undefined;
     text: string;
@@ -259,7 +259,7 @@ export class MonitoringEmitter {
     userId?: string;
     /**
      * Required to pass, but may be undefined: a span whose trace is unknown
-     * has no trace id, and `''` is not the way to say it (station#3115).
+     * has no trace id, and `''` is not the way to say it (archive#3115).
      */
     traceId: string | undefined;
     healthy: boolean;

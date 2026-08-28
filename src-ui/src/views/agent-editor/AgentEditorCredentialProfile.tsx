@@ -2,11 +2,11 @@ import { useCredentialRecoveryQuery } from '@kontourai/station-sdk';
 import type { AgentEditorFormProps } from './types';
 
 /**
- * station#3551: which ACCOUNT of the bound engine this agent runs on.
+ * archive#3551: which ACCOUNT of the bound engine this agent runs on.
  *
  * Credential profiles have always stored one app-home per account
  * (`credentialProfileStorageId(engineId, ref)` keys them two-dimensionally),
- * and station#3530 let an agent name one. This is the control that sets it.
+ * and archive#3530 let an agent name one. This is the control that sets it.
  *
  * Only engines with an app-home channel have a credential-profile concept at
  * all — the server's `APP_HOME_ENGINES` table (`routes/connections/app-home.ts`)
@@ -38,7 +38,7 @@ export function AgentEditorCredentialProfile({
   // told a user with a VALID pin that it has no effect and to clear it. Say
   // what is actually true instead.
   if (isLoading || isError) {
-    // Review round 2 (Codex): returning null for an UNPINNED agent made the
+    // returning null for an UNPINNED agent made the
     // control vanish while loading or after a failed request, which is
     // indistinguishable from an engine that has no accounts at all — the same
     // conflation this branch exists to remove, just for the other population.

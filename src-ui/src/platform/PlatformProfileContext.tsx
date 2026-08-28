@@ -76,7 +76,7 @@ const DESKTOP_PROFILE_REFRESH_INTERVAL_MS = 5_000;
 
 /**
  * Horizontal clearance for the macOS overlay-title-bar traffic lights
- * (station#3316). `trafficLightPosition` in src-desktop/tauri.conf.json puts
+ * (archive#3316). `trafficLightPosition` in src-desktop/tauri.conf.json puts
  * the cluster at x=12 with ~52px of lights and spacing, so 80px clears it
  * with a normal gutter. Keep the two in sync when either moves.
  *
@@ -342,7 +342,7 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
    * The distinction that matters is native-mobile: an APK/IPA build is the one
    * target that never has a local server, so language implying "the server on
    * this device" is simply wrong there. JS reads this through
-   * `usePlatformProfile()`; this attribute exists so stylesheets can too.
+   * `usePlatformProfile`; this attribute exists so stylesheets can too.
    * Toggled, not only added, for the same reason as the dev-build tint below —
    * the profile can resolve after a first render and a stale value would lie.
    */
@@ -366,8 +366,8 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   // the native traffic lights float over web content, so tag the root and let
   // CSS inset the sidebar header around them. macOS-only, class name unchanged.
   //
-  // `--titlebar-inset-left` (station#3316) rides the same detection: the
-  // toolbar consumes it via `max()` where it spans the window's full width
+  // `--titlebar-inset-left` (archive#3316) rides the same detection: the
+  // toolbar consumes it via `max` where it spans the window's full width
   // (index.css), so its first control clears the traffic-light cluster.
   // Stamped as a root variable rather than hardcoded in CSS so non-mac shells
   // and the browser resolve to 0. Known accepted gap: macOS hides the lights
@@ -378,7 +378,7 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   // below. `<html>` outlives this component, so an add-only effect can never
   // take the tag back off: a profile that resolves to macOS and then stops
   // being mounted leaves "this is a macOS desktop shell" asserted for whatever
-  // renders next. That is what made station#1079's two profile tests fail as an
+  // renders next. That is what made archive#1079's two profile tests fail as an
   // inverted pair — one read the tag before its own effect stamped it, the next
   // read the leftover tag from the first.
   useEffect(() => {

@@ -363,7 +363,7 @@ describe('applyOrchestrationUsageToUsageStats (station#3245)', () => {
     // Charging a multi-day session's whole usage to one calendar day would
     // invent a distribution nothing measured, so `byDate`, `firstMessageDate`
     // and `lastMessageDate` are deliberately left to the memory substrate
-    // until station#3093 builds a date-capable one.
+    // until archive#3093 builds a date-capable one.
     const stats = createEmptyUsageStats();
     applyOrchestrationUsageToUsageStats(stats, [fold()], new Set());
     expect(stats.byDate).toEqual({});
@@ -607,7 +607,7 @@ describe('applyOrchestrationUsageToUsageStats (station#3245)', () => {
   test('cache counters stay ABSENT when no session ever reported a cache figure', () => {
     const stats = createEmptyUsageStats();
     applyOrchestrationUsageToUsageStats(stats, [fold()], new Set());
-    // Absent is not zero (station#3201): a counter nothing reported must
+    // Absent is not zero (archive#3201): a counter nothing reported must
     // not exist, or a panel would render "0 cache tokens" as a measurement.
     expect(stats.lifetime.totalCacheReadTokens).toBeUndefined();
     expect(stats.lifetime.totalCacheWriteTokens).toBeUndefined();

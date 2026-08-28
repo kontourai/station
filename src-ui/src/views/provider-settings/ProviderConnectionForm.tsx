@@ -11,7 +11,7 @@ import { PROVIDER_TYPES, resolveProviderPresentation } from './providerCatalog';
 import type { ProviderConnection } from './types';
 
 /**
- * The connection's default model (#3652, #3654, and their review's M1).
+ * The connection's default model (archive#3652, archive#3654, and their review's).
  *
  * One component rather than a copy per provider block: the chat probe reads
  * `config.defaultModel` for EVERY model provider, so every provider whose
@@ -77,7 +77,7 @@ export function DefaultModelField({
 }
 
 /**
- * The provider's OWN region control (#3654's Bedrock block, DESIGN.md §3.3).
+ * The provider's OWN region control (archive#3654's Bedrock block, DESIGN.md §3.3).
  *
  * Exported because the agent editor renders the same setting for a
  * Station-engine agent's per-agent override (`runtime-provider-resolution.ts`
@@ -320,7 +320,7 @@ export function ProviderConnectionForm({
         </div>
       </div>
 
-      {/* Delta2 review M1: an unreachable endpoint carries a reason the
+      {/* An unreachable endpoint carries a reason the
           operator needs just as much as a refusal does — "Station could not
           reach this provider" with what it tried, not a silent card. */}
       {!isNew &&
@@ -537,7 +537,7 @@ export function ProviderConnectionForm({
             )}
           </div>
           {/*
-           * #3652 — the check's own failure text asks for a default model
+           * archive#3652 — the check's own failure text asks for a default model
            * ("Set a default model on this connection … so Station can verify
            * chat directly"), and this form had nowhere to set one: the field
            * was API-only. A server with no `/models` route is exactly the
@@ -584,7 +584,7 @@ export function ProviderConnectionForm({
             </div>
           )}
           {/*
-           * Review M1: the chat probe reads `config.defaultModel` for every
+           * the chat probe reads `config.defaultModel` for every
            * model provider, so an Anthropic or Google connection whose
            * catalogue comes back empty or unsupported is told to set a default
            * model too — and this form could only set an API key, which made
@@ -718,7 +718,7 @@ export function ProviderConnectionForm({
           )}
 
           {/*
-           * #3654 — an IAM policy may grant bedrock:InvokeModel and withhold
+           * archive#3654 — an IAM policy may grant bedrock:InvokeModel and withhold
            * bedrock:ListFoundationModels, which is classified as "reachable,
            * no catalog" so the explicit test can go on to the one minimal chat
            * request that could still prove the connection works. That request
@@ -772,7 +772,7 @@ export function ProviderConnectionForm({
           >
             {isTesting ? 'Testing…' : 'Test Connection'}
           </button>
-          {/* Delta2 review M2: the contract used to call this non-billable,
+          {/* The contract used to call this non-billable,
               and the button said nothing at all. It asks the provider for its
               model list, and when there is no list to ask for it sends one
               minimal chat request — which some providers bill. Say so before

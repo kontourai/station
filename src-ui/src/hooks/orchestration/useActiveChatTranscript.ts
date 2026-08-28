@@ -22,7 +22,7 @@ function transcriptMessageText(message: ChatMessage): string {
 }
 
 /**
- * UX audit V3 review (HIGH): the live `[SYSTEM_EVENT] [CHAT_ERROR…]` marker
+ * the live `[SYSTEM_EVENT] [CHAT_ERROR…]` marker
  * `handleRuntimeErrorEvent` appends is the dock's visible failure card, and it
  * used to be dropped here — it is an ordinary `role: 'user'` row with no
  * `clientId`, so the bounded projection kept neither it nor the streaming
@@ -179,7 +179,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       // `turn.started` on, and admitting the projected copy alongside would
       // render the turn twice.
       //
-      // station#3352 reverses that after a reconnect the server could not
+      // archive#3352 reverses that after a reconnect the server could not
       // replay: the shell then holds only what arrived before the drop, so
       // the projection is the more complete copy and the shell is dropped
       // (`applyOrchestrationSnapshot`) in favour of it. `turn.started` clears
@@ -291,7 +291,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // A failure the server projection ALREADY renders for THAT SAME TURN must
     // not be doubled by the local marker: one failure, one visible element.
     //
-    // UX audit V3 review round 3 (MEDIUM): matched on turn identity, not on
+    // matched on turn identity, not on
     // text. Global text matching suppressed a marker merely because some
     // projected row anywhere in the window happened to contain the same
     // sentence — two turns can fail the same way, and the second one's card

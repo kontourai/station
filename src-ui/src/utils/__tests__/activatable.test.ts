@@ -59,7 +59,7 @@ describe('activatable', () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-  // Native semantics (PR #1277 round 2): Enter fires on keydown; Space fires
+  // Native semantics: Enter fires on keydown; Space fires
   // on KEYUP with the scroll default suppressed on keydown — a full
   // press-and-release of either activates a button exactly once.
   test.each(['Enter', ' '])(
@@ -125,7 +125,7 @@ describe('activatable', () => {
     expect(spaceUp.preventDefault).not.toHaveBeenCalled();
   });
 
-  // Round-2 re-review HIGH: a Space keyup with no live press on the SAME
+  // a Space keyup with no live press on the SAME
   // element must not activate. Native buttons cancel on focus-away and on a
   // prevented press; these pin that the primitive does too.
   test('an orphan Space keyup (no prior keydown on this element) does NOT activate', () => {

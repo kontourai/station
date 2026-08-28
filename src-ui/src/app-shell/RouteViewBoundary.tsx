@@ -79,7 +79,7 @@ class RouteErrorBoundary extends Component<
    * sidebar, every other open surface and the whole client cache survive.
    *
    * It is deliberately NOT offered for a rejected chunk import: React caches
-   * a `lazy()` rejection for the life of the module, so mounting the same
+   * a `lazy` rejection for the life of the module, so mounting the same
    * lazy component replays the same rejected promise (the reason
    * `LazyBoundary` has to construct a fresh one). Offering "Try again" there
    * would be a button that cannot work.

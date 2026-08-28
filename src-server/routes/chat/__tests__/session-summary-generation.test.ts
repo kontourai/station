@@ -75,7 +75,7 @@ describe('generateSessionSummary', () => {
     // only render them as one ambiguous disjunction — "no structure model is
     // configured or the transcript was empty" — naming two causes and
     // computing neither, one of which cannot even reach that line
-    // (station#3148). A test pinning the ambiguity is a test holding it in
+    // (archive#3148). A test pinning the ambiguity is a test holding it in
     // place.
     const runtime = ctx({ appConfig: {} });
     const result = await generateSessionSummary({

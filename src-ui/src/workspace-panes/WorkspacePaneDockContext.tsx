@@ -35,7 +35,7 @@ export interface WorkspacePaneDockAction {
    * The `instanceId` of the providing host's CURRENT occupant — republished
    * from the host's own document state on every occupant change, so a route
    * placement derives "my pane is away in the dock" from the same source of
-   * truth the dock renders from (station#4090 M5). Never a second store or a
+   * truth the dock renders from (archive#4090). Never a second store or a
    * parallel flag: the host's `onDocumentChange` is the only writer.
    */
   occupantInstanceId: string;

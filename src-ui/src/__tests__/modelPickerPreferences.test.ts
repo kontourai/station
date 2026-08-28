@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#settings-revamp slice 3 (#1359 convergence): modelPickerPreferences
+ * archive#settings-revamp (archive#1359 convergence): modelPickerPreferences
  * is now backed by the registry-driven device-settings envelope (a module
  * singleton) rather than the raw `station.device-settings` root — reset
  * modules per test for a fresh, un-migrated store.

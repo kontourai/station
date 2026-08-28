@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { isDefinitelyOffBox } from '../off-box-peer.js';
 
 /**
- * station#1490. Every case here is written from the same angle: this predicate
+ * archive#1490. Every case here is written from the same angle: this predicate
  * is the ONLY thing standing between a caller who presented no credential and
  * a persistent Station credential, and it is asked its question in the
  * permissive direction — `true` grants. So the cases that matter are the ones
@@ -78,7 +78,7 @@ describe('isDefinitelyOffBox', () => {
     // `URL` emits RFC 5952 mapped-HEX for anything it does not receive as a
     // dotted quad, so a class predicate written for the dotted spelling alone
     // misses these. Each line below is 127.0.0.1 or an address this host
-    // holds, wearing a different hat (station#1490 delta review H1).
+    // holds, wearing a different hat (archive#1490 delta review H1).
     for (const address of [
       '::ffff:7f00:1',
       '0:0:0:0:0:ffff:127.0.0.1',
@@ -113,7 +113,7 @@ describe('isDefinitelyOffBox', () => {
   test('refuses an IPv4 whose octets carry leading zeros, rather than guessing which host it means', () => {
     // `010.0.0.1` is 10.0.0.1 to one parser and 8.0.0.1 to another, and is a
     // different STRING from either in a set lookup — so it evaded the host
-    // list entirely (station#1490 delta review L3).
+    // list entirely (archive#1490 delta review L3).
     expect(
       isDefinitelyOffBox('010.0.0.1', {
         networkInterfaces: () => ({ en1: [{ address: '10.0.0.1' }] }),

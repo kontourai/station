@@ -43,7 +43,7 @@ interface Insights {
   totalChats: number;
   totalToolCalls: number;
   totalErrors: number;
-  /** Results whose producer reported no terminal status (station#3075). */
+  /** Results whose producer reported no terminal status (archive#3075). */
   totalOutcomeUnknown?: number;
   days: number;
   applied?: { agent?: string; tool?: string; engine?: string; limit?: number };
@@ -79,7 +79,7 @@ interface FeedbackStatus {
 type Tab = 'usage' | 'feedback';
 
 /**
- * Hand the user the rows behind the numbers (station#3076).
+ * Hand the user the rows behind the numbers (archive#3076).
  *
  * A dashboard that can only show its own aggregates makes the human the
  * query interface — the exact gap this closes. The rows arrive already
@@ -91,7 +91,7 @@ export async function downloadInsightEvents(
   expectedToolCalls?: number,
 ): Promise<{ written: boolean; rows: number; reason?: string }> {
   // /monitoring/events, which owns the per-user and tenant authorization
-  // these rows require — not a parallel export (station#3076).
+  // these rows require — not a parallel export (archive#3076).
   const events = await fetchMonitoringEvents(
     new Date(Date.now() - days * 24 * 60 * 60 * 1000),
     new Date(),
@@ -103,10 +103,10 @@ export async function downloadInsightEvents(
   // endpoint scopes rows to the requesting user; /api/insights, which
   // produced the number displayed beside this button, does not — so on a
   // corpus whose tool events were written without attribution the panel
-  // reads thousands and the export returns almost nothing (station#3130).
+  // reads thousands and the export returns almost nothing (archive#3130).
   // fetchMonitoringEvents used to flatten every failure — 401, 500, a parse
   // error — into an empty array, so "no rows" and "the request failed" were
-  // the same value here. station#3658 made every non-success read throw (a
+  // the same value here. archive#3658 made every non-success read throw (a
   // non-ok status as `StationHttpError` with the status preserved, an
   // unreadable body or `success:false` as an Error carrying the route's own
   // sentence), which this caller's `.catch` renders as "Export failed: …".
@@ -152,7 +152,7 @@ export async function downloadInsightEvents(
 
 function UsageTab() {
   const [days, setDays] = useState(14);
-  // Server-side slicing (station#3075). The dimensions were always on the
+  // Server-side slicing (archive#3075). The dimensions were always on the
   // data; only the endpoint refused to use them, so answering "what did THIS
   // agent run" meant reading raw NDJSON by hand.
   const [agent, setAgent] = useState<string | undefined>();
@@ -163,8 +163,8 @@ function UsageTab() {
   // predicts would be missing. A selector that always narrows to nothing is
   // worse than no selector. An earlier draft of this carried `engine` state
   // whose setter was only ever called with undefined: an inert control, and
-  // a PR description claiming a filter that could not be set (station#3075
-  // review). Wire it when the events carry the field (station#3130).
+  // a PR description claiming a filter that could not be set (archive#3075
+  // review). Wire it when the events carry the field (archive#3130).
   const { data } = useInsightsQuery(days, { agent }) as {
     data: Insights | undefined;
   };
@@ -217,7 +217,7 @@ function UsageTab() {
           { label: 'Errors', value: data.totalErrors },
           // Shown beside Errors deliberately: these results reported no
           // terminal status, so an error rate that ignores them flatters
-          // itself, and a reader deserves the denominator (station#3075).
+          // itself, and a reader deserves the denominator (archive#3075).
           ...(data.totalOutcomeUnknown
             ? [{ label: 'Outcome unreported', value: data.totalOutcomeUnknown }]
             : []),

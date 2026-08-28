@@ -14,7 +14,7 @@ import {
   EngineCapabilitySummary,
 } from '../EngineCapabilitySummary';
 
-// station#3722 slice 1: every rendered word traces to a matrix cell. These
+// archive#3722: every rendered word traces to a matrix cell. These
 // tests read the REAL matrices, so a cell changing state changes the chips
 // here too — the surface cannot drift from the delivery truth.
 describe('EngineCapabilitySummary derivations', () => {
@@ -35,14 +35,14 @@ describe('EngineCapabilitySummary derivations', () => {
       ENGINE_CAPABILITY_MATRICES.acp,
       'Kiro',
     );
-    // #3728 review: "Runs its own built-in tools" asserted built-ins EXIST,
+    // archive#3728: "Runs its own built-in tools" asserted built-ins EXIST,
     // which Station cannot establish for an unenumerated engine. The
     // conditional form claims only the absence of an inventory.
     expect(external).toContain(
       'Station cannot enumerate any built-in tools Kiro may provide.',
     );
     expect(external).not.toContain('Runs its own built-in tools');
-    // #3726 review (BLOCKING): the supply clause composes with the
+    // archive#3726: the supply clause composes with the
     // toolServers cell so the chip row and this sentence cannot diverge.
     expect(external).not.toContain('does not choose');
     expect(external).toContain(
@@ -50,7 +50,7 @@ describe('EngineCapabilitySummary derivations', () => {
     );
   });
 
-  // station#3722 audit: the documented cell answers the owner's original
+  // archive#3722 audit: the documented cell answers the owner's original
   // question in user words, from evidence the matrix cites.
   it('a documented toolbox names EXACTLY its audited categories — Claude Code claims no file editing (#3728 review)', () => {
     const sentence = deriveToolsOwnership(
@@ -135,7 +135,7 @@ describe('EngineCapabilitySummary derivations', () => {
     ).toHaveLength(0);
   });
 
-  // #3726 review (MEDIUM): presence checks let swapped labels, dropped
+  // archive#3726: presence checks let swapped labels, dropped
   // sentences, and stray chips survive — assert each row's COMPOSITION.
   it('each row contains exactly its own derived content', () => {
     const { container } = render(

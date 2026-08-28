@@ -240,7 +240,7 @@ const CONFIGURATION_READ_LEASE_TIMEOUT_MS = 30_000;
  * without end: the activation runs inside both configuration queues, so a
  * hanging provider probe or an unresponsive MCP server during a tool rebuild
  * used to wedge every later configuration mutation AND shutdown behind it
- * (station#3622). Past the deadline the mutation stops owning the queues,
+ * (archive#3622). Past the deadline the mutation stops owning the queues,
  * reports `configurationActivation: 'pending'` (a 202 the routes already
  * emit), and hands the rest to the reconciliation rail.
  *
@@ -423,7 +423,7 @@ export class StationRuntime {
   private agentConfigurationPersistenceRevision = 0;
   /**
    * Bumped every time an activation is abandoned at its deadline
-   * (station#3622). It is part of the generation snapshot every reload
+   * (archive#3622). It is part of the generation snapshot every reload
    * captures, so an abandoned pass that eventually wakes up fails its own
    * `assertAgentConfigurationRevisions` gate and rolls back instead of
    * publishing a snapshot built before a later writer ran. That is what makes
@@ -530,7 +530,7 @@ export class StationRuntime {
         return null;
       }
     },
-    // App-home profile opt-in (#896, agent-engine-unification.md §6.1's
+    // App-home profile opt-in (archive#896, agent-engine-unification.md §6.1's
     // overlay model, channel 2). `undefined` ⇒ the SDK spawn keeps today's
     // byte-identical behavior (full process env, no CLAUDE_CONFIG_DIR
     // override) — this closure is only invoked at `startSession` time, well
@@ -596,7 +596,7 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
-    // App-home profile opt-in (#896 wave 2, agent-engine-unification.md
+    // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
     // §6.1's overlay model, channel 2) — mirrors claudeAdapter's
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
     // (skills stay claude/workspace-channel only this wave). As above,
@@ -637,7 +637,7 @@ export class StationRuntime {
         return undefined;
       }
     },
-    // station#1195: the wire-safe substitution for the built-in
+    // archive#1195: the wire-safe substitution for the built-in
     // station-control server (see codex-mcp-passthrough.ts's header
     // comment) — mints a per-session, short-lived, station-control-scoped
     // bearer token and returns the URL it authenticates against THIS
@@ -701,7 +701,7 @@ export class StationRuntime {
   /**
    * Stops the scheduled store verification, including a probe already
    * running. Clearing the interval alone would leave that child reparented to
-   * init when `gracefulShutdown` exits the process (station#3218 review).
+   * init when `gracefulShutdown` exits the process (archive#3218 review).
    */
   private stopStoreIntegrityVerification?: () => void;
   private readonly operationalEventPublisher: OperationalEventPublisher;
@@ -740,13 +740,13 @@ export class StationRuntime {
   private environmentSecurityService: EnvironmentSecurityService;
   /**
    * This Station's own environment id, captured once identity is initialized
-   * (station#1398 slice 3). `null` before then, and a `null` here means fleet
+   * (archive#1398). `null` before then, and a `null` here means fleet
    * routing stays unwired rather than stamping receipts with a placeholder
    * identity — a receipt that cannot say whose decision it records is not a
    * receipt.
    */
   private stationEnvironmentId: string | null = null;
-  /** station#1398 slice 5 — see {@link StationRuntime.fleetProbes}. */
+  /** archive#1398 — see {@link StationRuntime.fleetProbes}. */
   private fleetProbeService: FleetProbeService | undefined;
   private readonly featurePreviews: FeaturePreviewRegistry;
   /** Bound during composition, then selected at the fleet-routing branch. */
@@ -754,7 +754,7 @@ export class StationRuntime {
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   public readonly eventBus = new EventBus();
-  // station#1225: shared per-user live-`/events`-subscriber presence, read
+  // archive#1225: shared per-user live-`/events`-subscriber presence, read
   // by both `createOrchestrationRoutes` and the push-on-completion wiring —
   // see `ConfigureRuntimeRoutesContext.orchestrationStreamPresence`'s doc
   // comment for why this must be the ONE instance both sides observe.
@@ -767,7 +767,7 @@ export class StationRuntime {
   // Different-origin MCP Apps sandbox proxy. It uses an ephemeral loopback port
   // by default; MCP_UI_FRAME_PORT can pin that port for deployments.
   private mcpUiFrameServer: MCPUIFrameServer | null = null;
-  // station#3677: the distinct-origin consent surface. The channel service
+  // archive#3677: the distinct-origin consent surface. The channel service
   // (transaction store + truthful availability state) exists from
   // construction so routes can consult it even when the listener never
   // binds; the listener itself starts during initialize.
@@ -815,7 +815,7 @@ export class StationRuntime {
 
   constructor(options: StationRuntimeOptions = {}) {
     const projectHomeDir = options.projectHomeDir || resolveHomeDir();
-    // station#3217, and it has to be HERE rather than in `index.ts`: the
+    // archive#3217, and it has to be HERE rather than in `index.ts`: the
     // pre-boot hooks `index.ts` runs are not on every entry point's path, so
     // a quarantine wired there would never run for the CLI. Above the runtime
     // lease because the quarantine takes the MAINTENANCE lease, which proves no
@@ -871,7 +871,7 @@ export class StationRuntime {
         watchFiles: true,
         enforceHomeSchema: true,
       });
-      // station#3063: the built-in tool servers' spawn identity (dist path,
+      // archive#3063: the built-in tool servers' spawn identity (dist path,
       // STATION_API_BASE/STATION_PORT) is THIS instance's property, resolved
       // fresh on every `loadIntegration` — never read from, and never
       // persisted to, the shared `integrations/` files. Two co-homed
@@ -1261,7 +1261,7 @@ export class StationRuntime {
         status: connection.status,
         engineId: parseEngineId(connection.config.engineId),
         capabilities: connection.capabilities,
-        // station#1549: per connection, from the projection the picker
+        // archive#1549: per connection, from the projection the picker
         // reads — so the bootstrap binding and the picker derive the same
         // capability from the same evidence.
         controlPlaneObservation: connection.controlPlaneObservation,
@@ -1271,7 +1271,7 @@ export class StationRuntime {
   }
 
   /**
-   * station#1194 (epic #1191, slice B): resolves the built-in agents'
+   * archive#1194 (epic archive#1191, slice B): resolves the built-in agents'
    * (default + station-voice) engine binding — Station's own engine
    * (`null`) unless the onboarding picker's persisted choice
    * (`appConfig.builtinAgentEngineConnectionId`) or its unchosen sensible
@@ -1346,14 +1346,14 @@ export class StationRuntime {
   }
 
   /**
-   * station#1194 (epic #1191, slice B): re-applies the built-in DEFAULT
+   * archive#1194 (epic archive#1191, slice B): re-applies the built-in DEFAULT
    * agent's engine binding after `builtinAgentEngineConnectionId` changes
    * (the onboarding picker's mutation) — reuses the existing bootstrap
    * function exactly as any other reload does, so a repeat call is
    * idempotent and never clobbers a persisted explicit choice back to
    * Station (see `resolveBuiltinAgentEngineBinding`'s doc comment).
    *
-   * Deliberately does NOT touch `station-voice` (review round 2, station#1194):
+   * Deliberately does NOT touch `station-voice` (review round 2, archive#1194):
    * Voice is a speech-to-speech agent (`voice-session.ts`'s `IS2SProvider`)
    * that never reads an engine binding — rebinding it would silently degrade
    * it to a toolless assistant while claiming to run it on another engine, a
@@ -1418,7 +1418,7 @@ export class StationRuntime {
     // state the tools route can report (see `trackAgentActivation`).
     //
     // The wait that remains here belongs to connection/provider/plugin
-    // mutations, and it is now BOUNDED (station#3622). The durable write still
+    // mutations, and it is now BOUNDED (archive#3622). The durable write still
     // runs inside both queues — it is fast — and the activation still runs
     // under the access lease so there is exactly one writer over the live
     // agent maps. What changed is that the lease is no longer open-ended:
@@ -1514,7 +1514,7 @@ export class StationRuntime {
 
   /**
    * Waits for an activation, but only for as long as holding the
-   * configuration queues open is defensible (station#3622).
+   * configuration queues open is defensible (archive#3622).
    *
    * Never rejects: the activation's own failure is reported as an outcome so
    * the loser of the race cannot become an unhandled rejection when the
@@ -1590,7 +1590,7 @@ export class StationRuntime {
 
   /**
    * Lets in-flight configuration work finish before teardown, without making
-   * shutdown hostage to it (station#3622).
+   * shutdown hostage to it (archive#3622).
    *
    * `agentConfigurationMutationsClosed` is already set by the time this runs,
    * so nothing new can enter either queue; what is left is whatever was
@@ -1796,7 +1796,7 @@ export class StationRuntime {
   }
 
   /**
-   * Churn detector for the reconciliation rail (#1574): a healthy runtime
+   * Churn detector for the reconciliation rail (archive#1574): a healthy runtime
    * reconciles once per external change, so a burst of completions means the
    * reconcile pass itself (or something it triggers) keeps bumping a
    * launchability revision — the feedback loop observed live on 2026-08-02
@@ -1868,7 +1868,7 @@ export class StationRuntime {
   }
 
   /**
-   * station#983 (scoped advance, station#settings-revamp slice 6, docs/
+   * archive#983 (scoped advance, station#settings-revamp slice 6, docs/
    * design/settings-architecture.md §6): the config watcher already filters,
    * dedupes, and reconciles `agents/*\/agent.json`/`integrations/*\/
    * integration.json` file events into `ConfigLoader.on('add'|'change'|
@@ -1903,7 +1903,7 @@ export class StationRuntime {
    *     change that lands mid-reload is still picked up rather than
    *     silently dropped.
    *
-   * Not in scope (stays #983): reading WHICH agent/integration changed and
+   * Not in scope (stays archive#983): reading WHICH agent/integration changed and
    * doing a narrower, content-aware reload — this only stops discarding the
    * notification that *something* under `agents/`/`integrations/` changed.
    */
@@ -1918,7 +1918,7 @@ export class StationRuntime {
       this.reloadAgents()
         .then(() => {
           // Watcher-driven reloads bypass the reconciliation rail, so they
-          // must feed the churn detector themselves — the #1588 write loop
+          // must feed the churn detector themselves — the archive#1588 write loop
           // ran 200+ reloads through this exact path without a single churn
           // log because only the rail was counted.
           this.observeReconciliationChurn();
@@ -2619,7 +2619,7 @@ export class StationRuntime {
       toolNameMapping: this.toolNameMapping,
       agentFixedTokens: this.agentFixedTokens,
       agentHooksMap: this.agentHooksMap,
-      // station#1834 review round 2: the same guardian composition
+      // archive#1834 review round 2: the same guardian composition
       // runtime-agent-builder gives every persisted agent.
       approvalGuardian: new ApprovalGuardianService({
         appConfig,
@@ -2677,7 +2677,7 @@ export class StationRuntime {
   }
 
   private async bootstrapVoiceAgent(): Promise<void> {
-    // station#1194 review round 2: station-voice is deliberately NEVER
+    // archive#1194 review round 2: station-voice is deliberately NEVER
     // rebound to an external engine (see `rebindBuiltinAgents`'s doc
     // comment) — this stays byte-identical to pre-#1194 behavior.
     await bootstrapRuntimeVoiceAgent({
@@ -2715,7 +2715,7 @@ export class StationRuntime {
    * teardown after a cancelled case) leaves the orphaned initialization
    * racing the teardown: it reads a home directory the teardown already
    * deleted and its rejection surfaces in whatever context runs next
-   * (station#1019's `custom-writer not found` cross-test contamination).
+   * (archive#1019's `custom-writer not found` cross-test contamination).
    */
   async initialize(): Promise<void> {
     const inFlight = this.runInitialize();
@@ -2774,7 +2774,7 @@ export class StationRuntime {
               credentialRecoveryRuntimeConnectionId,
             ),
           usageAggregator: this.usageAggregator,
-          // station#3245: lifetime analytics reads the orchestration
+          // archive#3245: lifetime analytics reads the orchestration
           // substrate through the SAME `readSessionUsage` fold the stats
           // route uses. Resolved per rescan off `this.orchestrationService`,
           // which a reload replaces underneath a reused aggregator. The
@@ -2855,7 +2855,7 @@ export class StationRuntime {
             await runStartupMigrations(projectHomeDir);
           },
           startHealthChecks: () => this.startHealthChecks(),
-          // #208: assign appConfig/framework/modelCatalog as soon as they're
+          // archive#208: assign appConfig/framework/modelCatalog as soon as they're
           // resolved inside initializeRuntime() — before initializeRuntimeAgents()
           // or new VoltAgent(...)/configureRoutes() run and read `this.X` through
           // closures bound above at construction time. The tail assignments below
@@ -2895,7 +2895,7 @@ export class StationRuntime {
               this.orchestrationService.runConnectionSmoke(input),
             );
             this.usageAggregator = services.usageAggregator;
-            // station#1879: register the `conversation-store` K2 adapter and
+            // archive#1879: register the `conversation-store` K2 adapter and
             // (flag-gated) ensure `root:conversations` — this is the earliest
             // point `knowledgeStoreProvider`, `orchestrationService`,
             // `memoryAdapters`, and `configLoader` all exist together
@@ -2966,7 +2966,7 @@ export class StationRuntime {
     this.observeRuntimeConfigurationSources();
     this.recordRuntimeLifecycle('ready');
 
-    // #1575: detected native engines (claude/codex CLIs) become registry
+    // archive#1575: detected native engines (claude/codex CLIs) become registry
     // engine connections + default Agents without a Providers-UI trip.
     // Fire-and-forget with its own retry window: detection races startup
     // under load, and a lost race must not strand the registry empty. The
@@ -3160,7 +3160,7 @@ export class StationRuntime {
   }
 
   /**
-   * station#3677: bind the distinct-origin consent listener on the instance's
+   * archive#3677: bind the distinct-origin consent listener on the instance's
    * fifth first-class port (`STATION_CONSENT_PORT`, default `port + 3` — the
    * same derivation the terminal (+1) and voice (+2) listeners use).
    *
@@ -3322,7 +3322,7 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
-      // station#980 fix (HIGH): read the live env var, never
+      // archive#980 fix (HIGH): read the live env var, never
       // `this.appConfig` — see `station-features.ts`'s docblock for why.
       getManagedChatOrchestrationEnabled: () =>
         isManagedChatOrchestrationFeatureEnabled(),
@@ -3423,7 +3423,7 @@ export class StationRuntime {
           monitoringEmitter: this.monitoringEmitter,
         }),
     });
-    // station#3218. The reactive watch (station#3215) sees corruption a query
+    // archive#3218. The reactive watch (archive#3215) sees corruption a query
     // touches; this sees the pages nothing reads. It runs in a child process
     // because `PRAGMA quick_check` is synchronous and would otherwise stall
     // this loop for its whole duration. The SCHEDULE rides `this.timers`, so
@@ -3489,7 +3489,7 @@ export class StationRuntime {
   }
 
   /**
-   * Live evidence for Dispatch candidate grading (station#1426): backs
+   * Live evidence for Dispatch candidate grading (archive#1426): backs
    * `AgentCreationConfig.dispatchEvidenceSource`/`RuntimeContext.dispatchEvidenceSource`
    * with `this.connectionService` so `createConfiguredDispatchModel` grades
    * every candidate off the connection's actual current
@@ -3514,7 +3514,7 @@ export class StationRuntime {
         }
         return evidence;
       },
-      // station#1430: backs `structured-tools` derivation with the
+      // archive#1430: backs `structured-tools` derivation with the
       // deterministic model-inventory accessor rather than the
       // route-populated cache — see `ConnectionService.getModelToolSurface`.
       getModelToolSurface: (bindings) =>
@@ -3523,7 +3523,7 @@ export class StationRuntime {
   }
 
   /**
-   * Fleet routing wiring (station#1398 slice 3): peer candidates plus the
+   * Fleet routing wiring (archive#1398): peer candidates plus the
    * local, hash-chained routing-receipt log.
    *
    * Constructed lazily per call rather than cached because a peer credential
@@ -3570,7 +3570,7 @@ export class StationRuntime {
   }
 
   /**
-   * The one long-lived probe cache (station#1398 slice 5).
+   * The one long-lived probe cache (archive#1398).
    *
    * `fleetRouting()` rebuilds `FleetCandidateService` on every resolution on
    * purpose (a revoked peer credential must take effect immediately), so the
@@ -3708,7 +3708,7 @@ export class StationRuntime {
    */
   async shutdown(): Promise<void> {
     // Settle any pending native-engine adoption window before timers are
-    // cleared, so its promise cannot strand on a cleared timeout (#1575).
+    // cleared, so its promise cannot strand on a cleared timeout (archive#1575).
     // Optional-chained: prototype-built test doubles (Object.create) have no
     // constructor-initialized fields, and shutdown must never throw for them.
     this.nativeEngineAdoptionAbort?.abort();

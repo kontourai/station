@@ -36,7 +36,7 @@ vi.mock('@kontourai/station-connect', () => ({
     <div data-testid="connection-manager">{initialPanel}</div>
   ),
   // The SSH branch renders SshComputerCreatorDialog, which reads the device
-  // presentation and so reaches `useConnections()` for the active api base.
+  // presentation and so reaches `useConnections` for the active api base.
   // A factory mock makes any unlisted export a hard throw, so this owes the
   // line even though nothing here asserts on the connection.
   useConnections: () => ({ apiBase: 'http://station.test' }),

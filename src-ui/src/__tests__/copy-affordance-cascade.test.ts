@@ -1,5 +1,5 @@
 /**
- * station#3341 review MEDIUM — `.copy-affordance--failed` shipped as one bare
+ * archive#3341 — `.copy-affordance--failed` shipped as one bare
  * `color` rule in `index.css` and was measured INERT at four of its six
  * adopters. Same specificity as each button's own class, so source order
  * decides, and four adopters come later: `.session-item__action-btn` ~2000
@@ -91,7 +91,7 @@ describe('copy affordance failed-state cascade (station#3341)', () => {
   );
 
   test('the shared marker declares no colour of its own', () => {
-    // A bare `.copy-affordance--failed { color: ... }` is the defect this
+    // A bare `.copy-affordance--failed { color:... }` is the defect this
     // fix removed: it reads as working, and is inert wherever the component's
     // own rule lands later. The marker exists only to be paired.
     const entry = read('index.css');

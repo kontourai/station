@@ -1,5 +1,5 @@
 /**
- * station#4287 — the shell's CSP nonce must not be reachable from page code.
+ * archive#4287 — the shell's CSP nonce must not be reachable from page code.
  *
  * This exercises the POLICY, not the header string. jsdom enforces no CSP and
  * never loads an external script, so the property "a plugin bundle cannot mint

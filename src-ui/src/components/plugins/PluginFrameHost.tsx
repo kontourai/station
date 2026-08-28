@@ -40,7 +40,7 @@ export function PluginFrameHost({
   const navigation = useNavigationOptional();
 
   /**
-   * The frame's half of the pane-host contract (station#4201 step 3). The
+   * The frame's half of the pane-host contract (archive#4201 step 3). The
    * shell capabilities a plugin frame may reach — a toast, a navigation, a
    * confirmation, the device facts — are not implemented in this component
    * any more: they are contract members, implemented once per transport, and
@@ -107,7 +107,7 @@ export function PluginFrameHost({
       // `pane-host/` namespace arrives the same way, and a message that
       // belongs to the contract but does not validate is refused with a
       // reply rather than dropped in silence.
-      // station#4300 deleted the `api-request` bridge that used to sit here —
+      // archive#4300 deleted the `api-request` bridge that used to sit here —
       // the one uplink method that asked the shell to perform an `/api/**`
       // request with the operator's credential. It had no producer anywhere
       // (no SDK helper, no example, not in the plugin guide), its
@@ -115,7 +115,7 @@ export function PluginFrameHost({
       // not answer a read, and it forwarded neither body nor headers so it
       // could barely serve a write. The only permission it mapped to a real
       // surface was `plugin.server`, whose holder already gets an
-      // `await import()` into the Station server process — so the bridge gave
+      // `await import` into the Station server process — so the bridge gave
       // strictly less than the permission it required, at the cost of a
       // credentialed egress point on the frame boundary.
       //

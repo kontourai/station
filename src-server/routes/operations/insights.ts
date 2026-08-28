@@ -19,11 +19,11 @@ import { canReadMonitoringEvent } from './monitoring.js';
 /**
  * A derived absence, never a value. Parenthesized so it cannot collide with
  * a real tool name — including the literal 'unknown' that events written
- * before station#3073 baked in at write time, which stays its own bucket so
+ * before archive#3073 baked in at write time, which stays its own bucket so
  * the two eras remain distinguishable.
  */
 const UNNAMED_TOOL = '(unnamed)';
-// Same discipline for agents: a derived absence, never a value (#3082).
+// Same discipline for agents: a derived absence, never a value (archive#3082).
 // Imported, not re-declared: the Monitoring view filters, lists and
 // counts by this same name, and three independent copies is how the
 // sidebar came to disagree with the two that already matched.
@@ -71,7 +71,7 @@ function applyLimit<T>(
 }
 
 /**
- * station#3130: this route reads the SAME monitoring directory as
+ * archive#3130: this route reads the SAME monitoring directory as
  * `GET /monitoring/events`, which scopes rows two ways — a per-user predicate
  * and a tenant predicate. This one applied neither, so on a multi-user or
  * hosted install it aggregated every user's events into one rollup.
@@ -98,13 +98,13 @@ export function createInsightsRoutes(
     const days = parseInt(c.req.query('days') || '14', 10);
     insightOps.add(1, { op: 'get_insights' });
     const cutoff = Date.now() - days * MS_PER_DAY;
-    // Filters (station#3075). Every dimension here is already on the event;
+    // Filters (archive#3075). Every dimension here is already on the event;
     // only the endpoint refused to use it, so "tool usage for THIS agent" —
     // the first question anyone asks of the dashboard — meant writing a new
     // consumer. `engine` reads gen_ai.provider.name, present on tool events
-    // since station#3074; events written before that carry no engine, so an
+    // since archive#3074; events written before that carry no engine, so an
     // engine filter necessarily excludes them rather than guessing.
-    // Scope note, because these interact (station#3075 review):
+    // Scope note, because these interact (archive#3075 review):
     // - `tool` filters the whole scan, so chats/agents/models go to zero for
     //   a tool-filtered request. Tool numbers are the answer; the others are
     //   not "no chats", they are "not asked".
@@ -128,7 +128,7 @@ export function createInsightsRoutes(
         // the bucket keys a caller reads off this rollup. Comparing the raw
         // field means the one agent name the codebase explicitly expects a
         // human to click — '(unnamed)', which exists precisely so slug-less
-        // rows are selectable (station#3086) — matches nothing, and the row
+        // rows are selectable (archive#3086) — matches nothing, and the row
         // reading "(unnamed): 47 chats" filters to an all-zero rollup.
         monitoringAgentName(event) !== filters.agent
       ) {
@@ -200,7 +200,7 @@ export function createInsightsRoutes(
     // Identical resolution to /monitoring/events (monitoring.ts:330-333),
     // including the alias fallback. Without it the product's only caller
     // (`fetchInsights` sends `?days=N` and nothing else) got an UNSCOPED
-    // rollup — the hole station#3130 was filed about, still open through the
+    // rollup — the hole archive#3130 was filed about, still open through the
     // front door.
     const callerUserId =
       c.req.query('userId') ||
@@ -215,7 +215,7 @@ export function createInsightsRoutes(
     const readableByCaller = (event: MonitoringEventRecord): boolean => {
       // Mirrors runtime-event-log.ts's queryEventsFromDisk predicate. An
       // unattributed row is NOT admitted: "unowned means everyone's" is the
-      // wrong default on a hosted install (station#3130).
+      // wrong default on a hosted install (archive#3130).
       const record = event as unknown as Record<string, unknown>;
       // callerUserId is always defined now (alias fallback), so this always
       // runs — matching queryEventsFromDisk, whose userId parameter is
@@ -258,7 +258,7 @@ export function createInsightsRoutes(
             const event = JSON.parse(line) as MonitoringEventRecord;
             const ts = timestampFor(event);
             if (ts === null || ts < cutoff || isHealthProbe(event)) continue;
-            // station#3130: the same two layers `/monitoring/events` applies.
+            // archive#3130: the same two layers `/monitoring/events` applies.
             // Per-user first, matching `queryEventsFromDisk`'s predicate
             // exactly; then the central tenant predicate, imported rather than
             // re-derived. Without these this rollup counted every user's rows.
@@ -326,7 +326,7 @@ export function createInsightsRoutes(
               // '(unnamed)', not 'unknown': the bucket must be
               // distinguishable from a tool actually NAMED unknown, and from
               // the literal string older events baked in at write time
-              // (station#3073). Parenthesized because no real tool name is.
+              // (archive#3073). Parenthesized because no real tool name is.
               const toolValue = event[K.TOOL_NAME];
               const tool =
                 typeof toolValue === 'string' && toolValue
@@ -358,7 +358,7 @@ export function createInsightsRoutes(
                 // no terminal status, so these results are neither successes
                 // nor failures. Counting them only in `calls` made the error
                 // RATE read better than reality with no signal that the
-                // denominator was partly unobserved (station#3075).
+                // denominator was partly unobserved (archive#3075).
                 totalOutcomeUnknown++;
                 toolUsage[tool].outcomeUnknown++;
               }
@@ -375,7 +375,7 @@ export function createInsightsRoutes(
     return c.json({
       success: true,
       data: {
-        // Top-N server-side when asked (station#3075): the client used to
+        // Top-N server-side when asked (archive#3075): the client used to
         // sort and slice, so a caller that is not the dashboard had to pull
         // every bucket to see the top ten.
         toolUsage: applyLimit(toolUsage, limit, (bucket) => bucket.calls),

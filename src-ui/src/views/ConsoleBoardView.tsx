@@ -13,7 +13,7 @@ import { BoardWorkspacePane } from './board/BoardWorkspacePane';
 /**
  * The `project-session-board` route (and the `session-board` layout
  * adapter's body): the standalone placement of the Board Workspace Pane
- * (epic station#4142 M4a, following M2/M3's route-as-placement shape for
+ * (archive#4142, following the route-as-placement shape for
  * `/` and `/activity`).
  *
  * A route is a placement, not an identity (`docs/design/pane-or-shell.md`):
@@ -59,7 +59,7 @@ export function ConsoleBoardView({ projectSlug }: { projectSlug: string }) {
         </div>
       );
     }
-    // station#771 fix round (review HIGH): an errored projects read with no
+    // archive#771: an errored projects read with no
     // cached data used to fall straight through to "This host has no
     // Project with that slug." — a fabricated negative fact indistinguishable
     // from a genuine bad slug. Cached data from a prior successful load still

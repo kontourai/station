@@ -147,7 +147,7 @@ export function KnowledgeConnectionView({
    * nothing — the host page keeps its own title. Standalone, the frame
    * renders the title this view used to draw itself.
    *
-   * station#4463 slice 1 fix round: the eyebrow is the parent only
+   * archive#4463: the eyebrow is the parent only
    * ('Connections'), unlinked — not the retired 'Connections / Knowledge
    * infrastructure' breadcrumb-as-eyebrow, which restated the title (the
    * host's own page heading) one line above it. Unlinked because

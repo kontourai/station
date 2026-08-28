@@ -46,9 +46,9 @@ export interface SelfUpdateWatchdogDeps {
 }
 
 // Same MEASUREMENT as packages/cli/src/commands/lifecycle.ts's
-// STARTUP_READINESS_TIMEOUT_MS (station#1903) — cold starts are roughly 5.5s
+// STARTUP_READINESS_TIMEOUT_MS (archive#1903) — cold starts are roughly 5.5s
 // unloaded, but provider discovery on a busy host can exceed 60s — but since
-// #2646 it is no longer the same BUDGET, and this comment used to say it was.
+// archive#2646 it is no longer the same BUDGET, and this comment used to say it was.
 //
 // That base can now extend to STARTUP_READINESS_MAX_TIMEOUT_MS (180s) for a
 // caller that supplies a `childAlive` probe. This watchdog is not such a
@@ -97,7 +97,7 @@ type ProbeOutcome =
 /**
  * A single bounded health-probe attempt: connect, and if — and only if — the
  * body's OWN reported build identity matches the server we spawned, count it
- * healthy. A 200 alone is not enough (station#1903 review finding 1): the
+ * healthy. A 200 alone is not enough (archive#1903 review finding 1): the
  * incident named in the design doc was a server that bound the port and
  * held it while answering nothing, but the class of bug this guards against
  * is broader — a NEW build that crashes on boot could free the port for an
@@ -342,7 +342,7 @@ function terminationDiagnosticContext(termination: TerminationObservation): {
 
 /**
  * Runs in a process detached from the parent that spawned the new server —
- * the parent must exit to free the shared port (station#1903), so nothing
+ * the parent must exit to free the shared port (archive#1903), so nothing
  * inside that process can wait for this. The only signal that counts as
  * healthy is a real 200 from the new server's own status endpoint carrying
  * the EXPECTED build identity (see `probeOnce`): the incident this exists

@@ -72,7 +72,7 @@ describe('derivePluginConsentBasis', () => {
   });
 
   /**
-   * The second axis (station#4288, review HIGH 1). Every field here derives
+   * The second axis (archive#4288, review HIGH 1). Every field here derives
    * NOTHING from `requiredPermissionsForManifest`, which is exactly why the
    * basis has to name them separately: a caller asking "was there anything to
    * disclose?" through the permission set alone gets `no` for a plugin that
@@ -254,7 +254,7 @@ describe('assertPluginInstallConsent', () => {
   });
 
   /**
-   * station#4288, review HIGH 1 — the case the first version of this branch
+   * archive#4288, review HIGH 1 — the case the first version of this branch
    * installed on one click.
    *
    * This plugin derives NO permissions at all, so `pendingConsent` is empty

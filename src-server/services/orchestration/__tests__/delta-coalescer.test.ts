@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { DeltaCoalescer } from '../delta-coalescer.js';
 
 /**
- * station#3350. The invariant these tests exist for is ORDER: a buffered delta
+ * archive#3350. The invariant these tests exist for is ORDER: a buffered delta
  * must never surface after an event that happened later, or a tool call, an
  * approval or a turn boundary lands in the wrong place in the transcript.
  *
@@ -284,7 +284,7 @@ describe('DeltaCoalescer', () => {
       },
     );
 
-    // station#3304: `consumeAdapterEvents` sits directly above this call. Its
+    // archive#3304: `consumeAdapterEvents` sits directly above this call. Its
     // catch classifies a SQLITE_BUSY as store contention — counting
     // `orchestrationStoreContentionObserved`, publishing a `runtime.error`
     // naming the locked store, and restarting the stream. Deltas are the bulk

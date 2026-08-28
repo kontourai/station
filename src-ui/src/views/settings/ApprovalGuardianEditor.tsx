@@ -1,5 +1,5 @@
 /**
- * station#settings-revamp slice 3: custom composite editor for
+ * archive#settings-revamp: custom composite editor for
  * `approvalGuardian` (docs/design/settings-architecture.md's "Config with
  * no UI" list — this field had zero Settings UI before this slice).
  * Toggle + review/enforce select + model text + instructions textarea, on
@@ -88,7 +88,7 @@ export function ApprovalGuardianEditor({
             label="Guardian instructions"
             description="House rules added on top of the guardian's built-in judgment of safety, scope, and intent."
           >
-            {/* The field holds a prompt (station#1831): sized like one, with a
+            {/* The field holds a prompt (archive#1831): sized like one, with a
                 placeholder that ADDS a concrete house rule rather than
                 restating DEFAULT_GUARDIAN_PROMPT's own decision rules. */}
             <textarea

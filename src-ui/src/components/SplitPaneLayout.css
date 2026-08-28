@@ -277,7 +277,7 @@
   color: inherit;
 }
 
-/* station#3305: --bg-tertiary (panel-raised) is nearly this list's own
+/* archive#3305: --bg-tertiary (panel-raised) is nearly this list's own
    panel background in dark mode — an invisible hover. --bg-hover-panel is
    the token derived for exactly this surface (index.css). */
 .split-pane__item:hover {
@@ -373,11 +373,11 @@
  */
 .split-pane__item-trailing {
   /*
-   * Never shrinks: a trailing label is short and cannot ellipsize gracefully
-   * mid-token, whereas the row's own name is a block that ellipsizes cleanly.
-   * So the ROW BUTTON absorbs all the shrink and the cap below is what keeps a
-   * long trailing label from starving it.
-   */
+* Never shrinks: a trailing label is short and cannot ellipsize gracefully
+* mid-token, whereas the row's own name is a block that ellipsizes cleanly.
+* So the ROW BUTTON absorbs all the shrink and the cap below is what keeps a
+* long trailing label from starving it.
+*/
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -481,7 +481,7 @@
   opacity: 0.5;
 }
 
-/* station#4463 slice 2 fix round (M1, delta review round 3): the shared
+/* archive#4463: the shared
    SkeletonList row's default padding (10px 12px, Skeleton.css) sits on top
    of its content height (icon/text column, ~26.8px), landing at ~46.8px —
    visibly taller than a real `.split-pane__item` row. A `min-height: 38px`

@@ -21,7 +21,7 @@ import {
 } from '../schemas/schemas.js';
 
 /**
- * Answer-share routes (station#1423) — two families with two very different
+ * Answer-share routes (archive#1423) — two families with two very different
  * callers, kept in one module so the split is readable in one place.
  *
  * **Operator management** ({@link createAnswerShareRoutes}) is mounted at
@@ -163,7 +163,7 @@ export type AnswerShareViewResponse =
     };
 
 /**
- * Attempt budgets for the public share-view route (station#1423, security
+ * Attempt budgets for the public share-view route (archive#1423, security
  * review M-1).
  *
  * The first cut keyed one bucket on the socket's `remoteAddress`, copying the

@@ -15,7 +15,7 @@ import {
 } from './registryCatalogModel';
 // Side-effect import: this module applies the `page` root class below, and
 // page-layout.css reached the bundle only because its single parent view
-// happens to import it — the load-order dependency station#3306 removes.
+// happens to import it — the load-order dependency archive#3306 removes.
 import '../../views/page-layout.css';
 import { Button } from '../Button';
 
@@ -141,7 +141,7 @@ export function RegistryCatalog({
         // Automatic activation: switching tabs is a cheap in-place list
         // swap (no route push), matching Guidance/Memory below.
         //
-        // station#4463 slice 2 review: whether ACTIVATION itself should
+        // archive#4463: whether ACTIVATION itself should
         // clear the search box is a real, open UX question (an arrow-key
         // journey through the strip clears it on every intermediate tab
         // under automatic activation, same as a click always did) — kept

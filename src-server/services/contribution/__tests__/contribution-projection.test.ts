@@ -13,7 +13,7 @@ import {
 } from '../contribution-projection.js';
 
 /**
- * station#1500 slice 2.5 — the projection builder
+ * archive#1500 — the projection builder
  * (`docs/design/portable-project-identity.md` §4.2).
  */
 
@@ -555,7 +555,7 @@ describe('output is deterministic', () => {
   });
 });
 
-// ── station#1503 review, M3 — the MIXED case the suite never covered ───────
+// ── archive#1503 review, M3 — the MIXED case the suite never covered ───────
 
 describe('a partially-unobserved projection is UNKNOWN, never fresh', () => {
   it('is null when one axis contributed without an observation', () => {

@@ -13,7 +13,7 @@ vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: existsSyncMock,
 }));
-// station#977: keep this file hermetic -- cli-auth.ts's module-load-time
+// archive#977: keep this file hermetic -- cli-auth.ts's module-load-time
 // login-shell resolve would otherwise spawn a real shell subprocess during
 // this file's import. These tests only care about process.env.PATH
 // ordering, so the login-shell portion is disabled outright.
@@ -67,7 +67,7 @@ describe('findCliBinary', () => {
     vi.unstubAllEnvs();
   });
 
-  // station#766: an ACP connection configured with a fully qualified command
+  // archive#766: an ACP connection configured with a fully qualified command
   // (the only spelling that works for a version-manager install) probed
   // AVAILABLE while `chat` refused with "prerequisites missing: CLI, login",
   // because this search joined the absolute path onto each PATH dir.

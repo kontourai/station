@@ -90,7 +90,7 @@ describe('computeUIBlockProvenanceDigest', () => {
 });
 
 /**
- * station#1399 fix round (independent review H1/M4/M6) — the single-writer
+ * archive#1399 fix round (independent review H1/M4/M6) — the single-writer
  * seam. Every `tool.completed` event flows through
  * `OrchestrationService#publishCanonicalEvent`, which calls
  * `sanitizeUIBlockEventProvenance` before persistence AND before the live
@@ -349,7 +349,7 @@ describe('sanitizeUIBlockEventProvenance', () => {
 });
 
 /**
- * station#1399 fix round 2, B4 (independent review) — the sanitizer must
+ * archive#1399 fix round 2, B4 (independent review) — the sanitizer must
  * never throw an exception into an adapter stream. Proven with a poisoned
  * getter: a property access that throws, exactly the shape an exotic or
  * hostile tool output could produce.
@@ -438,7 +438,7 @@ describe('safeSanitizeUIBlockEventProvenance — B4 failure policy', () => {
 });
 
 /**
- * station#1399 fix round 2, B2 (independent review) — sanitization at the
+ * archive#1399 fix round 2, B2 (independent review) — sanitization at the
  * message-SERVE boundary, distinct from the event-write boundary above:
  * this is what closes the FileMemory bypass the reviewer found (a
  * `ConversationMessage` read back from `memory-adapter-messages.ts` never
@@ -550,7 +550,7 @@ describe('sanitizeConversationMessagesUIBlockProvenance', () => {
     expect(onWarn).toHaveBeenCalled();
   });
 
-  // station#1399 micro-round, M2 (independent review) — the existing
+  // archive#1399 micro-round, M2 (independent review) — the existing
   // poisoned-part tests above only cover `part.output`; the DIRECT
   // `part.uiBlock` branch (the memory-store write shape) has its own
   // fallback (`forceUIBlockCandidateUnattested`), and that fallback can

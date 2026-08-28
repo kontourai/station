@@ -47,7 +47,7 @@ export function createCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
 ): CodexProcessLike {
-  // #896 wave 2 / station#1195: `extraEnv`/`extraArgs` only reach the real
+  // archive#896 wave 2 / archive#1195: `extraEnv`/`extraArgs` only reach the real
   // spawn path — test-double factories are unaffected (they don't take
   // these arguments at all).
   return processFactory
@@ -174,7 +174,7 @@ export class CodexAdapterTransport {
             `Codex app-server exited before responding (code: ${code ?? 'unknown'})`,
           ),
       );
-      // station#3451 fix round D2: only skip synthesis when the interrupt
+      // archive#3451 fix round D2: only skip synthesis when the interrupt
       // that was in flight targeted the CURRENT active turn — an abandoned
       // interrupt for an earlier turn must not disarm this turn's synthesis.
       void this.finalizeUnexpectedExit(
@@ -185,12 +185,12 @@ export class CodexAdapterTransport {
           interruptedTurnId === record.activeTurnId,
       );
     });
-    // station#3451 fix round D3: a third teardown door — spawn failure is
+    // archive#3451 fix round D3: a third teardown door — spawn failure is
     // the common case (no turn active yet), but `ChildProcess` 'error' also
     // fires for a stdin WRITE failure after the process has started, and
     // `sendRequest` writes to stdin on every RPC (including turn/start and
     // turn/interrupt). A mid-turn write failure strands the turn exactly as
-    // #3473 describes for the other two teardown doors; this one was never
+    // archive#3473 describes for the other two teardown doors; this one was never
     // enumerated.
     record.process.on('error', (error) => {
       if (record.stopped) return;
@@ -306,7 +306,7 @@ export class CodexAdapterTransport {
     method: string,
     params?: unknown,
     /**
-     * station#3451 fix round D2: tracking-only, never serialized onto the
+     * archive#3451 fix round D2: tracking-only, never serialized onto the
      * wire — the turn a `turn/interrupt` request targets, so a forced
      * teardown's in-flight check can compare against `record.activeTurnId`
      * instead of assuming any pending interrupt belongs to the CURRENT turn.
@@ -360,7 +360,7 @@ export class CodexAdapterTransport {
     // Settle outstanding inbound approval requests before teardown so the
     // request event contract holds: every request.opened gets a matching
     // request.resolved even when the session stops mid-approval (mirrors
-    // claude-adapter/acp-adapter, #164/#148). We do not attempt to write an
+    // claude-adapter/acp-adapter, archive#164/#148). We do not attempt to write an
     // RPC response back to the Codex process here since it is being killed
     // immediately after.
     for (const requestId of record.pendingApprovals.keys()) {
@@ -378,9 +378,9 @@ export class CodexAdapterTransport {
 
     // Reject outstanding outgoing JSON-RPC calls so awaiters (sendTurn,
     // interruptTurn, thread/start, etc.) never hang on a stopped session.
-    // station#3473 fix round (closes the reopened double-terminal): capture
+    // archive#3473 fix round (closes the reopened double-terminal): capture
     // whether a `turn/interrupt` was among them BEFORE force-rejecting — see
-    // `rejectPendingRpcRequests`'s doc. station#3451 fix round D2: compare
+    // `rejectPendingRpcRequests`'s doc. archive#3451 fix round D2: compare
     // its target turnId against the CURRENT active turn immediately — an
     // abandoned interrupt for an earlier, already-superseded turn must not
     // disarm THIS turn's synthesis.
@@ -404,7 +404,7 @@ export class CodexAdapterTransport {
       status: 'closed',
       updatedAt: nowIso(),
     };
-    // station#3473 path 2: a `stopSession` reached without a prior
+    // archive#3473 path 2: a `stopSession` reached without a prior
     // `interruptTurn` (e.g. a hard session close, not the cooperative-stop
     // Stop button — see `interruptTurn`'s own comment) can still be tearing
     // down mid-turn. Publish the turn's terminal fact before the session's —
@@ -581,7 +581,7 @@ export class CodexAdapterTransport {
       status: 'closed',
       updatedAt: nowIso,
     };
-    // station#3473 path 1: the app-server process died with no `turn/completed`
+    // archive#3473 path 1: the app-server process died with no `turn/completed`
     // notification ever arriving for the turn it was mid-way through. Publish
     // the turn's terminal fact before the session's, so nothing turnId-keyed
     // (the completion-notification listener, `hasActiveTurn`, the stall
@@ -607,17 +607,17 @@ export class CodexAdapterTransport {
   }
 
   /**
-   * station#3473: synthesizes the turn-scoped terminal event neither
+   * archive#3473: synthesizes the turn-scoped terminal event neither
    * `stopSession` nor `finalizeUnexpectedExit` previously published when the
    * session ends with `record.activeTurnId` still set — an in-flight turn
    * that no `turn/completed` notification ever closed. Publishing
-   * `runtime.error` — never `turn.aborted` — lands on the SAME arm #3442
+   * `runtime.error` — never `turn.aborted` — lands on the SAME arm archive#3442
    * already covers and tests, with no new dedupe key. Leaves `retriable`
    * unset: this is neither codex's own definitive turn failure nor its
    * `willRetry` signal, it is Station observing the session end with the
    * turn unresolved. Always call BEFORE publishing `session.exited`.
    *
-   * station#3473 fix round (H3): the double-terminal guard is
+   * archive#3473 fix round (H3): the double-terminal guard is
    * `record.terminalPublishedForTurnId`, an EXPLICIT fact — not, as before,
    * inferred from `record.activeTurnId` being cleared. `interruptTurn` no
    * longer clears `activeTurnId` on dispatch (only on a confirmed publish),
@@ -632,7 +632,7 @@ export class CodexAdapterTransport {
    * deadline branch always publishes its own `turn.aborted` before calling
    * `stopSession`, so if `stopSession`/`finalizeUnexpectedExit` had to force-
    * reject a `turn/interrupt` RPC that was in flight FOR THE CURRENT
-   * `activeTurnId` (see `rejectPendingRpcRequests` — station#3451 fix round
+   * `activeTurnId` (see `rejectPendingRpcRequests` — archive#3451 fix round
    * D2 turn-scopes this comparison so an abandoned interrupt for an EARLIER,
    * already-superseded turn cannot disarm a LATER turn's synthesis), some
    * caller already owns — or, for the cooperative-stop path specifically,
@@ -685,7 +685,7 @@ export class CodexAdapterTransport {
    * them targeted, if any — inspected synchronously, before anything is
    * cleared, since that is the one moment this fact is observable at all.
    *
-   * station#3451 fix round D2: returns the TARGET turnId, not a bare
+   * archive#3451 fix round D2: returns the TARGET turnId, not a bare
    * boolean. `pendingRpcRequests` has no timeout eviction — an abandoned
    * interrupt (the accept-then-abort race cleanup gives up after ~5s but
    * never cancels the RPC) can still be pending when a LATER, unrelated
@@ -710,7 +710,7 @@ export class CodexAdapterTransport {
   }
 }
 
-/** #896 wave 2: layered subprocess env for a codex session pointed at an
+/** archive#896 wave 2: layered subprocess env for a codex session pointed at an
  * app-home profile. Always a copy: boot-internal secrets are scrubbed. */
 export function codexSpawnEnv(
   extraEnv?: Record<string, string>,
@@ -723,13 +723,13 @@ function spawnCodexProcess(
   extraArgs?: string[],
 ): ChildProcessWithoutNullStreams {
   const binary = findCliBinary('codex') ?? 'codex';
-  // station#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
+  // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER
   // `app-server` on the spawn argv itself, never written to any config
   // file and never touching the user's real `~/.codex/config.toml` (see
   // that module's header comment for why this is the wire-safe channel).
   //
-  // station#1908: `TMPDIR` is merged into `extraEnv` HERE, at the one real
+  // archive#1908: `TMPDIR` is merged into `extraEnv` HERE, at the one real
   // spawn call site, rather than inside `codexSpawnEnv` itself -- every
   // real Codex `app-server` child still gets a Station-owned tmp dir
   // Station reaps on a schedule (see `reapEngineSpawnTmpDir`). Boot-internal

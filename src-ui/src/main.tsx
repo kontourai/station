@@ -17,7 +17,7 @@ import { SharedAnswerBoundary } from './views/share/SharedAnswerBoundary';
 installPluginSharedRuntime();
 
 // Android WebView never populates env(safe-area-inset-*) for system bars —
-// project the native WindowInsets onto --safe-* before first paint (#2617).
+// project the native WindowInsets onto --safe-* before first paint (archive#2617).
 installAndroidSafeArea();
 // The visible-viewport bottom inset, on the document element, so every fixed
 // surface reads one value instead of the one its own subtree happens to carry.
@@ -77,7 +77,7 @@ const loadOnboardingGate = () =>
 void import('./providers/voice/index');
 
 /**
- * The shared-answer permalink page (station#1423) is lazy so none of it — nor
+ * The shared-answer permalink page (archive#1423) is lazy so none of it — nor
  * its CSS — lands in the entry chunk every operator loads. Only the one-line
  * predicate below is paid on first paint.
  */
@@ -184,7 +184,7 @@ window.addEventListener('hashchange', () => {
 // needed here. Host detection and the macOS overlay-title-bar tagging now live
 // in PlatformBootstrap, the single native-adapter resolution path.
 
-// station#1223 (offline slice 1): floor gcTime for the whitelisted, persisted
+// archive#1223 (offline): floor gcTime for the whitelisted, persisted
 // query keys so they survive well past this client's ordinary 10-minute
 // default — otherwise they can be garbage-collected from the live cache
 // (and silently drop out of the persisted snapshot) long before the 24h
@@ -196,7 +196,7 @@ applyPersistedQueryGcTimeDefaults(queryClient);
 // dehydrate rules) — fed to <PersistQueryClientProvider> below, which both
 // persists the cache to IndexedDB AND gates queries from fetching while an
 // async restore is in flight (see queryPersistence.ts's doc comment for why
-// that gating matters — a bare persistQueryClient() call doesn't do it).
+// that gating matters — a bare persistQueryClient call doesn't do it).
 const queryPersistOptions = buildPersistOptions();
 
 if (!isSharedAnswerPath && !isNativeShell) {
@@ -215,7 +215,7 @@ if (!isSharedAnswerPath && !isNativeShell) {
 
 // Boot-time device-settings fast path: apply theme and accent color
 // synchronously, before the first React render, so neither one flashes to
-// its default and back (station#settings-revamp slice 2). Reads the new
+// its default and back (archive#settings-revamp). Reads the new
 // envelope key first (post-migration browsers), then reads
 // each prior raw key, since this runs before `deviceSettingsStore`'s own
 // constructor has had a chance to migrate a pre-migration browser's prior setting

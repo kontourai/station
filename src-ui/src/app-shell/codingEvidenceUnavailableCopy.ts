@@ -5,7 +5,7 @@ import type { CodingEvidencePaneUnavailableReason } from '@kontourai/station-con
  * single sentence naming both ("unavailable under its current capability or
  * grant") while the selection had the two inputs in hand, so a user could not
  * tell a capability this Station cannot reach — nothing they can grant their
- * way out of — from a Pane that simply is not granted one it can (#3158).
+ * way out of — from a Pane that simply is not granted one it can (archive#3158).
  */
 export const CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS: Record<
   CodingEvidencePaneUnavailableReason,
@@ -22,13 +22,13 @@ export const CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS: Record<
 /**
  * The rendered label and description for one unavailable Pane.
  *
- * Extracted because the map alone proves nothing about the LOOKUP. An
- * adversarial review showed that hardcoding `[entry.reason]` to
- * `['capability-unavailable']` in the renderer restored the exact pre-fix
+ * Extracted because the map alone proves nothing about the LOOKUP.
+ * Hardcoding `[entry.reason]` to `['capability-unavailable']` in the
+ * renderer restores the exact pre-fix
  * defect — every unavailable Pane described as an unreachable capability —
  * with all 28 tests still green: one test proved the map's three strings
  * differ, another proved the composition emits the right reason, and nothing
- * connected them (station#3158 review).
+ * connected them (archive#3158).
  *
  * The renderer's JSX is a 1200-line component with no composition fixture, so
  * the honest seam is here, where a test can drive it directly.

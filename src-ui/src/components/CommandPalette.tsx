@@ -130,7 +130,7 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement[]>([]);
-  // station#3313: previewFlag-gated surfaces (Developer, enabled previews)
+  // archive#3313: previewFlag-gated surfaces (Developer, enabled previews)
   // appear here iff their flag is on — same set the sidebar filters with.
   const surfaceVisibilityFlags = useSurfaceVisibilityFlags();
 
@@ -248,7 +248,7 @@ export function CommandPalette() {
   // Capture the return target at the moment the palette is *asked* for, not in
   // the effect that reacts to `open`. The input carries `autoFocus`, which
   // React applies while committing the palette's DOM — before any effect runs
-  // — so an effect-time `document.activeElement` reads the palette's own input
+  // so an effect-time `document.activeElement` reads the palette's own input
   // and the restore has nothing outside the palette to return to.
   const openPalette = useCallback(() => {
     returnFocusRef.current = captureReturnFocus();
@@ -334,7 +334,7 @@ export function CommandPalette() {
       keywords: ['chat', 'dock', 'open', 'new'],
       run: () => setDockState(true),
     });
-    // station#2652: the tour is re-triggerable from here, which is also what
+    // archive#2652: the tour is re-triggerable from here, which is also what
     // its last step tells the user. `requestFirstRunTour` dispatches the same
     // event `FirstRunFlow` listens on, so the resume rule
     // (`resolveResumePoint`) is shared with the automatic first run rather
@@ -624,17 +624,17 @@ export function CommandPalette() {
   }, [ranked.length]);
 
   // Manage focus: remember what was focused before, focus the input on open,
-  // and restore on close through the shared return-focus module (station#1245).
+  // and restore on close through the shared return-focus module (archive#1245).
   //
-  // The palette's own restore used to be `previouslyFocused.current.focus?.()`
-  // with no `isConnected` guard at all — worse than the #1126 shape the guard
+  // The palette's own restore used to be `previouslyFocused.current.focus?.`
+  // with no `isConnected` guard at all — worse than the archive#1126 shape the guard
   // was added for, and the palette is where it bites hardest: every command
   // navigates, so the element that opened the palette is routinely unmounted
-  // by the command the palette just ran. `.focus()` on a detached node is a
+  // by the command the palette just ran. `.focus` on a detached node is a
   // silent no-op and focus lands on `<body>`.
   //
   // Restoring on the next frame rather than synchronously is deliberate: the
-  // command's `navigate()` has to commit first, or the chain is still attached
+  // command's `navigate` has to commit first, or the chain is still attached
   // and we would focus a node that is about to be torn down. Deferring also
   // lets the destination view's own initial focus win — the shared module
   // leaves an already-claimed focus alone (gap 1).
@@ -728,7 +728,7 @@ export function CommandPalette() {
             // the post-render effect above: a background query refresh can
             // shrink `ranked` while the palette is open, and the effect only
             // corrects `activeIndex` one render AFTER the attribute would
-            // have pointed at a removed option (review LOW, PR #1277 r2).
+            // have pointed at a removed option
             aria-activedescendant={
               ranked.length
                 ? `command-palette-option-${Math.min(

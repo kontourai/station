@@ -48,22 +48,22 @@ const SC_READ_ONLY_TOOL_NAMES = [
   'check_plugin_updates',
   'get_usage',
   'get_achievements',
-  // station#1880: semantic search over the K3 knowledge index — embeds the
+  // archive#1880: semantic search over the K3 knowledge index — embeds the
   // query and reads the index + re-resolves records through the store
   // adapters; writes nothing (unlike reindex_knowledge/migrate_knowledge
   // below, which rebuild the index).
   'search_knowledge',
-  // station#1136: a pure profile+state read (SshEnvironmentService#get),
+  // archive#1136: a pure profile+state read (SshEnvironmentService#get),
   // no connect/reconnect side effect — unlike list_delegation_targets/
   // get_task below, which may reconnect a verified SSH environment.
   'get_ssh_environment',
-  // station#2901 review evidence: pure reads over review requests and their
+  // archive#2901 review evidence: pure reads over review requests and their
   // durable receipts. The `run_independent_review` verb that CREATES them is
   // classified mutating below.
   'get_review_request',
   'list_review_receipts',
   'get_review_receipt',
-  // station#4079 slice 1: a pure board-face read (BoardStore#read); the
+  // archive#4079: a pure board-face read (BoardStore#read); the
   // pin/unpin/move verbs that write to it are classified mutating below.
   'board_read',
 ];
@@ -121,7 +121,7 @@ const SC_MUTATING_TOOL_NAMES = [
   // read-only
   'reindex_knowledge',
   'migrate_knowledge',
-  // station#1136: environment MANAGEMENT verbs — create/connect/disconnect/
+  // archive#1136: environment MANAGEMENT verbs — create/connect/disconnect/
   // remove a saved SSH environment via SshEnvironmentService. Same tier as
   // `create_agent`/`delete_agent`: create/destroy/state-changing actions on
   // persistent, credentialed configuration, subject to the platform-mutation
@@ -131,11 +131,11 @@ const SC_MUTATING_TOOL_NAMES = [
   'connect_ssh_environment',
   'disconnect_ssh_environment',
   'remove_ssh_environment',
-  // station#2901 review evidence: `run_independent_review` starts a review and
+  // archive#2901 review evidence: `run_independent_review` starts a review and
   // writes a durable receipt, so it belongs with the other create/dispatch
   // verbs. Its `get_*`/`list_*` siblings are read-only and listed above.
   'run_independent_review',
-  // station#4079 slice 1: board-face writes (BoardStore#pin/unpin/move) —
+  // archive#4079: board-face writes (BoardStore#pin/unpin/move) —
   // persistent state that survives a restart, same tier as scheduler/agent
   // CRUD above.
   'board_pin',

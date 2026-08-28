@@ -726,7 +726,7 @@ describe('catalog application MRU tracking', () => {
   });
 });
 
-// #801: the project page renders as soon as the *project* query settles, so a
+// archive#801: the project page renders as soon as the *project* query settles, so a
 // layouts fetch still in flight reached this section as an empty array and
 // stated "No layouts yet" for a project that has layouts.
 describe('ProjectLayoutsSection loading window (#801)', () => {
@@ -782,7 +782,7 @@ describe('ProjectLayoutsSection loading window (#801)', () => {
 
   // react-query clears `isLoading` once a query settles into error, so without
   // an explicit error branch a failed fetch reads as "No layouts yet" — the
-  // same confident-emptiness defect, reached from the error path (#801 review).
+  // same confident-emptiness defect, reached from the error path (archive#801).
   test('states a failure as a failure rather than as emptiness', () => {
     const onRetry = vi.fn();
     render(

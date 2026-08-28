@@ -11,7 +11,7 @@ import './PluginPermissionsSection.css';
 
 /**
  * What this plugin can do on this Station, and how to take it back
- * (station#3815).
+ * (archive#3815).
  *
  * Until now the panel showed only what a plugin was still MISSING — the
  * pending ask — so a permission became invisible at the moment it was
@@ -47,7 +47,7 @@ export function PluginPermissionsSection({
   revoking: ReadonlySet<string>;
   /**
    * The server's derivation of whether this plugin's code still matches the
-   * code its permissions were granted against (station#4288). `undefined`
+   * code its permissions were granted against (archive#4288). `undefined`
    * means the server did not say — which is rendered as nothing, never as
    * "fine".
    */
@@ -62,7 +62,7 @@ export function PluginPermissionsSection({
     <div className="detail-panel__section">
       <div className="plugins__settings-header">Permissions</div>
 
-      {/* station#4288. A permission that vanishes with no explanation is its
+      {/* archive#4288. A permission that vanishes with no explanation is its
           own defect, so the two states where the recorded grant and the
           installed code disagree say so in words. Both strings restate what
           the server derived; neither invents a verdict.

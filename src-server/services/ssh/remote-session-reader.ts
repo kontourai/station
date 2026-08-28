@@ -1,5 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-// station#1778: ONE normalizer, shared with the SDK's fetch helpers. A second
+// archive#1778: ONE normalizer, shared with the SDK's fetch helpers. A second
 // hand-written copy here would be the divergent-copy disease this change is
 // about — and the first version of it guarded on truthiness, so a remote
 // sending `{ answerable: false }` with no observer passed through as an
@@ -15,7 +15,7 @@ import {
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
 import type { SshEnvironmentService } from './ssh-environment-service.js';
 
-/** R1 (station#1097): keep every remote read well under the local list's own
+/** R1 (archive#1097): keep every remote read well under the local list's own
  * render budget — a slow/unreachable environment must never make the human
  * work list feel slow, only quietly incomplete (R3). */
 const REMOTE_SESSION_FETCH_TIMEOUT_MS = 2_000;
@@ -24,7 +24,7 @@ const REMOTE_SESSION_FETCH_TIMEOUT_MS = 2_000;
  * whatever limit (if any) the remote Station itself applies. */
 const MAX_REMOTE_SESSIONS_PER_ENVIRONMENT = 200;
 
-/** Defense-in-depth bound (LOW, station#1097 review round 2) on how many
+/** Defense-in-depth bound (LOW, archive#1097 review round 2) on how many
  * connected environments are fanned out to concurrently — a large saved
  * profile list could otherwise open dozens of simultaneous outbound
  * connections from a single Home-view read. Environments are read in
@@ -294,7 +294,7 @@ export async function searchConnectedRemoteMessages(
 }
 
 /**
- * R1/R3 (station#1097): read-only orchestration session summaries from every
+ * R1/R3 (archive#1097): read-only orchestration session summaries from every
  * currently CONNECTED SSH environment, for the Home work list's remote-session
  * badge. Deliberately never triggers a new SSH connect/tunnel — `service.list()`
  * is a synchronous read of in-memory tunnel state (`SshEnvironmentService`
@@ -327,7 +327,7 @@ export async function listConnectedRemoteSessions(
   for (const batch of chunk(connected, MAX_CONCURRENT_REMOTE_ENVIRONMENTS)) {
     const settled = await Promise.allSettled(
       batch.map(async (environment) => {
-        // station#2051 follow-up: an SSH local forward only carries bytes;
+        // archive#2051 follow-up: an SSH local forward only carries bytes;
         // it is never authority at the remote runtime. Resolve the already
         // provisioned, outbound peer bearer for this environment and present
         // it explicitly over the tunnel. A missing credential is a repairable

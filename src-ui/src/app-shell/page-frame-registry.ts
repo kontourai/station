@@ -26,7 +26,7 @@ import { APP_SURFACE_REGISTRY } from './surface-registry';
 const SPLIT_PANE: PageFrameSpec = { width: 'full', body: 'fill', flush: true };
 
 const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
-  // Home is the one intentional hero. Its H1 is a prompt ("What do you want
+  // Home is the one intentional hero. Its is a prompt ("What do you want
   // to work on?"), not a page name, and a page header above it would title a
   // question. Documented exception, not an omission.
   home: null,
@@ -35,7 +35,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'agent-new': SPLIT_PANE,
   'agent-edit': SPLIT_PANE,
 
-  // station#4463 slice 1 (2026-08-26 shell audit): a top-level nav page gets
+  // archive#4463: a top-level nav page gets
   // NO eyebrow — the prior pattern of an eyebrow restating the title in caps
   // (`GUIDANCE` over **Guidance**, and every top-level entry below before
   // this change) is retired as one of the audit's findings. The word is
@@ -114,7 +114,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   },
   notifications: {
     title: 'Notifications',
-    // D9 states the page's model in its own subtitle, and the two regions
+    // states the page's model in its own subtitle, and the two regions
     // below are named for exactly these two halves.
     subtitle: 'Things that need you, and what happened.',
     width: 'narrow',
@@ -123,7 +123,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'project-session-board': { width: 'full', body: 'fill' },
   'project-flow-console': { width: 'full', body: 'fill' },
 
-  // station#4079 slice 1: the board face is a workspace-like surface (its
+  // archive#4079: the board face is a workspace-like surface (its
   // own grid IS the content), not a management page — same shape as
   // `project`/`layout`/`workspace-pane` below.
   board: null,
@@ -158,7 +158,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
  * Fallback titles for the two framed routes the sidebar has no surface for.
  *
  * Every other framed route resolves its fallback from `surface-registry.ts`
- * — the SAME `label()` the sidebar row and the command palette render, so the
+ * the SAME `label` the sidebar row and the command palette render, so the
  * word in the header while a chunk loads is by construction the word the user
  * just clicked. These two are reached from inside a project, not from the
  * sidebar, so there is no surface to derive from and the name is recorded

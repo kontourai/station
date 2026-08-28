@@ -1,5 +1,5 @@
 /**
- * #191 code-review HIGH-1 fix: excludes the `[CHAT_ERROR]` failed-turn
+ * archive#191 code-review HIGH-1 fix: excludes the `[CHAT_ERROR]` failed-turn
  * marker from the *prompt-assembly* read path only.
  *
  * `chat-lifecycle.ts`'s `finalizeChatRequest` persists a
@@ -73,7 +73,7 @@ export function createPromptOnlyMemoryView(
   // Typed to the interface, not to `FileMemoryAdapter`: this view only ever
   // specialises `getMessages` and forwards everything else, so pinning the
   // concrete class bought nothing and blocked any other conversation store
-  // (sqlite, sql) from being wired through the same seam (#914).
+  // (sqlite, sql) from being wired through the same seam (archive#914).
   adapter: StorageAdapter,
 ): StorageAdapter {
   return new Proxy(adapter, {

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * UX audit V3 review round 3 (MEDIUM): a `[CHAT_ERROR]` marker is a statement
+ * a `[CHAT_ERROR]` marker is a statement
  * about ONE turn, and nothing ever removed it. A later successful turn
  * appended its answer beside the stale failure card, and a second failure left
  * two cards with different wording claiming the same conversation.
