@@ -156,8 +156,12 @@ jobs:
           umask 077
           notary_key="$RUNNER_TEMP/station-notary-api-key.p8"
           trap 'rm -f "$notary_key"' EXIT
-          app=$(find "src-desktop/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print -quit)
-          test -n "$app"
+          app_candidates=()
+          while IFS= read -r -d '' app_candidate; do
+            app_candidates+=("$app_candidate")
+          done < <(find "src-desktop/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print0)
+          test "${#app_candidates[@]}" -eq 1
+          app="${app_candidates[0]}"
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
           bundle_id="${{ needs.preflight.outputs.beta_desktop_config && 'io.kontourai.station.beta' || 'io.kontourai.station' }}"
