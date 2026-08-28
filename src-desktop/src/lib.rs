@@ -10633,9 +10633,29 @@ mod tests {
             kind: "station-bearer".to_string(),
             id: "local-grant:station-1818-eligibility-probe".to_string(),
         });
-        assert!(!profile_already_locally_provisioned(
-            &with_unwritten_credential
-        ));
+        // The premise "a working store reports this never-written item absent"
+        // only holds where a secret-service provider is running. Headless
+        // hosts (CI runners, bare WSL) answer StoreUnavailable instead, and
+        // the documented fail-closed contract for an uninspectable store is
+        // "provisioned" (see readable_credential_reaches_authority_probe...):
+        // do not mint another grant beside an item we cannot inspect. Assert
+        // the correct contract for whichever world this test observes, so it
+        // is red only when the CONTRACT breaks, not when the environment
+        // lacks a keyring daemon (station#609).
+        match read_credential_for_eligibility(
+            with_unwritten_credential.credential_ref.as_ref().unwrap(),
+        ) {
+            CredentialReadOutcome::StoreUnavailable => {
+                assert!(profile_already_locally_provisioned(
+                    &with_unwritten_credential
+                ));
+            }
+            _ => {
+                assert!(!profile_already_locally_provisioned(
+                    &with_unwritten_credential
+                ));
+            }
+        }
     }
 
     /// Local keychain readability is only the first gate. A readable item
