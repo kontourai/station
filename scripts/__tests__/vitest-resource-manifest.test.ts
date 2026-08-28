@@ -21,6 +21,7 @@ import {
 
 const temporaryRoots: string[] = [];
 const REVIEWED_RESOURCE_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'packages/cli/src/__tests__/service.test.ts',
   'src-server/services/checkpoints/__tests__/checkpoint-restore.test.ts',
@@ -133,6 +134,29 @@ describe('Vitest resource manifest', () => {
     for (const file of REVIEWED_RESOURCE_HEAVY_VITEST_FILES) {
       expect(groups.ordinary).not.toContain(file);
     }
+  }, 70_000);
+
+  it('classifies runtime bootstrap exactly once as process heavy', () => {
+    const file =
+      'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts';
+    const groups = discoverVitestResourceGroups();
+    expect(groups.processHeavy.filter((entry) => entry === file)).toEqual([
+      file,
+    ]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processExclusive).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
+  it('classifies Play-upload ownership exactly once as process exclusive', () => {
+    const file = 'scripts/__tests__/play-upload-retry.test.ts';
+    const groups = discoverVitestResourceGroups();
+    expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
+      file,
+    ]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
   }, 70_000);
 
   it('recognizes bare and import-equals child-process forms before they can enter ordinary', () => {

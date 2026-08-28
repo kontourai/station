@@ -36,7 +36,12 @@ describe('macOS nightly lane', () => {
       '../dist-desktop-runtime/node_modules': 'node_modules',
       '../schemas': 'schemas',
     });
-    expect(config.plugins).toBeUndefined();
+    expect(config.plugins).toEqual({
+      'deep-link': {
+        mobile: [{ scheme: ['station-nightly'], appLink: false }],
+        desktop: { schemes: ['station-nightly'] },
+      },
+    });
     expect(
       [...infoPlist.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]),
     ).toEqual([
