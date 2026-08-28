@@ -119,6 +119,51 @@ describe('environment access pairing', () => {
     );
   });
 
+  test('sanitizes the remote environment id only when rendering the pairing confirmation', async () => {
+    const rawEnvironmentId = `\u001b[31munsafe\u202e\n${'x'.repeat(300)}`;
+    const renderedEnvironmentId = `\\u001b[31munsafe\\u202e\\u000a${'x'.repeat(100)}`;
+    const store = credentialStore();
+    const stdout = vi.fn();
+    const credentialRef = {
+      kind: 'station-bearer' as const,
+      id: `pairing:${rawEnvironmentId}:test`,
+    };
+    const createCredentialRef = vi.fn(() => credentialRef);
+    const registerProfile = vi.fn(registerPairedProfile);
+    const result = await pairSavedStation(
+      { name: 'work', endpoint: API_BASE },
+      {
+        ...pairing(
+          store,
+          vi
+            .fn()
+            .mockResolvedValue({ ...ISSUED, environmentId: rawEnvironmentId }),
+        ),
+        stdout,
+        createCredentialRef,
+        registerProfile,
+      },
+    );
+
+    const renderedConfirmation =
+      `Paired with ${API_BASE} (environment ${renderedEnvironmentId}). ` +
+      'Credential stored in the OS credential store. Saved as Station "work".';
+    expect(renderedEnvironmentId).toHaveLength(128);
+    expect(stdout).toHaveBeenLastCalledWith(renderedConfirmation);
+    expect(renderedConfirmation).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u);
+    expect(createCredentialRef).toHaveBeenCalledWith(rawEnvironmentId);
+    expect(registerProfile).toHaveBeenCalledWith(
+      API_BASE,
+      expect.objectContaining({
+        environmentId: rawEnvironmentId,
+        credentialRef,
+      }),
+    );
+    expect(result.profile.environmentId).toBe(rawEnvironmentId);
+    expect(findProfile('work')?.environmentId).toBe(rawEnvironmentId);
+    expect(store.values.get(credentialRef.id)).toBe('issued-bearer-credential');
+  });
+
   test('fails before a network request without an explicit direct --api-base', async () => {
     const requestAccess = vi.fn();
     await expect(
