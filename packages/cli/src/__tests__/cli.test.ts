@@ -475,6 +475,7 @@ describe('runCli', () => {
     });
     const createEnvironmentSecurityService = vi.fn(() => ({
       initialize,
+      readExistingRecord: vi.fn(),
       rotateCredential: vi.fn(),
       resetEnvironment: vi.fn(),
     }));

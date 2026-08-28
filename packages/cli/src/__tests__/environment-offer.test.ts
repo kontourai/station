@@ -52,6 +52,7 @@ function dependencies(
     projectHome: '/tmp/station-home',
     createService: () => ({
       initialize: async () => SNAPSHOT,
+      readExistingRecord: async () => SNAPSHOT,
       rotateCredential: async () => SNAPSHOT,
       resetEnvironment: async () => SNAPSHOT,
     }),

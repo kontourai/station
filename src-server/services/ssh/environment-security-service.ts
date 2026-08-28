@@ -40,6 +40,11 @@ import {
   STATION_PROOF_PROTOCOL_VERSION,
   type StationCompatibility,
 } from '@kontourai/station-contracts';
+import { admitStationRuntimeHome } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  readStationHomeSchemaVersion,
+  STATION_HOME_SCHEMA_VERSION,
+} from '@kontourai/station-shared/station-home-schema';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
 import { DevicePairingService } from './device-pairing-service.js';
@@ -301,6 +306,28 @@ export class EnvironmentSecurityService {
       now: this.#now,
     });
     return record;
+  }
+
+  /**
+   * Reads an already-provisioned environment record without changing the
+   * selected Station home. This is deliberately separate from initialize():
+   * profile-selected CLI reads must never bootstrap a missing or malformed
+   * home merely because they need its operator credential.
+   */
+  async readExistingRecord(): Promise<EnvironmentSecurityRecord> {
+    const homeDir = admitStationRuntimeHome(this.#homeDir);
+    // This is the exact, read-only schema observation used by backup/export
+    // admission. It refuses missing, malformed, or incompatible homes without
+    // acquiring the bootstrap lock or writing a schema marker.
+    const schemaVersion = readStationHomeSchemaVersion(homeDir);
+    if (schemaVersion !== STATION_HOME_SCHEMA_VERSION) {
+      throw new EnvironmentSecurityRecordError(
+        `Unsupported Station home schema version ${schemaVersion}; expected ${STATION_HOME_SCHEMA_VERSION}`,
+      );
+    }
+    const securityDir = join(homeDir, SECURITY_DIRECTORY);
+    this.#assertExistingSecurityDirectory(securityDir);
+    return this.#readRecord(join(securityDir, RECORD_FILE));
   }
 
   async rotateCredential(): Promise<EnvironmentSecurityRecord> {
@@ -626,12 +653,7 @@ export class EnvironmentSecurityService {
     } catch (error) {
       if (!isNodeError(error, 'EEXIST')) throw error;
     }
-    const status = lstatSync(this.#securityDir);
-    if (!status.isDirectory() || status.isSymbolicLink()) {
-      throw new EnvironmentSecurityRecordError(
-        'Invalid environment security directory',
-      );
-    }
+    this.#assertExistingSecurityDirectory(this.#securityDir, !created);
     if (created && process.platform !== 'win32') {
       const descriptor = openSync(this.#securityDir, constants.O_RDONLY);
       try {
@@ -639,7 +661,30 @@ export class EnvironmentSecurityService {
       } finally {
         closeSync(descriptor);
       }
-    } else if (
+    }
+  }
+
+  /** Validates an existing security directory without creating or repairing it. */
+  #assertExistingSecurityDirectory(
+    securityDir = this.#securityDir,
+    enforcePrivateMode = true,
+  ): Stats {
+    let status: Stats;
+    try {
+      status = lstatSync(securityDir);
+    } catch (error) {
+      throw new EnvironmentSecurityRecordError(
+        'Environment security directory is missing',
+        { cause: error },
+      );
+    }
+    if (!status.isDirectory() || status.isSymbolicLink()) {
+      throw new EnvironmentSecurityRecordError(
+        'Invalid environment security directory',
+      );
+    }
+    if (
+      enforcePrivateMode &&
       process.platform !== 'win32' &&
       (status.mode & 0o777) !== PRIVATE_DIRECTORY_MODE
     ) {
@@ -647,6 +692,7 @@ export class EnvironmentSecurityService {
         'Unsafe environment security directory permissions',
       );
     }
+    return status;
   }
 
   async #withExclusiveLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -867,10 +913,10 @@ export class EnvironmentSecurityService {
     }
   }
 
-  #readRecord(): EnvironmentSecurityRecord {
+  #readRecord(recordPath = this.#recordPath): EnvironmentSecurityRecord {
     let status: Stats;
     try {
-      status = lstatSync(this.#recordPath);
+      status = lstatSync(recordPath);
     } catch (error) {
       throw new EnvironmentSecurityRecordError(
         'Environment security record is missing',
@@ -888,7 +934,7 @@ export class EnvironmentSecurityService {
       );
     }
     try {
-      return validateRecord(JSON.parse(readFileSync(this.#recordPath, 'utf8')));
+      return validateRecord(JSON.parse(readFileSync(recordPath, 'utf8')));
     } catch (error) {
       if (error instanceof EnvironmentSecurityRecordError) throw error;
       throw new EnvironmentSecurityRecordError(

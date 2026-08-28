@@ -108,6 +108,8 @@ export interface EnvironmentSecuritySnapshot {
 
 export interface EnvironmentSecurityServiceLike {
   initialize(): Promise<EnvironmentSecuritySnapshot>;
+  /** Reads a saved Station's existing identity without bootstrapping its home. */
+  readExistingRecord(): Promise<EnvironmentSecuritySnapshot>;
   rotateCredential(): Promise<EnvironmentSecuritySnapshot>;
   resetEnvironment(): Promise<EnvironmentSecuritySnapshot>;
 }
@@ -1399,6 +1401,30 @@ async function runLocalAccessCommand(
   if (!['list', 'approve', 'deny'].includes(action ?? '')) {
     throw usageError();
   }
+  // Validate the complete command shape before resolving a profile, reading a
+  // local credential, or contacting a listener. A malformed action must never
+  // have observable security-service or network effects.
+  if (
+    action === 'list' &&
+    (parsed.positionals.length !== 2 ||
+      !allowedFlags(parsed.flags, ['api-base', 'station']))
+  ) {
+    throw usageError();
+  }
+  if (
+    action !== 'list' &&
+    (parsed.positionals.length > 3 ||
+      !allowedFlags(parsed.flags, ['api-base', 'station', 'latest', 'force']) ||
+      (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
+      (parsed.flags.force !== undefined && parsed.flags.force !== true))
+  ) {
+    throw usageError();
+  }
+  const explicitId = action === 'list' ? undefined : parsed.positionals[2];
+  const useLatest = action !== 'list' && parsed.flags.latest === true;
+  if (explicitId && useLatest) {
+    throw new Error('Provide a request id or --latest, not both.');
+  }
   // station#4515: `resolveApiBaseDetailed` (unlike the bare `resolveApiBase`
   // these verbs used to call) also names the saved Station a target resolved
   // through — from an explicit `--station=<name>`, but equally from
@@ -1444,10 +1470,17 @@ async function runLocalAccessCommand(
   const request = dependencies.request ?? requestBareJson;
   const serviceProjectHome =
     targetProfile?.localService?.baseDir ?? dependencies.projectHome;
-  const snapshot = await requireSecurityService({
+  const service = requireSecurityService({
     ...dependencies,
     projectHome: serviceProjectHome,
-  }).initialize();
+  });
+  const snapshot = targetProfile?.localService?.baseDir
+    ? await readSavedStationRecord(
+        service,
+        targetProfile.name,
+        targetProfile.localService.baseDir,
+      )
+    : await service.initialize();
   const handshake = await request(apiBase, '/.well-known/station/v1');
   // station#4515 review NEW-3: an explicit, standalone shape rejection —
   // mirrors the sibling check in `verifyLocalOfferHost` above
@@ -1527,12 +1560,6 @@ async function runLocalAccessCommand(
     });
 
   if (action === 'list') {
-    if (
-      parsed.positionals.length !== 2 ||
-      !allowedFlags(parsed.flags, ['api-base', 'station'])
-    ) {
-      throw usageError();
-    }
     const requests = parsePairingRequestList(
       await requestOperatorJson('/api/pairing/requests'),
     );
@@ -1542,19 +1569,6 @@ async function runLocalAccessCommand(
     return true;
   }
 
-  if (
-    parsed.positionals.length > 3 ||
-    !allowedFlags(parsed.flags, ['api-base', 'station', 'latest', 'force']) ||
-    (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
-    (parsed.flags.force !== undefined && parsed.flags.force !== true)
-  ) {
-    throw usageError();
-  }
-  const explicitId = parsed.positionals[2];
-  const useLatest = parsed.flags.latest === true;
-  if (explicitId && useLatest) {
-    throw new Error('Provide a request id or --latest, not both.');
-  }
   const actionable = parsePairingRequestList(
     await requestOperatorJson('/api/pairing/requests'),
   )
@@ -1671,6 +1685,31 @@ function requireSecurityService(
     );
   }
   return dependencies.createService(dependencies.projectHome);
+}
+
+function savedStationErrorValue(value: string, limit: number): string {
+  return JSON.stringify(terminalSafeText(value).slice(0, limit));
+}
+
+/**
+ * A saved profile chooses an existing Station home, not a bootstrap target.
+ * Keep the underlying refusal as the cause for callers/diagnostics while the
+ * terminal-facing message bounds both profile-controlled values.
+ */
+async function readSavedStationRecord(
+  service: EnvironmentSecurityServiceLike,
+  name: string,
+  homeDir: string,
+): Promise<EnvironmentSecuritySnapshot> {
+  try {
+    return await service.readExistingRecord();
+  } catch (error) {
+    throw new Error(
+      `Saved Station ${savedStationErrorValue(name, 128)} recorded home ${savedStationErrorValue(homeDir, 512)} cannot be read without changing it. ` +
+        'Re-run `station setup local` or fix this saved Station.',
+      { cause: error },
+    );
+  }
 }
 
 export function normalizeEnvironmentArgsForParsing(args: string[]): string[] {
