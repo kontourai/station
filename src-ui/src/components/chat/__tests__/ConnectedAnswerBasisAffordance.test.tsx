@@ -2,14 +2,30 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  closeSessionInventoryOccurrence,
+  readSessionInventoryOccurrence,
+  registerSessionInventoryHost,
+} from '../../chat-dock/sessionInventoryOccurrence';
 
 const mocks = vi.hoisted(() => ({
-  openBasis: vi.fn(),
   useProjectQuery: vi.fn(),
+  openBasis: vi.fn(),
+  authority: {
+    apiBase: 'http://station.test',
+    authorityKey: 'authority-a',
+    isCurrent: () => true,
+  },
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: mocks.useProjectQuery,
+}));
+vi.mock('../../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => mocks.authority,
+}));
+vi.mock('../../../workspace-panes/BasisPaneLauncher', () => ({
+  useBasisPaneLauncher: () => ({ openBasis: mocks.openBasis, fallback: null }),
 }));
 vi.mock('@kontourai/station-basis-pane/answer-basis-affordance', () => ({
   AnswerBasisAffordance: ({
@@ -22,22 +38,25 @@ vi.mock('@kontourai/station-basis-pane/answer-basis-affordance', () => ({
     </button>
   ),
 }));
-vi.mock('../../../workspace-panes/BasisPaneLauncher', () => ({
-  useBasisPaneLauncher: () => ({
-    openBasis: mocks.openBasis,
-    fallback: null,
-  }),
-}));
-
 const { ConnectedAnswerBasisAffordance } = await import(
   '../ConnectedAnswerBasisAffordance'
 );
 
 describe('ConnectedAnswerBasisAffordance', () => {
+  let unregisterHost: (() => void) | undefined;
+
   beforeEach(() => {
-    mocks.openBasis.mockReset();
+    closeSessionInventoryOccurrence();
     mocks.useProjectQuery.mockReset();
+    mocks.openBasis.mockReset();
+    unregisterHost?.();
+    unregisterHost = registerSessionInventoryHost('chat-host', {
+      authorityKey: mocks.authority.authorityKey,
+      chatStoreId: 'session-a',
+      executionId: 'session-a',
+    });
   });
+
   test('resolves the route slug to the canonical Project id before opening a Pane', async () => {
     mocks.useProjectQuery.mockReturnValue({
       data: { id: 'project-canonical-id', slug: 'project-route-slug' },
@@ -49,24 +68,41 @@ describe('ConnectedAnswerBasisAffordance', () => {
         turnId="turn-a"
       />,
     );
+    expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
+      'project-route-slug',
+      expect.objectContaining({ enabled: false }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Basis' }));
     await waitFor(() =>
       expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
         'project-route-slug',
         expect.objectContaining({ enabled: true }),
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Basis' }));
-    const [instance] = mocks.openBasis.mock.lastCall ?? [];
-    expect(instance?.boundContext).toMatchObject({
+    expect(readSessionInventoryOccurrence()).toMatchObject({
       projectId: 'project-canonical-id',
-      sessionId: 'session-a',
-      turnId: 'turn-a',
+      requestedScope: {
+        kind: 'current-answer',
+        sessionId: 'session-a',
+        turnId: 'turn-a',
+      },
     });
-    expect(instance?.boundContext.projectId).not.toBe('project-route-slug');
+    expect(readSessionInventoryOccurrence()?.projectId).not.toBe(
+      'project-route-slug',
+    );
   });
 
-  test('uses the responsive fallback when the canonical Project id is unavailable', () => {
-    mocks.useProjectQuery.mockReturnValue({ data: undefined });
+  test('settles into the responsive fallback when the canonical Project id is unavailable', async () => {
+    // An answer can outlive the dock host that rendered it. That path must
+    // retain the exact answer scope in a local fallback, rather than opening
+    // an arbitrary host or requiring another click.
+    unregisterHost?.();
+    unregisterHost = undefined;
+    mocks.useProjectQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+    });
     render(
       <ConnectedAnswerBasisAffordance
         projectSlug="project-route-slug"
@@ -74,7 +110,25 @@ describe('ConnectedAnswerBasisAffordance', () => {
         turnId="turn-a"
       />,
     );
+    expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
+      'project-route-slug',
+      expect.objectContaining({ enabled: false }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Basis' }));
-    expect(mocks.openBasis.mock.lastCall?.[0]).toBeNull();
+    await waitFor(() =>
+      expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
+        'project-route-slug',
+        expect.objectContaining({ enabled: true }),
+      ),
+    );
+    expect(readSessionInventoryOccurrence()).toBeUndefined();
+    expect(mocks.openBasis).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({
+        kind: 'session-inventory',
+        initialScope: expect.objectContaining({ turnId: 'turn-a' }),
+      }),
+      expect.any(HTMLButtonElement),
+    );
   });
 });

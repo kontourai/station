@@ -15,11 +15,13 @@ import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 export function ChatDockMobileOverflowSheet({
   overflow,
   projectScope,
+  returnFocusTarget,
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
   /** Folded out of the bar at #3309 review SF-2 — see ChatDockMobileHeader. */
   projectScope?: { name: string; onClear: () => void };
+  returnFocusTarget?: HTMLElement | null;
   onClose: () => void;
 }) {
   const run = (action: () => void) => {
@@ -63,6 +65,21 @@ export function ChatDockMobileOverflowSheet({
         >
           Conversation history
         </button>
+        {overflow.onOpenSessionInventory ? (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={(event) => {
+              onClose();
+              overflow.onOpenSessionInventory!(
+                returnFocusTarget ?? event.currentTarget,
+              );
+            }}
+          >
+            Session inventory
+          </button>
+        ) : null}
         {overflow.onOpenProject && (
           <button
             type="button"

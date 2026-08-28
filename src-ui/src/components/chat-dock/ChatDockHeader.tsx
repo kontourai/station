@@ -1,19 +1,20 @@
-import React from 'react';
+import type React from 'react';
+import { lazy, Suspense } from 'react';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
-import {
-  ArrowDownGlyph,
-  ArrowLeftGlyph,
-  ArrowRightGlyph,
-  ArrowUpGlyph,
-  TerminalGlyph,
-} from '../icons/Glyph';
+import { ArrowDownGlyph, ArrowLeftGlyph, ArrowUpGlyph } from '../icons/Glyph';
 import { DockPlacementControl } from './DockPlacementControl';
 import type { DockSnap } from './dockSnap';
 import { readDockSnap } from './dockSnap';
+
+const LazyChatDockWorkspaceChrome = lazy(() =>
+  import('./ChatDockWorkspaceControls').then((module) => ({
+    default: module.ChatDockWorkspaceChrome,
+  })),
+);
 
 interface Session {
   id: string;
@@ -36,40 +37,6 @@ export interface ChatDockHeaderChatControls {
   setShowChatSettings: (fn: (prev: boolean) => boolean) => void;
 }
 
-function OpenConversationIcon() {
-  return (
-    <svg
-      className="chat-dock__new-icon"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      width="16"
-      height="16"
-      aria-hidden="true"
-    >
-      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-    </svg>
-  );
-}
-
-function NewChatIcon() {
-  return (
-    <svg
-      className="chat-dock__new-icon"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      width="16"
-      height="16"
-      aria-hidden="true"
-    >
-      <path
-        fillRule="evenodd"
-        d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-}
-
 /**
  * kontourai/station#3309: the tab strip's controls, absorbed into this one
  * header bar. The desktop dock chrome used to stack a second
@@ -88,6 +55,9 @@ export interface ChatDockWorkspaceControls {
   backgroundTasksRunningCount: number;
   isBackgroundTasksOpen: boolean;
   onToggleBackgroundTasks: () => void;
+  isSessionInventoryOpen: boolean;
+  sessionInventoryControlsId: string;
+  onToggleSessionInventory: (trigger: HTMLElement) => void;
   onOpenConversation: () => void;
   /** New-chat with the single-ready-agent shortcut (opens directly). */
   onNewChat: () => void;
@@ -149,8 +119,6 @@ export function ChatDockHeader({
   const { isDockOpen, isDockMaximized, dockMode } = useNavigation();
   const toggleDockShortcut = useShortcutDisplay('dock.toggle');
   const maximizeShortcut = useShortcutDisplay('dock.maximize');
-  const newChatShortcut = useShortcutDisplay('dock.newChat');
-  const openConversationShortcut = useShortcutDisplay('dock.openConversation');
   const side = dockMode === 'bottom' ? null : dockMode;
 
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
@@ -255,60 +223,11 @@ export function ChatDockHeader({
             </svg>
           </button>
         )}
-        {workspaceControls && (
-          // #3309: panel toggles live at the row's left edge, beside the gear —
-          // they open surfaces that appear on the dock's left side.
-          <div className="chat-dock__header-workspace">
-            {workspaceControls.showInboxToggle && (
-              <button
-                type="button"
-                className={`chat-dock__inbox-toggle${workspaceControls.isInboxOpen ? ' is-active' : ''}`}
-                onClick={workspaceControls.onToggleInbox}
-                title={
-                  workspaceControls.isInboxOpen
-                    ? 'Collapse chat list'
-                    : 'Expand chat list'
-                }
-                aria-label={
-                  workspaceControls.isInboxOpen
-                    ? 'Collapse chat list'
-                    : 'Expand chat list'
-                }
-                aria-pressed={workspaceControls.isInboxOpen}
-              >
-                {workspaceControls.isInboxOpen ? (
-                  <ArrowLeftGlyph />
-                ) : (
-                  <ArrowRightGlyph />
-                )}
-              </button>
-            )}
-            <button
-              ref={workspaceControls.backgroundTasksTriggerRef}
-              type="button"
-              className={`chat-dock__inbox-toggle${workspaceControls.isBackgroundTasksOpen ? ' is-active' : ''}`}
-              onClick={workspaceControls.onToggleBackgroundTasks}
-              title="Background tasks"
-              aria-label={
-                workspaceControls.backgroundTasksRunningCount > 0
-                  ? `Background tasks — ${workspaceControls.backgroundTasksRunningCount} running`
-                  : 'Background tasks'
-              }
-              aria-haspopup="dialog"
-              aria-expanded={workspaceControls.isBackgroundTasksOpen}
-            >
-              <TerminalGlyph />
-              {workspaceControls.backgroundTasksRunningCount > 0 && (
-                <span
-                  className="chat-dock__background-tasks-badge"
-                  aria-hidden="true"
-                >
-                  {workspaceControls.backgroundTasksRunningCount}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
+        {workspaceControls ? (
+          <Suspense fallback={null}>
+            <LazyChatDockWorkspaceChrome {...workspaceControls} />
+          </Suspense>
+        ) : null}
         {chatIdentity ? (
           <div className="chat-dock__header-identity">{chatIdentity}</div>
         ) : null}
@@ -387,40 +306,6 @@ export function ChatDockHeader({
           ))}
         {chatControls && chatControls.unreadCount > 0 && (
           <span className="chat-dock__badge">{chatControls.unreadCount}</span>
-        )}
-        {workspaceControls && (
-          <div className="chat-dock__tab-actions">
-            <button
-              type="button"
-              className="chat-dock__new chat-dock__open"
-              onClick={workspaceControls.onOpenConversation}
-              title={withShortcutHint(
-                'Open Conversation',
-                'dock.openConversation',
-                () => openConversationShortcut,
-              )}
-            >
-              <OpenConversationIcon />
-              <span className="chat-dock__new-label">Open</span>
-              <span className="chat-dock__subtitle">
-                {openConversationShortcut}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="chat-dock__new"
-              onClick={workspaceControls.onNewChat}
-              title={withShortcutHint(
-                'New Chat',
-                'dock.newChat',
-                () => newChatShortcut,
-              )}
-            >
-              <NewChatIcon />
-              <span className="chat-dock__new-label">New</span>
-              <span className="chat-dock__subtitle">{newChatShortcut}</span>
-            </button>
-          </div>
         )}
         {!fullscreen && (
           <>

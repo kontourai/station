@@ -27,7 +27,10 @@ import {
   useAgents,
   useAgentsLoaded,
 } from '../../contexts/AgentsContext';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
 import {
@@ -133,6 +136,7 @@ import {
   focusRoutableChatSession,
   shouldClearProjectChatScope,
 } from './projectChatRequest';
+import { type SessionInventoryLaunch } from './SessionInventoryEntryPoint';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockViewModel } from './useChatDockViewModel';
 
@@ -263,6 +267,11 @@ const loadConversationContextResetDialog = () =>
     default: module.ConversationContextResetDialog,
   }));
 
+const loadSessionInventoryEntryPoint = () =>
+  import('./SessionInventoryEntryPoint').then((module) => ({
+    default: module.SessionInventoryEntryPoint,
+  }));
+
 /**
  * The pane-host machinery is ~17KB of entry budget the dock does not need at
  * parse time, so it stays a chunk. But the dock is a persistent shell
@@ -387,6 +396,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
+  const inventoryAuthority = useHostRequestAuthorityScope();
+  const inventoryHostId = useRef(
+    `session-inventory:${crypto.randomUUID()}`,
+  ).current;
   const {
     isDockOpen,
     isDockMaximized,
@@ -718,6 +731,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // `ResponsiveDialogSurface` falls back to its un-anchored bottom sheet.
   const [isBackgroundTasksOpen, setIsBackgroundTasksOpen] = useState(false);
   const backgroundTasksTriggerRef = useRef<HTMLButtonElement>(null);
+  const [sessionInventoryLaunch, setSessionInventoryLaunch] =
+    useState<SessionInventoryLaunch | null>(null);
 
   useEffect(() => {
     if (!isMobile) setIsTaskSwitcherOpen(false);
@@ -757,6 +772,59 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessions,
     orchestrationSessionsStatus,
   });
+  const inventoryChatStoreId = activeSession?.id;
+  const inventoryExecutionId =
+    activeSession?.currentSessionId ?? inventoryChatStoreId;
+  const inventoryProjectSlug = activeSession?.projectSlug;
+  const inventoryAuthorityKey = inventoryAuthority?.authorityKey;
+  const inventoryHostIdentity = `${inventoryAuthorityKey ?? ''}\u0000${inventoryChatStoreId ?? ''}`;
+  const previousInventoryHostIdentity = useRef(inventoryHostIdentity);
+  useEffect(() => {
+    const request = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          launch: SessionInventoryLaunch;
+          candidates: (() => void)[];
+        }>
+      ).detail;
+      if (
+        detail.launch.authorityKey !== inventoryAuthorityKey ||
+        detail.launch.activeSessionId !== inventoryChatStoreId
+      )
+        return;
+      detail.candidates.push(() =>
+        setSessionInventoryLaunch({
+          ...detail.launch,
+          hostId: inventoryHostId,
+        }),
+      );
+    };
+    window.addEventListener('station-session-inventory-request', request);
+    return () =>
+      window.removeEventListener('station-session-inventory-request', request);
+  }, [inventoryAuthorityKey, inventoryChatStoreId, inventoryHostId]);
+  useEffect(() => {
+    if (previousInventoryHostIdentity.current === inventoryHostIdentity) return;
+    previousInventoryHostIdentity.current = inventoryHostIdentity;
+    setSessionInventoryLaunch(null);
+  }, [inventoryHostIdentity]);
+  const openSessionInventory = (trigger: HTMLElement) => {
+    const launch: SessionInventoryLaunch = {
+      authorityKey: inventoryAuthorityKey,
+      activeSessionId: inventoryChatStoreId,
+      executionSessionId: inventoryExecutionId,
+      projectId: inventoryProjectSlug
+        ? projects.find((project) => project.slug === inventoryProjectSlug)?.id
+        : undefined,
+      executionRead: activeOrchestrationSessionRead,
+      trigger,
+    };
+    const detail = { launch, candidates: [] as (() => void)[] };
+    window.dispatchEvent(
+      new CustomEvent('station-session-inventory-request', { detail }),
+    );
+    if (detail.candidates.length === 1) detail.candidates[0]!();
+  };
   const activeConversationId = activeSession?.conversationId ?? '';
   const [contextBoundaryStored, setContextBoundaryStored] = useState(() =>
     activeConversationId
@@ -1908,6 +1976,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   : null,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
+                onOpenSessionInventory: activeSession
+                  ? (trigger) => openSessionInventory(trigger)
+                  : undefined,
                 // Collapsing must clear Maximized (#795) — an independent
                 // `is-maximized` class surviving a collapse leaves a
                 // full-height dock with an emptied body.
@@ -2015,6 +2086,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       isBackgroundTasksOpen,
                       onToggleBackgroundTasks: () =>
                         setIsBackgroundTasksOpen((open) => !open),
+                      isSessionInventoryOpen: Boolean(sessionInventoryLaunch),
+                      sessionInventoryControlsId: `session-inventory-${inventoryHostId}`,
+                      onToggleSessionInventory: (trigger) => {
+                        if (sessionInventoryLaunch)
+                          setSessionInventoryLaunch(null);
+                        else openSessionInventory(trigger);
+                      },
                       onOpenConversation: () => setShowSessionPicker(true),
                       onNewChat: openNewChatDirect,
                     }
@@ -2109,6 +2187,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   />
                 )}
                 <div className="chat-dock__conversation-surface">
+                  {sessionInventoryLaunch ? (
+                    <LazyBoundary
+                      load={loadSessionInventoryEntryPoint}
+                      pending={null}
+                      componentProps={{
+                        launch: sessionInventoryLaunch,
+                        isMobile,
+                        dockMode: effectiveDockSlotPlacement,
+                        fullscreen: isFullscreenPlacement,
+                        controlsId: `session-inventory-${inventoryHostId}`,
+                        onClose: () => setSessionInventoryLaunch(null),
+                      }}
+                    />
+                  ) : null}
                   <ChatDockContentArea
                     onNewChat={handleStartNewChatWithMessage}
                     activeSession={activeSession}

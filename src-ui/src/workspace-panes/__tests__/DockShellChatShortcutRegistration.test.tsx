@@ -39,6 +39,7 @@ import { navigationStore } from '../../contexts/navigation-store';
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 
 vi.mock('../../contexts/AgentsContext', () => ({

@@ -31,6 +31,7 @@ export function ConnectedBasisFallbackPane({
         <LazyConnectedSessionInventory
           sessionId={scope.sessionId}
           currentProjectId={currentProjectId}
+          initialScope={scope.initialScope}
         />
       ) : (
         <LazyConnectedStationBasisPane
