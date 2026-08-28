@@ -1,7 +1,13 @@
 import { createSessionInventoryBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import type { SessionInventoryScope } from '@kontourai/station-contracts/session-inventory';
 import { useEffect } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useBasisPaneLauncher } from '../../workspace-panes/BasisPaneLauncher';
+import {
+  commitSessionInventorySelection,
+  readSessionInventorySelection,
+} from '../../workspace-panes/sessionInventorySelection';
+import { registerSessionInventoryLiveBinding } from './sessionInventoryLiveBinding';
 
 /** Lazy full/fallback handoff keeps Basis implementation out of ChatDock. */
 export function SessionInventoryFullFallback({
@@ -9,6 +15,8 @@ export function SessionInventoryFullFallback({
   projectId,
   trigger,
   forceFallback = false,
+  chatStoreId,
+  hostId,
   onClose,
   onHostOpened,
 }: {
@@ -16,11 +24,23 @@ export function SessionInventoryFullFallback({
   projectId?: string;
   trigger: HTMLElement | null;
   forceFallback?: boolean;
+  chatStoreId?: string;
+  hostId?: string;
   onClose?(): void;
   onHostOpened?(): void;
 }) {
   const { openBasis, fallback } = useBasisPaneLauncher();
+  const authority = useHostRequestAuthorityScope();
   useEffect(() => {
+    // A workspace-pane instance only names Project and Session. Commit the
+    // exact captured scope before host admission, so a synchronous host.open
+    // cannot observe the old whole-session selection and lose this answer.
+    if (authority) {
+      const key = { ...authority, sessionId: scope.sessionId };
+      const current = readSessionInventorySelection(key);
+      if (JSON.stringify(current?.scope) !== JSON.stringify(scope))
+        commitSessionInventorySelection(key, { scope, groupId: 'inputs' });
+    }
     const result = openBasis(
       !forceFallback && projectId
         ? createSessionInventoryBasisPaneInstance(projectId, scope.sessionId)
@@ -33,9 +53,24 @@ export function SessionInventoryFullFallback({
       trigger,
       onClose,
     );
-    if (result === 'host') onHostOpened?.();
+    if (result === 'host') {
+      if (authority && chatStoreId)
+        registerSessionInventoryLiveBinding(
+          authority.apiBase,
+          authority.authorityKey,
+          scope.sessionId,
+          {
+            hostId: `hosted:${hostId ?? crypto.randomUUID()}`,
+            chatStoreId,
+          },
+        );
+      onHostOpened?.();
+    }
   }, [
     forceFallback,
+    authority,
+    chatStoreId,
+    hostId,
     onClose,
     onHostOpened,
     openBasis,

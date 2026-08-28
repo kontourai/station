@@ -10,9 +10,14 @@ import { DockPlacementControl } from './DockPlacementControl';
 import type { DockSnap } from './dockSnap';
 import { readDockSnap } from './dockSnap';
 
-const LazyChatDockWorkspaceChrome = lazy(() =>
+const LazyChatDockWorkspaceControls = lazy(() =>
   import('./ChatDockWorkspaceControls').then((module) => ({
-    default: module.ChatDockWorkspaceChrome,
+    default: module.ChatDockWorkspaceControls,
+  })),
+);
+const LazyChatDockWorkspaceActions = lazy(() =>
+  import('./ChatDockWorkspaceControls').then((module) => ({
+    default: module.ChatDockWorkspaceActions,
   })),
 );
 
@@ -225,7 +230,7 @@ export function ChatDockHeader({
         )}
         {workspaceControls ? (
           <Suspense fallback={null}>
-            <LazyChatDockWorkspaceChrome {...workspaceControls} />
+            <LazyChatDockWorkspaceControls {...workspaceControls} />
           </Suspense>
         ) : null}
         {chatIdentity ? (
@@ -247,6 +252,11 @@ export function ChatDockHeader({
         className="chat-dock__header-actions"
         onClick={(e) => e.stopPropagation()}
       >
+        {workspaceControls ? (
+          <Suspense fallback={null}>
+            <LazyChatDockWorkspaceActions {...workspaceControls} />
+          </Suspense>
+        ) : null}
         {activeSessions.length > 0 && (
           <div className="chat-dock__activity">
             <button type="button" className="chat-dock__activity-btn">

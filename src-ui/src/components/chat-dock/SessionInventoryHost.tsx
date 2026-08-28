@@ -74,6 +74,8 @@ export function SessionInventoryHost({
         scope={scope}
         projectId={projectId}
         trigger={trigger}
+        chatStoreId={chatStoreId}
+        hostId={hostId}
         forceFallback
         onClose={() => {
           setFullTrigger(null);
@@ -102,6 +104,8 @@ export function SessionInventoryHost({
           scope={scope}
           projectId={projectId}
           trigger={fullTrigger.trigger}
+          chatStoreId={chatStoreId}
+          hostId={hostId}
           onHostOpened={() => close(false)}
           onClose={() => {
             setFullTrigger(null);

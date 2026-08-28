@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import type { SessionInventoryLaunch } from './SessionInventoryEntryPoint';
 
 type Registration = {
@@ -10,12 +11,6 @@ const occurrences = new Map<string, SessionInventoryLaunch>();
 const listeners = new Map<string, Set<() => void>>();
 const notify = (hostId: string) =>
   listeners.get(hostId)?.forEach((listener) => listener());
-const REQUEST_EVENT = 'station-session-inventory-request';
-
-type SessionInventoryRequest = {
-  launch: SessionInventoryLaunch;
-  candidates: (() => void)[];
-};
 
 export function openSessionInventoryOccurrence(launch: SessionInventoryLaunch) {
   const matches = launch.hostId
@@ -25,19 +20,12 @@ export function openSessionInventoryOccurrence(launch: SessionInventoryLaunch) {
           entry.authorityKey === launch.authorityKey &&
           entry.chatStoreId === launch.activeSessionId,
       );
-  if (matches.length === 1) {
-    const [hostId, registration] = matches[0]!;
-    if (registration && registration.authorityKey === launch.authorityKey) {
-      occurrences.set(hostId, { ...launch, hostId });
-      notify(hostId);
-      return true;
-    }
-  }
-  if (typeof window === 'undefined') return false;
-  const detail: SessionInventoryRequest = { launch, candidates: [] };
-  window.dispatchEvent(new CustomEvent(REQUEST_EVENT, { detail }));
-  if (detail.candidates.length !== 1) return false;
-  detail.candidates[0]!();
+  if (matches.length !== 1) return false;
+  const [hostId, registration] = matches[0]!;
+  if (!registration || registration.authorityKey !== launch.authorityKey)
+    return false;
+  occurrences.set(hostId, { ...launch, hostId });
+  notify(hostId);
   return true;
 }
 export function registerSessionInventoryHost(
@@ -82,4 +70,11 @@ export function subscribeSessionInventoryOccurrence(
     group.delete(listener);
     if (!group.size) listeners.delete(hostId);
   };
+}
+export function useSessionInventoryOccurrence(hostId: string) {
+  return useSyncExternalStore(
+    (listener) => subscribeSessionInventoryOccurrence(hostId, listener),
+    () => occurrences.get(hostId) ?? null,
+    () => null,
+  );
 }

@@ -1,4 +1,12 @@
-import { ArrowLeftGlyph, ArrowRightGlyph, TerminalGlyph } from '../icons/Glyph';
+import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
+import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
+import {
+  ArrowLeftGlyph,
+  ArrowRightGlyph,
+  MessageGlyph,
+  PlusGlyph,
+  TerminalGlyph,
+} from '../icons/Glyph';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 
 export function ChatDockWorkspaceControls(props: Controls) {
@@ -62,35 +70,32 @@ export function ChatDockWorkspaceActions({
   onOpenConversation,
   onNewChat,
 }: Pick<Controls, 'onOpenConversation' | 'onNewChat'>) {
+  const openShortcut = useShortcutDisplay('chat.open');
+  const newShortcut = useShortcutDisplay('chat.new');
   return (
     <div className="chat-dock__tab-actions">
       <button
         type="button"
         className="chat-dock__new chat-dock__open"
         onClick={onOpenConversation}
-        title="Open Conversation"
+        title={withShortcutHint(
+          'Open Conversation',
+          'chat.open',
+          () => openShortcut,
+        )}
       >
-        <span aria-hidden="true">▱</span>
+        <MessageGlyph />
         <span className="chat-dock__new-label">Open</span>
       </button>
       <button
         type="button"
         className="chat-dock__new"
         onClick={onNewChat}
-        title="New Chat"
+        title={withShortcutHint('New Chat', 'chat.new', () => newShortcut)}
       >
-        <span aria-hidden="true">+</span>
+        <PlusGlyph />
         <span className="chat-dock__new-label">New</span>
       </button>
     </div>
-  );
-}
-
-export function ChatDockWorkspaceChrome(props: Controls) {
-  return (
-    <>
-      <ChatDockWorkspaceControls {...props} />
-      <ChatDockWorkspaceActions {...props} />
-    </>
   );
 }

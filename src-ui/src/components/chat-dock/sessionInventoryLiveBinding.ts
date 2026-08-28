@@ -20,6 +20,17 @@ export function registerSessionInventoryLiveBinding(
     listeners.get(encoded)?.forEach((listener) => listener());
   };
 }
+export function releaseSessionInventoryLiveBinding(
+  apiBase: string,
+  authorityKey: string,
+  sessionId: string,
+  binding: Binding,
+) {
+  const encoded = key(apiBase, authorityKey, sessionId);
+  if (values.get(encoded) !== binding) return;
+  values.delete(encoded);
+  listeners.get(encoded)?.forEach((listener) => listener());
+}
 export function useSessionInventoryLiveBinding(
   scope:
     | { apiBase: string; authorityKey: string; isCurrent?: () => boolean }

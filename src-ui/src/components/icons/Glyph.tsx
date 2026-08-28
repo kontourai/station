@@ -107,6 +107,7 @@ export const PauseGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9m5-9v9');
 export const PinGlyph = /* @__PURE__ */ glyph(
   'm5 2 6 6-2 1.2-.8 3.3-1.5-1.4-3.6 2.8 2.8-3.6L4.5 8.3 7.8 7.5 9 5.5 5 2Z',
 );
+export const PlusGlyph = /* @__PURE__ */ glyph('M8 3v10M3 8h10');
 export const PlugGlyph = /* @__PURE__ */ glyph(
   'M5 2v4m6-4v4M4 6h8v1.5a4 4 0 0 1-8 0V6Zm4 5.5V14',
 );

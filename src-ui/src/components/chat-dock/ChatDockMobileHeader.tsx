@@ -255,6 +255,7 @@ export function ChatDockMobileHeader({
   const titleDescriptionId = useId();
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
   const overflowTriggerRef = useRef<HTMLButtonElement>(null);
+  const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
 
   // The project owns its own visible switcher below, matching desktop's
   // named project badge. Keep the identity eyebrow for supporting branch
@@ -284,6 +285,7 @@ export function ChatDockMobileHeader({
           what the whole bar is attached to. */}
       {dockToggle && (
         <button
+          ref={chatActionsTriggerRef}
           type="button"
           className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-dock-toggle"
           aria-label={
@@ -497,7 +499,7 @@ export function ChatDockMobileHeader({
           componentProps={{
             overflow,
             projectScope,
-            returnFocusTarget: overflowTriggerRef.current,
+            returnFocusTarget: chatActionsTriggerRef.current,
             onClose: closeOverflow,
           }}
         />

@@ -20,7 +20,10 @@ import {
 import { useKeepSessionOutputMutation } from '@kontourai/station-sdk/session-output-actions';
 import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { useSessionInventoryLiveBinding } from '../components/chat-dock/sessionInventoryLiveBinding';
+import {
+  releaseSessionInventoryLiveBinding,
+  useSessionInventoryLiveBinding,
+} from '../components/chat-dock/sessionInventoryLiveBinding';
 import {
   sessionInventoryLiveItems,
   useSessionInventoryLive,
@@ -97,13 +100,11 @@ function ConnectedSessionInventorySurface({
   currentProjectId,
   requestScope,
   initialScope,
-  liveBinding,
 }: {
   sessionId: string;
   currentProjectId?: string;
   requestScope: { apiBase: string; authorityKey: string };
   initialScope?: SessionInventoryScope;
-  liveBinding?: { chatStoreId: string };
 }) {
   const initial = useMemo<SessionInventorySelection>(
     () => ({
@@ -141,10 +142,20 @@ function ConnectedSessionInventorySurface({
     requestScope,
     sessionId,
   );
+  useEffect(() => {
+    if (!registryBinding?.hostId.startsWith('hosted:')) return;
+    return () =>
+      releaseSessionInventoryLiveBinding(
+        requestScope.apiBase,
+        requestScope.authorityKey,
+        sessionId,
+        registryBinding,
+      );
+  }, [registryBinding, requestScope, sessionId]);
   const live = useSessionInventoryLive(
     requestScope,
     sessionId,
-    liveBinding?.chatStoreId ?? registryBinding?.chatStoreId,
+    registryBinding?.chatStoreId,
   );
   const [nextPage, setNextPage] = useState<{
     groupId: SessionInventoryGroupId;

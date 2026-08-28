@@ -52,14 +52,16 @@ export function useSessionInventoryLive(
     const next = selectSessionInventoryLiveNow(raw, sessionId, provider).filter(
       (entry) => entry.startedAt >= startedAfter,
     );
-    const pendingApprovalIds = (
-      activeChatsStore.getSnapshot()[chatStoreId]?.messages ?? []
-    )
-      .filter((message) => message.sessionId === sessionId)
-      .flatMap((message) => message.contentParts ?? [])
-      .flatMap((part) =>
-        part.needsApproval && part.approvalId ? [part.approvalId] : [],
-      );
+    const pendingApprovalIds = [
+      ...new Set(
+        (activeChatsStore.getSnapshot()[chatStoreId]?.messages ?? [])
+          .filter((message) => message.sessionId === sessionId)
+          .flatMap((message) => message.contentParts ?? [])
+          .flatMap((part) =>
+            part.needsApproval && part.approvalId ? [part.approvalId] : [],
+          ),
+      ),
+    ];
     const encoded = JSON.stringify([
       next.map((entry) => [entry.id, entry.state]),
       pendingApprovalIds,
@@ -105,7 +107,7 @@ export function sessionInventoryLiveItems(
       kind: entry.kind === 'tool' ? ('tool' as const) : ('agent' as const),
       label: entry.kind === 'tool' ? 'Running tool' : 'Running delegate',
     })),
-    ...[...new Set(live.pendingApprovalIds)].map((key) => ({
+    ...live.pendingApprovalIds.map((key) => ({
       key,
       kind: 'approval' as const,
       label: 'Pending request',

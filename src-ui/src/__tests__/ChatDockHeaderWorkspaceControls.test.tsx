@@ -28,13 +28,12 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 
 import {
   ChatDockHeader,
-  type ChatDockWorkspaceControls,
+  type ChatDockWorkspaceControls as WorkspaceControls,
 } from '../components/chat-dock/ChatDockHeader';
-import { ChatDockWorkspaceChrome } from '../components/chat-dock/ChatDockWorkspaceControls';
 
 function workspaceControls(
-  overrides: Partial<ChatDockWorkspaceControls> = {},
-): ChatDockWorkspaceControls {
+  overrides: Partial<WorkspaceControls> = {},
+): WorkspaceControls {
   return {
     showInboxToggle: true,
     isInboxOpen: true,
@@ -70,14 +69,8 @@ function renderHeader(
     onDockPlacementChange: vi.fn(),
     ...overrides,
   };
-  const controls = props.workspaceControls;
   return {
-    ...render(
-      <>
-        <ChatDockHeader {...props} workspaceControls={undefined} />
-        {controls ? <ChatDockWorkspaceChrome {...controls} /> : null}
-      </>,
-    ),
+    ...render(<ChatDockHeader {...props} />),
     props,
   };
 }
@@ -182,6 +175,26 @@ describe('one-bar rule (#3309)', () => {
 
     fireEvent.click(await screen.findByTitle('New Chat'));
     expect(controls.onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps left workspace controls before identity and Open/New in right actions', async () => {
+    renderHeader({
+      chatIdentity: <span data-testid="chat-identity">Identity</span>,
+      workspaceControls: workspaceControls(),
+    });
+    const header = document.querySelector('.chat-dock__header')!;
+    const left = header.querySelector('.chat-dock__title')!;
+    const right = header.querySelector('.chat-dock__header-actions')!;
+    expect(
+      left.contains(
+        await screen.findByRole('button', { name: 'Session inventory' }),
+      ),
+    ).toBe(true);
+    expect(left.contains(screen.getByTestId('chat-identity'))).toBe(true);
+    expect(right.contains(await screen.findByTitle('Open Conversation'))).toBe(
+      true,
+    );
+    expect(right.contains(screen.getByTitle('New Chat'))).toBe(true);
   });
 
   test('a collapsed pane renders none of the workspace controls', () => {
