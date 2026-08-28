@@ -19,6 +19,14 @@ function fail(message) {
 }
 
 /**
+ * `releaseTag` is required and the `url` MUST resolve under that exact tag's
+ * download path. Without this, the asset name, the `--release-tag` the
+ * notarization step signed under, and this manifest's `url` are three
+ * independent literals that a workflow edit can drift apart silently — a
+ * manifest can point at a real, reachable, correctly-signed asset that
+ * simply lives under the WRONG release, and every check here would still
+ * pass.
+ *
  * @param {{
  *   version: string,
  *   notes?: string,
@@ -26,6 +34,7 @@ function fail(message) {
  *   platform: string,
  *   signature: string,
  *   url: string,
+ *   releaseTag: string,
  * }} input
  * @returns {{
  *   version: string,
@@ -41,6 +50,7 @@ export function createUpdaterManifest({
   platform,
   signature,
   url,
+  releaseTag,
 }) {
   if (typeof version !== 'string' || version.trim().length === 0) {
     fail('version must be non-empty');
@@ -60,6 +70,14 @@ export function createUpdaterManifest({
   if (typeof url !== 'string' || !HTTPS_URL_PATTERN.test(url)) {
     fail('url must be an https URL');
   }
+  if (typeof releaseTag !== 'string' || releaseTag.trim().length === 0) {
+    fail('releaseTag must be non-empty');
+  }
+  if (!url.includes(`/download/${releaseTag}/`)) {
+    fail(
+      `url must be a release-asset download URL under releaseTag ${JSON.stringify(releaseTag)} (expected "/download/${releaseTag}/" in the url); the asset name, --release-tag, and --url must all name the same release`,
+    );
+  }
   return {
     version,
     notes,
@@ -68,9 +86,33 @@ export function createUpdaterManifest({
   };
 }
 
+/**
+ * Reads a Tauri signer `.sig` file, converting a missing/unreadable file
+ * into this library's own teaching-message form instead of a raw ENOENT —
+ * the caller is always a workflow step, and "file not found" alone does not
+ * say which flag or prior step produced the missing path.
+ */
+export function readUpdaterSignatureFile(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (error) {
+    fail(
+      `could not read --signature-file ${JSON.stringify(path)} (${error.code ?? error.message}); the notarize/sign step must produce this file before the manifest step runs`,
+    );
+  }
+}
+
+/** Refuses a flag value that is itself another flag: `--url --output x.json`
+ * silently swallowing `--output` (with `url` becoming `x.json`'s value on
+ * the NEXT lookup) is a missing-argument bug, not a valid invocation. */
 function option(name, args) {
   const index = args.indexOf(`--${name}`);
-  return index === -1 ? undefined : args[index + 1];
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith('--')) {
+    throw new Error(`--${name} requires a value`);
+  }
+  return value;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -80,6 +122,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const platform = option('platform', args);
   const signatureFile = option('signature-file', args);
   const url = option('url', args);
+  const releaseTag = option('release-tag', args);
   const outputPath = option('output', args);
   if (
     !version ||
@@ -87,10 +130,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     !platform ||
     !signatureFile ||
     !url ||
+    !releaseTag ||
     !outputPath
   ) {
     throw new Error(
-      'Usage: tauri-updater-manifest.mjs --version <semver> --pub-date <ISO-8601> --platform <darwin-aarch64> --signature-file <path> --url <https-url> --output <path> [--notes <text>]',
+      'Usage: tauri-updater-manifest.mjs --version <semver> --pub-date <ISO-8601> --platform <darwin-aarch64> --signature-file <path> --url <https-url> --release-tag <tag> --output <path> [--notes <text>]',
     );
   }
   const manifest = createUpdaterManifest({
@@ -98,8 +142,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     notes: option('notes', args) ?? '',
     pubDate,
     platform,
-    signature: readFileSync(signatureFile, 'utf8'),
+    signature: readUpdaterSignatureFile(signatureFile),
     url,
+    releaseTag,
   });
   writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`Updater manifest ${manifest.version} (${platform}) -> ${url}`);

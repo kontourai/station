@@ -317,10 +317,13 @@ export function createNightlyConfig({
  * Tauri config overlay for the desktop nightly leg: the same
  * `nightlyVersion()`/`nightlyIdentifier()` identity as the Android build (so
  * both artifacts shipped from one day carry the same version string), plus
- * the updater plugin overlay that points a NIGHTLY-channel app at its own
- * rolling-prerelease manifest. There is no Android-style version-code
- * reservation here: Tauri's updater orders releases by the SemVer `version`
- * string, not a numeric build index, so this needs no monotonic allocation.
+ * the updater plugin's config fields (pubkey, endpoints) that a built app
+ * WOULD read to find its rolling-prerelease manifest. This overlay only
+ * writes config; no updater runtime ships in this app yet (the check/apply
+ * plugin itself is separate work), so nothing consumes these fields today.
+ * There is no Android-style version-code reservation here: Tauri's updater
+ * orders releases by the SemVer `version` string, not a numeric build
+ * index, so this needs no monotonic allocation.
  *
  * The parameter object is declared rather than left to inference, for the
  * same TS2345 reason documented on `allocateNightlyVersionCode` above: an
@@ -355,6 +358,11 @@ export function createNightlyDesktopConfig({
   };
 }
 
+// Inherited as-is (station#575 fix round L3): tauri-updater-manifest.mjs's
+// sibling `option()` now refuses a value that is itself another flag; this
+// copy is left unchanged here since every caller in this file already
+// requires every flag it reads, so a swallowed `--flag` value surfaces as a
+// clear "Usage:" error rather than silently shifting arguments.
 function option(name, args) {
   const index = args.indexOf(`--${name}`);
   return index === -1 ? undefined : args[index + 1];
