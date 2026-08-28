@@ -30,6 +30,7 @@ import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat'
 import {
   type InstanceConfig,
   readInstanceRegistry,
+  reconcileStaleDesktopSidecars,
   withInstanceRegistryMutationLock,
 } from '@kontourai/station-shared/instance-registry';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
@@ -878,6 +879,19 @@ export function quarantineLegacyServiceManifest(
           acquireFileMutationLock(path, {
             timeoutMs: PREPARATION_LOCK_TIMEOUT_MS,
           }),
+        // A prior desktop generation can leave its registry claim behind
+        // after its sidecar has exited. Reap only a claim whose PID/birth
+        // identity proves that prior owner is gone, while maintenance still
+        // excludes a new runtime. This preserves the required authority order:
+        // maintenance -> registry -> profile. In particular, do not use the
+        // broader ephemeral reconciler here: runtime preparation owns neither
+        // worktree nor inline records.
+        afterMaintenanceAcquired: () => {
+          reconcileStaleDesktopSidecars(stationHome, {
+            processProbe: hooks.registryProcessProbe,
+            mutationLockOptions: { timeoutMs: PREPARATION_LOCK_TIMEOUT_MS },
+          });
+        },
       });
     } catch (error) {
       if (

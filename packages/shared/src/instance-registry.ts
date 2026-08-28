@@ -356,20 +356,25 @@ export function withInstanceRegistryMutationLock<T>(
 function lockedReadModifyWrite(
   home: string | undefined,
   modify: (current: InstanceRegistry) => InstanceRegistry,
+  lockOptions: FileMutationLockOptions = {},
 ): InstanceRegistry {
-  return withInstanceRegistryMutationLock(home, () => {
-    const path = resolveInstanceRegistryPath(home);
-    const current = readInstanceRegistry(home);
-    const next = modify(current);
-    // A modifier that declines (claim refusal, remove no-op) returns
-    // `current` by reference — skip the publish entirely so a refusal
-    // touches neither content nor inode/mtime. Without this, a bare
-    // `station stop` no-op could CREATE instances.json in a home that
-    // never had one, and any file-level watcher would see phantom writes
-    // (the station#1588 class; #3047 review MED-1).
-    if (next !== current) publishInstanceRegistry(next, path);
-    return next;
-  });
+  return withInstanceRegistryMutationLock(
+    home,
+    () => {
+      const path = resolveInstanceRegistryPath(home);
+      const current = readInstanceRegistry(home);
+      const next = modify(current);
+      // A modifier that declines (claim refusal, remove no-op) returns
+      // `current` by reference — skip the publish entirely so a refusal
+      // touches neither content nor inode/mtime. Without this, a bare
+      // `station stop` no-op could CREATE instances.json in a home that
+      // never had one, and any file-level watcher would see phantom writes
+      // (the station#1588 class; #3047 review MED-1).
+      if (next !== current) publishInstanceRegistry(next, path);
+      return next;
+    },
+    lockOptions,
+  );
 }
 
 /**
@@ -445,6 +450,12 @@ type ProcessLiveness = 'alive' | 'dead' | 'unavailable';
 export interface InstanceRegistryLivenessOptions {
   /** Test seam; production probes with signal 0. Non-ESRCH failures fence. */
   processProbe?: InstanceRegistryProcessProbe;
+}
+
+/** A reconciliation may inherit a caller's already-bounded lock budget. */
+export interface InstanceRegistryReconcileOptions
+  extends InstanceRegistryLivenessOptions {
+  mutationLockOptions?: FileMutationLockOptions;
 }
 
 function processLiveness(
@@ -557,21 +568,67 @@ export function reconcileStaleInstance(
  */
 export function reconcileStaleInstances(
   home?: string,
-  options: InstanceRegistryLivenessOptions = {},
+  options: InstanceRegistryReconcileOptions = {},
 ): InstanceRegistry {
-  return lockedReadModifyWrite(home, (current) => {
-    let next: Record<string, InstanceConfig> | undefined;
-    for (const [id, entry] of Object.entries(current.instances)) {
-      if (
-        entry.type !== 'service' &&
-        isProvablyStaleEphemeralInstance(entry, options)
-      ) {
-        next ??= { ...current.instances };
-        delete next[id];
+  return lockedReadModifyWrite(
+    home,
+    (current) => {
+      let next: Record<string, InstanceConfig> | undefined;
+      for (const [id, entry] of Object.entries(current.instances)) {
+        if (
+          entry.type !== 'service' &&
+          isProvablyStaleEphemeralInstance(entry, options)
+        ) {
+          next ??= { ...current.instances };
+          delete next[id];
+        }
       }
-    }
-    return next === undefined ? current : { version: 1, instances: next };
-  });
+      return next === undefined ? current : { version: 1, instances: next };
+    },
+    options.mutationLockOptions,
+  );
+}
+
+/**
+ * Reaps only desktop-sidecar records whose recorded owner is provably gone.
+ *
+ * This is deliberately narrower than `reconcileStaleInstances`: desktop
+ * startup needs to converge a prior sidecar generation before it can repeat
+ * its one-way runtime preparation, but that admission must not opportunistically
+ * change an inline or worktree producer's bookkeeping.  A live owner, a PID
+ * whose birth cannot be checked, and every durable service record remain an
+ * ownership fence.
+ */
+export function reconcileStaleDesktopSidecars(
+  home?: string,
+  options: InstanceRegistryReconcileOptions = {},
+): InstanceRegistry {
+  return lockedReadModifyWrite(
+    home,
+    (current) => {
+      let next: Record<string, InstanceConfig> | undefined;
+      for (const [id, entry] of Object.entries(current.instances)) {
+        // Runtime preparation has no authority to interpret a partial or
+        // producer-terminal record. It may reap only the exact PID + birth
+        // pair Desktop wrote for its prior sidecar generation.
+        if (
+          entry.type === 'sidecar' &&
+          entry.status !== 'stopped' &&
+          typeof entry.pid === 'number' &&
+          Number.isInteger(entry.pid) &&
+          entry.pid > 0 &&
+          typeof entry.birth === 'string' &&
+          entry.birth.length > 0 &&
+          !entryOwnedByLiveProcess(entry, undefined, options)
+        ) {
+          next ??= { ...current.instances };
+          delete next[id];
+        }
+      }
+      return next === undefined ? current : { version: 1, instances: next };
+    },
+    options.mutationLockOptions,
+  );
 }
 
 export interface ClaimInstanceEntryOptions {

@@ -18,6 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  readInstanceRegistry,
   resolveInstanceRegistryPath,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
@@ -301,6 +302,163 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     expect(entries).toHaveLength(3);
     expect(entries.some((entry) => entry.endsWith('.receipt.json'))).toBe(true);
     expect(prepareRuntime(home, stationRoot)).toEqual({ kind: 'already' });
+  });
+
+  test('repeats committed preparation after a graceful stop reaps only the provably stale desktop sidecar', () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    const receipt = readdirSync(legacyQuarantine(fixture.home)).find((entry) =>
+      entry.endsWith('.committed.json'),
+    )!;
+    const committedBefore = readFileSync(
+      join(legacyQuarantine(fixture.home), receipt),
+    );
+
+    // Models first launch -> a sidecar claim -> graceful sidecar exit. The
+    // second launch uses the packaged bridge protocol, not a test-only helper.
+    const exitedSidecar = spawnSync(process.execPath, ['-e', ''], {
+      windowsHide: true,
+    });
+    expect(exitedSidecar.status).toBe(0);
+    expect(exitedSidecar.pid).toBeGreaterThan(0);
+    upsertInstance(
+      'desktop-sidecar-prior-generation',
+      {
+        port: 18141,
+        type: 'sidecar',
+        pid: exitedSidecar.pid,
+        birth: 'prior-sidecar-birth',
+      },
+      fixture.home,
+    );
+    const secondLaunch = bridgeChild('prepareRuntime', {
+      home: fixture.home,
+      root: stationRoot,
+    });
+    expect(secondLaunch.status).toBe(0);
+    expect(secondLaunch.stdout).toBe('{"ok":true,"kind":"already"}\n');
+    expect(
+      readInstanceRegistry(fixture.home).instances[
+        'desktop-sidecar-prior-generation'
+      ],
+    ).toBeUndefined();
+    expect(existsSync(fixture.manifest)).toBe(false);
+    expect(readFileSync(join(legacyQuarantine(fixture.home), receipt))).toEqual(
+      committedBefore,
+    );
+  });
+
+  test.each([
+    ['live owner', 'exact' as const],
+    ['ambiguous owner', 'ambiguous' as const],
+    ['partial stopped owner', 'partial' as const],
+  ])(
+    'does not reap a %s sidecar claim during repeated preparation',
+    (_description, liveness) => {
+      const stationRoot = root();
+      const fixture = legacyFixture(stationRoot);
+      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+        kind: 'new',
+      });
+      const birth = lookupProcessBirthFingerprint(process.pid)!;
+      upsertInstance(
+        'desktop-sidecar-current-generation',
+        liveness === 'partial'
+          ? { port: 18141, type: 'sidecar', status: 'stopped' }
+          : { port: 18141, type: 'sidecar', pid: process.pid, birth },
+        fixture.home,
+      );
+
+      expect(
+        quarantineLegacyServiceManifest(fixture.home, stationRoot, {
+          ...(liveness === 'ambiguous'
+            ? { registryProcessProbe: unavailableProcessProbe('EPERM') }
+            : {}),
+        }),
+      ).toEqual({ kind: 'already' });
+      expect(
+        readInstanceRegistry(fixture.home).instances[
+          'desktop-sidecar-current-generation'
+        ],
+      ).toEqual(
+        liveness === 'partial'
+          ? expect.objectContaining({ status: 'stopped' })
+          : expect.objectContaining({ pid: process.pid, birth }),
+      );
+    },
+  );
+
+  test.each([
+    [
+      'dead PID',
+      { pid: 47_763, birth: 'prior-sidecar-birth' },
+      unavailableProcessProbe('ESRCH'),
+    ],
+    [
+      'reused PID',
+      { pid: process.pid, birth: 'prior-sidecar-birth' },
+      undefined,
+    ],
+  ] as const)(
+    'preserves a terminal stopped sidecar record byte-for-byte when its %s is no longer current',
+    (_description, identity, registryProcessProbe) => {
+      const stationRoot = root();
+      const fixture = legacyFixture(stationRoot);
+      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+        kind: 'new',
+      });
+      upsertInstance(
+        'desktop-sidecar-terminal-generation',
+        {
+          port: 18141,
+          type: 'sidecar',
+          status: 'stopped',
+          ...identity,
+        },
+        fixture.home,
+      );
+      const before = readFileSync(resolveInstanceRegistryPath(fixture.home));
+
+      expect(
+        quarantineLegacyServiceManifest(fixture.home, stationRoot, {
+          ...(registryProcessProbe ? { registryProcessProbe } : {}),
+        }),
+      ).toEqual({ kind: 'already' });
+      expect(readFileSync(resolveInstanceRegistryPath(fixture.home))).toEqual(
+        before,
+      );
+      expect(
+        readInstanceRegistry(fixture.home).instances[
+          'desktop-sidecar-terminal-generation'
+        ],
+      ).toEqual(expect.objectContaining({ status: 'stopped', ...identity }));
+    },
+  );
+
+  test('reaps a sidecar claim only when a successful liveness probe proves PID reuse', () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    upsertInstance(
+      'desktop-sidecar-reused-pid',
+      {
+        port: 18141,
+        type: 'sidecar',
+        pid: process.pid,
+        birth: 'prior-process-birth',
+      },
+      fixture.home,
+    );
+
+    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+      kind: 'already',
+    });
+    expect(
+      readInstanceRegistry(fixture.home).instances[
+        'desktop-sidecar-reused-pid'
+      ],
+    ).toBeUndefined();
   });
 
   test('quarantines the redacted owner-preserved qualified-label/null-features legacy shape', () => {
