@@ -221,6 +221,42 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     }
   });
 
+  test('keeps output inspection read-only only at its exact declared leaf', () => {
+    const inspection =
+      '/api/orchestration/sessions/thread-1/outputs/event-1/inspect';
+    expect(matchPairingScopeRule('POST', inspection)).toMatchObject({
+      exact: true,
+      origin: 'explicit',
+      prefix: '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect',
+      scope: 'orchestration:read',
+    });
+    expect(
+      requiredExternalSurfaceCapability('http', 'POST', inspection),
+    ).toMatchObject({
+      capability: 'pairing-scope',
+      match: 'exact',
+      scope: 'orchestration:read',
+    });
+    expect(requiredPairingScope('POST', inspection)).toBe('orchestration:read');
+    expect(isLeafScopeDeclared('POST', inspection)).toBe(true);
+
+    const nested = `${inspection}/commit`;
+    expect(matchPairingScopeRule('POST', nested)).toMatchObject({
+      origin: 'family',
+      prefix: '/api/orchestration',
+      scope: 'orchestration:operate',
+    });
+    expect(requiredPairingScope('POST', nested)).toBe('orchestration:operate');
+    expect(isLeafScopeDeclared('POST', nested)).toBe(false);
+    expect(
+      requiredExternalSurfaceCapability('http', 'POST', nested),
+    ).toMatchObject({
+      capability: 'pairing-scope',
+      match: 'prefix',
+      scope: 'orchestration:operate',
+    });
+  });
+
   test('keeps protected MCP App leaves at their existing family operate tier', () => {
     for (const [method, path, prefix] of [
       [

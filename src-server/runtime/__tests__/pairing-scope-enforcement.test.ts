@@ -85,6 +85,13 @@ function createHarness() {
   };
 }
 
+function representativePath(rule: (typeof PAIRING_SCOPE_ROUTE_TABLE)[number]) {
+  if (rule.exact) {
+    return rule.prefix.replace(/:[^/]+/g, 'scope-fixture');
+  }
+  return rule.prefix === '/integrations' ? rule.prefix : `${rule.prefix}/probe`;
+}
+
 /** One representative leaf path per read-tier rule in the route table. */
 const READ_TIER_CASES = PAIRING_SCOPE_ROUTE_TABLE.filter(
   (rule) => rule.scope === 'orchestration:read',
@@ -93,7 +100,7 @@ const READ_TIER_CASES = PAIRING_SCOPE_ROUTE_TABLE.filter(
   // `/integrations/:id` is an explicit operate override. Appending a
   // synthetic segment to the family root accidentally exercises that detail
   // rule instead of the read-only list leaf this table entry owns.
-  path: rule.prefix === '/integrations' ? rule.prefix : `${rule.prefix}/probe`,
+  path: representativePath(rule),
 }));
 
 /** One representative leaf path per mutate-tier rule in the route table. */
@@ -225,6 +232,25 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
       const response = await request(path, method, READ_ONLY_CREDENTIAL);
       expect(response.status, `${method} ${path}`).toBe(200);
     }
+
+    const futureNestedInspection = await request(
+      '/api/orchestration/sessions/thread-1/outputs/event-1/inspect/commit',
+      'POST',
+      READ_ONLY_CREDENTIAL,
+    );
+    expect(futureNestedInspection.status).toBe(403);
+    await expect(futureNestedInspection.json()).resolves.toEqual({
+      error: { code: 'insufficient_scope' },
+    });
+    expect(
+      (
+        await request(
+          '/api/orchestration/sessions/thread-1/outputs/event-1/inspect/commit',
+          'POST',
+          STANDARD_CREDENTIAL,
+        )
+      ).status,
+    ).toBe(200);
 
     const mutations = [
       ['POST', '/api/tasks/task-1/declared-outputs/session-1/event-1/keep'],
