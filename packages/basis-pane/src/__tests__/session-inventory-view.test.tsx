@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { SessionInventory } from '../SessionInventory';
 import { buildSessionInventoryViewModel } from '../session-inventory-view';
+import { renderSessionInventoryDom } from '../session-inventory-dom';
 
 const projection: SessionInventoryProjection = {
   version: 'station.session-inventory/v1',
@@ -70,6 +71,19 @@ const projection: SessionInventoryProjection = {
 };
 
 describe('Session inventory view model', () => {
+  test('renders hostile labels as inert text without links or images', () => {
+    const root = document.createElement('section');
+    renderSessionInventoryDom(
+      root,
+      buildSessionInventoryViewModel(
+        projection,
+        { scope: projection.scope, groupId: 'outputs' },
+        'compact',
+      ),
+    );
+    expect(root.textContent).toContain('<script>');
+    expect(root.querySelectorAll('a,img,script')).toHaveLength(0);
+  });
   test('has identical compact and full occurrence keys and exact count copy', () => {
     const selection = {
       scope: projection.scope,

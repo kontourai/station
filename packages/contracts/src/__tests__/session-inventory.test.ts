@@ -11,6 +11,8 @@ import {
 import { createStationAnswerBinding } from '../task-basis.js';
 import {
   buildStationSessionInventoryMcpEnvelope,
+  buildStationSessionInventoryMcpGroupPageEnvelope,
+  parseStationSessionInventoryMcpEnvelope,
   parseStationSessionInventoryMcpInput,
 } from '../session-inventory-mcp.js';
 
@@ -107,9 +109,27 @@ describe('Session inventory v1', () => {
       }),
     ).not.toBeNull();
     const value = projection();
+    const envelope = buildStationSessionInventoryMcpEnvelope(value);
+    expect(envelope?.kind).toBe('projection');
+    if (envelope?.kind === 'projection')
+      expect(envelope.projection.groups[0]).not.toHaveProperty('continuation');
+    const page = buildStationSessionInventoryMcpGroupPageEnvelope({
+      version: SESSION_INVENTORY_V1,
+      scope: value.scope,
+      group: value.groups[0],
+    });
+    expect(page?.kind).toBe('group-page');
+    expect(parseStationSessionInventoryMcpEnvelope(page)).toEqual(page);
+    if (page?.kind !== 'group-page') throw new Error('expected group page');
     expect(
-      buildStationSessionInventoryMcpEnvelope(value)?.projection.groups[0],
-    ).not.toHaveProperty('continuation');
+      parseStationSessionInventoryMcpEnvelope({
+        ...page,
+        page: {
+          ...page.page,
+          group: { ...page.page.group, continuation: 'x'.repeat(16) },
+        },
+      }),
+    ).toBeNull();
   });
   test('accepts the fixed, ordered empty projection', () => {
     expect(parseSessionInventoryProjection(projection())).not.toBeNull();
