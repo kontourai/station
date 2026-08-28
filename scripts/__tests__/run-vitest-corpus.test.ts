@@ -103,6 +103,44 @@ describe('Vitest corpus runner', () => {
     expect(result.results).toHaveLength(2);
   });
 
+  it('settles an ordinary writer before starting the shared-output policy reader', async () => {
+    const events: string[] = [];
+    const result = await runVitestCorpus({
+      groups: {
+        ...GROUPS,
+        ordinary: ['synthetic-ordinary-writer.test.ts'],
+        sharedOutput: ['verification-policy-reader.test.ts'],
+      },
+      platform: 'linux',
+      runGroup: async (group) => {
+        if (group.name === 'ordinary') {
+          events.push('writer-started');
+          await Promise.resolve();
+          events.push('writer-settled');
+        }
+        if (group.name === 'shared-output') {
+          expect(events).toContain('writer-settled');
+          events.push('policy-read-started');
+        }
+        return {
+          name: group.name,
+          passed: true,
+          status: 0,
+          output: '',
+          outputBytes: 0,
+        };
+      },
+      onResult: () => {},
+    });
+
+    expect(result.passed).toBe(true);
+    expect(events).toEqual([
+      'writer-started',
+      'writer-settled',
+      'policy-read-started',
+    ]);
+  });
+
   it('runs one named resource group as an independently checkpointable corpus slice', async () => {
     const calls: string[] = [];
     const result = await runVitestCorpus({
