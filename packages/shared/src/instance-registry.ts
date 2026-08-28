@@ -613,6 +613,7 @@ export function reconcileStaleDesktopSidecars(
         // pair Desktop wrote for its prior sidecar generation.
         if (
           entry.type === 'sidecar' &&
+          entry.status !== 'stopped' &&
           typeof entry.pid === 'number' &&
           Number.isInteger(entry.pid) &&
           entry.pid > 0 &&

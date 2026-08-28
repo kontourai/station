@@ -317,7 +317,9 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
 
     // Models first launch -> a sidecar claim -> graceful sidecar exit. The
     // second launch uses the packaged bridge protocol, not a test-only helper.
-    const exitedSidecar = spawnSync(process.execPath, ['-e', '']);
+    const exitedSidecar = spawnSync(process.execPath, ['-e', ''], {
+      windowsHide: true,
+    });
     expect(exitedSidecar.status).toBe(0);
     expect(exitedSidecar.pid).toBeGreaterThan(0);
     upsertInstance(
@@ -384,6 +386,53 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
           ? expect.objectContaining({ status: 'stopped' })
           : expect.objectContaining({ pid: process.pid, birth }),
       );
+    },
+  );
+
+  test.each([
+    [
+      'dead PID',
+      { pid: 47_763, birth: 'prior-sidecar-birth' },
+      unavailableProcessProbe('ESRCH'),
+    ],
+    [
+      'reused PID',
+      { pid: process.pid, birth: 'prior-sidecar-birth' },
+      undefined,
+    ],
+  ] as const)(
+    'preserves a terminal stopped sidecar record byte-for-byte when its %s is no longer current',
+    (_description, identity, registryProcessProbe) => {
+      const stationRoot = root();
+      const fixture = legacyFixture(stationRoot);
+      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+        kind: 'new',
+      });
+      upsertInstance(
+        'desktop-sidecar-terminal-generation',
+        {
+          port: 18141,
+          type: 'sidecar',
+          status: 'stopped',
+          ...identity,
+        },
+        fixture.home,
+      );
+      const before = readFileSync(resolveInstanceRegistryPath(fixture.home));
+
+      expect(
+        quarantineLegacyServiceManifest(fixture.home, stationRoot, {
+          ...(registryProcessProbe ? { registryProcessProbe } : {}),
+        }),
+      ).toEqual({ kind: 'already' });
+      expect(readFileSync(resolveInstanceRegistryPath(fixture.home))).toEqual(
+        before,
+      );
+      expect(
+        readInstanceRegistry(fixture.home).instances[
+          'desktop-sidecar-terminal-generation'
+        ],
+      ).toEqual(expect.objectContaining({ status: 'stopped', ...identity }));
     },
   );
 
