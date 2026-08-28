@@ -39,6 +39,9 @@ clearly mark the stale document.
   records, and private execution context.
 - **[Plans](plans/)** — implementation plans and staged initiatives; lifecycle
   cleanup is tracked separately in issue #273.
+- **[Migration records](migration/)** — cutover-era identifier maps retained for
+  historical lookup; GitHub issues and pull requests remain the authority for
+  live work.
 - **[Patterns](patterns/)** — frontend and backend implementation conventions.
 - **[ADRs](adr/)** — numbered architecture decision records; supersession is
   recorded inside the record or by a named successor.
