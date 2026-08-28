@@ -56,7 +56,8 @@ RUN apt-get update \
   && apt-get install --no-install-recommends -y tini \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /app/.station /data/station /workspace \
-  && chown -R node:node /app/.station /data /workspace
+  && chown -R node:node /app/.station /data /workspace \
+  && chmod 700 /data/station
 # Keep the runtime dependency layer tied only to the manifest-driven install.
 # The build stage inherits it, but source changes invalidate that stage and
 # would otherwise force an expensive recursive copy into the runtime image.
