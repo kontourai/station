@@ -88,6 +88,9 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
+  // they own durable state but can share the bounded two-worker pool.
+  'src-server/runtime/__tests__/runtime-service-bootstrap.test.ts',
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',
@@ -263,9 +266,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
   'scripts/__tests__/package-portable-release.test.ts',
-  // Runs the real Play upload supervisor and fixture children to prove
-  // timeout/signal teardown, escalation, and no-orphan behavior.
-  'scripts/__tests__/play-upload-retry.test.ts',
   // station#1686: runs the shadow-record reader as a real child process so
   // its REFUSAL path (`--gate` on a home that has never observed anything)
   // is proven by an actual exit status rather than a returned number.
