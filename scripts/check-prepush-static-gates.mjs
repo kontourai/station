@@ -3,7 +3,7 @@
  *
  * The UI-contract ratchets (motion-contract, a11y, focus-visible,
  * state-primitives, shell-conformance, responsive-surface, lazy-boundary) and
- * the content gates (rename-inventory, noun-consistency, station-vocabulary,
+ * the content gates (noun-consistency, station-vocabulary,
  * coding-composition-inventory) all live in `verify:static`, which is composed
  * only by `full:regression`, which CI runs only on push-to-main or
  * `workflow_dispatch`. Pull requests get `ci:fast`, which by design never runs
@@ -56,7 +56,9 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'mobile-css-ratchet',
   'coding-composition-inventory-gate',
   'noun-consistency-gate',
-  'rename-inventory',
+  // 'rename-inventory' retired at the 2026-08-28 public reset: a denylist in
+  // a public repo publishes its own denylist. The competitor-name policy
+  // lives in docs/cape.md; no replacement name gate by design.
   'motion-contract-ratchet',
   'shell-conformance-ratchet',
   'state-primitives-ratchet',

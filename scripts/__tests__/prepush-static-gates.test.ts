@@ -138,8 +138,9 @@ describe('the gate list', () => {
    * coding-composition-inventory-gate broke main exactly that way (#3206).
    */
   it('covers the content gates, not only the UI-contract ratchets', () => {
+    // 'rename-inventory' retired at the 2026-08-28 public reset (a public
+    // denylist publishes itself; docs/cape.md carries the policy instead).
     for (const gate of [
-      'rename-inventory',
       'noun-consistency-gate',
       'station-vocabulary-gate',
       'coding-composition-inventory-gate',
