@@ -459,4 +459,116 @@ describe('SessionInventoryAppReadModule', () => {
       }),
     ).resolves.toEqual({ status: 'unavailable' });
   });
+  test('rejects semantic page drift and refuses a page once the configured page bound is spent', async () => {
+    let calls = 0;
+    const drift = make({
+      read: async () => ({
+        status: 'found' as const,
+        projection: validProjection('open'),
+      }),
+      page: async () => ({
+        status: 'found' as const,
+        page: calls++
+          ? {
+              ...validPage('next'),
+              group: {
+                ...validPage('next').group,
+                items: [pageRow('changed')],
+              },
+            }
+          : validPage('next'),
+      }),
+      authorize: () => true,
+      isEnabled: () => true,
+    });
+    const opened = await drift.open({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    if (opened.status !== 'available') throw new Error('expected valid open');
+    await expect(
+      drift.page({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+        occurrenceId: opened.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: opened.continuations[0]!.continuationToken,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    const capped = make({
+      read: async () => ({
+        status: 'found' as const,
+        projection: validProjection('open'),
+      }),
+      page: async () => ({ status: 'found' as const, page: validPage() }),
+      authorize: () => true,
+      isEnabled: () => true,
+      limits: { pages: 1 },
+    });
+    const cappedOpen = await capped.open({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    if (cappedOpen.status !== 'available')
+      throw new Error('expected capped open');
+    await expect(
+      capped.page({
+        scope: pageScope,
+        routeFamily: 'orchestration',
+        callerBinding: caller,
+        authority: authority(),
+        occurrenceId: cappedOpen.occurrenceId,
+        groupId: 'inputs',
+        continuationToken: cappedOpen.continuations[0]!.continuationToken,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+  });
+  test('rejects a concurrent page while the first owner page is in flight', async () => {
+    let resolve!: () => void;
+    let calls = 0;
+    const module = make({
+      read: async () => ({
+        status: 'found' as const,
+        projection: validProjection('open'),
+      }),
+      page: async () => {
+        if (calls++ === 0)
+          return new Promise<any>((done) => {
+            resolve = () => done({ status: 'found', page: validPage('next') });
+          });
+          return { status: 'found' as const, page: validPage('next') };
+      },
+      authorize: () => true,
+      isEnabled: () => true,
+    });
+    const opened = await module.open({
+      scope: pageScope,
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      authority: authority(),
+    });
+    if (opened.status !== 'available') throw new Error('expected valid open');
+    const input = {
+      scope: pageScope,
+      routeFamily: 'orchestration' as const,
+      callerBinding: caller,
+      authority: authority(),
+      occurrenceId: opened.occurrenceId,
+      groupId: 'inputs' as const,
+      continuationToken: opened.continuations[0]!.continuationToken,
+    };
+    const first = module.page(input);
+    await vi.waitFor(() => expect(calls).toBe(1));
+    await expect(module.page(input)).resolves.toEqual({
+      status: 'unavailable',
+    });
+    resolve();
+    await expect(first).resolves.toMatchObject({ status: 'available' });
+  });
 });
