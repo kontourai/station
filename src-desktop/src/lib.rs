@@ -7459,6 +7459,58 @@ fn resolve_desktop_log_level(raw: Option<String>) -> (log::LevelFilter, Option<S
     }
 }
 
+/// Whether the build-time Tauri config carries a usable `plugins.updater`
+/// entry (#575): a non-empty `pubkey` and at least one non-empty `endpoints`
+/// URL. `scripts/lib/native-release-config.mjs`'s `createNativeReleaseConfig`
+/// writes the pubkey at this exact `plugins.updater.pubkey` path — a renamed
+/// key on either side must fail
+/// `desktop_updater_config_key_path_matches_the_release_config_emitter`
+/// below (Rust) and its JS-side counterpart pinning the same path.
+///
+/// The two halves of this check exist for different reasons:
+///
+/// - The `pubkey` half is crash-avoidance. `tauri_plugin_updater::Config`'s
+///   own deserializer requires `pubkey` with no default, so registering the
+///   plugin against a config with no `plugins.updater` key at all (every dev
+///   build) — or one whose `endpoints` entries are not valid URLs (a blank
+///   or malformed string) — fails `Builder::build()` and aborts the whole
+///   application, not just self-update. This check must run BEFORE the
+///   plugin is registered, not inside its setup, so that config skips
+///   registration entirely instead of crashing startup.
+/// - The `endpoints`-non-empty half is NOT crash-avoidance: a pubkey with
+///   `endpoints` absent or `[]` deserializes fine — `Config.endpoints`
+///   defaults to an empty `Vec`. Requiring it non-empty here is deliberate
+///   inertness policy: a registered plugin with zero endpoints would boot
+///   without crashing but could never find an update, which is a worse,
+///   quieter failure than not registering at all. This is the shape
+///   `native-release-config.mjs`'s pubkey-only overlay produces today for
+///   every channel before its endpoint ships.
+#[cfg(not(mobile))]
+fn desktop_updater_plugin_configured(
+    plugins: &std::collections::HashMap<String, serde_json::Value>,
+) -> bool {
+    plugins
+        .get("updater")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|config| {
+            config
+                .get("pubkey")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty())
+                && config
+                    .get("endpoints")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|endpoints| {
+                        !endpoints.is_empty()
+                            && endpoints.iter().all(|endpoint| {
+                                endpoint
+                                    .as_str()
+                                    .is_some_and(|value| !value.trim().is_empty())
+                            })
+                    })
+        })
+}
+
 /// The desktop shell's own log file's name (no extension — matches
 /// `tauri_plugin_log::TargetKind::LogDir { file_name }`'s own vocabulary),
 /// within `app_log_dir()`. `run()`'s `LogDir` target registration (every
@@ -7560,6 +7612,11 @@ If a stable instance is running, this launch will focus its window and exit.",
     let log_dir_writable = app_log_dir_for(&context.config().identifier)
         .map(|dir| log_dir_is_writable(&dir))
         .unwrap_or(false);
+    // Read once, before any plugin is registered: whether this build carries
+    // a usable updater configuration decides whether the plugin is
+    // registered at all, not merely how it behaves once running.
+    #[cfg(not(mobile))]
+    let updater_configured = desktop_updater_plugin_configured(&context.config().plugins.0);
     #[cfg(mobile)]
     let log_dir_writable = true;
 
@@ -7632,6 +7689,17 @@ If a stable instance is running, this launch will focus its window and exit.",
                 .open_js_links_on_click(false)
                 .build(),
         );
+        // Registered only when the build carries a usable updater config —
+        // see `desktop_updater_plugin_configured`'s doc comment for why an
+        // unconditional registration is unsafe here.
+        if updater_configured {
+            builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        }
+        // Config-free, so this is always registered: it is the only way the
+        // webview can relaunch the process, which the update-install flow
+        // needs after `updater_configured` is true, but restart is also
+        // reasonable chrome to offer regardless of that.
+        builder = builder.plugin(tauri_plugin_process::init());
     }
 
     // Every target, mobile included: this is the only way a notification
@@ -7724,6 +7792,14 @@ If a stable instance is running, this launch will focus its window and exit.",
                 "Station desktop starting (version {})",
                 app.package_info().version
             );
+            #[cfg(not(mobile))]
+            if updater_configured {
+                log::info!("desktop updater plugin registered");
+            } else {
+                log::debug!(
+                    "desktop updater plugin not registered; this build has no updater plugin configuration"
+                );
+            }
 
             #[cfg(not(mobile))]
             {
@@ -9199,6 +9275,72 @@ mod tests {
         let (level, invalid) = resolve_desktop_log_level(Some("verbose".into()));
         assert_eq!(level, log::LevelFilter::Info);
         assert_eq!(invalid.as_deref(), Some("verbose"));
+    }
+
+    fn plugins_map(value: serde_json::Value) -> std::collections::HashMap<String, serde_json::Value> {
+        match value {
+            serde_json::Value::Object(map) => map.into_iter().collect(),
+            _ => panic!("test fixture must be a JSON object"),
+        }
+    }
+
+    #[test]
+    fn desktop_updater_plugin_is_inert_with_no_updater_key_at_all() {
+        // Every dev build and every repo-committed tauri.*.conf.json: no
+        // `plugins.updater` key exists until a release build's config
+        // overlay injects one.
+        assert!(!desktop_updater_plugin_configured(&plugins_map(
+            serde_json::json!({})
+        )));
+    }
+
+    #[test]
+    fn desktop_updater_plugin_is_inert_with_pubkey_but_no_endpoints() {
+        // Today's `native-release-config.mjs` overlay by itself: a signing
+        // pubkey with no endpoints. The plugin must stay unregistered until
+        // an endpoints overlay is also present, not merely degrade.
+        assert!(!desktop_updater_plugin_configured(&plugins_map(
+            serde_json::json!({ "updater": { "pubkey": "abc" } })
+        )));
+    }
+
+    #[test]
+    fn desktop_updater_plugin_is_inert_with_empty_pubkey_or_empty_endpoints() {
+        assert!(!desktop_updater_plugin_configured(&plugins_map(
+            serde_json::json!({ "updater": { "pubkey": "  ", "endpoints": ["https://example.test/latest.json"] } })
+        )));
+        assert!(!desktop_updater_plugin_configured(&plugins_map(
+            serde_json::json!({ "updater": { "pubkey": "abc", "endpoints": [] } })
+        )));
+        assert!(!desktop_updater_plugin_configured(&plugins_map(
+            serde_json::json!({ "updater": { "pubkey": "abc", "endpoints": [""] } })
+        )));
+    }
+
+    #[test]
+    fn desktop_updater_plugin_is_active_with_pubkey_and_endpoints() {
+        assert!(desktop_updater_plugin_configured(&plugins_map(
+            serde_json::json!({
+                "updater": {
+                    "pubkey": "abc",
+                    "endpoints": ["https://example.test/latest.json"],
+                }
+            })
+        )));
+    }
+
+    #[test]
+    fn desktop_updater_config_key_path_matches_the_release_config_emitter() {
+        // Cross-file pin against `scripts/lib/native-release-config.mjs`'s
+        // `createNativeReleaseConfig`, which writes the signing key at
+        // `plugins.updater.pubkey` (its own JS-side test pins the same
+        // string against this file). Renaming either side's key without the
+        // other breaks self-update silently rather than loudly, so both
+        // sides assert the literal path.
+        let source = include_str!("lib.rs");
+        assert!(source.contains(".get(\"updater\")"));
+        assert!(source.contains(".get(\"pubkey\")"));
+        assert!(source.contains(".get(\"endpoints\")"));
     }
 
     #[test]

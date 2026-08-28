@@ -845,10 +845,14 @@ jobs:
   # image release.yml's desktop-macos job uses — the self-hosted-fleet
   # allow-list this file's header describes governs only self-hosted jobs.
   #
-  # This job ships the CONFIG half only (build, sign, publish the manifest).
-  # No updater runtime exists in src-desktop yet — no `tauri-plugin-updater`
-  # dependency, no check/apply call site — so nothing in a built app reads
-  # what this job publishes today. The runtime half is tracked on #575.
+  # This job ships the CONFIG half (build, sign, publish the manifest).
+  # `src-desktop` carries the runtime half (#575): `tauri-plugin-updater` is
+  # registered only when the build's `plugins.updater` config has both a
+  # pubkey and endpoints, which is exactly what this job's overlay writes —
+  # so a nightly-channel app built from this job DOES read what it publishes
+  # here. Stable and beta stay config-only (pubkey, no endpoint) until
+  # `native-release-config.mjs`'s tagged-release overlay is also given an
+  # endpoint — see release.yml's desktop-macos job comment.
   nightly-desktop:
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
@@ -1007,10 +1011,12 @@ jobs:
       # same-named asset before re-uploading it, so a job dying between that
       # delete and its re-upload leaves exactly that one asset 404 until the
       # next successful nightly repairs it — a failed download for anyone
-      # mid-fetch, never a corrupted install, once an updater runtime exists
-      # to fetch and verify it (none ships in this app yet — see the job
-      # header). latest.json is its OWN invocation, after the binaries'
-      # upload invocation completes — never merged into one command, which
+      # mid-fetch, never a corrupted install: the updater runtime (#575)
+      # fetches and verifies the manifest signature before it will apply
+      # anything, so a 404 or a still-replacing asset fails the check rather
+      # than installing something unsigned. latest.json is its OWN
+      # invocation, after the binaries' upload invocation completes —
+      # never merged into one command, which
       # would let `gh` upload it concurrently with the binaries it
       # describes. That bounds the other direction: a client reading an
       # already-cached manifest is never pointed at an asset this run has
