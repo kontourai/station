@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { createNightlyDesktopConfig } from '../lib/nightly-build-identity.mjs';
 import {
   assertRepositoryVersion,
   createNativeReleaseConfig,
@@ -220,19 +221,42 @@ describe('native release configuration', () => {
     ).toThrow('updater endpoint must be a non-empty https URL');
   });
 
-  test('the pubkey path this file writes is the one the desktop Rust runtime reads (#575)', () => {
-    // `createNativeReleaseConfig` writes the signing key at
-    // `plugins.updater.pubkey`. `desktop_updater_plugin_configured` in
-    // `src-desktop/src/lib.rs` reads that same path (plus `endpoints`,
-    // supplied by a separate build-time overlay) to decide whether to
-    // register the updater plugin at all — see that function's doc comment
-    // for why an unconditional registration would crash every build without
-    // it. A rename on either side must fail one of these two assertions.
+  test('the pubkey and endpoints paths this file writes are the ones the desktop Rust runtime reads (#575)', () => {
+    // `updaterPluginConfig` (shared by `createNativeReleaseConfig` and
+    // nightly's `createNightlyDesktopConfig`) writes the signing key and
+    // endpoint at `plugins.updater.pubkey` / `plugins.updater.endpoints`.
+    // `desktop_updater_plugin_configured` in `src-desktop/src/lib.rs` reads
+    // exactly those two paths to decide whether to register the updater
+    // plugin at all — see that function's doc comment for why an
+    // unconditional registration can crash the app. A rename on either side
+    // must fail one of these assertions.
     const config = createNativeReleaseConfig({
       tag: 'v1.2.3',
       updaterPublicKey: 'pin-check-key',
     });
     expect(config.plugins?.updater?.pubkey).toBe('pin-check-key');
+
+    // Nightly is the one channel shipping BOTH fields today — pin its
+    // emitter against the predicate's actual contract (non-empty pubkey,
+    // non-empty array of non-empty endpoint strings), not just the key
+    // names, since a value-shape drift here would silently leave a
+    // "nightly-configured" build inert too.
+    const nightlyConfig = createNightlyDesktopConfig({
+      packageVersion: '1.2.3',
+      productionIdentifier: 'io.kontourai.station',
+      date: new Date('2026-08-28T00:00:00Z'),
+      updaterPublicKey: 'pin-check-key',
+      updaterEndpoint:
+        'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
+    });
+    expect(typeof nightlyConfig.plugins.updater.pubkey).toBe('string');
+    expect(nightlyConfig.plugins.updater.pubkey.length).toBeGreaterThan(0);
+    expect(Array.isArray(nightlyConfig.plugins.updater.endpoints)).toBe(true);
+    expect(nightlyConfig.plugins.updater.endpoints.length).toBeGreaterThan(0);
+    for (const endpoint of nightlyConfig.plugins.updater.endpoints) {
+      expect(typeof endpoint).toBe('string');
+      expect(endpoint.length).toBeGreaterThan(0);
+    }
 
     const rust = readFileSync('src-desktop/src/lib.rs', 'utf8');
     expect(rust).toContain('.get("updater")');

@@ -12,6 +12,18 @@
  * That rejection and a genuine offline/signature failure are
  * indistinguishable from here, and both must stay quiet: an absent update
  * channel has not failed a check.
+ *
+ * A check failure is currently unobservable to anything but this console
+ * line — there is no durable record a live channel's check kept failing.
+ * Tracked as a follow-up (a `desktop-updater` entry in the native capability
+ * report) rather than built in this round.
+ *
+ * On Windows, the plugin's install path spawns the platform installer and
+ * then calls `std::process::exit(0)` unconditionally — the running app never
+ * returns from `downloadAndInstall()`. `relaunch()` below and any failure
+ * surfaced AFTER the installer has been spawned are therefore macOS/Linux
+ * behavior only; a failure during download/extraction, before the installer
+ * spawns, still rejects normally on every platform including Windows.
  */
 
 export type DesktopUpdateOutcome =
