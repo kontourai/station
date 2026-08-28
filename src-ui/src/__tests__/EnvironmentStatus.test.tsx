@@ -64,10 +64,19 @@ describe('EnvironmentStatus (Host runtime IA)', () => {
     fixtures.loading = false;
   });
 
-  test('renders nothing while loading', () => {
+  test('mounts an honest Station host loading status', () => {
     fixtures.loading = true;
-    const { container } = render(<EnvironmentStatus apiBase="http://host" />);
-    expect(container.firstChild).toBeNull();
+    render(<EnvironmentStatus apiBase="http://host" />);
+
+    expect(screen.getByRole('heading', { name: 'Station host' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe(
+      'Checking provider software on the Station host…',
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Detected provider software')).toBeNull();
+    expect(screen.queryByText('Node.js')).toBeNull();
+    expect(screen.queryByText(/required item to resolve/i)).toBeNull();
+    expect(screen.queryByText(/provider software detected/i)).toBeNull();
   });
 
   test('frames detected tooling as the host runtime, not user settings', () => {
